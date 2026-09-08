@@ -15,8 +15,6 @@ pub fn lower_pure(module: PureModule) -> WriterModule {
     WriterModule {
         pages: module.pages.into_iter().map(lower_page).collect(),
         functions: module.functions.into_iter().map(lower_function).collect(),
-        records: module.records,
-        enums: module.enums,
         var_ids: module.var_ids,
     }
 }

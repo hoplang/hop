@@ -10,7 +10,7 @@ use crate::ir::pure_module::{
     PureArgument, PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
 use crate::ir::var_id::VarIdCounter;
-use crate::ir::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
+use crate::ir::writer_module::WriterParameter;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
@@ -228,30 +228,9 @@ impl PureModuleBodiesBuilder {
     }
 
     pub fn build_with_registry(self) -> (PureModule, TypeRegistry) {
-        let mut record_declarations = Vec::new();
-        let mut enum_declarations = Vec::new();
-        for (name, resolved) in self.types.declared_types() {
-            match resolved {
-                ResolvedType::Record { fields, .. } => {
-                    record_declarations.push(WriterRecordDeclaration {
-                        name: name.clone(),
-                        fields: fields.to_vec(),
-                    });
-                }
-                ResolvedType::Enum { variants, .. } => {
-                    enum_declarations.push(WriterEnumDeclaration {
-                        name: name.clone(),
-                        variants: variants.to_vec(),
-                    });
-                }
-                _ => unreachable!("only records and enums can be declared"),
-            }
-        }
         let module = PureModule {
             pages: self.pages,
             functions: self.functions,
-            records: record_declarations,
-            enums: enum_declarations,
             expr_ids: *self.expr_ids.borrow(),
             var_ids: *self.var_ids.borrow(),
         };

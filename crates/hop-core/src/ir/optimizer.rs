@@ -34,8 +34,6 @@ pub fn optimize(module: PureModule) -> PureModule {
     PureModule {
         pages,
         functions,
-        records: module.records,
-        enums: module.enums,
         expr_ids,
         var_ids: module.var_ids,
     }
@@ -246,44 +244,6 @@ mod tests {
                 -- after --
                 page Test() {
                   concat(raw("AB"))
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_preserve_records_and_enums() {
-        check(
-            PureModuleBuilder::new()
-                .record("User", [("name", "String"), ("age", "Int")])
-                .enum_unit("Status", ["Active", "Inactive"])
-                .view_no_params("Test", |t| t.concat(vec![t.raw("Hello")]))
-                .build(),
-            expect![[r#"
-                -- before --
-                enum Status {
-                  Active,
-                  Inactive,
-                }
-                record User {
-                  name: String,
-                  age: Int,
-                }
-                page Test() {
-                  concat(raw("Hello"))
-                }
-
-                -- after --
-                enum Status {
-                  Active,
-                  Inactive,
-                }
-                record User {
-                  name: String,
-                  age: Int,
-                }
-                page Test() {
-                  concat(raw("Hello"))
                 }
             "#]],
         );

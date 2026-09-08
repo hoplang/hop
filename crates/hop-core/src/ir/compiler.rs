@@ -8,9 +8,7 @@ use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
-use crate::hop::typing::typed_ast::{
-    TypedEnumDeclaration, TypedFunctionDeclaration, TypedRecordDeclaration,
-};
+use crate::hop::typing::typed_ast::TypedFunctionDeclaration;
 use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
@@ -23,13 +21,11 @@ use crate::symbols::var_name::VarName;
 use super::pure_module::{
     PureArgument, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
-use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
+use super::writer_module::WriterParameter;
 
 pub fn compile(
     pages: Vec<AssembledPageDeclaration>,
     source_functions: &[&TypedFunctionDeclaration],
-    records: &[&TypedRecordDeclaration],
-    enums: &[&TypedEnumDeclaration],
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
 ) -> PureModule {
     let mut expr_ids = ExprIdCounter::new();
@@ -45,32 +41,9 @@ pub fn compile(
         .map(|decl| compiler.compile_function_decl(decl))
         .collect();
 
-    // Records and enums carry no code, so they are converted as-is. Both are
-    // sorted by name since callers collect them from an unordered set of
-    // modules and the IR must be deterministic.
-    let mut records: Vec<WriterRecordDeclaration> = records
-        .iter()
-        .map(|record| WriterRecordDeclaration {
-            name: record.name.clone(),
-            fields: record.fields.clone(),
-        })
-        .collect();
-    records.sort_by(|a, b| a.name.cmp(&b.name));
-
-    let mut enums: Vec<WriterEnumDeclaration> = enums
-        .iter()
-        .map(|enum_decl| WriterEnumDeclaration {
-            name: enum_decl.name.clone(),
-            variants: enum_decl.variants.clone(),
-        })
-        .collect();
-    enums.sort_by(|a, b| a.name.cmp(&b.name));
-
     PureModule {
         pages,
         functions,
-        records,
-        enums,
         expr_ids,
         var_ids,
     }

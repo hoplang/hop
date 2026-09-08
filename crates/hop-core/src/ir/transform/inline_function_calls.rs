@@ -16,8 +16,6 @@ pub fn inline_function_calls(module: PureModule) -> PureModule {
     let PureModule {
         pages,
         functions,
-        records,
-        enums,
         mut expr_ids,
         mut var_ids,
     } = module;
@@ -70,8 +68,6 @@ pub fn inline_function_calls(module: PureModule) -> PureModule {
     PureModule {
         pages,
         functions,
-        records,
-        enums,
         expr_ids,
         var_ids,
     }

@@ -262,15 +262,13 @@ impl Transpiler for TsTranspiler {
         let arena = &Arena::new();
 
         let pages = &module.pages;
-        let records = &module.records;
 
         let mut result = arena.nil();
 
         // Add enum type definitions (namespace-based)
-        for enum_def in &module.enums {
+        for (enum_name, variants) in registry.enums() {
             // Generate namespace with tagged union type and constructor functions
-            let variant_type_docs: Vec<_> = enum_def
-                .variants
+            let variant_type_docs: Vec<_> = variants
                 .iter()
                 .map(|variant| {
                     let base = arena
@@ -299,18 +297,18 @@ impl Transpiler for TsTranspiler {
 
             result = result
                 .append(arena.text("export namespace "))
-                .append(arena.text(enum_def.name.as_str()))
+                .append(arena.text(enum_name.as_str()))
                 .append(arena.text(" {"))
                 .append(arena.line())
                 .append(arena.text("    export type "))
-                .append(arena.text(enum_def.name.as_str()))
+                .append(arena.text(enum_name.as_str()))
                 .append(arena.text(" = "))
                 .append(arena.intersperse(variant_type_docs, arena.text(" | ")))
                 .append(arena.text(";"))
                 .append(arena.line());
 
             // Generate constructor function for each variant
-            for variant in &enum_def.variants {
+            for variant in variants {
                 result = result.append(arena.line());
 
                 if variant.fields.is_empty() {
@@ -319,7 +317,7 @@ impl Transpiler for TsTranspiler {
                         .append(arena.text("    export function "))
                         .append(arena.text(variant.name.as_str()))
                         .append(arena.text("(): "))
-                        .append(arena.text(enum_def.name.as_str()))
+                        .append(arena.text(enum_name.as_str()))
                         .append(arena.text(" {"))
                         .append(arena.line())
                         .append(arena.text("        return { _tag: \""))
@@ -356,7 +354,7 @@ impl Transpiler for TsTranspiler {
                         .append(arena.text("(init: {"))
                         .append(arena.intersperse(param_with_type_docs, arena.text(", ")))
                         .append(arena.text("}): "))
-                        .append(arena.text(enum_def.name.as_str()))
+                        .append(arena.text(enum_name.as_str()))
                         .append(arena.text(" {"))
                         .append(arena.line())
                         .append(arena.text("        return { _tag: \""))
@@ -377,85 +375,80 @@ impl Transpiler for TsTranspiler {
         }
 
         // Add record type definitions
-        if !records.is_empty() {
-            for record in records {
-                if record.fields.is_empty() {
-                    result = result
-                        .append(arena.text("export class "))
-                        .append(arena.text(record.name.as_str()))
-                        .append(arena.text(" {}"))
-                        .append(arena.line())
-                        .append(arena.line());
-                } else {
-                    let field_docs: Vec<_> = record
-                        .fields
-                        .iter()
-                        .map(|field| {
-                            arena
-                                .text("public readonly ")
-                                .append(arena.text(field.name.as_str()))
-                                .append(arena.text(": "))
-                                .append(self.transpile_type(arena, &field.typ))
-                                .append(arena.text(";"))
-                        })
-                        .collect();
-                    let param_with_type_docs: Vec<_> = record
-                        .fields
-                        .iter()
-                        .map(|field| {
-                            arena
-                                .text(field.name.as_str())
-                                .append(arena.text(": "))
-                                .append(self.transpile_type(arena, &field.typ))
-                        })
-                        .collect();
-                    let assignment_docs: Vec<_> = record
-                        .fields
-                        .iter()
-                        .map(|field| {
-                            arena
-                                .text("this.")
-                                .append(arena.text(field.name.as_str()))
-                                .append(arena.text(" = init."))
-                                .append(arena.text(field.name.as_str()))
-                                .append(arena.text(";"))
-                        })
-                        .collect();
-                    result = result
-                        .append(arena.text("export class "))
-                        .append(arena.text(record.name.as_str()))
-                        .append(arena.text(" {"))
-                        .append(
-                            arena
-                                .nil()
-                                .append(arena.line())
-                                .append(arena.intersperse(field_docs.clone(), arena.line()))
-                                .append(arena.line())
-                                .nest(4),
-                        )
-                        .append(
-                            arena
-                                .nil()
-                                .append(arena.line())
-                                .append(arena.text("constructor(init: {"))
-                                .append(arena.intersperse(param_with_type_docs, arena.text(", ")))
-                                .append(arena.text("}) {"))
-                                .append(
-                                    arena
-                                        .nil()
-                                        .append(arena.line())
-                                        .append(arena.intersperse(assignment_docs, arena.line()))
-                                        .append(arena.line())
-                                        .nest(4),
-                                )
-                                .append(arena.text("}"))
-                                .append(arena.line())
-                                .nest(4),
-                        )
-                        .append(arena.text("}"))
-                        .append(arena.line())
-                        .append(arena.line());
-                }
+        for (record_name, fields) in registry.records() {
+            if fields.is_empty() {
+                result = result
+                    .append(arena.text("export class "))
+                    .append(arena.text(record_name.as_str()))
+                    .append(arena.text(" {}"))
+                    .append(arena.line())
+                    .append(arena.line());
+            } else {
+                let field_docs: Vec<_> = fields
+                    .iter()
+                    .map(|field| {
+                        arena
+                            .text("public readonly ")
+                            .append(arena.text(field.name.as_str()))
+                            .append(arena.text(": "))
+                            .append(self.transpile_type(arena, &field.typ))
+                            .append(arena.text(";"))
+                    })
+                    .collect();
+                let param_with_type_docs: Vec<_> = fields
+                    .iter()
+                    .map(|field| {
+                        arena
+                            .text(field.name.as_str())
+                            .append(arena.text(": "))
+                            .append(self.transpile_type(arena, &field.typ))
+                    })
+                    .collect();
+                let assignment_docs: Vec<_> = fields
+                    .iter()
+                    .map(|field| {
+                        arena
+                            .text("this.")
+                            .append(arena.text(field.name.as_str()))
+                            .append(arena.text(" = init."))
+                            .append(arena.text(field.name.as_str()))
+                            .append(arena.text(";"))
+                    })
+                    .collect();
+                result = result
+                    .append(arena.text("export class "))
+                    .append(arena.text(record_name.as_str()))
+                    .append(arena.text(" {"))
+                    .append(
+                        arena
+                            .nil()
+                            .append(arena.line())
+                            .append(arena.intersperse(field_docs.clone(), arena.line()))
+                            .append(arena.line())
+                            .nest(4),
+                    )
+                    .append(
+                        arena
+                            .nil()
+                            .append(arena.line())
+                            .append(arena.text("constructor(init: {"))
+                            .append(arena.intersperse(param_with_type_docs, arena.text(", ")))
+                            .append(arena.text("}) {"))
+                            .append(
+                                arena
+                                    .nil()
+                                    .append(arena.line())
+                                    .append(arena.intersperse(assignment_docs, arena.line()))
+                                    .append(arena.line())
+                                    .nest(4),
+                            )
+                            .append(arena.text("}"))
+                            .append(arena.line())
+                            .nest(4),
+                    )
+                    .append(arena.text("}"))
+                    .append(arena.line())
+                    .append(arena.line());
             }
         }
 
@@ -2258,15 +2251,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                record Address {
-                  street: String,
-                  city: String,
-                }
-                record User {
-                  name: String,
-                  age: Int,
-                  active: Bool,
-                }
                 page UserProfile(user@v0: test::User) {
                   write("<div>")
                   write_string(v0.name)
@@ -2333,10 +2317,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                record User {
-                  name: String,
-                  age: Int,
-                }
                 page CreateUser() {
                   write("<div>")
                   write_string(User {name: "John", age: 30}.name)
@@ -2389,10 +2369,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                record Node {
-                  value: Int,
-                  next: Option[test::Node],
-                }
                 page Test(node@v0: test::Node) {
                   write_string(v0.value.to_string())
                 }
@@ -2453,10 +2429,6 @@ mod tests {
                 .view_no_params("Test", |t| t.raw("hello")),
             expect![[r#"
                 -- before --
-                enum IntList {
-                  Cons {head: Int, tail: test::IntList},
-                  Nil,
-                }
                 page Test() {
                   write("hello")
                 }
@@ -2499,10 +2471,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                record Node {
-                  value: Int,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   let v0 = Node {
                     value: 2,
@@ -2580,11 +2548,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
                 page ColorName(color@v0: test::Color) {
                   write_string(match v0 {
                     Color::Red => { "red" }
@@ -3259,10 +3222,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                enum Outcome {
-                  Success {value: Int},
-                  Failure {message: String},
-                }
                 page ShowOutcome(r@v0: test::Outcome) {
                   write("<div>")
                   let v1 = Outcome::Success {value: 42} in {
@@ -3329,10 +3288,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page ShowOutcome(r@v0: test::Outcome) {
                   match v0 {
                     Outcome::Success(value: v1) => {

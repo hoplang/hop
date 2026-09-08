@@ -1,7 +1,6 @@
 use std::fmt::{self, Display};
 
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::hop::typing::type_registry::{EnumVariant, RecordField};
 use crate::hop::typing::{Type, TypedExpr};
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
@@ -10,22 +9,8 @@ use pretty::BoxDoc;
 
 #[derive(Debug, Clone)]
 pub struct TypedAst {
-    record_declarations: Vec<TypedRecordDeclaration>,
-    enum_declarations: Vec<TypedEnumDeclaration>,
     page_declarations: Vec<TypedPageDeclaration>,
     function_declarations: Vec<TypedFunctionDeclaration>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedRecordDeclaration {
-    pub name: TypeName,
-    pub fields: Vec<RecordField>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedEnumDeclaration {
-    pub name: TypeName,
-    pub variants: Vec<EnumVariant>,
 }
 
 #[derive(Debug, Clone)]
@@ -53,25 +38,13 @@ pub struct TypedFunctionDeclaration {
 
 impl TypedAst {
     pub fn new(
-        record_declarations: Vec<TypedRecordDeclaration>,
-        enum_declarations: Vec<TypedEnumDeclaration>,
         page_declarations: Vec<TypedPageDeclaration>,
         function_declarations: Vec<TypedFunctionDeclaration>,
     ) -> Self {
         Self {
-            record_declarations,
-            enum_declarations,
             page_declarations,
             function_declarations,
         }
-    }
-
-    pub fn record_declarations(&self) -> &[TypedRecordDeclaration] {
-        &self.record_declarations
-    }
-
-    pub fn enum_declarations(&self) -> &[TypedEnumDeclaration] {
-        &self.enum_declarations
     }
 
     pub fn page_declarations(&self) -> &[TypedPageDeclaration] {
@@ -84,14 +57,6 @@ impl TypedAst {
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let mut docs: Vec<BoxDoc<'_>> = Vec::new();
-
-        for record in &self.record_declarations {
-            docs.push(record.to_doc());
-        }
-
-        for enum_decl in &self.enum_declarations {
-            docs.push(enum_decl.to_doc());
-        }
 
         for page in &self.page_declarations {
             docs.push(page.to_doc());
@@ -106,72 +71,6 @@ impl TypedAst {
         } else {
             BoxDoc::intersperse(docs, BoxDoc::line().append(BoxDoc::line())).append(BoxDoc::line())
         }
-    }
-}
-
-impl TypedRecordDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("record")
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.name.as_str()))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(if self.fields.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.fields.iter().map(|field| {
-                            BoxDoc::text(field.name.as_str())
-                                .append(BoxDoc::text(": "))
-                                .append(field.typ.to_doc())
-                        }),
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(","))
-                    .nest(2)
-                    .append(BoxDoc::line())
-            })
-            .append(BoxDoc::text("}"))
-    }
-}
-
-impl TypedEnumDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("enum")
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.name.as_str()))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(if self.variants.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.variants.iter().map(|variant| {
-                            if variant.fields.is_empty() {
-                                BoxDoc::text(variant.name.as_str())
-                            } else {
-                                BoxDoc::text(variant.name.as_str())
-                                    .append(BoxDoc::text(" { "))
-                                    .append(BoxDoc::intersperse(
-                                        variant.fields.iter().map(|field| {
-                                            BoxDoc::text(field.name.as_str())
-                                                .append(BoxDoc::text(": "))
-                                                .append(field.typ.to_doc())
-                                        }),
-                                        BoxDoc::text(", "),
-                                    ))
-                                    .append(BoxDoc::text(" }"))
-                            }
-                        }),
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(","))
-                    .nest(2)
-                    .append(BoxDoc::line())
-            })
-            .append(BoxDoc::text("}"))
     }
 }
 

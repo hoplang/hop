@@ -67,22 +67,7 @@ pub fn orchestrate_pure(
         .flat_map(|id| typed_asts[id].function_declarations())
         .collect();
 
-    let records: Vec<_> = document_ids
-        .iter()
-        .flat_map(|id| typed_asts[id].record_declarations())
-        .collect();
-    let enums: Vec<_> = document_ids
-        .iter()
-        .flat_map(|id| typed_asts[id].enum_declarations())
-        .collect();
-
-    let pure_module = compile(
-        assembled_pages,
-        &functions,
-        &records,
-        &enums,
-        options.asset_rewriter,
-    );
+    let pure_module = compile(assembled_pages, &functions, options.asset_rewriter);
     // Every component and function in the project is compiled, whether or not
     // the selected pages reach it. Dropping the unreachable ones keeps a
     // page_filter build to what that page actually needs.

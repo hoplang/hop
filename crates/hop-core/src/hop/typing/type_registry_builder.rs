@@ -308,18 +308,6 @@ impl TestTypes {
         })
     }
 
-    /// Iterate over the declared named types in name order, with their
-    /// resolved definitions.
-    pub fn declared_types(&self) -> impl Iterator<Item = (&TypeName, ResolvedType<'_>)> {
-        self.named.iter().map(|(name, typ)| {
-            let resolved = self
-                .registry
-                .resolve(typ)
-                .expect("declared type must be registered");
-            (name, resolved)
-        })
-    }
-
     pub fn record_fields(&self, name: &str) -> &[RecordField] {
         let typ = self.named.get(&type_name(name));
         match typ.map(|typ| self.registry.resolve(typ)) {

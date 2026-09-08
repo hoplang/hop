@@ -12,7 +12,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
+use super::writer_module::WriterParameter;
 
 /// A Pure module.
 ///
@@ -21,8 +21,6 @@ use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordD
 pub struct PureModule {
     pub pages: Vec<PurePageDeclaration>,
     pub functions: Vec<PureFunctionDeclaration>,
-    pub records: Vec<WriterRecordDeclaration>,
-    pub enums: Vec<WriterEnumDeclaration>,
     pub expr_ids: ExprIdCounter,
     pub var_ids: VarIdCounter,
 }
@@ -1324,12 +1322,6 @@ impl fmt::Display for PureFunctionDeclaration {
 
 impl fmt::Display for PureModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for enum_decl in &self.enums {
-            writeln!(f, "{}", enum_decl)?;
-        }
-        for record_decl in &self.records {
-            writeln!(f, "{}", record_decl)?;
-        }
         for function in &self.functions {
             write!(f, "{}", function)?;
         }

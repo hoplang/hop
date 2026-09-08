@@ -440,9 +440,6 @@ mod tests {
             "yes",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Flag {
-                  value: Bool,
-                }
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
@@ -459,9 +456,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Flag {
-                  value: Bool,
-                }
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
@@ -519,9 +513,6 @@ mod tests {
             "eq",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Count {
-                  n: Int,
-                }
                 page Test() {
                   for v0 in [Count {n: 57}] {
                     let v1 = v0.n in {
@@ -538,9 +529,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Count {
-                  n: Int,
-                }
                 page Test() {
                   for v0 in [Count {n: 57}] {
                     let v1 = v0.n in {
@@ -596,9 +584,6 @@ mod tests {
             "yes",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Flag {
-                  value: Bool,
-                }
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
@@ -612,9 +597,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Flag {
-                  value: Bool,
-                }
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
@@ -674,9 +656,6 @@ mod tests {
             "yes",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Flag {
-                  value: Bool,
-                }
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
@@ -694,9 +673,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Flag {
-                  value: Bool,
-                }
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
@@ -755,9 +731,6 @@ mod tests {
             "yes",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Flag {
-                  value: Bool,
-                }
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
@@ -774,9 +747,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Flag {
-                  value: Bool,
-                }
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
@@ -1707,9 +1677,6 @@ mod tests {
             r#"<div>Ada</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record User {
-                  name: String,
-                }
                 fn Card(user@v1: test::User) -> Fragment {
                   write("<div")
                   write(">")
@@ -1728,9 +1695,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record User {
-                  name: String,
-                }
                 page Test() {
                   write("<div>Ada</div>")
                 }
@@ -1777,9 +1741,6 @@ mod tests {
             r#"outerx"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Flag {
-                  value: String,
-                }
                 page Test() {
                   let v0 = "outer" in {
                     for v1 in [Flag {value: "x"}] {
@@ -1793,9 +1754,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Flag {
-                  value: String,
-                }
                 page Test() {
                   for v1 in [Flag {value: "x"}] {
                     let v2 = v1.value in {
@@ -2838,10 +2796,6 @@ mod tests {
             "got:hi",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Point {
-                  x: String,
-                  y: String,
-                }
                 page Test() {
                   let v3 = let v0 = Point {x: "hi", y: "bye"} in {
                     let v1 = v0.x in { let v2 = v1 in { v2 } }
@@ -2851,10 +2805,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Point {
-                  x: String,
-                  y: String,
-                }
                 page Test() {
                   write("got:hi")
                 }
@@ -2900,10 +2850,6 @@ mod tests {
             "got:hi",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Point {
-                  x: String,
-                  y: String,
-                }
                 page Test() {
                   let v2 = let v0 = Point {x: "hi", y: "bye"} in {
                     let v1 = v0 in { v1.x }
@@ -2913,10 +2859,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Point {
-                  x: String,
-                  y: String,
-                }
                 page Test() {
                   write("got:hi")
                 }
@@ -4549,10 +4491,6 @@ mod tests {
             "Alice:30",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Person {
-                  name: String,
-                  age: Int,
-                }
                 page Test() {
                   let v0 = Person {name: "Alice", age: 30} in {
                     write_string(v0.name)
@@ -4566,10 +4504,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Person {
-                  name: String,
-                  age: Int,
-                }
                 page Test() {
                   write("Alice:30")
                 }
@@ -4612,10 +4546,6 @@ mod tests {
             "a-b",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Pair {
-                  first: String,
-                  second: String,
-                }
                 page Test() {
                   let v0 = Pair {second: "b", first: "a"} in {
                     write_string(v0.first)
@@ -4624,10 +4554,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Pair {
-                  first: String,
-                  second: String,
-                }
                 page Test() {
                   write("a-b")
                 }
@@ -4676,9 +4602,6 @@ mod tests {
             "a-b",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Shape {
-                  Rect {width: String, height: String},
-                }
                 page Test() {
                   let v0 = Shape::Rect {height: "b", width: "a"} in {
                     match v0 {
@@ -4695,9 +4618,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Shape {
-                  Rect {width: String, height: String},
-                }
                 page Test() {
                   write("a-b")
                 }
@@ -4750,14 +4670,6 @@ mod tests {
             "Alice,Paris",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Address {
-                  city: String,
-                  zip: String,
-                }
-                record Person {
-                  name: String,
-                  address: Address,
-                }
                 page Test() {
                   let v0 = Person {
                     name: "Alice",
@@ -4769,14 +4681,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Address {
-                  city: String,
-                  zip: String,
-                }
-                record Person {
-                  name: String,
-                  address: Address,
-                }
                 page Test() {
                   write("Alice,Paris")
                 }
@@ -5416,11 +5320,6 @@ mod tests {
             "green",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
                 page Test() {
                   let v0 = Color::Green in {
                     write_string(match v0 {
@@ -5431,11 +5330,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
                 page Test() {
                   write("green")
                 }
@@ -5487,11 +5381,6 @@ mod tests {
             "blue",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
                 page Test() {
                   let v0 = Color::Blue in {
                     match v0 {
@@ -5508,11 +5397,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
                 page Test() {
                   write("blue")
                 }
@@ -5568,10 +5452,6 @@ mod tests {
             "Ok:hello",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   let v0 = Outcome::Success {value: "hello"} in {
                     match v0 {
@@ -5591,10 +5471,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   write("Ok:hello")
                 }
@@ -5645,10 +5521,6 @@ mod tests {
             "tag:news",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Item {
-                  Tagged {tag: String},
-                  Plain,
-                }
                 page Test() {
                   let v0 = Item::Tagged {tag: "news"} in {
                     match v0 {
@@ -5665,10 +5537,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Item {
-                  Tagged {tag: String},
-                  Plain,
-                }
                 page Test() {
                   write("tag:news")
                 }
@@ -5719,10 +5587,6 @@ mod tests {
             "got:hi",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   let v5 = let v0 = Outcome::Success {value: "hi"} in {
                     match v0 {
@@ -5739,10 +5603,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   write("got:hi")
                 }
@@ -5796,11 +5656,6 @@ mod tests {
             "green",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
                 fn Badge(color@v0: test::Color) -> Fragment {
                   match v0 {
                     Color::Red => {
@@ -5818,11 +5673,6 @@ mod tests {
                   call Badge(color = Color::Green)
                 }
                 -- ir (optimized) --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
                 page Test() {
                   write("green")
                 }
@@ -5880,10 +5730,6 @@ mod tests {
             "Err:something went wrong",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   let v0 = Outcome::Failure {message: "something went wrong"} in {
                     match v0 {
@@ -5903,10 +5749,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   write("Err:something went wrong")
                 }
@@ -5967,10 +5809,6 @@ mod tests {
             "200:OK",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Response {
-                  Win {code: String, body: String},
-                  Lose {reason: String},
-                }
                 page Test() {
                   let v0 = Response::Win {code: "200", body: "OK"} in {
                     match v0 {
@@ -5993,10 +5831,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Response {
-                  Win {code: String, body: String},
-                  Lose {reason: String},
-                }
                 page Test() {
                   write("200:OK")
                 }
@@ -6052,10 +5886,6 @@ mod tests {
             "Ok:hello",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   let v0 = Outcome::Success {value: "hello"} in {
                     match v0 {
@@ -6075,10 +5905,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   write("Ok:hello")
                 }
@@ -7477,10 +7303,6 @@ mod tests {
             "ok",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   let v0 = Outcome::Success {value: "hello"} in {
                     match v0 {
@@ -7494,10 +7316,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   write("ok")
                 }
@@ -7552,10 +7370,6 @@ mod tests {
             "err",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   let v0 = Outcome::Failure {message: "failed"} in {
                     match v0 {
@@ -7569,10 +7383,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Outcome {
-                  Success {value: String},
-                  Failure {message: String},
-                }
                 page Test() {
                   write("err")
                 }
@@ -7619,10 +7429,6 @@ mod tests {
             "age:30",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Person {
-                  name: String,
-                  age: Int,
-                }
                 page Test() {
                   let v0 = Person {name: "Alice", age: 30} in {
                     let v1 = v0.age in {
@@ -7634,10 +7440,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Person {
-                  name: String,
-                  age: Int,
-                }
                 page Test() {
                   write("age:30")
                 }
@@ -7790,14 +7592,6 @@ mod tests {
             "ok-ok",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Inner {
-                  Success {value: String},
-                  Failure {message: String},
-                }
-                enum Outer {
-                  Success {value: test::Inner},
-                  Failure {message: String},
-                }
                 page Test() {
                   let v0 = Outer::Success {value: Inner::Success {value: "deep"}} in {
                     match v0 {
@@ -7818,14 +7612,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Inner {
-                  Success {value: String},
-                  Failure {message: String},
-                }
-                enum Outer {
-                  Success {value: test::Inner},
-                  Failure {message: String},
-                }
                 page Test() {
                   write("ok-ok")
                 }
@@ -8674,10 +8460,6 @@ mod tests {
             "[a][b]",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Item {
-                  name: String,
-                  value: String,
-                }
                 page Test() {
                   let v0 = [
                     Item {name: "a", value: "1"},
@@ -8693,10 +8475,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Item {
-                  name: String,
-                  value: String,
-                }
                 page Test() {
                   for v1 in [
                     Item {name: "a", value: "1"},
@@ -8767,13 +8545,6 @@ mod tests {
             "[paris][london]",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Address {
-                  city: String,
-                }
-                record Person {
-                  name: String,
-                  address: Address,
-                }
                 page Test() {
                   let v0 = [
                     Person {
@@ -8792,13 +8563,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Address {
-                  city: String,
-                }
-                record Person {
-                  name: String,
-                  address: Address,
-                }
                 page Test() {
                   for v1 in [
                     Person {
@@ -8866,13 +8630,6 @@ mod tests {
             "[a][b]",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Source {
-                  name: String,
-                  value: String,
-                }
-                record Target {
-                  label: String,
-                }
                 page Test() {
                   let v0 = [
                     Source {name: "a", value: "1"},
@@ -8888,13 +8645,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Source {
-                  name: String,
-                  value: String,
-                }
-                record Target {
-                  label: String,
-                }
                 page Test() {
                   for v1 in [
                     Source {name: "a", value: "1"},
@@ -8961,9 +8711,6 @@ mod tests {
             "[a][b]",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Item {
-                  name: String,
-                }
                 page Test() {
                   let v0 = [Item {name: "a"}, Item {name: "b"}] in {
                     for v1 in v0 {
@@ -8985,9 +8732,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Item {
-                  name: String,
-                }
                 page Test() {
                   for v1 in [Item {name: "a"}, Item {name: "b"}] {
                     let v2 = Option[String]::Some(v1.name) in {
@@ -9097,18 +8841,12 @@ mod tests {
             "hello world",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Greeting {
-                  message: String,
-                }
                 page Test() {
                   let v0 = Greeting {message: ("hello" + " world")} in {
                     write_string(v0.message)
                   }
                 }
                 -- ir (optimized) --
-                record Greeting {
-                  message: String,
-                }
                 page Test() {
                   write("hello world")
                 }
@@ -9201,9 +8939,6 @@ mod tests {
             "[a][b]",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Container {
-                  items: Array[String],
-                }
                 page Test() {
                   let v0 = Container {items: ["a", "b"]} in {
                     for v1 in v0.items {
@@ -9214,9 +8949,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Container {
-                  items: Array[String],
-                }
                 page Test() {
                   for v1 in ["a", "b"] {
                     write("[")
@@ -9262,9 +8994,6 @@ mod tests {
             "[42]",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Label {
-                  text: String,
-                }
                 page Test() {
                   let v0 = Label {text: 42.to_string()} in {
                     write("[")
@@ -9273,9 +9002,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Label {
-                  text: String,
-                }
                 page Test() {
                   write("[42]")
                 }
@@ -9325,12 +9051,6 @@ mod tests {
             "[x][y]",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Inner {
-                  values: Array[String],
-                }
-                record Outer {
-                  inner: Inner,
-                }
                 page Test() {
                   let v0 = Outer {inner: Inner {values: ["x", "y"]}} in {
                     for v1 in v0.inner.values {
@@ -9341,12 +9061,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Inner {
-                  values: Array[String],
-                }
-                record Outer {
-                  inner: Inner,
-                }
                 page Test() {
                   for v1 in ["x", "y"] {
                     write("[")
@@ -9394,9 +9108,6 @@ mod tests {
             "[hello][hello]",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Foo {
-                  a: String,
-                }
                 page Test() {
                   let v0 = Foo {a: "hello"} in {
                     let v1 = Foo {a: v0.a} in {
@@ -9409,9 +9120,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Foo {
-                  a: String,
-                }
                 page Test() {
                   write("[hello][hello]")
                 }
@@ -9462,9 +9170,6 @@ mod tests {
             "[hello][hello]",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Foo {
-                  a: String,
-                }
                 page Test() {
                   let v0 = Foo {a: "hello"} in {
                     let v1 = true in {
@@ -9482,9 +9187,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Foo {
-                  a: String,
-                }
                 page Test() {
                   write("[hello][hello]")
                 }
@@ -9527,20 +9229,12 @@ mod tests {
             "leaf",
             expect![[r#"
                 -- ir (unoptimized) --
-                record TreeNode {
-                  value: String,
-                  children: Array[test::TreeNode],
-                }
                 page Test() {
                   let v0 = TreeNode {value: "leaf", children: []} in {
                     write_string(v0.value)
                   }
                 }
                 -- ir (optimized) --
-                record TreeNode {
-                  value: String,
-                  children: Array[test::TreeNode],
-                }
                 page Test() {
                   write("leaf")
                 }
@@ -9581,10 +9275,6 @@ mod tests {
             "first",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   let v0 = Node {
                     value: "first",
@@ -9594,10 +9284,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   write("first")
                 }
@@ -9649,10 +9335,6 @@ mod tests {
             "42",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Expr {
-                  Literal {value: String},
-                  Neg {inner: test::Expr},
-                }
                 page Test() {
                   let v0 = Expr::Literal {value: "42"} in {
                     match v0 {
@@ -9668,10 +9350,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Expr {
-                  Literal {value: String},
-                  Neg {inner: test::Expr},
-                }
                 page Test() {
                   write("42")
                 }
@@ -9728,10 +9406,6 @@ mod tests {
             "neg",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Expr {
-                  Literal {value: String},
-                  Neg {inner: test::Expr},
-                }
                 page Test() {
                   let v0 = Expr::Neg {inner: Expr::Literal {value: "42"}} in {
                     match v0 {
@@ -9748,10 +9422,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Expr {
-                  Literal {value: String},
-                  Neg {inner: test::Expr},
-                }
                 page Test() {
                   write("neg")
                 }
@@ -9796,13 +9466,6 @@ mod tests {
             "root",
             expect![[r#"
                 -- ir (unoptimized) --
-                record File {
-                  owner: Option[test::Folder],
-                }
-                record Folder {
-                  name: String,
-                  parent: Option[test::File],
-                }
                 page Test() {
                   let v0 = Folder {
                     name: "root",
@@ -9812,13 +9475,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record File {
-                  owner: Option[test::Folder],
-                }
-                record Folder {
-                  name: String,
-                  parent: Option[test::File],
-                }
                 page Test() {
                   write("root")
                 }
@@ -9878,16 +9534,6 @@ mod tests {
             "none",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Expr {
-                  Literal {value: String},
-                  Wrapped {inner: Option[test::Node]},
-                }
-                record Leaf {
-                  back: Option[test::Expr],
-                }
-                record Node {
-                  next: Option[test::Leaf],
-                }
                 page Test() {
                   let v0 = Leaf {back: Option[test::Expr]::None} in {
                     let v1 = v0.back in {
@@ -9903,16 +9549,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Expr {
-                  Literal {value: String},
-                  Wrapped {inner: Option[test::Node]},
-                }
-                record Leaf {
-                  back: Option[test::Expr],
-                }
-                record Node {
-                  next: Option[test::Leaf],
-                }
                 page Test() {
                   write("none")
                 }
@@ -9955,10 +9591,6 @@ mod tests {
             "head",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   let v0 = Option[test::Node]::None in {
                     let v1 = Node {value: "head", next: v0} in {
@@ -9967,10 +9599,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   write("head")
                 }
@@ -10021,10 +9649,6 @@ mod tests {
             "head",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   let v0 = Node {
                     value: "leaf",
@@ -10044,10 +9668,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   write("head")
                 }
@@ -10088,10 +9708,6 @@ mod tests {
             "node",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Node {
-                  value: String,
-                  next: Option[Option[test::Node]],
-                }
                 page Test() {
                   let v0 = Node {
                     value: "node",
@@ -10101,10 +9717,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Node {
-                  value: String,
-                  next: Option[Option[test::Node]],
-                }
                 page Test() {
                   write("node")
                 }
@@ -10164,10 +9776,6 @@ mod tests {
             "tail",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Node {
-                  value: String,
-                  next: Option[Option[test::Node]],
-                }
                 page Test() {
                   let v0 = Node {
                     value: "head",
@@ -10200,10 +9808,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Node {
-                  value: String,
-                  next: Option[Option[test::Node]],
-                }
                 page Test() {
                   write("tail")
                 }
@@ -10257,13 +9861,6 @@ mod tests {
             "node",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Holder {
-                  held: Option[test::Node],
-                }
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   let v0 = Node {
                     value: "node",
@@ -10284,13 +9881,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Holder {
-                  held: Option[test::Node],
-                }
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   write("node")
                 }
@@ -10343,13 +9933,6 @@ mod tests {
             "bnone",
             expect![[r#"
                 -- ir (unoptimized) --
-                record A {
-                  b: B,
-                }
-                record B {
-                  name: String,
-                  a: Option[test::A],
-                }
                 page Test() {
                   let v0 = A {
                     b: B {name: "b", a: Option[test::A]::None},
@@ -10368,13 +9951,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record A {
-                  b: B,
-                }
-                record B {
-                  name: String,
-                  a: Option[test::A],
-                }
                 page Test() {
                   write("bnone")
                 }
@@ -10447,14 +10023,6 @@ mod tests {
             "anone",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Tree {
-                  Node {label: String, left: test::Tree, right: Option[test::Tree]},
-                  Leaf,
-                }
-                record Step {
-                  t: Tree,
-                  rest: Option[test::Tree],
-                }
                 page Test() {
                   let v0 = Tree::Node {label: "a", left: Tree::Leaf, right: Option[test::Tree]::None} in {
                     match v0 {
@@ -10486,14 +10054,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Tree {
-                  Node {label: String, left: test::Tree, right: Option[test::Tree]},
-                  Leaf,
-                }
-                record Step {
-                  t: Tree,
-                  rest: Option[test::Tree],
-                }
                 page Test() {
                   write("anone")
                 }
@@ -10557,10 +10117,6 @@ mod tests {
             "a@b.cwork",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Contact {
-                  Email {address: String, label: Option[String]},
-                  Anonymous,
-                }
                 page Test() {
                   let v0 = Contact::Email {address: "a@b.c", label: Option[String]::Some("work")} in {
                     match v0 {
@@ -10588,10 +10144,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Contact {
-                  Email {address: String, label: Option[String]},
-                  Anonymous,
-                }
                 page Test() {
                   write("a@b.cwork")
                 }
@@ -11038,10 +10590,6 @@ mod tests {
             "<strong>a</strong><strong>b</strong>",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 fn Badge(text@v1: String) -> Fragment {
                   write("<strong")
                   write(">")
@@ -11074,10 +10622,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 fn NodeView(node@v2: test::Node) -> Fragment {
                   write("<strong>")
                   write_string(v2.value)
@@ -11165,10 +10709,6 @@ mod tests {
             "<span>a</span><span>b</span><span>c</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 fn NodeView(node@v1: test::Node) -> Fragment {
                   write("<span")
                   write(">")
@@ -11201,10 +10741,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Node {
-                  value: String,
-                  next: Option[test::Node],
-                }
                 fn NodeView(node@v1: test::Node) -> Fragment {
                   write("<span>")
                   write_string(v1.value)
@@ -12240,9 +11776,6 @@ mod tests {
             "[x]Buy milk,[ ]Walk dog",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Item {
-                  Todo {label: String, done: Bool},
-                }
                 fn RenderItem(item@v0: test::Item) -> Fragment {
                   match v0 {
                     Item::Todo(label: v1, done: v2) => {
@@ -12274,9 +11807,6 @@ mod tests {
                   call RenderItem(item = Item::Todo {label: "Walk dog", done: false})
                 }
                 -- ir (optimized) --
-                enum Item {
-                  Todo {label: String, done: Bool},
-                }
                 page Test() {
                   write("[x]Buy milk,[ ]Walk dog")
                 }
@@ -12342,10 +11872,6 @@ mod tests {
             "1 minute ago,5 minutes ago,1 hour ago",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum TimeAgo {
-                  MinutesAgo {count: Int},
-                  HoursAgo {count: Int},
-                }
                 fn Render(time@v0: test::TimeAgo) -> Fragment {
                   match v0 {
                     TimeAgo::MinutesAgo(count: v1) => {
@@ -12378,10 +11904,6 @@ mod tests {
                   call Render(time = TimeAgo::HoursAgo {count: 1})
                 }
                 -- ir (optimized) --
-                enum TimeAgo {
-                  MinutesAgo {count: Int},
-                  HoursAgo {count: Int},
-                }
                 page Test() {
                   write("1 minute ago,5 minutes ago,1 hour ago")
                 }
@@ -12434,9 +11956,6 @@ mod tests {
             "<code>fn main()</code>",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum CodeBlock {
-                  Snippet {language: String, code: String},
-                }
                 fn RenderCode(block@v0: test::CodeBlock) -> Fragment {
                   match v0 {
                     CodeBlock::Snippet(code: v1) => {
@@ -12453,9 +11972,6 @@ mod tests {
                   call RenderCode(block = CodeBlock::Snippet {language: "rust", code: "fn main()"})
                 }
                 -- ir (optimized) --
-                enum CodeBlock {
-                  Snippet {language: String, code: String},
-                }
                 page Test() {
                   write("<code>fn main()</code>")
                 }
@@ -12516,10 +12032,6 @@ mod tests {
             r#"<button type="submit">btn</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                enum ButtonElement {
-                  Link {href: String},
-                  Button {disabled: Bool, type: String},
-                }
                 fn Render(el@v0: test::ButtonElement) -> Fragment {
                   match v0 {
                     ButtonElement::Link(href: v1) => {
@@ -12550,10 +12062,6 @@ mod tests {
                   call Render(el = ButtonElement::Button {disabled: false, type: "submit"})
                 }
                 -- ir (optimized) --
-                enum ButtonElement {
-                  Link {href: String},
-                  Button {disabled: Bool, type: String},
-                }
                 page Test() {
                   write("<button type=\"submit\">btn</button>")
                 }
@@ -12624,10 +12132,6 @@ mod tests {
             "[hello]hello",
             expect![[r#"
                 -- ir (unoptimized) --
-                record Target {
-                  id: String,
-                  title: String,
-                }
                 page Test() {
                   let v0 = Option[test::Target]::Some(Target {
                     id: "1",
@@ -12667,10 +12171,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Target {
-                  id: String,
-                  title: String,
-                }
                 page Test() {
                   for v4 in [Option[String]::Some("hello")] {
                     match v4 {
@@ -13477,9 +12977,6 @@ mod tests {
             "x",
             expect![[r#"
                 -- ir (unoptimized) --
-                record R {
-                  f: Bool,
-                }
                 page Test() {
                   match R {f: true}.f {
                     true => {
@@ -13490,9 +12987,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record R {
-                  f: Bool,
-                }
                 page Test() {
                   write("x")
                 }
@@ -13589,9 +13083,6 @@ mod tests {
             "",
             expect![[r#"
                 -- ir (unoptimized) --
-                record R {
-                  f: Array[String],
-                }
                 fn C(p@v0: Array[String]) -> Fragment {
                   match R {f: v0}.f.is_empty() {
                     true => {
@@ -13605,9 +13096,6 @@ mod tests {
                   call C(p = ["a"])
                 }
                 -- ir (optimized) --
-                record R {
-                  f: Array[String],
-                }
                 fn C(p@v0: Array[String]) -> Fragment {
                   match v0.is_empty() {
                     true => {
@@ -14108,9 +13596,6 @@ mod tests {
             r#"<div>a</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Foo {
-                  class: String,
-                }
                 page Test() {
                   let v0 = Foo {class: "a"} in {
                     write("<div")
@@ -14120,9 +13605,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Foo {
-                  class: String,
-                }
                 page Test() {
                   write("<div>a</div>")
                 }
@@ -14164,9 +13646,6 @@ mod tests {
             r#"<div>a</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Foo {
-                  function: String,
-                }
                 page Test() {
                   let v0 = Foo {function: "a"} in {
                     write("<div")
@@ -14176,9 +13655,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Foo {
-                  function: String,
-                }
                 page Test() {
                   write("<div>a</div>")
                 }
@@ -14220,9 +13696,6 @@ mod tests {
             r#"<div>a</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Foo {
-                  protected: String,
-                }
                 page Test() {
                   let v0 = Foo {protected: "a"} in {
                     write("<div")
@@ -14232,9 +13705,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Foo {
-                  protected: String,
-                }
                 page Test() {
                   write("<div>a</div>")
                 }
@@ -14276,9 +13746,6 @@ mod tests {
             r#"<div>a</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Foo {
-                  eval: String,
-                }
                 page Test() {
                   let v0 = Foo {eval: "a"} in {
                     write("<div")
@@ -14288,9 +13755,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Foo {
-                  eval: String,
-                }
                 page Test() {
                   write("<div>a</div>")
                 }
@@ -14338,9 +13802,6 @@ mod tests {
             r#"<div>a</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                enum E {
-                  A {class: String},
-                }
                 page Test() {
                   let v0 = E::A {class: "a"} in {
                     match v0 {
@@ -14356,9 +13817,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum E {
-                  A {class: String},
-                }
                 page Test() {
                   write("<div>a</div>")
                 }
@@ -14400,9 +13858,6 @@ mod tests {
             r#"20"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Math {
-                  x: Int,
-                }
                 page Test() {
                   let v0 = Math {x: 4} in {
                     let v1 = 5 in {
@@ -14411,9 +13866,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Math {
-                  x: Int,
-                }
                 page Test() {
                   write("20")
                 }
@@ -14453,18 +13905,12 @@ mod tests {
             r#"3"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Number {
-                  x: Float,
-                }
                 page Test() {
                   let v0 = Number {x: 3.7} in {
                     write_string(v0.x.to_int().to_string())
                   }
                 }
                 -- ir (optimized) --
-                record Number {
-                  x: Float,
-                }
                 page Test() {
                   write("3")
                 }
@@ -14508,10 +13954,6 @@ mod tests {
             r#"a2"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record State {
-                  query: String,
-                  num: Int,
-                }
                 page Test() {
                   let v0 = State {query: "a", num: 1} in {
                     let v1 = State {query: v0.query, num: 2} in {
@@ -14521,10 +13963,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record State {
-                  query: String,
-                  num: Int,
-                }
                 page Test() {
                   write("a2")
                 }
@@ -14568,10 +14006,6 @@ mod tests {
             r#"b2"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record State {
-                  query: String,
-                  num: Int,
-                }
                 page Test() {
                   let v0 = State {query: "a", num: 1} in {
                     let v1 = State {query: "b", num: 2} in {
@@ -14581,10 +14015,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record State {
-                  query: String,
-                  num: Int,
-                }
                 page Test() {
                   write("b2")
                 }
@@ -14626,10 +14056,6 @@ mod tests {
             r#"x7"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record State {
-                  query: String,
-                  num: Int,
-                }
                 page Test() {
                   for v0 in [State {query: "a", num: 7}] {
                     write_string(State {query: "x", num: v0.num}.query)
@@ -14640,10 +14066,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record State {
-                  query: String,
-                  num: Int,
-                }
                 page Test() {
                   for v0 in [State {query: "a", num: 7}] {
                     write("x")
@@ -14700,10 +14122,6 @@ mod tests {
             r#"<div>off</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Item {
-                  label: String,
-                  selected: Bool,
-                }
                 fn Row(item@v2: test::Item) -> Fragment {
                   write("<div")
                   write(">")
@@ -14731,10 +14149,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Item {
-                  label: String,
-                  selected: Bool,
-                }
                 page Test() {
                   for v0 in [Item {label: "a", selected: false}] {
                     let v1 = v0.selected in {
@@ -14800,14 +14214,6 @@ mod tests {
             r#"qdark"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Settings {
-                  theme: String,
-                  compact: Bool,
-                }
-                record State {
-                  query: String,
-                  settings: Settings,
-                }
                 fn Dark(s@v1: test::State) -> Fragment {
                   let v3 = let v2 = v1.settings in {
                     Settings {theme: "dark", compact: v2.compact}
@@ -14824,14 +14230,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                record Settings {
-                  theme: String,
-                  compact: Bool,
-                }
-                record State {
-                  query: String,
-                  settings: Settings,
-                }
                 page Test() {
                   write("qdark")
                 }
@@ -14872,20 +14270,12 @@ mod tests {
             r#"bar"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                record Foo {
-                  x: String,
-                  y: String,
-                }
                 page Test() {
                   write_string(let v0 = Foo {x: "bar", y: "baz"} in {
                     Foo {x: v0.x, y: "foo"}
                   }.x)
                 }
                 -- ir (optimized) --
-                record Foo {
-                  x: String,
-                  y: String,
-                }
                 page Test() {
                   write("bar")
                 }
@@ -15315,10 +14705,6 @@ mod tests {
             "<div>2</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Shape {
-                  Circle,
-                  Square,
-                }
                 fn mk() -> test::Shape {
                   Shape::Square
                 }
@@ -15344,10 +14730,6 @@ mod tests {
                   write("</div>")
                 }
                 -- ir (optimized) --
-                enum Shape {
-                  Circle,
-                  Square,
-                }
                 page Test() {
                   write("<div>2</div>")
                 }
@@ -15403,10 +14785,6 @@ mod tests {
             "square",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Shape {
-                  Circle,
-                  Square,
-                }
                 fn mk() -> test::Shape {
                   Shape::Square
                 }
@@ -15432,10 +14810,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Shape {
-                  Circle,
-                  Square,
-                }
                 page Test() {
                   write("square")
                 }

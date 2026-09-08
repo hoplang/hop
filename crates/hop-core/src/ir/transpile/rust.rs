@@ -197,23 +197,23 @@ impl RustTranspiler {
 
     /// The field positions that need `Box` for every declared type to be
     /// finitely sized, as `(declaring type, referenced type)` pairs.
-    fn compute_boxed_edges(module: &WriterModule) -> HashSet<(TypeName, TypeName)> {
+    fn compute_boxed_edges(registry: &TypeRegistry) -> HashSet<(TypeName, TypeName)> {
         let mut graph = DependencyGraph::new();
-        for record in &module.records {
+        for (name, fields) in registry.records() {
             let mut refs = BTreeSet::new();
-            for field in &record.fields {
+            for field in fields {
                 Self::inline_refs(&field.typ, &mut refs);
             }
-            graph.set_dependencies(record.name.clone(), refs);
+            graph.set_dependencies(name.clone(), refs);
         }
-        for enum_def in &module.enums {
+        for (name, variants) in registry.enums() {
             let mut refs = BTreeSet::new();
-            for variant in &enum_def.variants {
+            for variant in variants {
                 for field in &variant.fields {
                     Self::inline_refs(&field.typ, &mut refs);
                 }
             }
-            graph.set_dependencies(enum_def.name.clone(), refs);
+            graph.set_dependencies(name.clone(), refs);
         }
 
         let mut edges = HashSet::new();
@@ -424,27 +424,26 @@ impl Transpiler for RustTranspiler {
         // Reset tracking flags for this module
         self.needs_escape_html = false;
         self.needs_fragment = false;
-        self.boxed_edges = Self::compute_boxed_edges(module);
+        self.boxed_edges = Self::compute_boxed_edges(registry);
         self.registry = registry.clone();
 
         let arena = &Arena::new();
 
         let pages = &module.pages;
-        let records = &module.records;
 
         let mut result = arena.nil();
 
         // Add enum type definitions
-        for enum_def in &module.enums {
+        for (enum_name, variants) in registry.enums() {
             result = result
                 .append(arena.text("#[derive(Clone, Debug)]"))
                 .append(arena.line())
                 .append(arena.text("pub enum "))
-                .append(arena.text(enum_def.name.as_str()))
+                .append(arena.text(enum_name.as_str()))
                 .append(arena.text(" {"))
                 .append(arena.line());
 
-            for variant in &enum_def.variants {
+            for variant in variants {
                 result = result.append(arena.text("    "));
                 if variant.fields.is_empty() {
                     result = result
@@ -459,11 +458,8 @@ impl Transpiler for RustTranspiler {
                         .fields
                         .iter()
                         .map(|field| {
-                            let ft = self.transpile_field_type(
-                                arena,
-                                &field.typ,
-                                enum_def.name.as_str(),
-                            );
+                            let ft =
+                                self.transpile_field_type(arena, &field.typ, enum_name.as_str());
                             arena
                                 .text(Self::escape_ident(field.name.as_str()))
                                 .append(arena.text(": "))
@@ -485,17 +481,17 @@ impl Transpiler for RustTranspiler {
         }
 
         // Add record struct definitions
-        for record in records {
+        for (record_name, fields) in registry.records() {
             result = result
                 .append(arena.text("#[derive(Clone, Debug)]"))
                 .append(arena.line())
                 .append(arena.text("pub struct "))
-                .append(arena.text(record.name.as_str()))
+                .append(arena.text(record_name.as_str()))
                 .append(arena.text(" {"))
                 .append(arena.line());
 
-            for field in &record.fields {
-                let ft = self.transpile_field_type(arena, &field.typ, record.name.as_str());
+            for field in fields {
+                let ft = self.transpile_field_type(arena, &field.typ, record_name.as_str());
                 result = result
                     .append(arena.text("    pub "))
                     .append(arena.text(Self::escape_ident(field.name.as_str())))
@@ -2290,10 +2286,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                record Node {
-                  value: Int,
-                  next: Option[test::Node],
-                }
                 page Test(node@v0: test::Node) {
                   write_string(v0.value.to_string())
                 }
@@ -2361,10 +2353,6 @@ mod tests {
                 .view_no_params("Test", |t| t.raw("hello")),
             expect![[r#"
                 -- before --
-                enum IntList {
-                  Cons {head: Int, tail: test::IntList},
-                  Nil,
-                }
                 page Test() {
                   write("hello")
                 }
@@ -2417,10 +2405,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                record Node {
-                  value: Int,
-                  next: Option[test::Node],
-                }
                 page Test() {
                   let v0 = Node {
                     value: 2,
@@ -2504,10 +2488,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                enum IntList {
-                  Cons {head: Int, tail: test::IntList},
-                  Nil,
-                }
                 page Test() {
                   let v0 = IntList::Cons {head: 1, tail: IntList::Nil} in {
                     write("done")
@@ -2562,12 +2542,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                record A {
-                  b: B,
-                }
-                record B {
-                  a: Option[test::A],
-                }
                 page Test() {
                   let v0 = B {
                     a: Option[test::A]::Some(A {
@@ -2633,11 +2607,6 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
                 fn Badge(color@v0: test::Color) -> Fragment {
                   match v0 {
                     Color::Red => {

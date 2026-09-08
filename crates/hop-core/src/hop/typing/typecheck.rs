@@ -28,8 +28,7 @@ use std::collections::{HashMap, HashSet};
 use crate::document_id::DocumentId;
 use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::typing::typed_ast::{
-    TypedAst, TypedEnumDeclaration, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
-    TypedRecordDeclaration,
+    TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
 };
 
 pub fn typecheck(
@@ -98,8 +97,6 @@ fn typecheck_module(
     let mut type_env = TypeEnv::new();
     let mut module_exports: HashMap<TypeName, TypeExport> = HashMap::new();
 
-    let mut typed_records = Vec::new();
-    let mut typed_enums = Vec::new();
     let mut typed_pages = Vec::new();
 
     let component_snake_names: HashMap<String, TypeName> = parsed_ast
@@ -219,24 +216,24 @@ fn typecheck_module(
 
     // Resolve type definitions
     for record in parsed_ast.record_declarations() {
-        typed_records.push(typecheck_record_declaration(
+        typecheck_record_declaration(
             record,
             &parsed_ast.document_id,
             &mut type_env,
             registry,
             errors,
             definition_links,
-        ));
+        );
     }
     for enum_decl in parsed_ast.enum_declarations() {
-        typed_enums.push(typecheck_enum_declaration(
+        typecheck_enum_declaration(
             enum_decl,
             &parsed_ast.document_id,
             &mut type_env,
             registry,
             errors,
             definition_links,
-        ));
+        );
     }
 
     let mut pending_functions = Vec::new();
@@ -352,12 +349,7 @@ fn typecheck_module(
 
     typed_component_declarations.extend(typed_functions);
 
-    TypedAst::new(
-        typed_records,
-        typed_enums,
-        typed_pages,
-        typed_component_declarations,
-    )
+    TypedAst::new(typed_pages, typed_component_declarations)
 }
 
 fn typecheck_import_declaration(
@@ -444,7 +436,7 @@ fn typecheck_record_declaration(
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     definition_links: &mut Vec<DefinitionLink>,
-) -> TypedRecordDeclaration {
+) {
     let ParsedRecordDeclaration {
         name: record_name,
         name_range: record_name_range,
@@ -472,7 +464,7 @@ fn typecheck_record_declaration(
         document_id.clone(),
         record_name.clone(),
         TypeDef::Record {
-            fields: typed_fields.clone(),
+            fields: typed_fields,
         },
     );
 
@@ -480,11 +472,6 @@ fn typecheck_record_declaration(
         use_range: record_name_range.clone(),
         definition_range: record_name_range.clone(),
     });
-
-    TypedRecordDeclaration {
-        name: record_name.clone(),
-        fields: typed_fields,
-    }
 }
 
 fn typecheck_enum_declaration(
@@ -494,7 +481,7 @@ fn typecheck_enum_declaration(
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     definition_links: &mut Vec<DefinitionLink>,
-) -> TypedEnumDeclaration {
+) {
     let ParsedEnumDeclaration {
         name: enum_name,
         name_range: enum_name_range,
@@ -534,7 +521,7 @@ fn typecheck_enum_declaration(
         document_id.clone(),
         enum_name.clone(),
         TypeDef::Enum {
-            variants: typed_variants.clone(),
+            variants: typed_variants,
         },
     );
 
@@ -542,11 +529,6 @@ fn typecheck_enum_declaration(
         use_range: enum_name_range.clone(),
         definition_range: enum_name_range.clone(),
     });
-
-    TypedEnumDeclaration {
-        name: enum_name.clone(),
-        variants: typed_variants,
-    }
 }
 
 struct PendingComponent<'a> {
@@ -1231,6 +1213,10 @@ mod tests {
                     ast_output.push(format!("-- {} --\n{}", document_id, typed_ast));
                 }
             }
+            let types = registry.to_string();
+            if !types.is_empty() {
+                ast_output.push(format!("-- type registry --\n{}", types));
+            }
             ast_output.join("\n")
         };
         (actual, has_diagnostics)
@@ -1908,13 +1894,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- other.hop --
-                record Foo {
-                  name: String,
-                }
 
                 -- main.hop --
                 fn Main(foo: other::Foo) -> Fragment {
                   html(tag: "div", attrs: [], children: concat(escape(foo.name)))
+                }
+
+                -- type registry --
+                record other::Foo {
+                  name: String,
                 }
             "#]],
         );
@@ -1941,10 +1929,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- other.hop --
-                enum Color {
-                  Red,
-                  Green,
-                }
 
                 -- main.hop --
                 fn Main(color: other::Color) -> Fragment {
@@ -1955,6 +1939,12 @@ mod tests {
                       escape(match color {Color::Red => "red", Color::Green => "green"}),
                     ),
                   )
+                }
+
+                -- type registry --
+                enum other::Color {
+                  Red,
+                  Green,
                 }
             "#]],
         );
@@ -2485,15 +2475,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Item {
-                  active: Bool,
-                  name: Bool,
-                }
-
-                record Params {
-                  items: Array[main::Item],
-                }
-
                 fn Main(params: main::Params) -> Fragment {
                   for item in params.items {
                     concat(
@@ -2501,6 +2482,16 @@ mod tests {
                       match item.name {true => concat(), false => concat()},
                     )
                   }
+                }
+
+                -- type registry --
+                record main::Item {
+                  active: Bool,
+                  name: Bool,
+                }
+
+                record main::Params {
+                  items: Array[main::Item],
                 }
             "#]],
         );
@@ -2546,11 +2537,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Params {
-                  x: String,
-                  y: String,
-                }
-
                 fn Main(params: main::Params) -> Fragment {
                   match (params.x == params.y) {
                     true => concat(
@@ -2558,6 +2544,12 @@ mod tests {
                     ),
                     false => concat(),
                   }
+                }
+
+                -- type registry --
+                record main::Params {
+                  x: String,
+                  y: String,
                 }
             "#]],
         );
@@ -2588,11 +2580,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Item {
-                  a: Bool,
-                  b: Bool,
-                }
-
                 fn Main(params: Array[main::Item]) -> Fragment {
                   concat(
                     for j in params {
@@ -2602,6 +2589,12 @@ mod tests {
                       concat(match j.b {true => concat(), false => concat()})
                     },
                   )
+                }
+
+                -- type registry --
+                record main::Item {
+                  a: Bool,
+                  b: Bool,
                 }
             "#]],
         );
@@ -2707,11 +2700,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- a/bar.hop --
-                record Config {
-                  enabled: Bool,
-                  title: String,
-                }
-
                 fn WidgetComp(config: a::bar::Config) -> Fragment {
                   match config.enabled {
                     true => concat(
@@ -2722,10 +2710,6 @@ mod tests {
                 }
 
                 -- foo.hop --
-                record Data {
-                  items: Array[a::bar::Config],
-                }
-
                 fn PanelComp(data: foo::Data) -> Fragment {
                   for item in data.items {
                     concat(WidgetComp(config: item))
@@ -2733,16 +2717,26 @@ mod tests {
                 }
 
                 -- main.hop --
-                record Dashboard {
+                fn Main(settings: main::Settings) -> Fragment {
+                  PanelComp(data: settings.dashboard)
+                }
+
+                -- type registry --
+                record a::bar::Config {
+                  enabled: Bool,
+                  title: String,
+                }
+
+                record foo::Data {
+                  items: Array[a::bar::Config],
+                }
+
+                record main::Dashboard {
                   items: Array[foo::Data],
                 }
 
-                record Settings {
+                record main::Settings {
                   dashboard: foo::Data,
-                }
-
-                fn Main(settings: main::Settings) -> Fragment {
-                  PanelComp(data: settings.dashboard)
                 }
             "#]],
         );
@@ -2850,17 +2844,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  url: String,
-                  theme: String,
-                }
-
                 fn Main(user: main::User) -> Fragment {
                   html(
                     tag: "a",
                     attrs: [href: escape(user.url), class: escape(user.theme)],
                     children: concat(raw("Link")),
                   )
+                }
+
+                -- type registry --
+                record main::User {
+                  url: String,
+                  theme: String,
                 }
             "#]],
         );
@@ -2936,10 +2931,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  is_active: Bool,
-                }
-
                 fn Main(user: main::User) -> Fragment {
                   match user.is_active {
                     true => concat(
@@ -2947,6 +2938,11 @@ mod tests {
                     ),
                     false => concat(),
                   }
+                }
+
+                -- type registry --
+                record main::User {
+                  is_active: Bool,
                 }
             "#]],
         );
@@ -3218,13 +3214,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  name: String,
-                  friend: main::User,
-                }
-
                 fn Main() -> Fragment {
                   concat()
+                }
+
+                -- type registry --
+                record main::User {
+                  name: String,
+                  friend: main::User,
                 }
             "#]],
         );
@@ -3246,16 +3243,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  address: main::Address,
+                fn Main() -> Fragment {
+                  concat()
                 }
 
-                record Address {
+                -- type registry --
+                record main::Address {
                   city: String,
                 }
 
-                fn Main() -> Fragment {
-                  concat()
+                record main::User {
+                  address: main::Address,
                 }
             "#]],
         );
@@ -3273,12 +3271,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  name: String,
-                }
-
                 fn Main(user: main::User) -> Fragment {
                   html(tag: "div", attrs: [], children: concat(escape(user.name)))
+                }
+
+                -- type registry --
+                record main::User {
+                  name: String,
                 }
             "#]],
         );
@@ -3297,17 +3296,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Address {
+                fn Main(user: main::User) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
+                }
+
+                -- type registry --
+                record main::Address {
                   city: String,
                 }
 
-                record User {
+                record main::User {
                   name: String,
                   address: main::Address,
-                }
-
-                fn Main(user: main::User) -> Fragment {
-                  html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
             "#]],
         );
@@ -3343,44 +3343,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Theme {
-                  dark: Bool,
-                }
-
-                record UI {
-                  theme: main::Theme,
-                }
-
-                record Users {
-                  enabled: Bool,
-                }
-
-                record Endpoints {
-                  users: main::Users,
-                }
-
-                record API {
-                  endpoints: main::Endpoints,
-                }
-
-                record Connection {
-                  ssl: Bool,
-                }
-
-                record Database {
-                  connection: main::Connection,
-                }
-
-                record App {
-                  ui: main::UI,
-                  api: main::API,
-                  database: main::Database,
-                }
-
-                record Params {
-                  app: main::App,
-                }
-
                 fn Main(params: main::Params) -> Fragment {
                   concat(
                     match params.app.ui.theme.dark {
@@ -3396,6 +3358,45 @@ mod tests {
                       false => concat(),
                     },
                   )
+                }
+
+                -- type registry --
+                record main::API {
+                  endpoints: main::Endpoints,
+                }
+
+                record main::App {
+                  ui: main::UI,
+                  api: main::API,
+                  database: main::Database,
+                }
+
+                record main::Connection {
+                  ssl: Bool,
+                }
+
+                record main::Database {
+                  connection: main::Connection,
+                }
+
+                record main::Endpoints {
+                  users: main::Users,
+                }
+
+                record main::Params {
+                  app: main::App,
+                }
+
+                record main::Theme {
+                  dark: Bool,
+                }
+
+                record main::UI {
+                  theme: main::Theme,
+                }
+
+                record main::Users {
+                  enabled: Bool,
                 }
             "#]],
         );
@@ -3482,20 +3483,11 @@ mod tests {
             "#},
             expect![[r#"
                 -- foo.hop --
-                record Address {
-                  city: String,
-                }
-
                 fn Foo() -> Fragment {
                   concat()
                 }
 
                 -- bar.hop --
-                record User {
-                  name: String,
-                  address: foo::Address,
-                }
-
                 fn Bar(user: bar::User) -> Fragment {
                   html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
@@ -3503,6 +3495,16 @@ mod tests {
                 -- baz.hop --
                 fn Baz() -> Fragment {
                   Bar(user: User {name: "Alice", address: Address {city: "NYC"}})
+                }
+
+                -- type registry --
+                record bar::User {
+                  name: String,
+                  address: foo::Address,
+                }
+
+                record foo::Address {
+                  city: String,
                 }
             "#]],
         );
@@ -3537,12 +3539,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- colors.hop --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
                 fn ColorDisplay(color: colors::Color) -> Fragment {
                   html(
                     tag: "div",
@@ -3560,6 +3556,13 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Fragment {
                   ColorDisplay(color: Color::Red)
+                }
+
+                -- type registry --
+                enum colors::Color {
+                  Red,
+                  Green,
+                  Blue,
                 }
             "#]],
         );
@@ -3696,12 +3699,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
                 fn Main(color: main::Color) -> Fragment {
                   html(
                     tag: "div",
@@ -3714,6 +3711,13 @@ mod tests {
                       }),
                     ),
                   )
+                }
+
+                -- type registry --
+                enum main::Color {
+                  Red,
+                  Green,
+                  Blue,
                 }
             "#]],
         );
@@ -3880,16 +3884,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  name: String,
-                  status: main::Status,
-                }
-
-                enum Status {
-                  Active,
-                  Inactive,
-                }
-
                 fn Main(user: main::User) -> Fragment {
                   html(
                     tag: "div",
@@ -3901,6 +3895,17 @@ mod tests {
                       }),
                     ),
                   )
+                }
+
+                -- type registry --
+                enum main::Status {
+                  Active,
+                  Inactive,
+                }
+
+                record main::User {
+                  name: String,
+                  status: main::Status,
                 }
             "#]],
         );
@@ -3925,16 +3930,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Outer {
-                  inner: main::Inner,
+                fn Main(o: main::Outer) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(escape(o.inner.value)))
                 }
 
-                record Inner {
+                -- type registry --
+                record main::Inner {
                   value: String,
                 }
 
-                fn Main(o: main::Outer) -> Fragment {
-                  html(tag: "div", attrs: [], children: concat(escape(o.inner.value)))
+                record main::Outer {
+                  inner: main::Inner,
                 }
             "#]],
         );
@@ -3961,18 +3967,19 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Folder {
-                  name: String,
-                  files: Array[main::File],
+                fn Main(root: main::Folder) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(escape(root.name)))
                 }
 
-                record File {
+                -- type registry --
+                record main::File {
                   name: String,
                   backups: Array[main::Folder],
                 }
 
-                fn Main(root: main::Folder) -> Fragment {
-                  html(tag: "div", attrs: [], children: concat(escape(root.name)))
+                record main::Folder {
+                  name: String,
+                  files: Array[main::File],
                 }
             "#]],
         );
@@ -4003,15 +4010,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Tree {
-                  root: main::Node,
-                }
-
-                enum Node {
-                  Leaf { label: String },
-                  Branch { children: Array[main::Tree] },
-                }
-
                 fn Main(t: main::Tree) -> Fragment {
                   let v__0 = t.root in match v__0 {
                     Node::Leaf => let label = v__1 in concat(escape(label)),
@@ -4021,6 +4019,16 @@ mod tests {
                       },
                     ),
                   }
+                }
+
+                -- type registry --
+                enum main::Node {
+                  Leaf { label: String },
+                  Branch { children: Array[main::Tree] },
+                }
+
+                record main::Tree {
+                  root: main::Node,
                 }
             "#]],
         );
@@ -4529,17 +4537,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Config {
-                  name: String,
-                  enabled: Bool,
-                }
-
                 fn Main() -> Fragment {
                   Settings(config: Config {name: "default", enabled: true})
                 }
 
                 fn Settings(config: main::Config) -> Fragment {
                   concat(escape(config.name))
+                }
+
+                -- type registry --
+                record main::Config {
+                  name: String,
+                  enabled: Bool,
                 }
             "#]],
         );
@@ -4565,12 +4574,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                enum Status {
-                  Active { since: Int },
-                  Inactive,
-                  Pending,
-                }
-
                 fn Badge(status: main::Status) -> Fragment {
                   concat(
                     escape(match status {
@@ -4583,6 +4586,13 @@ mod tests {
 
                 fn Main() -> Fragment {
                   Badge(status: Status::Active {since: 2000})
+                }
+
+                -- type registry --
+                enum main::Status {
+                  Active { since: Int },
+                  Inactive,
+                  Pending,
                 }
             "#]],
         );
@@ -4754,18 +4764,19 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
                 fn Main(c: main::Color) -> Fragment {
                   match c {
                     Color::Red => concat(raw("red")),
                     Color::Green => concat(raw("green")),
                     Color::Blue => concat(raw("blue")),
                   }
+                }
+
+                -- type registry --
+                enum main::Color {
+                  Red,
+                  Green,
+                  Blue,
                 }
             "#]],
         );
@@ -4790,16 +4801,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                enum Status {
-                  Active { name: String },
-                  Inactive,
-                }
-
                 fn Main() -> Fragment {
                   let v__0 = Status::Active {name: "test"} in match v__0 {
                     Status::Active => let n = v__1 in concat(escape(n)),
                     Status::Inactive => concat(raw("none")),
                   }
+                }
+
+                -- type registry --
+                enum main::Status {
+                  Active { name: String },
+                  Inactive,
                 }
             "#]],
         );
@@ -5282,15 +5294,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  name: Option[String],
-                }
-
                 fn Main(user: main::User) -> Fragment {
                   let v__0 = user.name in match v__0 {
                     Some(v__1) => let n = v__1 in concat(escape(n)),
                     None => concat(raw("anonymous")),
                   }
+                }
+
+                -- type registry --
+                record main::User {
+                  name: Option[String],
                 }
             "#]],
         );
@@ -5933,15 +5946,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  name: String,
-                  age: Int,
-                }
-
                 fn Main() -> Fragment {
                   let user = User {name: "Alice", age: 30} in concat(
                     html(tag: "div", attrs: [], children: concat(escape(user.name))),
                   )
+                }
+
+                -- type registry --
+                record main::User {
+                  name: String,
+                  age: Int,
                 }
             "#]],
         );
@@ -5961,15 +5975,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  name: String,
-                  age: Int,
-                }
-
                 fn Main(user: main::User) -> Fragment {
                   let updated = User {name: "Jane", age: user.age} in concat(
                     html(tag: "div", attrs: [], children: concat(escape(updated.name))),
                   )
+                }
+
+                -- type registry --
+                record main::User {
+                  name: String,
+                  age: Int,
                 }
             "#]],
         );
@@ -5990,20 +6005,21 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record State {
-                  query: String,
-                  num: Int,
-                }
-
-                record App {
-                  state: main::State,
-                }
-
                 fn Main(app: main::App) -> Fragment {
                   let next = let v__0 = app.state in State {
                     query: v__0.query,
                     num: 1,
                   } in concat(html(tag: "div", attrs: [], children: concat(escape(next.query))))
+                }
+
+                -- type registry --
+                record main::App {
+                  state: main::State,
+                }
+
+                record main::State {
+                  query: String,
+                  num: Int,
                 }
             "#]],
         );
@@ -6023,15 +6039,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  name: String,
-                  age: Int,
-                }
-
                 fn Main(user: main::User) -> Fragment {
                   let updated = User {name: "Jane", age: 30} in concat(
                     html(tag: "div", attrs: [], children: concat(escape(updated.name))),
                   )
+                }
+
+                -- type registry --
+                record main::User {
+                  name: String,
+                  age: Int,
                 }
             "#]],
         );
@@ -6743,13 +6760,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record TreeNode {
-                  value: Int,
-                  children: Array[main::TreeNode],
-                }
-
                 fn Main() -> Fragment {
                   concat()
+                }
+
+                -- type registry --
+                record main::TreeNode {
+                  value: Int,
+                  children: Array[main::TreeNode],
                 }
             "#]],
         );
@@ -6769,13 +6787,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                enum Expr {
-                  Literal { value: Int },
-                  Neg { inner: main::Expr },
-                }
-
                 fn Main() -> Fragment {
                   concat()
+                }
+
+                -- type registry --
+                enum main::Expr {
+                  Literal { value: Int },
+                  Neg { inner: main::Expr },
                 }
             "#]],
         );
@@ -6794,12 +6813,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Product {
-                  price: Int,
-                }
-
                 fn Main() -> Fragment {
                   concat()
+                }
+
+                -- type registry --
+                record main::Product {
+                  price: Int,
                 }
             "#]],
         );
@@ -6860,12 +6880,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record Post {
-                  tags: Array[String],
-                }
-
                 fn Main() -> Fragment {
                   concat()
+                }
+
+                -- type registry --
+                record main::Post {
+                  tags: Array[String],
                 }
             "#]],
         );
@@ -7435,10 +7456,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                record User {
-                  name: String,
-                }
-
                 fn Card(user: main::User) -> Fragment {
                   html(tag: "div", attrs: [], children: concat(escape(user.name)))
                 }
@@ -7449,6 +7466,11 @@ mod tests {
 
                 fn Wrapper(user: main::User, rest: Attrs) -> Fragment {
                   Card(user: user)
+                }
+
+                -- type registry --
+                record main::User {
+                  name: String,
                 }
             "#]],
         );

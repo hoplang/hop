@@ -179,8 +179,6 @@ mod tests {
         PureModule {
             pages,
             functions,
-            records: module.records,
-            enums: module.enums,
             expr_ids,
             var_ids: module.var_ids,
         }

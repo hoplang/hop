@@ -760,8 +760,6 @@ mod tests {
         PureModule {
             pages,
             functions,
-            records: module.records,
-            enums: module.enums,
             expr_ids,
             var_ids: module.var_ids,
         }
@@ -1141,10 +1139,6 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                enum Status {
-                  Active {since: String, by: String},
-                  Inactive,
-                }
                 page Test() {
                   concat(
                     match Status::Active {since: "today", by: "admin"} {
@@ -1157,10 +1151,6 @@ mod tests {
                 }
 
                 -- after --
-                enum Status {
-                  Active {since: String, by: String},
-                  Inactive,
-                }
                 page Test() {
                   concat(escape("today / admin"))
                 }
@@ -1197,10 +1187,6 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                enum Status {
-                  Active {since: String},
-                  Inactive,
-                }
                 page Test() {
                   let v0 = Status::Active {since: "now"} in {
                     concat(
@@ -1213,10 +1199,6 @@ mod tests {
                 }
 
                 -- after --
-                enum Status {
-                  Active {since: String},
-                  Inactive,
-                }
                 page Test() {
                   concat(escape("now"))
                 }
@@ -1242,9 +1224,6 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                enum Wrap {
-                  Value {inner: String},
-                }
                 page Test(x@v0: String) {
                   concat(
                     match Wrap::Value {inner: v0} {
@@ -1254,9 +1233,6 @@ mod tests {
                 }
 
                 -- after --
-                enum Wrap {
-                  Value {inner: String},
-                }
                 page Test(x@v0: String) {
                   concat(let v1 = v0 in { escape(v1) })
                 }
@@ -1281,19 +1257,11 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                record User {
-                  name: String,
-                  title: String,
-                }
                 page Test(dynamic@v0: String) {
                   concat(escape(User {name: "Ada", title: v0}.name))
                 }
 
                 -- after --
-                record User {
-                  name: String,
-                  title: String,
-                }
                 page Test(dynamic@v0: String) {
                   concat(escape("Ada"))
                 }

@@ -214,8 +214,6 @@ mod tests {
                     body: eliminate_unused_variable_declarations(function.body),
                 })
                 .collect(),
-            records: module.records,
-            enums: module.enums,
             expr_ids: module.expr_ids,
             var_ids: module.var_ids,
         }
@@ -463,10 +461,6 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                enum Status {
-                  Active {since: String},
-                  Inactive,
-                }
                 page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active {since: v0} => { raw("active") }
@@ -475,10 +469,6 @@ mod tests {
                 }
 
                 -- after --
-                enum Status {
-                  Active {since: String},
-                  Inactive,
-                }
                 page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active => { raw("active") }
@@ -513,10 +503,6 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                enum Status {
-                  Active {since: String},
-                  Inactive,
-                }
                 page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active {since: v0} => { escape(v0) }
@@ -525,10 +511,6 @@ mod tests {
                 }
 
                 -- after --
-                enum Status {
-                  Active {since: String},
-                  Inactive,
-                }
                 page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active {since: v0} => { escape(v0) }

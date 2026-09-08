@@ -3,7 +3,6 @@ use std::fmt;
 use crate::document::CheapString;
 use crate::hop::patterns::{EnumPattern, Match};
 use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
-use crate::hop::typing::type_registry::{EnumVariant, RecordField};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;
@@ -22,8 +21,6 @@ use pretty::BoxDoc;
 pub struct WriterModule {
     pub pages: Vec<WriterPageDeclaration>,
     pub functions: Vec<WriterFunctionDeclaration>,
-    pub records: Vec<WriterRecordDeclaration>,
-    pub enums: Vec<WriterEnumDeclaration>,
     pub var_ids: VarIdCounter,
 }
 
@@ -63,18 +60,6 @@ pub struct WriterPageDeclaration {
     pub parameters: Vec<WriterParameter>,
     /// IR nodes for the assembled page body
     pub body: Vec<WriterStatement>,
-}
-
-#[derive(Debug, Clone)]
-pub struct WriterRecordDeclaration {
-    pub name: TypeName,
-    pub fields: Vec<RecordField>,
-}
-
-#[derive(Debug, Clone)]
-pub struct WriterEnumDeclaration {
-    pub name: TypeName,
-    pub variants: Vec<EnumVariant>,
 }
 
 #[derive(Debug)]
@@ -1055,62 +1040,8 @@ impl fmt::Display for WriterPageDeclaration {
     }
 }
 
-impl fmt::Display for WriterEnumDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "enum {} {{", self.name)?;
-        for variant in &self.variants {
-            if variant.fields.is_empty() {
-                writeln!(f, "  {},", variant.name.as_str())?;
-            } else {
-                let fields_str: Vec<String> = variant
-                    .fields
-                    .iter()
-                    .map(|field| format!("{}: {}", field.name, field.typ))
-                    .collect();
-                writeln!(
-                    f,
-                    "  {} {{{}}},",
-                    variant.name.as_str(),
-                    fields_str.join(", ")
-                )?;
-            }
-        }
-        write!(f, "}}")
-    }
-}
-
-impl WriterRecordDeclaration {
-    fn type_name_without_module(typ: &Type) -> String {
-        match typ {
-            Type::Named { name, .. } => name.as_str().to_string(),
-            _ => format!("{}", typ.to_doc().pretty(60)),
-        }
-    }
-}
-
-impl fmt::Display for WriterRecordDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "record {} {{", self.name)?;
-        for field in &self.fields {
-            writeln!(
-                f,
-                "  {}: {},",
-                field.name.as_str(),
-                Self::type_name_without_module(&field.typ)
-            )?;
-        }
-        write!(f, "}}")
-    }
-}
-
 impl fmt::Display for WriterModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for enum_decl in &self.enums {
-            writeln!(f, "{}", enum_decl)?;
-        }
-        for record_decl in &self.records {
-            writeln!(f, "{}", record_decl)?;
-        }
         for function in &self.functions {
             write!(f, "{}", function)?;
         }

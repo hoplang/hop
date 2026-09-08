@@ -8,8 +8,6 @@ pub fn retain_reachable(module: PureModule) -> PureModule {
     let PureModule {
         pages,
         functions,
-        records,
-        enums,
         expr_ids,
         var_ids,
     } = module;
@@ -47,8 +45,6 @@ pub fn retain_reachable(module: PureModule) -> PureModule {
     PureModule {
         pages,
         functions,
-        records,
-        enums,
         expr_ids,
         var_ids,
     }
