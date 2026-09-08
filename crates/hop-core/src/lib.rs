@@ -9,7 +9,6 @@ mod ir;
 mod itertools;
 mod orchestrator;
 mod symbols;
-mod variable_scope;
 
 #[cfg(test)]
 mod end_to_end_tests;

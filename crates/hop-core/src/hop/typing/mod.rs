@@ -14,6 +14,7 @@ pub mod typed_ast;
 #[cfg(test)]
 pub mod typed_ast_builder;
 pub mod typed_expr;
+pub mod variable_scope;
 
 pub use r#type::Type;
 pub use type_env::{FunctionSignature, ParamEntry, Tail, TypeBinding};

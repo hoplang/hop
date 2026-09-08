@@ -2,6 +2,7 @@ use super::r#type::Type;
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
 use super::typecheck_node::typecheck_node;
+use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
@@ -17,7 +18,6 @@ use crate::hop::typing::type_env::TypeEnv;
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
-use crate::variable_scope::VariableScope;
 
 #[derive(Clone, Copy)]
 pub enum MatchArms<'a> {
@@ -53,7 +53,7 @@ pub fn typecheck_match(
     subject: &ParsedExpr,
     arms: MatchArms<'_>,
     forwarded_params: &[VarName],
-    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
+    var_env: &mut VariableScope,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<HoverAnnotation>,
@@ -135,7 +135,7 @@ fn typecheck_arm_bodies(
     arms: MatchArms<'_>,
     typed_patterns: &[TypedMatchPattern],
     forwarded_params: &[VarName],
-    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
+    var_env: &mut VariableScope,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<HoverAnnotation>,
@@ -151,16 +151,16 @@ fn typecheck_arm_bodies(
 
         let bindings = typed_pattern.bindings();
         let mut arm_ok = true;
-        let mut pushed = Vec::new();
+        let mut pushed = 0;
         for (name, typ, range) in &bindings {
-            match var_env.push(name.clone(), (typ.clone(), range.clone())) {
+            match var_env.push(name.clone(), typ.clone(), range.clone()) {
                 Ok(_) => {
                     annotations.push(HoverAnnotation::TypeForVarName {
                         range: range.clone(),
                         typ: typ.clone(),
                         var_name: name.clone(),
                     });
-                    pushed.push(range);
+                    pushed += 1;
                 }
                 Err(_) => {
                     errors.push(TypeError::new(
@@ -207,12 +207,12 @@ fn typecheck_arm_bodies(
             }),
         };
 
-        for range in pushed.iter().rev() {
-            let (name, _, accessed) = var_env.pop();
-            if !accessed {
+        for _ in 0..pushed {
+            let (name, entry) = var_env.pop();
+            if !entry.accessed {
                 errors.push(TypeError::new(
                     TypeErrorKind::MatchUnusedBinding { name },
-                    (*range).clone(),
+                    entry.range,
                 ));
             }
         }

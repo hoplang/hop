@@ -12,20 +12,20 @@ use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::typecheck_match::{MatchArms, typecheck_match};
+use crate::hop::typing::variable_scope::VariableScope;
 use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
-use crate::variable_scope::VariableScope;
 
 pub fn typecheck_node(
     node: &ParsedNode,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
+    var_env: &mut VariableScope,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -204,7 +204,8 @@ pub fn typecheck_node(
             {
                 match var_env.push(
                     var_name.clone(),
-                    (element_type.clone(), var_name_range.clone()),
+                    element_type.clone(),
+                    var_name_range.clone(),
                 ) {
                     Ok(_) => {
                         annotations.push(HoverAnnotation::TypeForVarName {
@@ -247,14 +248,12 @@ pub fn typecheck_node(
                 .collect();
 
             if pushed {
-                let (name, _, accessed) = var_env.pop();
-                if !accessed {
-                    if let Some(var_name_range) = var_name_range {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::UnusedVariable { var_name: name },
-                            var_name_range.clone(),
-                        ));
-                    }
+                let (name, entry) = var_env.pop();
+                if !entry.accessed {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UnusedVariable { var_name: name },
+                        entry.range,
+                    ));
                 }
             }
 
@@ -271,8 +270,8 @@ pub fn typecheck_node(
         ParsedNode::Let {
             bindings, children, ..
         } => {
-            // Track which bindings were pushed to scope (for popping later)
-            let mut pushed_bindings: Vec<&ParsedLetBinding> = Vec::new();
+            // Count the bindings pushed to scope (for popping later)
+            let mut pushed_bindings = 0;
             // Only store successfully typechecked bindings
             let mut typed_bindings: Vec<(&ParsedLetBinding, TypedExpr)> = Vec::new();
 
@@ -311,7 +310,8 @@ pub fn typecheck_node(
                 if let Some(binding_type) = binding_type {
                     match var_env.push(
                         binding.var_name.clone(),
-                        (binding_type.clone(), binding.var_name_range.clone()),
+                        binding_type.clone(),
+                        binding.var_name_range.clone(),
                     ) {
                         Ok(_) => {
                             annotations.push(HoverAnnotation::TypeForVarName {
@@ -319,7 +319,7 @@ pub fn typecheck_node(
                                 typ: binding_type,
                                 var_name: binding.var_name.clone(),
                             });
-                            pushed_bindings.push(binding);
+                            pushed_bindings += 1;
                         }
                         Err(_) => {
                             errors.push(TypeError::new(
@@ -372,12 +372,12 @@ pub fn typecheck_node(
                 .collect();
 
             // Pop variables in reverse order and check for unused
-            for binding in pushed_bindings.iter().rev() {
-                let (name, _, accessed) = var_env.pop();
-                if !accessed {
+            for _ in 0..pushed_bindings {
+                let (name, entry) = var_env.pop();
+                if !entry.accessed {
                     errors.push(TypeError::new(
                         TypeErrorKind::UnusedVariable { var_name: name },
-                        binding.var_name_range.clone(),
+                        entry.range,
                     ));
                 }
             }
@@ -636,7 +636,7 @@ fn typecheck_attribute_value(
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
+    var_env: &mut VariableScope,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -704,7 +704,7 @@ fn typecheck_arguments(
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
+    var_env: &mut VariableScope,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -929,7 +929,7 @@ fn typecheck_attributes(
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
+    var_env: &mut VariableScope,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -963,7 +963,7 @@ fn typecheck_html_attribute(
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
+    var_env: &mut VariableScope,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,

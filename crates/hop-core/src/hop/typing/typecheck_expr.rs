@@ -5,9 +5,10 @@ use super::type_env::TypeBinding;
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_match::{MatchArms, typecheck_match};
 use super::typecheck_node::typecheck_node;
+use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
-use crate::document::{CheapString, DocumentRange};
+use crate::document::CheapString;
 use crate::document_id::DocumentId;
 use crate::hop::parsing::parsed_expr::{ParsedBinaryOp, ParsedExpr};
 use crate::hop::parsing::parsed_node::ParsedNode;
@@ -17,7 +18,6 @@ use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
-use crate::variable_scope::VariableScope;
 
 /// Resolve a parsed Expr to a typed Expr.
 ///
@@ -27,7 +27,7 @@ pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
     inferred_type: Option<&Type>,
     forwarded_params: &[VarName],
-    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
+    var_env: &mut VariableScope,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<HoverAnnotation>,
@@ -54,19 +54,19 @@ pub fn typecheck_expr(
         ParsedExpr::VariableReference {
             value: var_name, ..
         } => {
-            if let Some((var_type, def_range)) = var_env.lookup(var_name) {
+            if let Some(entry) = var_env.lookup(var_name) {
                 annotations.push(HoverAnnotation::TypeForVarName {
                     range: parsed_expr.range().clone(),
-                    typ: var_type.clone(),
+                    typ: entry.typ.clone(),
                     var_name: var_name.clone(),
                 });
                 definition_links.push(DefinitionLink {
                     use_range: parsed_expr.range().clone(),
-                    definition_range: def_range.clone(),
+                    definition_range: entry.range.clone(),
                 });
                 Some(TypedExpr::Var {
                     value: var_name.clone(),
-                    typ: var_type.clone(),
+                    typ: entry.typ.clone(),
                 })
             } else {
                 errors.push(TypeError::new(
@@ -1785,10 +1785,10 @@ mod tests {
         let mut type_env = types.type_env();
 
         let decl_range = DocumentCursor::new(types.module().clone(), String::new()).range();
-        let mut env: VariableScope<VarName, (Type, DocumentRange)> = VariableScope::new();
+        let mut env = VariableScope::new();
         for (var_name, type_str) in env_vars {
             let typ = types.resolve(type_str);
-            let _ = env.push(VarName::new(var_name).unwrap(), (typ, decl_range.clone()));
+            let _ = env.push(VarName::new(var_name).unwrap(), typ, decl_range.clone());
         }
 
         let mut asset_references = Vec::new();

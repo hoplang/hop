@@ -17,12 +17,12 @@ use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_export::TypeExport;
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
+use crate::hop::typing::variable_scope::VariableScope;
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
-use crate::variable_scope::VariableScope;
 use std::collections::{HashMap, HashSet};
 
 use crate::document_id::DocumentId;
@@ -686,7 +686,8 @@ fn typecheck_component_body(
     for (param, param_type) in &resolved_params {
         let _ = var_env.push(
             param.var_name.clone(),
-            (param_type.clone(), param.var_name_range.clone()),
+            param_type.clone(),
+            param.var_name_range.clone(),
         );
     }
 
@@ -709,12 +710,12 @@ fn typecheck_component_body(
         errors,
     );
 
-    for (param, _) in resolved_params.iter().rev() {
-        let (name, _, accessed) = var_env.pop();
-        if !accessed {
+    for _ in 0..resolved_params.len() {
+        let (name, entry) = var_env.pop();
+        if !entry.accessed {
             errors.push(TypeError::new(
                 TypeErrorKind::UnusedVariable { var_name: name },
-                param.var_name_range.clone(),
+                entry.range,
             ));
         }
     }
@@ -814,7 +815,7 @@ fn typecheck_page_declaration(
     pair_rest_spread(None, spreads, errors);
 
     let mut var_env = VariableScope::new();
-    let mut pushed_params = Vec::new();
+    let mut pushed_params = 0;
     let mut typed_params = Vec::new();
     let mut seen_param_names: HashSet<VarName> = HashSet::new();
 
@@ -842,11 +843,12 @@ fn typecheck_page_declaration(
         if var_env
             .push(
                 param.var_name.clone(),
-                (param_type.clone(), param.var_name_range.clone()),
+                param_type.clone(),
+                param.var_name_range.clone(),
             )
             .is_ok()
         {
-            pushed_params.push(param);
+            pushed_params += 1;
         }
         validate_examples_annotation(&param.examples, &param_type, &param.var_name_range, errors);
 
@@ -884,12 +886,12 @@ fn typecheck_page_declaration(
         errors,
     );
 
-    for param in pushed_params.iter().rev() {
-        let (name, _, accessed) = var_env.pop();
-        if !accessed {
+    for _ in 0..pushed_params {
+        let (name, entry) = var_env.pop();
+        if !entry.accessed {
             errors.push(TypeError::new(
                 TypeErrorKind::UnusedVariable { var_name: name },
-                param.var_name_range.clone(),
+                entry.range,
             ));
         }
     }
@@ -1002,7 +1004,8 @@ fn typecheck_function_body(
     for (param, param_type) in &resolved_params {
         let _ = var_env.push(
             param.var_name.clone(),
-            (param_type.clone(), param.var_name_range.clone()),
+            param_type.clone(),
+            param.var_name_range.clone(),
         );
     }
 
@@ -1019,12 +1022,12 @@ fn typecheck_function_body(
         errors,
     );
 
-    for (param, _) in resolved_params.iter().rev() {
-        let (name, _, accessed) = var_env.pop();
-        if !accessed {
+    for _ in 0..resolved_params.len() {
+        let (name, entry) = var_env.pop();
+        if !entry.accessed {
             errors.push(TypeError::new(
                 TypeErrorKind::UnusedVariable { var_name: name },
-                param.var_name_range.clone(),
+                entry.range,
             ));
         }
     }

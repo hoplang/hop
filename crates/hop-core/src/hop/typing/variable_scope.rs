@@ -3,10 +3,10 @@
 //! [`VariableScope`] provides push/pop semantics for nested scopes, tracks whether
 //! variables are accessed, and generates fresh variable names.
 
-use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::hash::Hash;
 
+use super::r#type::Type;
+use crate::document::DocumentRange;
 use crate::symbols::var_name::VarName;
 
 /// Counter for generating fresh variable names like "v__0", "v__1", etc.
@@ -37,21 +37,22 @@ impl Default for FreshVarCounter {
 
 /// The VariableScope tracks variables in scope.
 #[derive(Debug, Clone)]
-pub struct VariableScope<K, V> {
-    entries: HashMap<K, VariableScopeEntry<V>>,
-    operations: Vec<K>,
+pub struct VariableScope {
+    entries: HashMap<VarName, VariableScopeEntry>,
+    operations: Vec<VarName>,
     fresh_vars: FreshVarCounter,
 }
 
-/// VariableScope entry that holds both value and a boolean indicating
-/// whether the variable has been accessed.
+/// A variable in scope: its type, the range where it was bound, and
+/// whether it has been accessed.
 #[derive(Debug, Clone)]
-struct VariableScopeEntry<V> {
-    value: V,
-    accessed: bool,
+pub struct VariableScopeEntry {
+    pub typ: Type,
+    pub range: DocumentRange,
+    pub accessed: bool,
 }
 
-impl<K: Hash + Eq + Clone, V> VariableScope<K, V> {
+impl VariableScope {
     pub fn new() -> Self {
         VariableScope {
             entries: HashMap::new(),
@@ -65,54 +66,49 @@ impl<K: Hash + Eq + Clone, V> VariableScope<K, V> {
         &mut self.fresh_vars
     }
 
-    /// Bind the key to the given value in the environment.
+    /// Bind the name to the given type in the environment.
     ///
     /// Returns an error if the variable is already defined.
-    pub fn push(&mut self, key: K, value: V) -> Result<(), ()> {
-        if self.entries.contains_key(&key) {
+    pub fn push(&mut self, name: VarName, typ: Type, range: DocumentRange) -> Result<(), ()> {
+        if self.entries.contains_key(&name) {
             return Err(());
         }
         self.entries.insert(
-            key.clone(),
+            name.clone(),
             VariableScopeEntry {
-                value,
+                typ,
+                range,
                 accessed: false,
             },
         );
-        self.operations.push(key);
+        self.operations.push(name);
         Ok(())
     }
 
     /// Undo the latest push operation.
-    ///
-    /// Returns a bool indicating whether the variable has been accessed.
-    pub fn pop(&mut self) -> (K, V, bool) {
-        let key = self
+    pub fn pop(&mut self) -> (VarName, VariableScopeEntry) {
+        let name = self
             .operations
             .pop()
             .expect("Tried to pop from empty variable scope");
         self.entries
-            .remove(&key)
-            .map(|entry| (key, entry.value, entry.accessed))
+            .remove(&name)
+            .map(|entry| (name, entry))
             .unwrap()
     }
 
-    /// Access the value behind a key in the environment.
-    pub fn lookup<Q>(&mut self, key: &Q) -> Option<&V>
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
-    {
-        if let Some(entry) = self.entries.get_mut(key) {
+    /// Access the entry behind a name in the environment.
+    pub fn lookup(&mut self, name: &VarName) -> Option<&VariableScopeEntry> {
+        if let Some(entry) = self.entries.get_mut(name) {
             entry.accessed = true;
-            Some(&entry.value)
+            Some(entry)
         } else {
             None
         }
     }
 }
 
-impl<K: Hash + Eq + Clone, V> Default for VariableScope<K, V> {
+impl Default for VariableScope {
     fn default() -> Self {
         Self::new()
     }

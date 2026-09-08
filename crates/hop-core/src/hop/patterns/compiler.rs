@@ -18,11 +18,11 @@ use crate::hop::patterns::typed::TypedMatchPattern;
 
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::variable_scope::FreshVarCounter;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
-use crate::variable_scope::FreshVarCounter;
 
 /// A binding introduced by a pattern match (i.e. `name = source_name`).
 #[derive(Clone, Debug)]
