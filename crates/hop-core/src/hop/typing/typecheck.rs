@@ -116,13 +116,72 @@ fn typecheck_module(
     for decl in parsed_ast.declarations() {
         match decl {
             ParsedDeclaration::Import(import) => {
-                typecheck_import_declaration(
-                    import,
-                    exports,
-                    &mut type_env,
-                    errors,
-                    definition_links,
-                );
+                let ParsedImportDeclaration {
+                    module_name: imported_module,
+                    type_name_range: imported_name_range,
+                    type_name: imported_name,
+                    path_range: import_path_range,
+                    import_range,
+                } = import;
+                let Some(imported_module_exports) = exports.get(&imported_module.to_document_id())
+                else {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::ModuleNotFound {
+                            module: imported_module.clone(),
+                        },
+                        import_path_range.clone(),
+                    ));
+                    continue;
+                };
+                let Some(export) = imported_module_exports.get(imported_name) else {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UndeclaredType {
+                            module: imported_module.clone(),
+                            type_name: imported_name.clone(),
+                        },
+                        imported_name_range.clone(),
+                    ));
+                    continue;
+                };
+                if !export.is_pub() {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::NotPublic {
+                            module: imported_module.clone(),
+                            type_name: imported_name.clone(),
+                        },
+                        imported_name_range.clone(),
+                    ));
+                    continue;
+                }
+                definition_links.push(DefinitionLink {
+                    use_range: imported_name_range.clone(),
+                    definition_range: export.definition_range().clone(),
+                });
+                let binding = match export {
+                    TypeExport::Type { .. } => TypeBinding::Type(Type::Named {
+                        module: imported_module.to_document_id(),
+                        name: imported_name.clone(),
+                    }),
+                    TypeExport::Component { signature, .. } => {
+                        TypeBinding::Component(signature.clone())
+                    }
+                };
+                if type_env
+                    .insert_import(
+                        imported_name.clone(),
+                        binding,
+                        export.definition_range().clone(),
+                        import_range.clone(),
+                    )
+                    .is_err()
+                {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::TypeNameIsAlreadyDefined {
+                            name: imported_name.clone(),
+                        },
+                        imported_name_range.clone(),
+                    ));
+                };
             }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
                 name,
@@ -359,83 +418,6 @@ fn typecheck_module(
     exports.insert(parsed_ast.document_id.clone(), module_exports);
 
     TypedAst::new(typed_pages, typed_function_declarations)
-}
-
-fn typecheck_import_declaration(
-    import: &ParsedImportDeclaration,
-    exports: &HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
-    type_env: &mut TypeEnv,
-    errors: &mut Vec<TypeError>,
-    definition_links: &mut Vec<DefinitionLink>,
-) {
-    let ParsedImportDeclaration {
-        module_name: imported_module,
-        type_name_range: imported_name_range,
-        type_name: imported_name,
-        path_range: import_path_range,
-        import_range,
-    } = import;
-
-    let Some(imported_module_exports) = exports.get(&imported_module.to_document_id()) else {
-        errors.push(TypeError::new(
-            TypeErrorKind::ModuleNotFound {
-                module: imported_module.clone(),
-            },
-            import_path_range.clone(),
-        ));
-        return;
-    };
-
-    let Some(export) = imported_module_exports.get(imported_name) else {
-        errors.push(TypeError::new(
-            TypeErrorKind::UndeclaredType {
-                module: imported_module.clone(),
-                type_name: imported_name.clone(),
-            },
-            imported_name_range.clone(),
-        ));
-        return;
-    };
-
-    if !export.is_pub() {
-        errors.push(TypeError::new(
-            TypeErrorKind::NotPublic {
-                module: imported_module.clone(),
-                type_name: imported_name.clone(),
-            },
-            imported_name_range.clone(),
-        ));
-        return;
-    }
-
-    definition_links.push(DefinitionLink {
-        use_range: imported_name_range.clone(),
-        definition_range: export.definition_range().clone(),
-    });
-
-    let binding = match export {
-        TypeExport::Type { .. } => TypeBinding::Type(Type::Named {
-            module: imported_module.to_document_id(),
-            name: imported_name.clone(),
-        }),
-        TypeExport::Component { signature, .. } => TypeBinding::Component(signature.clone()),
-    };
-    if type_env
-        .insert_import(
-            imported_name.clone(),
-            binding,
-            export.definition_range().clone(),
-            import_range.clone(),
-        )
-        .is_err()
-    {
-        errors.push(TypeError::new(
-            TypeErrorKind::TypeNameIsAlreadyDefined {
-                name: imported_name.clone(),
-            },
-            imported_name_range.clone(),
-        ));
-    }
 }
 
 fn typecheck_record_declaration(
