@@ -14705,9 +14705,6 @@ mod tests {
             "<div>2</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn mk() -> test::Shape {
-                  Shape::Square
-                }
                 fn f() -> Int {
                   let v0 = call mk() in {
                     match v0 {
@@ -14722,6 +14719,9 @@ mod tests {
                       }
                     }
                   }
+                }
+                fn mk() -> test::Shape {
+                  Shape::Square
                 }
                 page Test() {
                   write("<div")
@@ -14856,9 +14856,6 @@ mod tests {
             "<div>hi</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn mk() -> Option[String] {
-                  Option[String]::Some("hi")
-                }
                 fn f() -> String {
                   let v0 = call mk() in {
                     match v0 {
@@ -14873,6 +14870,9 @@ mod tests {
                       None => { "none" }
                     }
                   }
+                }
+                fn mk() -> Option[String] {
+                  Option[String]::Some("hi")
                 }
                 page Test() {
                   write("<div")

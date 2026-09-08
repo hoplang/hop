@@ -99,6 +99,10 @@ fn typecheck_module(
 
     let mut typed_pages = Vec::new();
 
+    // Phase 1
+    //
+    // Register all names in document order. Duplicates are reported at the
+    // second occurrence.
     let component_snake_names: HashMap<String, TypeName> = parsed_ast
         .component_declarations()
         .map(|c| {
@@ -109,10 +113,6 @@ fn typecheck_module(
         })
         .collect();
     let mut function_names: HashSet<VarName> = HashSet::new();
-
-    // Register all top level names in document order. Duplicates are
-    // reported at the second occurrence. Pre-registering also lets type
-    // declarations reference each other regardless of declaration order.
     for decl in parsed_ast.declarations() {
         match decl {
             ParsedDeclaration::Import(import) => {
@@ -214,7 +214,9 @@ fn typecheck_module(
         }
     }
 
-    // Resolve type definitions
+    // Phase 2
+    //
+    // Resolve type definitions.
     for record in parsed_ast.record_declarations() {
         typecheck_record_declaration(
             record,
@@ -236,6 +238,9 @@ fn typecheck_module(
         );
     }
 
+    // Phase 3
+    //
+    // Register signatures and resolve rest spreads.
     let mut pending_functions = Vec::new();
     for function in parsed_ast.function_declarations() {
         pending_functions.extend(register_function_signature(
@@ -259,10 +264,8 @@ fn typecheck_module(
             asset_references,
         ));
     }
-
     // Pair each component's rest parameter with the spread that forwards it.
-    // This is purely syntactic, so it runs before any signature is settled, and
-    // in declaration order to keep diagnostics stable.
+    // This is purely syntactic, so it runs before any signature is settled.
     let mut rest_targets: HashMap<TypeName, Option<RestSpreadTarget>> = HashMap::new();
     for component in parsed_ast.component_declarations() {
         let mut spreads = Vec::new();
@@ -279,7 +282,6 @@ fn typecheck_module(
             ),
         );
     }
-
     // A function cannot declare a rest, so every spread in its body fails to
     // name one.
     for function in parsed_ast.function_declarations() {
@@ -287,28 +289,17 @@ fn typecheck_module(
         collect_spreads(&function.body, &mut spreads);
         pair_rest_spread(None, spreads, errors);
     }
-
     // Settle every signature before checking a single body: a call site needs
     // the parameters its callee ends up forwarding, and those are not known
     // until the rest has been followed to wherever it lands.
     let forwarded_params = resolve_rest_targets(&rest_targets, &mut type_env, errors);
 
-    let mut typed_functions = Vec::new();
-    for pending in pending_functions {
-        typed_functions.extend(typecheck_function_body(
-            pending,
-            registry,
-            errors,
-            &mut type_env,
-            annotations,
-            definition_links,
-            asset_references,
-        ));
-    }
-
-    let mut typed_component_declarations = Vec::new();
+    // Phase 4
+    //
+    // Typecheck bodies.
+    let mut typed_function_declarations = Vec::new();
     for p in pending_components {
-        typed_component_declarations.push(typecheck_component_body(
+        typed_function_declarations.push(typecheck_component_body(
             p,
             &forwarded_params,
             registry,
@@ -320,9 +311,18 @@ fn typecheck_module(
             asset_references,
         ));
     }
-    // Sort by name for stable output
-    typed_component_declarations.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
-
+    for pending in pending_functions {
+        typed_function_declarations.extend(typecheck_function_body(
+            pending,
+            registry,
+            errors,
+            &mut type_env,
+            annotations,
+            definition_links,
+            asset_references,
+        ));
+    }
+    typed_function_declarations.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
     for page in parsed_ast.page_declarations() {
         typed_pages.push(typecheck_page_declaration(
             page,
@@ -335,6 +335,9 @@ fn typecheck_module(
         ));
     }
 
+    // Phase 5
+    //
+    // Check for unused imports.
     for (imported_name, import_range) in type_env.unused_imports() {
         errors.push(TypeError::new(
             TypeErrorKind::UnusedImport {
@@ -347,9 +350,7 @@ fn typecheck_module(
     // Persist the exports as the module's interface for other modules
     exports.insert(parsed_ast.document_id.clone(), module_exports);
 
-    typed_component_declarations.extend(typed_functions);
-
-    TypedAst::new(typed_pages, typed_component_declarations)
+    TypedAst::new(typed_pages, typed_function_declarations)
 }
 
 fn typecheck_import_declaration(
