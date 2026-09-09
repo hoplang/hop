@@ -138,7 +138,7 @@ fn parse_import_declaration(
         let _ = errors.emit(ParseErrorKind::UnexpectedPubKeyword {}, pub_range);
     }
     let mut last_segment = match tokenize_expr::next(iter, comments, errors) {
-        Some((LangToken::Identifier(_) | LangToken::TypeName(_), segment)) => segment,
+        Some((LangToken::Identifier(_), segment)) => segment,
         Some((_, range)) => {
             return Err(errors.emit(ParseErrorKind::ExpectedModulePath {}, range));
         }
@@ -149,7 +149,7 @@ fn parse_import_declaration(
     let mut module_path: Option<DocumentRange> = None;
     while parse_helpers::advance_if(iter, comments, errors, LangToken::ColonColon).is_some() {
         let segment = match tokenize_expr::next(iter, comments, errors) {
-            Some((LangToken::Identifier(_) | LangToken::TypeName(_), segment)) => segment,
+            Some((LangToken::Identifier(_), segment)) => segment,
             Some((_, range)) => {
                 return Err(
                     errors.emit(ParseErrorKind::ExpectedIdentifierAfterColonColon {}, range)
@@ -335,7 +335,7 @@ fn parse_component_declaration(
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedComponentDeclaration, ErrorEmitted> {
     let (name_str, name_range) = match tokenize_expr::next(iter, comments, errors) {
-        Some((LangToken::TypeName(name_str), range)) => (name_str, range),
+        Some((LangToken::Identifier(name_str), range)) => (name_str, range),
         Some((actual, range)) => {
             return Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGot { actual }, range));
         }
@@ -408,7 +408,7 @@ fn parse_page_or_view_header(
     keyword_range: &DocumentRange,
 ) -> Result<(TypeName, DocumentRange, Vec<ParsedParameter>, DocumentRange), ErrorEmitted> {
     let (name_str, name_range) = match tokenize_expr::next(iter, comments, errors) {
-        Some((LangToken::TypeName(name_str), range)) => (name_str, range),
+        Some((LangToken::Identifier(name_str), range)) => (name_str, range),
         Some((actual, range)) => {
             return Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGot { actual }, range));
         }
@@ -2360,7 +2360,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Expected type name but got 'x'
+                error: Type name must start with an uppercase letter
                 1 | record User {
                 2 |   url: x,
                   |        ^
@@ -4633,7 +4633,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Expected type name but got 'card'
+                error: Type name must start with an uppercase letter
                 1 | component card() {
                   |           ^^^^
                 -- ast --
@@ -4670,7 +4670,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Expected type name but got 'index'
+                error: Type name must start with an uppercase letter
                 1 | view index() {
                   |      ^^^^^
                 -- ast --

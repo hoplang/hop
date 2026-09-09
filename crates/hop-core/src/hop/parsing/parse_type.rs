@@ -63,7 +63,7 @@ pub fn parse_type(
             range: type_option.to(brackets),
         });
     }
-    if let Some((name, type_range)) = next_if_map(iter, comments, errors, LangToken::type_name) {
+    if let Some((name, type_range)) = next_if_map(iter, comments, errors, LangToken::identifier) {
         return TypeName::from_cheap_string(name)
             .map(|name| ParsedType::Named {
                 name,

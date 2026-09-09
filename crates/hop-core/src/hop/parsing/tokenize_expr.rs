@@ -204,13 +204,7 @@ pub fn next(
                     "Int" => LangToken::TypeInt,
                     "Option" => LangToken::TypeOption,
                     "String" => LangToken::TypeString,
-                    _ => {
-                        if identifier.ch().is_ascii_uppercase() {
-                            LangToken::TypeName(identifier.to_cheap_string())
-                        } else {
-                            LangToken::Identifier(identifier.to_cheap_string())
-                        }
-                    }
+                    _ => LangToken::Identifier(identifier.to_cheap_string()),
                 };
                 (t, identifier)
             }
@@ -747,19 +741,19 @@ mod tests {
         accept(
             "User Person MyType CustomRecord",
             expect![[r#"
-                token: TypeName("User")
+                token: Identifier("User")
                 User Person MyType CustomRecord
                 ^^^^
 
-                token: TypeName("Person")
+                token: Identifier("Person")
                 User Person MyType CustomRecord
                      ^^^^^^
 
-                token: TypeName("MyType")
+                token: Identifier("MyType")
                 User Person MyType CustomRecord
                             ^^^^^^
 
-                token: TypeName("CustomRecord")
+                token: Identifier("CustomRecord")
                 User Person MyType CustomRecord
                                    ^^^^^^^^^^^^
             "#]],
@@ -767,7 +761,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_identifiers_distinct_from_type_names() {
+    fn accepts_identifiers_regardless_of_case() {
         accept(
             "foo Foo bar Bar _test Test",
             expect![[r#"
@@ -775,7 +769,7 @@ mod tests {
                 foo Foo bar Bar _test Test
                 ^^^
 
-                token: TypeName("Foo")
+                token: Identifier("Foo")
                 foo Foo bar Bar _test Test
                     ^^^
 
@@ -783,7 +777,7 @@ mod tests {
                 foo Foo bar Bar _test Test
                         ^^^
 
-                token: TypeName("Bar")
+                token: Identifier("Bar")
                 foo Foo bar Bar _test Test
                             ^^^
 
@@ -791,7 +785,7 @@ mod tests {
                 foo Foo bar Bar _test Test
                                 ^^^^^
 
-                token: TypeName("Test")
+                token: Identifier("Test")
                 foo Foo bar Bar _test Test
                                       ^^^^
             "#]],
@@ -1003,7 +997,7 @@ mod tests {
                 import user_list::UserList
                                 ^^
 
-                token: TypeName("UserList")
+                token: Identifier("UserList")
                 import user_list::UserList
                                   ^^^^^^^^
             "#]],
@@ -1019,7 +1013,7 @@ mod tests {
                 record User {name: String, age: Int}
                 ^^^^^^
 
-                token: TypeName("User")
+                token: Identifier("User")
                 record User {name: String, age: Int}
                        ^^^^
 
@@ -1071,7 +1065,7 @@ mod tests {
                 record UserList {users: Array[User]}
                 ^^^^^^
 
-                token: TypeName("UserList")
+                token: Identifier("UserList")
                 record UserList {users: Array[User]}
                        ^^^^^^^^
 
@@ -1095,7 +1089,7 @@ mod tests {
                 record UserList {users: Array[User]}
                                              ^
 
-                token: TypeName("User")
+                token: Identifier("User")
                 record UserList {users: Array[User]}
                                               ^^^^
 
@@ -1119,7 +1113,7 @@ mod tests {
                 record User {
                 ^^^^^^
 
-                token: TypeName("User")
+                token: Identifier("User")
                 record User {
                        ^^^^
 
@@ -1183,7 +1177,7 @@ mod tests {
                 import foo::Foo
                           ^^
 
-                token: TypeName("Foo")
+                token: Identifier("Foo")
                 import foo::Foo
                             ^^^
 
@@ -1199,7 +1193,7 @@ mod tests {
                 import bar::Bar
                           ^^
 
-                token: TypeName("Bar")
+                token: Identifier("Bar")
                 import bar::Bar
                             ^^^
             "#]],
@@ -1223,7 +1217,7 @@ mod tests {
                 import foo::Foo
                           ^^
 
-                token: TypeName("Foo")
+                token: Identifier("Foo")
                 import foo::Foo
                             ^^^
 
@@ -1231,7 +1225,7 @@ mod tests {
                 record Bar {name: String}
                 ^^^^^^
 
-                token: TypeName("Bar")
+                token: Identifier("Bar")
                 record Bar {name: String}
                        ^^^
 
@@ -1267,7 +1261,7 @@ mod tests {
                 record  User  {  name :  String  }
                 ^^^^^^
 
-                token: TypeName("User")
+                token: Identifier("User")
                 record  User  {  name :  String  }
                         ^^^^
 
@@ -1303,7 +1297,7 @@ mod tests {
                 record Data {matrix: Array[Array[Int]]}
                 ^^^^^^
 
-                token: TypeName("Data")
+                token: Identifier("Data")
                 record Data {matrix: Array[Array[Int]]}
                        ^^^^
 
@@ -1431,7 +1425,7 @@ mod tests {
                 enum Color
                 ^^^^
 
-                token: TypeName("Color")
+                token: Identifier("Color")
                 enum Color
                      ^^^^^
             "#]],
@@ -1519,7 +1513,7 @@ mod tests {
                 foo::bar::Baz
                         ^^
 
-                token: TypeName("Baz")
+                token: Identifier("Baz")
                 foo::bar::Baz
                           ^^^
             "#]],

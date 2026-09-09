@@ -235,7 +235,7 @@ pub fn parse_primary(
     eof_range: &DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = if let Some((name, name_range)) =
-        next_if_map(iter, comments, errors, LangToken::identifier)
+        next_if_map(iter, comments, errors, LangToken::not_uppercase_identifier)
     {
         // A macro invocation, a function call, or a variable reference.
         if let Some(bang_range) = advance_if(iter, comments, errors, LangToken::Not) {
@@ -317,7 +317,7 @@ pub fn parse_primary(
             }
         }
     } else if let Some((name, name_range)) =
-        next_if_map(iter, comments, errors, LangToken::type_name)
+        next_if_map(iter, comments, errors, LangToken::uppercase_identifier)
     {
         let type_name = TypeName::from_cheap_string(name).map_err(|error| {
             errors.emit(
@@ -687,7 +687,7 @@ pub fn parse_match_pattern(
         });
     }
     if let Some((type_name_str, type_name_range)) =
-        next_if_map(iter, comments, errors, LangToken::type_name)
+        next_if_map(iter, comments, errors, LangToken::uppercase_identifier)
     {
         let type_name = match TypeName::from_cheap_string(type_name_str) {
             Ok(name) => name,
@@ -2197,7 +2197,7 @@ mod tests {
             "Color::red",
             expect![[r#"
                 -- errors --
-                error: Expected type name but got 'red'
+                error: Type name must start with an uppercase letter
                 Color::red
                        ^^^
             "#]],

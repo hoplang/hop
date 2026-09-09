@@ -17,11 +17,16 @@ impl LangToken {
         }
     }
 
-    pub fn type_name(self) -> Option<CheapString> {
-        match self {
-            LangToken::TypeName(name) => Some(name),
-            _ => None,
-        }
+    /// An identifier that starts with an ASCII uppercase character.
+    pub fn uppercase_identifier(self) -> Option<CheapString> {
+        self.identifier()
+            .filter(|name| name.as_str().starts_with(|c: char| c.is_ascii_uppercase()))
+    }
+
+    /// An identifier that does not start with an ASCII uppercase character.
+    pub fn not_uppercase_identifier(self) -> Option<CheapString> {
+        self.identifier()
+            .filter(|name| !name.as_str().starts_with(|c: char| c.is_ascii_uppercase()))
     }
 }
 
@@ -46,7 +51,6 @@ impl LangTokenPair {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LangToken {
     Identifier(CheapString),
-    TypeName(CheapString),
     StringLiteral(CheapString),
     IntLiteral(i32),
     FloatLiteral(f64),
@@ -242,7 +246,6 @@ impl fmt::Display for LangToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LangToken::Identifier(name) => write!(f, "{}", name),
-            LangToken::TypeName(name) => write!(f, "{}", name),
             LangToken::StringLiteral(s) => write!(f, "\"{}\"", s),
             LangToken::IntLiteral(i) => write!(f, "{}", i),
             LangToken::FloatLiteral(float_val) => write!(f, "{}", float_val),

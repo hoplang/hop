@@ -178,7 +178,7 @@ pub fn expect_type_name(
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
 ) -> Result<(TypeName, DocumentRange), ErrorEmitted> {
-    if let Some((name, name_range)) = next_if_map(iter, comments, errors, LangToken::type_name) {
+    if let Some((name, name_range)) = next_if_map(iter, comments, errors, LangToken::identifier) {
         return TypeName::from_cheap_string(name)
             .map(|type_name| (type_name, name_range.clone()))
             .map_err(|error| errors.emit(ParseErrorKind::InvalidTypeName { error }, name_range));
