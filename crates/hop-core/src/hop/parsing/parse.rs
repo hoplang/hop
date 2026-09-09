@@ -865,6 +865,60 @@ mod tests {
     }
 
     #[test]
+    fn rejects_enum_literal_as_match_subject() {
+        // Known limitation, not desired behavior.
+        reject(
+            indoc! {r#"
+              fn f() -> Int {
+                match Color::Red {
+                  Color::Red => 1,
+                }
+              }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Invalid field name 'Color': Field name must be lowercase (found uppercase: 'C')
+                2 |   match Color::Red {
+                3 |     Color::Red => 1,
+                  |     ^^^^^
+
+                error: Expected token '{' but got '}'
+                4 |   }
+                5 | }
+                  | ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_as_match_subject() {
+        // Known limitation, not desired behavior.
+        reject(
+            indoc! {r#"
+                fn f() -> Int {
+                  match Point {
+                    Point => 1,
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Invalid field name 'Point': Field name must be lowercase (found uppercase: 'P')
+                2 |   match Point {
+                3 |     Point => 1,
+                  |     ^^^^^
+
+                error: Expected token '{' but got '}'
+                4 |   }
+                5 | }
+                  | ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_empty_file() {
         accept("", expect![[""]]);
     }
