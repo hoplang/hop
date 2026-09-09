@@ -562,12 +562,6 @@ fn parse_function_declaration(
                         examples_range.clone(),
                     );
                 }
-                if let Some(value) = &parameter.default_value {
-                    let _ = errors.emit(
-                        ParseErrorKind::DefaultValueNotAllowedOnFunction {},
-                        value.range().clone(),
-                    );
-                }
                 params.push(*parameter);
             }
             ParameterItem::Rest { range, .. } => {
@@ -5482,19 +5476,14 @@ mod tests {
     }
 
     #[test]
-    fn rejects_default_value_on_function_parameter() {
-        reject(
+    fn accepts_default_value_on_function_parameter() {
+        accept(
             indoc! {"
                 fn foo(x: Int = 1) -> Int {
                   x
                 }
             "},
             expect![[r#"
-                -- errors --
-                error: Default values are not allowed on function parameters
-                1 | fn foo(x: Int = 1) -> Int {
-                  |                 ^
-                -- ast --
                 fn foo(x: Int = 1) -> Int {
                   x
                 }

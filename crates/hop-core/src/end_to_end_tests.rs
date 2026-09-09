@@ -14581,6 +14581,120 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn function_with_default_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String, count: Int = 1) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label(prefix: "a")}{label(prefix: "b", count: 2)}</div>
+                }
+            "#},
+            "<div>a1b2</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn label@f0(prefix@v0: String, count@v1: Int) -> String {
+                  (v0 + v1.to_string())
+                }
+                page Test() {
+                  write("<div")
+                  write(">")
+                  write_string(call label@f0(prefix = "a", count = 1))
+                  write_string(call label@f0(prefix = "b", count = 2))
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div>a1b2</div>")
+                }
+                -- expected output --
+                <div>a1b2</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn function_with_omitted_default_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String = "x", count: Int = 1) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label()}{label(count: 2)}{label("y")}</div>
+                }
+
+                view Other(prefix: String) {
+                  <div>{label(prefix: prefix)}</div>
+                }
+            "#},
+            "<div>x1x2y1</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn label@f0(prefix@v1: String, count@v2: Int) -> String {
+                  (v1 + v2.to_string())
+                }
+                page Test() {
+                  write("<div")
+                  write(">")
+                  write_string(call label@f0(prefix = "x", count = 1))
+                  write_string(call label@f0(prefix = "x", count = 2))
+                  write_string(call label@f0(prefix = "y", count = 1))
+                  write("</div>")
+                }
+                page Other(prefix@v0: String) {
+                  write("<div")
+                  write(">")
+                  write_string(call label@f0(prefix = v0, count = 1))
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div>x1x2y1</div>")
+                }
+                page Other(prefix@v0: String) {
+                  write("<div>")
+                  write_string(v0)
+                  write("1</div>")
+                }
+                -- expected output --
+                <div>x1x2y1</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn function_called_in_range_bound_and_interpolation() {
         check(
             indoc! {r#"

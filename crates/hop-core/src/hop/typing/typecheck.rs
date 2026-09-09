@@ -296,9 +296,15 @@ fn typecheck_module(
     let mut functions: HashMap<VarName, (FunctionSignature, DocumentRange)> = HashMap::new();
     let mut pending_functions = Vec::new();
     for function in parsed_ast.function_declarations() {
-        let Some(pending) =
-            create_function_signature(function, &names, errors, annotations, definition_links)
-        else {
+        let Some(pending) = create_function_signature(
+            function,
+            &names,
+            registry,
+            errors,
+            annotations,
+            definition_links,
+            asset_references,
+        ) else {
             continue;
         };
         if functions.contains_key(&function.name) {
@@ -557,6 +563,53 @@ struct PendingComponent<'a> {
     typed_params: Vec<TypedParameter>,
 }
 
+fn typecheck_default_value(
+    param: &ParsedParameter,
+    param_type: &Type,
+    type_env: &TypeEnv,
+    registry: &TypeRegistry,
+    errors: &mut Vec<TypeError>,
+    annotations: &mut Vec<HoverAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+) -> Option<TypedExpr> {
+    let default_expr = param.default_value.as_ref()?;
+    if !default_expr.is_constant() {
+        errors.push(TypeError::new(
+            TypeErrorKind::DefaultValueMustBeConstant {},
+            default_expr.range().clone(),
+        ));
+        return None;
+    }
+    let typed_default = typecheck_expr(
+        default_expr,
+        Some(param_type),
+        &[],
+        // Use a fresh variable scope, default values are constant and can't
+        // reference anything from the environment.
+        &mut VariableScope::new(),
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    )?;
+    let default_type = typed_default.typ();
+    if default_type != *param_type {
+        errors.push(TypeError::new(
+            TypeErrorKind::DefaultValueTypeMismatch {
+                param_name: param.var_name.clone(),
+                expected: param_type.clone(),
+                found: default_type,
+            },
+            default_expr.range().clone(),
+        ));
+        return None;
+    }
+    Some(typed_default)
+}
+
 fn create_component_signature<'a>(
     component: &'a ParsedComponentDeclaration,
     names: &HashMap<TypeName, Name>,
@@ -595,50 +648,16 @@ fn create_component_signature<'a>(
             continue;
         };
 
-        let typed_default_value = {
-            if let Some(default_expr) = &param.default_value {
-                if !default_expr.is_constant() {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::DefaultValueMustBeConstant {},
-                        default_expr.range().clone(),
-                    ));
-                    None
-                } else if let Some(typed_default) = typecheck_expr(
-                    default_expr,
-                    Some(&param_type),
-                    &[],
-                    // Use a fresh variable scope, default values
-                    // are constant and can't reference anything from
-                    // the environment.
-                    &mut VariableScope::new(),
-                    &type_env,
-                    registry,
-                    annotations,
-                    definition_links,
-                    asset_references,
-                    errors,
-                ) {
-                    let default_type = typed_default.typ();
-                    if default_type != param_type {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::DefaultValueTypeMismatch {
-                                param_name: param.var_name.clone(),
-                                expected: param_type.clone(),
-                                found: default_type,
-                            },
-                            default_expr.range().clone(),
-                        ));
-                        None
-                    } else {
-                        Some(typed_default)
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        };
+        let typed_default_value = typecheck_default_value(
+            param,
+            &param_type,
+            &type_env,
+            registry,
+            errors,
+            annotations,
+            definition_links,
+            asset_references,
+        );
 
         annotations.push(HoverAnnotation::TypeForVarName {
             range: param.var_name_range.clone(),
@@ -910,14 +929,22 @@ struct PendingFunction<'a> {
 fn create_function_signature<'a>(
     function: &'a ParsedFunctionDeclaration,
     names: &HashMap<TypeName, Name>,
+    registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
 ) -> Option<PendingFunction<'a>> {
     let mut resolved_params = Vec::new();
     let mut declared_params = Vec::new();
     let mut typed_params = Vec::new();
     let mut seen_param_names: HashSet<VarName> = HashSet::new();
+
+    let type_env = TypeEnv {
+        names: names.clone(),
+        components: HashMap::new(),
+        functions: HashMap::new(),
+    };
 
     for param in &function.params {
         if !seen_param_names.insert(param.var_name.clone()) {
@@ -935,6 +962,17 @@ fn create_function_signature<'a>(
             continue;
         };
 
+        let typed_default_value = typecheck_default_value(
+            param,
+            &param_type,
+            &type_env,
+            registry,
+            errors,
+            annotations,
+            definition_links,
+            asset_references,
+        );
+
         annotations.push(HoverAnnotation::TypeForVarName {
             range: param.var_name_range.clone(),
             typ: param_type.clone(),
@@ -945,7 +983,7 @@ fn create_function_signature<'a>(
         declared_params.push(ParamEntry {
             name: param.var_name.clone(),
             typ: param_type.clone(),
-            default: None,
+            default: typed_default_value,
         });
         typed_params.push(TypedParameter {
             var_name: param.var_name.clone(),
@@ -9312,6 +9350,229 @@ mod tests {
                 5 | view Test {
                 6 |   <div>{label(prefix: "n")}</div>
                   |         ^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_named_call_omitting_a_defaulted_argument() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String, count: Int = 1) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label(prefix: "n")}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                page Test() {
+                  body {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(label(prefix: "n", count: 1))),
+                    )
+                  }
+                }
+
+                fn label(prefix: String, count: Int) -> String {
+                  (prefix + count.to_string())
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_named_call_overriding_a_defaulted_argument() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String, count: Int = 1) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label(prefix: "n", count: 7)}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                page Test() {
+                  body {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(label(prefix: "n", count: 7))),
+                    )
+                  }
+                }
+
+                fn label(prefix: String, count: Int) -> String {
+                  (prefix + count.to_string())
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_named_call_omitting_every_defaulted_argument() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String = "n", count: Int = 1) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label()}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                page Test() {
+                  body {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(label(prefix: "n", count: 1))),
+                    )
+                  }
+                }
+
+                fn label(prefix: String, count: Int) -> String {
+                  (prefix + count.to_string())
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_positional_call_omitting_a_trailing_defaulted_argument() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String, count: Int = 1) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label("n")}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                page Test() {
+                  body {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(label(prefix: "n", count: 1))),
+                    )
+                  }
+                }
+
+                fn label(prefix: String, count: Int) -> String {
+                  (prefix + count.to_string())
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_positional_call_with_more_arguments_than_parameters() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String = "x", count: Int = 1) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label("n", 2, 3)}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Function 'label' expects 0 to 2 argument(s), got 3
+                  --> main.hop (line 6, col 9)
+                5 | view Test {
+                6 |   <div>{label("n", 2, 3)}</div>
+                  |         ^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_positional_call_omitting_a_default_that_precedes_a_required_param() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn label(count: Int = 1, prefix: String) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label("n")}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Function 'label' expects 2 argument(s), got 1
+                  --> main.hop (line 6, col 9)
+                5 | view Test {
+                6 |   <div>{label("n")}</div>
+                  |         ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_default_value_with_wrong_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn label(count: Int = "one") -> String {
+                  count.to_string()
+                }
+
+                view Test {
+                  <div>{label(count: 2)}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type: expected `Int` got `String`
+                  --> main.hop (line 1, col 23)
+                1 | fn label(count: Int = "one") -> String {
+                  |                       ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_default_value_that_is_not_constant() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn one() -> Int {
+                  1
+                }
+
+                fn label(count: Int = one()) -> String {
+                  count.to_string()
+                }
+
+                view Test {
+                  <div>{label(count: 2)}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 5, col 23)
+                 4 | 
+                 5 | fn label(count: Int = one()) -> String {
+                   |                       ^^^^^
             "#]],
         );
     }

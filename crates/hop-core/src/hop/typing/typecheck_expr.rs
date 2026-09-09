@@ -1698,20 +1698,34 @@ pub fn typecheck_expr(
 
             let mut failed = false;
 
-            let paired: Vec<(&ParamEntry, &ParsedExpr)> = match args {
+            let paired: Vec<(&ParamEntry, Option<&ParsedExpr>)> = match args {
                 ParsedArguments::Positional(values) => {
-                    if values.len() != signature.params.len() {
+                    let required = signature
+                        .params
+                        .iter()
+                        .rposition(|param| param.default.is_none())
+                        .map_or(0, |index| index + 1);
+                    if values.len() < required || values.len() > signature.params.len() {
                         errors.push(TypeError::new(
                             TypeErrorKind::FunctionArgumentCountMismatch {
                                 name: name.clone(),
-                                expected: signature.params.len(),
+                                expected: if required == signature.params.len() {
+                                    required.to_string()
+                                } else {
+                                    format!("{required} to {}", signature.params.len())
+                                },
                                 found: values.len(),
                             },
                             range.clone(),
                         ));
                         return None;
                     }
-                    signature.params.iter().zip(values.iter()).collect()
+                    signature
+                        .params
+                        .iter()
+                        .enumerate()
+                        .map(|(index, param)| (param, values.get(index)))
+                        .collect()
                 }
                 ParsedArguments::Named(named) => {
                     let mut supplied: HashSet<&VarName> = HashSet::new();
@@ -1740,7 +1754,8 @@ pub fn typecheck_expr(
                     let mut missing = Vec::new();
                     for param in &signature.params {
                         match named.iter().find(|arg| arg.name == param.name) {
-                            Some(arg) => paired.push((param, &arg.value)),
+                            Some(arg) => paired.push((param, Some(&arg.value))),
+                            None if param.default.is_some() => paired.push((param, None)),
                             None => missing.push(param.name.as_str()),
                         }
                     }
@@ -1760,6 +1775,13 @@ pub fn typecheck_expr(
 
             let mut typed_args = Vec::with_capacity(paired.len());
             for (param, arg) in &paired {
+                let Some(arg) = arg else {
+                    let Some(default) = &param.default else {
+                        continue;
+                    };
+                    typed_args.push((param.name.clone(), default.clone()));
+                    continue;
+                };
                 let Some(typed_arg) = typecheck_expr(
                     arg,
                     Some(&param.typ),

@@ -269,9 +269,6 @@ pub(crate) enum ParseErrorKind {
     #[error("Expected a 'body' block")]
     ExpectedPageBodyBlock,
 
-    #[error("Default values are not allowed on function parameters")]
-    DefaultValueNotAllowedOnFunction,
-
     #[error("Rest parameters are not allowed on views")]
     RestParamNotAllowedOnView,
 

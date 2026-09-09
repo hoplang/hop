@@ -380,7 +380,7 @@ pub(crate) enum TypeErrorKind {
     #[error("Function '{name}' expects {expected} argument(s), got {found}")]
     FunctionArgumentCountMismatch {
         name: VarName,
-        expected: usize,
+        expected: String,
         found: usize,
     },
 
