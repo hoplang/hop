@@ -1126,6 +1126,48 @@ mod tests {
     }
 
     #[test]
+    fn should_find_definition_from_function_definition_name() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                fn greeting() -> String {
+                     ^
+                  "Hello"
+                }
+            "#},
+            expect![[r#"
+                Definition
+                  --> main.hop (line 1, col 4)
+                1 | fn greeting() -> String {
+                  |    ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_definition_from_function_call() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                fn greeting() -> String {
+                  "Hello"
+                }
+
+                fn message() -> String {
+                  greeting()
+                    ^
+                }
+            "#},
+            expect![[r#"
+                Definition
+                  --> main.hop (line 1, col 4)
+                1 | fn greeting() -> String {
+                  |    ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_find_definition_from_component_invocation_in_same_module_simple() {
         check_definition_location(
             indoc! {r#"

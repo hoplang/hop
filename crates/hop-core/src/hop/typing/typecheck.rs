@@ -1056,6 +1056,11 @@ fn typecheck_function_body(
         }
     }
 
+    definition_links.push(DefinitionLink {
+        use_range: function.name_range.clone(),
+        definition_range: function.name_range.clone(),
+    });
+
     let typed_body = typed_body?;
     let body_type = typed_body.typ();
     if body_type != return_type {
