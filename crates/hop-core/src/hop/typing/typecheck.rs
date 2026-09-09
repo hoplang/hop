@@ -8,7 +8,7 @@ use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
-    ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
+    ImportedName, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
 use crate::hop::parsing::parsed_expr::{Constructor, ParsedExpr, ParsedMatchPattern};
@@ -18,7 +18,7 @@ use crate::hop::typing::rest_spread::{
     RestSpreadTarget, collect_spreads, pair_rest_spread, resolve_rest_targets,
 };
 use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
-use crate::hop::typing::type_export::TypeExport;
+use crate::hop::typing::type_export::{FunctionExport, TypeExport};
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::typed_ast::{
@@ -34,6 +34,7 @@ use std::collections::{HashMap, HashSet};
 pub fn typecheck(
     modules: &[&ParsedAst],
     exports: &mut HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
+    function_exports: &mut HashMap<DocumentId, HashMap<VarName, FunctionExport>>,
     registry: &mut TypeRegistry,
     typed_asts: &mut HashMap<DocumentId, TypedAst>,
     errors: &mut HashMap<DocumentId, Vec<TypeError>>,
@@ -60,6 +61,7 @@ pub fn typecheck(
         let typed_ast = typecheck_module(
             module,
             exports,
+            function_exports,
             registry,
             module_errors,
             module_annotations,
@@ -88,6 +90,7 @@ pub fn typecheck(
 fn typecheck_module(
     parsed_ast: &ParsedAst,
     exports: &mut HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
+    function_exports: &mut HashMap<DocumentId, HashMap<VarName, FunctionExport>>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<HoverAnnotation>,
@@ -95,6 +98,7 @@ fn typecheck_module(
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedAst {
     let mut module_exports: HashMap<TypeName, TypeExport> = HashMap::new();
+    let mut module_function_exports: HashMap<VarName, FunctionExport> = HashMap::new();
 
     let mut typed_pages = Vec::new();
 
@@ -105,77 +109,137 @@ fn typecheck_module(
     let mut names: HashMap<TypeName, Name> = HashMap::new();
     let mut imported_components: HashMap<TypeName, FunctionSignature> = HashMap::new();
     let mut function_names: HashSet<VarName> = HashSet::new();
+    let mut imported_functions: HashMap<VarName, (FunctionSignature, DocumentRange)> =
+        HashMap::new();
+    let mut function_imports: HashMap<VarName, DocumentRange> = HashMap::new();
     for decl in parsed_ast.declarations() {
         match decl {
             ParsedDeclaration::Import(import) => {
                 let ParsedImportDeclaration {
                     module_name: imported_module,
-                    type_name_range: imported_name_range,
-                    type_name: imported_name,
+                    name_range: imported_name_range,
+                    name: imported_name,
                     path_range: import_path_range,
                     import_range,
                 } = import;
-                let Some(imported_module_exports) = exports.get(&imported_module.to_document_id())
-                else {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::ModuleNotFound {
-                            module: imported_module.clone(),
-                        },
-                        import_path_range.clone(),
-                    ));
-                    continue;
-                };
-                let Some(export) = imported_module_exports.get(imported_name) else {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::UndeclaredType {
-                            module: imported_module.clone(),
-                            type_name: imported_name.clone(),
-                        },
-                        imported_name_range.clone(),
-                    ));
-                    continue;
-                };
-                if !export.is_pub() {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::NotPublic {
-                            module: imported_module.clone(),
-                            type_name: imported_name.clone(),
-                        },
-                        imported_name_range.clone(),
-                    ));
-                    continue;
-                }
-                definition_links.push(DefinitionLink {
-                    use_range: imported_name_range.clone(),
-                    definition_range: export.definition_range().clone(),
-                });
-                if names.contains_key(imported_name) {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::TypeNameIsAlreadyDefined {
-                            name: imported_name.clone(),
-                        },
-                        imported_name_range.clone(),
-                    ));
-                    continue;
-                }
-                let kind = match export {
-                    TypeExport::Type { .. } => NameKind::Type(Type::Named {
-                        module: imported_module.to_document_id(),
-                        name: imported_name.clone(),
-                    }),
-                    TypeExport::Component { signature, .. } => {
-                        imported_components.insert(imported_name.clone(), signature.clone());
-                        NameKind::Component
+                match imported_name {
+                    ImportedName::Type(imported_name) => {
+                        let Some(imported_module_exports) =
+                            exports.get(&imported_module.to_document_id())
+                        else {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::ModuleNotFound {
+                                    module: imported_module.clone(),
+                                },
+                                import_path_range.clone(),
+                            ));
+                            continue;
+                        };
+                        let Some(export) = imported_module_exports.get(imported_name) else {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::UndeclaredType {
+                                    module: imported_module.clone(),
+                                    type_name: imported_name.clone(),
+                                },
+                                imported_name_range.clone(),
+                            ));
+                            continue;
+                        };
+                        if !export.is_pub() {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::NotPublic {
+                                    module: imported_module.clone(),
+                                    type_name: imported_name.clone(),
+                                },
+                                imported_name_range.clone(),
+                            ));
+                            continue;
+                        }
+                        definition_links.push(DefinitionLink {
+                            use_range: imported_name_range.clone(),
+                            definition_range: export.definition_range().clone(),
+                        });
+                        if names.contains_key(imported_name) {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::TypeNameIsAlreadyDefined {
+                                    name: imported_name.clone(),
+                                },
+                                imported_name_range.clone(),
+                            ));
+                            continue;
+                        }
+                        let kind = match export {
+                            TypeExport::Type { .. } => NameKind::Type(Type::Named {
+                                module: imported_module.to_document_id(),
+                                name: imported_name.clone(),
+                            }),
+                            TypeExport::Component { signature, .. } => {
+                                imported_components
+                                    .insert(imported_name.clone(), signature.clone());
+                                NameKind::Component
+                            }
+                        };
+                        names.insert(
+                            imported_name.clone(),
+                            Name {
+                                kind,
+                                definition_range: export.definition_range().clone(),
+                                import_range: Some(import_range.clone()),
+                            },
+                        );
                     }
-                };
-                names.insert(
-                    imported_name.clone(),
-                    Name {
-                        kind,
-                        definition_range: export.definition_range().clone(),
-                        import_range: Some(import_range.clone()),
-                    },
-                );
+                    ImportedName::Function(imported_name) => {
+                        let Some(imported_module_exports) =
+                            function_exports.get(&imported_module.to_document_id())
+                        else {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::ModuleNotFound {
+                                    module: imported_module.clone(),
+                                },
+                                import_path_range.clone(),
+                            ));
+                            continue;
+                        };
+                        let Some(export) = imported_module_exports.get(imported_name) else {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::UndeclaredFunction {
+                                    module: imported_module.clone(),
+                                    name: imported_name.clone(),
+                                },
+                                imported_name_range.clone(),
+                            ));
+                            continue;
+                        };
+                        if !export.is_pub {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::FunctionNotPublic {
+                                    module: imported_module.clone(),
+                                    name: imported_name.clone(),
+                                },
+                                imported_name_range.clone(),
+                            ));
+                            continue;
+                        }
+                        definition_links.push(DefinitionLink {
+                            use_range: imported_name_range.clone(),
+                            definition_range: export.definition_range.clone(),
+                        });
+                        if !function_names.insert(imported_name.clone()) {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::FunctionNameIsAlreadyDefined {
+                                    name: imported_name.clone(),
+                                },
+                                imported_name_range.clone(),
+                            ));
+                            continue;
+                        }
+                        imported_functions.insert(
+                            imported_name.clone(),
+                            (export.signature.clone(), export.definition_range.clone()),
+                        );
+                        function_imports.insert(imported_name.clone(), import_range.clone());
+                    }
+                }
             }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
                 name,
@@ -293,7 +357,7 @@ fn typecheck_module(
     // Phase 3
     //
     // Register signatures and resolve rest spreads.
-    let mut functions: HashMap<VarName, (FunctionSignature, DocumentRange)> = HashMap::new();
+    let mut functions: HashMap<VarName, (FunctionSignature, DocumentRange)> = imported_functions;
     let mut pending_functions = Vec::new();
     for function in parsed_ast.function_declarations() {
         let Some(pending) = create_function_signature(
@@ -313,6 +377,14 @@ fn typecheck_module(
         functions.insert(
             function.name.clone(),
             (pending.signature.clone(), function.name_range.clone()),
+        );
+        module_function_exports.insert(
+            function.name.clone(),
+            FunctionExport {
+                signature: pending.signature.clone(),
+                definition_range: function.name_range.clone(),
+                is_pub: function.pub_range.is_some(),
+            },
         );
         pending_functions.push(pending);
     }
@@ -434,12 +506,12 @@ fn typecheck_module(
     //
     // Check for unused imports. A name counts as used wherever it is written,
     // whether or not it resolved.
-    let referenced = referenced_type_names(parsed_ast);
+    let (referenced_types, referenced_functions) = referenced_names(parsed_ast);
     for (name, entry) in &type_env.names {
         let Some(import_range) = &entry.import_range else {
             continue;
         };
-        if referenced.contains(name) {
+        if referenced_types.contains(name) {
             continue;
         }
         errors.push(TypeError::new(
@@ -449,8 +521,20 @@ fn typecheck_module(
             import_range.clone(),
         ));
     }
+    for (name, import_range) in &function_imports {
+        if referenced_functions.contains(name) {
+            continue;
+        }
+        errors.push(TypeError::new(
+            TypeErrorKind::UnusedFunctionImport {
+                import_name: name.clone(),
+            },
+            import_range.clone(),
+        ));
+    }
 
     exports.insert(parsed_ast.document_id.clone(), module_exports);
+    function_exports.insert(parsed_ast.document_id.clone(), module_function_exports);
 
     TypedAst::new(typed_pages, typed_function_declarations)
 }
@@ -1154,8 +1238,9 @@ fn validate_examples_annotation(
 /// Every type name written in the module, whether or not it resolves: in
 /// type positions, record and enum literals, patterns, and component
 /// invocations.
-fn referenced_type_names(parsed_ast: &ParsedAst) -> HashSet<TypeName> {
+fn referenced_names(parsed_ast: &ParsedAst) -> (HashSet<TypeName>, HashSet<VarName>) {
     let mut names = HashSet::new();
+    let mut functions = HashSet::new();
     for decl in parsed_ast.declarations() {
         match decl {
             ParsedDeclaration::Import(_) => {}
@@ -1175,30 +1260,33 @@ fn referenced_type_names(parsed_ast: &ParsedAst) -> HashSet<TypeName> {
                 for param in &component.params {
                     collect_type_names_in_type(&param.var_type, &mut names);
                     if let Some(default) = &param.default_value {
-                        collect_type_names_in_expr(default, &mut names);
+                        collect_names_in_expr(default, &mut names, &mut functions);
                     }
                 }
-                collect_type_names_in_expr(&component.body, &mut names);
+                collect_names_in_expr(&component.body, &mut names, &mut functions);
             }
             ParsedDeclaration::Page(page) => {
                 for param in &page.params {
                     collect_type_names_in_type(&param.var_type, &mut names);
                 }
                 if let Some(head) = &page.head {
-                    collect_type_names_in_expr(head, &mut names);
+                    collect_names_in_expr(head, &mut names, &mut functions);
                 }
-                collect_type_names_in_expr(&page.body, &mut names);
+                collect_names_in_expr(&page.body, &mut names, &mut functions);
             }
             ParsedDeclaration::Function(function) => {
                 for param in &function.params {
                     collect_type_names_in_type(&param.var_type, &mut names);
+                    if let Some(default) = &param.default_value {
+                        collect_names_in_expr(default, &mut names, &mut functions);
+                    }
                 }
                 collect_type_names_in_type(&function.return_type, &mut names);
-                collect_type_names_in_expr(&function.body, &mut names);
+                collect_names_in_expr(&function.body, &mut names, &mut functions);
             }
         }
     }
-    names
+    (names, functions)
 }
 
 fn collect_type_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<TypeName>) {
@@ -1217,7 +1305,11 @@ fn collect_type_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<TypeNa
     }
 }
 
-fn collect_type_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<TypeName>) {
+fn collect_names_in_expr(
+    expr: &ParsedExpr,
+    out: &mut HashSet<TypeName>,
+    functions_out: &mut HashSet<VarName>,
+) {
     match expr {
         ParsedExpr::RecordLiteral { record_name, .. } => {
             out.insert(record_name.clone());
@@ -1230,13 +1322,20 @@ fn collect_type_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<TypeName>) {
                 collect_type_names_in_pattern(&arm.pattern, out);
             }
         }
-        ParsedExpr::Markup { node } => collect_type_names_in_node(node, out),
+        ParsedExpr::FunctionCall { name, .. } => {
+            functions_out.insert(name.clone());
+        }
+        ParsedExpr::Markup { node } => collect_names_in_node(node, out, functions_out),
         _ => {}
     }
-    expr.for_each_child(&mut |child| collect_type_names_in_expr(child, out));
+    expr.for_each_child(&mut |child| collect_names_in_expr(child, out, functions_out));
 }
 
-fn collect_type_names_in_node(node: &ParsedNode, out: &mut HashSet<TypeName>) {
+fn collect_names_in_node(
+    node: &ParsedNode,
+    out: &mut HashSet<TypeName>,
+    functions_out: &mut HashSet<VarName>,
+) {
     match node {
         ParsedNode::ComponentInvocation { component_name, .. } => {
             out.insert(component_name.clone());
@@ -1256,10 +1355,10 @@ fn collect_type_names_in_node(node: &ParsedNode, out: &mut HashSet<TypeName>) {
         _ => {}
     }
     for expr in node.expressions() {
-        collect_type_names_in_expr(expr, out);
+        collect_names_in_expr(expr, out, functions_out);
     }
     for child in node.children() {
-        collect_type_names_in_node(child, out);
+        collect_names_in_node(child, out, functions_out);
     }
 }
 
@@ -1318,6 +1417,7 @@ mod tests {
             .with_location();
 
         let mut state = HashMap::new();
+        let mut function_state = HashMap::new();
         let mut registry = TypeRegistry::default();
         let mut type_errors = HashMap::new();
         let mut type_annotations = HashMap::new();
@@ -1350,6 +1450,7 @@ mod tests {
             typecheck(
                 &[&ast],
                 &mut state,
+                &mut function_state,
                 &mut registry,
                 &mut typed_asts,
                 &mut type_errors,
@@ -2047,6 +2148,146 @@ mod tests {
                 fn Main() -> Fragment {
                   Foo()
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_import_of_pub_function() {
+        accept(
+            indoc! {r#"
+                -- other.hop --
+                pub fn greeting() -> String {
+                  "hi"
+                }
+                -- main.hop --
+                import other::greeting
+
+                component Main {
+                  <div>{greeting()}</div>
+                }
+            "#},
+            expect![[r#"
+                -- other.hop --
+                fn greeting() -> String {
+                  "hi"
+                }
+
+                -- main.hop --
+                fn Main() -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(escape(greeting())))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_import_of_non_pub_function() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                fn greeting() -> String {
+                  "hi"
+                }
+                -- main.hop --
+                import other::greeting
+
+                component Main {
+                  <div>{greeting()}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Function greeting from module other is not public
+                  --> main.hop (line 1, col 15)
+                1 | import other::greeting
+                  |               ^^^^^^^^
+
+                error: Undefined function: greeting
+                  --> main.hop (line 4, col 9)
+                3 | component Main {
+                4 |   <div>{greeting()}</div>
+                  |         ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_an_import_references_a_function_that_does_not_exist() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub fn greeting() -> String {
+                  "hi"
+                }
+                -- main.hop --
+                import other::farewell
+
+                component Main {
+                  <div>{farewell()}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Module other does not declare a function farewell
+                  --> main.hop (line 1, col 15)
+                1 | import other::farewell
+                  |               ^^^^^^^^
+
+                error: Undefined function: farewell
+                  --> main.hop (line 4, col 9)
+                3 | component Main {
+                4 |   <div>{farewell()}</div>
+                  |         ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_function_is_imported_without_being_used() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub fn greeting() -> String {
+                  "hi"
+                }
+                -- main.hop --
+                import other::greeting
+
+                component Main {<></>}
+            "#},
+            expect![[r#"
+                warning: Unused import 'greeting'
+                  --> main.hop (line 1, col 1)
+                1 | import other::greeting
+                  | ^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_function_is_defined_with_the_same_name_as_an_import() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub fn greeting() -> String {
+                  "hi"
+                }
+                -- main.hop --
+                import other::greeting
+
+                fn greeting() -> String {
+                  "hello"
+                }
+
+                component Main {
+                  <div>{greeting()}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Function greeting is already defined
+                  --> main.hop (line 3, col 4)
+                2 | 
+                3 | fn greeting() -> String {
+                  |    ^^^^^^^^
             "#]],
         );
     }

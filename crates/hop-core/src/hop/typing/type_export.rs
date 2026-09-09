@@ -1,6 +1,13 @@
 use super::type_env::FunctionSignature;
 use crate::document::DocumentRange;
 
+#[derive(Debug, Clone)]
+pub struct FunctionExport {
+    pub signature: FunctionSignature,
+    pub definition_range: DocumentRange,
+    pub is_pub: bool,
+}
+
 /// A type or component exported by a module. Non-pub declarations are
 /// included with is_pub set to false so that importers can distinguish
 /// private names from undeclared ones.

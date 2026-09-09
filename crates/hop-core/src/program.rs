@@ -15,7 +15,7 @@ use crate::hop::parsing::find_node::find_node_at_position;
 use crate::hop::parsing::parse::parse;
 use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::parsing::parsed_node::ParsedNode;
-use crate::hop::typing::type_export::TypeExport;
+use crate::hop::typing::type_export::{FunctionExport, TypeExport};
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck::typecheck;
 use crate::hop::typing::typed_ast::TypedAst;
@@ -85,6 +85,7 @@ pub struct Program {
     parse_errors: HashMap<DocumentId, ParseErrors>,
     parsed_asts: HashMap<DocumentId, ParsedAst>,
     type_exports: HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
+    function_exports: HashMap<DocumentId, HashMap<VarName, FunctionExport>>,
     type_registry: TypeRegistry,
     type_errors: HashMap<DocumentId, Vec<TypeError>>,
     hover_annotations: HashMap<DocumentId, Vec<HoverAnnotation>>,
@@ -135,6 +136,7 @@ impl Program {
             typecheck(
                 &modules,
                 &mut self.type_exports,
+                &mut self.function_exports,
                 &mut self.type_registry,
                 &mut self.typed_asts,
                 &mut self.type_errors,
@@ -158,6 +160,7 @@ impl Program {
         self.parse_errors.remove(document_id);
         self.parsed_asts.remove(document_id);
         self.type_exports.remove(document_id);
+        self.function_exports.remove(document_id);
         self.type_registry.remove_module(document_id);
         self.type_errors.remove(document_id);
         self.hover_annotations.remove(document_id);
@@ -180,6 +183,7 @@ impl Program {
                 typecheck(
                     &modules,
                     &mut self.type_exports,
+                    &mut self.function_exports,
                     &mut self.type_registry,
                     &mut self.typed_asts,
                     &mut self.type_errors,

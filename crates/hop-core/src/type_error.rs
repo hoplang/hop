@@ -77,6 +77,12 @@ pub(crate) enum TypeErrorKind {
         type_name: TypeName,
     },
 
+    #[error("Module {module} does not declare a function {name}")]
+    UndeclaredFunction { module: ModuleName, name: VarName },
+
+    #[error("Function {name} from module {module} is not public")]
+    FunctionNotPublic { module: ModuleName, name: VarName },
+
     #[error("Module {module} was not found")]
     ModuleNotFound { module: ModuleName },
 
@@ -88,6 +94,9 @@ pub(crate) enum TypeErrorKind {
 
     #[error("Unused import '{import_name}'")]
     UnusedImport { import_name: TypeName },
+
+    #[error("Unused import '{import_name}'")]
+    UnusedFunctionImport { import_name: VarName },
 
     #[error(
         "Component {component} does not accept content (missing `children: Fragment` parameter)"
@@ -419,6 +428,7 @@ impl TypeErrorKind {
         match self {
             TypeErrorKind::UnusedVariable { .. }
             | TypeErrorKind::UnusedImport { .. }
+            | TypeErrorKind::UnusedFunctionImport { .. }
             | TypeErrorKind::MatchUnusedBinding { .. } => Severity::Warning,
             _ => Severity::Error,
         }

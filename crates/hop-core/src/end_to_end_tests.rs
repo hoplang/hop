@@ -14630,6 +14630,56 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn function_imported_from_another_module() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                import other::label
+
+                view Test {
+                  <div>{label(prefix: "a")}</div>
+                }
+                -- other.hop --
+                pub fn label(prefix: String, count: Int = 1) -> String {
+                  prefix + count.to_string()
+                }
+            "#},
+            "<div>a1</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn label@f0(prefix@v0: String, count@v1: Int) -> String {
+                  (v0 + v1.to_string())
+                }
+                page Test() {
+                  write("<div")
+                  write(">")
+                  write_string(call label@f0(prefix = "a", count = 1))
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div>a1</div>")
+                }
+                -- expected output --
+                <div>a1</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn function_with_omitted_default_parameter() {
         check(
             indoc! {r#"

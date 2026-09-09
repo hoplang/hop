@@ -1,7 +1,7 @@
 use super::parse_expr;
 use super::parse_helpers;
 use super::parsed_ast::{
-    ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
+    ImportedName, ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
     ParsedEnumDeclarationVariant, ParsedFieldDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedPageDeclaration, ParsedRecordDeclaration,
 };
@@ -138,7 +138,7 @@ fn parse_import_declaration(
         let _ = errors.emit(ParseErrorKind::UnexpectedPubKeyword {}, pub_range);
     }
     let mut last_segment = match tokenize_expr::next(iter, comments, errors) {
-        Some((LangToken::Identifier(_), segment)) => segment,
+        Some((token @ LangToken::Identifier(_), segment)) => (token, segment),
         Some((_, range)) => {
             return Err(errors.emit(ParseErrorKind::ExpectedModulePath {}, range));
         }
@@ -149,7 +149,7 @@ fn parse_import_declaration(
     let mut module_path: Option<DocumentRange> = None;
     while parse_helpers::advance_if(iter, comments, errors, LangToken::ColonColon).is_some() {
         let segment = match tokenize_expr::next(iter, comments, errors) {
-            Some((LangToken::Identifier(_), segment)) => segment,
+            Some((token @ LangToken::Identifier(_), segment)) => (token, segment),
             Some((_, range)) => {
                 return Err(
                     errors.emit(ParseErrorKind::ExpectedIdentifierAfterColonColon {}, range)
@@ -163,22 +163,36 @@ fn parse_import_declaration(
             }
         };
         module_path = Some(match module_path {
-            Some(module_path) => module_path.to(last_segment),
-            None => last_segment,
+            Some(module_path) => module_path.to(last_segment.1),
+            None => last_segment.1,
         });
         last_segment = segment;
     }
+    let (last_token, name_range) = last_segment;
     let Some(module_path_range) = module_path else {
-        return Err(errors.emit(ParseErrorKind::ImportPathTooShort {}, last_segment));
+        return Err(errors.emit(ParseErrorKind::ImportPathTooShort {}, name_range));
     };
-    let type_name_range = last_segment;
-    let type_name = match TypeName::from_cheap_string(type_name_range.to_cheap_string()) {
-        Ok(name) => name,
-        Err(e) => {
-            return Err(errors.emit(
-                ParseErrorKind::InvalidTypeName { error: e },
-                type_name_range,
-            ));
+    let name = match last_token.uppercase_identifier() {
+        Some(type_name) => match TypeName::from_cheap_string(type_name) {
+            Ok(name) => ImportedName::Type(name),
+            Err(error) => {
+                return Err(errors.emit(ParseErrorKind::InvalidTypeName { error }, name_range));
+            }
+        },
+        None => {
+            let function_name = name_range.to_cheap_string();
+            match VarName::from_cheap_string(function_name.clone()) {
+                Ok(name) => ImportedName::Function(name),
+                Err(error) => {
+                    return Err(errors.emit(
+                        ParseErrorKind::InvalidVariableName {
+                            name: function_name,
+                            error,
+                        },
+                        name_range,
+                    ));
+                }
+            }
         }
     };
     let module_name = match ModuleName::new(module_path_range.as_str()) {
@@ -191,10 +205,10 @@ fn parse_import_declaration(
         }
     };
     Ok(ParsedImportDeclaration {
-        type_name,
-        path_range: module_path_range.to(type_name_range.clone()),
-        import_range: keyword_range.to(type_name_range.clone()),
-        type_name_range,
+        name,
+        path_range: module_path_range.to(name_range.clone()),
+        import_range: keyword_range.to(name_range.clone()),
+        name_range,
         module_name,
     })
 }
@@ -544,9 +558,6 @@ fn parse_function_declaration(
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedFunctionDeclaration, ErrorEmitted> {
-    if let Some(pub_range) = pub_range {
-        let _ = errors.emit(ParseErrorKind::UnexpectedPubKeyword {}, pub_range);
-    }
     let (name, name_range) =
         parse_helpers::expect_variable_name(iter, comments, errors, eof_range)?;
     let left_paren =
@@ -595,7 +606,11 @@ fn parse_function_declaration(
         params,
         return_type: return_type?,
         body,
-        range: keyword_range.to(braces),
+        range: pub_range
+            .clone()
+            .unwrap_or_else(|| keyword_range.clone())
+            .to(braces),
+        pub_range,
     })
 }
 
@@ -2404,7 +2419,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Import path must have at least two segments: module::Component
+                error: Import path must have at least two segments: module::Name
                 1 | import Foo
                   |        ^^^
                 -- ast --
@@ -5419,21 +5434,59 @@ mod tests {
     }
 
     #[test]
-    fn rejects_pub_on_function() {
-        reject(
+    fn accepts_pub_on_function() {
+        accept(
             indoc! {"
                 pub fn foo(x: Int) -> Int {
                   x
                 }
             "},
             expect![[r#"
-                -- errors --
-                error: 'pub' is not allowed here
-                1 | pub fn foo(x: Int) -> Int {
-                  | ^^^
-                -- ast --
-                fn foo(x: Int) -> Int {
+                pub fn foo(x: Int) -> Int {
                   x
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_import_of_function() {
+        accept(
+            indoc! {"
+                import other::foo
+
+                fn bar() -> Int {
+                  foo()
+                }
+            "},
+            expect![[r#"
+                import other::foo
+
+                fn bar() -> Int {
+                  foo()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_import_of_invalid_function_name() {
+        reject(
+            indoc! {"
+                import other::foo_
+
+                fn bar() -> Int {
+                  foo()
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Invalid variable name 'foo_': Variable name cannot end with underscore
+                1 | import other::foo_
+                  |               ^^^^
+                -- ast --
+                fn bar() -> Int {
+                  foo()
                 }
             "#]],
         );

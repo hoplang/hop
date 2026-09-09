@@ -152,7 +152,7 @@ fn format_import_declaration<'a>(
         .append(arena.space())
         .append(arena.text(import.module_name.to_string()))
         .append(arena.text("::"))
-        .append(arena.text(import.type_name.as_str()))
+        .append(arena.text(import.name.as_str()))
 }
 
 fn format_record_declaration<'a>(
@@ -541,7 +541,13 @@ fn format_function_declaration<'a>(
             .append(arena.hardline())
     };
 
+    let pub_prefix = if function.pub_range.is_some() {
+        arena.text("pub ")
+    } else {
+        arena.nil()
+    };
     leading_comments
+        .append(pub_prefix)
         .append(arena.text("fn"))
         .append(arena.text(" "))
         .append(arena.text(function.name.as_str()))
@@ -1640,6 +1646,20 @@ mod tests {
     }
 
     #[test]
+    fn pub_function() {
+        check(
+            indoc! {"
+                pub fn label(x: Int) -> Int { x + 10 }
+            "},
+            expect![[r#"
+                pub fn label(x: Int) -> Int {
+                  x + 10
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn pub_view() {
         check(
             indoc! {"
@@ -1707,6 +1727,18 @@ mod tests {
             "},
             expect![[r#"
                 import foo::Bar
+            "#]],
+        );
+    }
+
+    #[test]
+    fn import_of_function_declaration() {
+        check(
+            indoc! {"
+                import foo::bar
+            "},
+            expect![[r#"
+                import foo::bar
             "#]],
         );
     }

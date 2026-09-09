@@ -45,6 +45,7 @@ pub struct ParsedFunctionDeclaration {
     pub return_type: ParsedType,
     pub body: ParsedExpr,
     pub range: DocumentRange,
+    pub pub_range: Option<DocumentRange>,
 }
 
 /// A component declaration.
@@ -96,17 +97,33 @@ pub struct ParsedPageDeclaration {
     pub is_view: bool,
 }
 
+#[derive(Debug, Clone)]
+pub enum ImportedName {
+    Type(TypeName),
+    Function(VarName),
+}
+
+impl ImportedName {
+    pub fn as_str(&self) -> &str {
+        match self {
+            ImportedName::Type(name) => name.as_str(),
+            ImportedName::Function(name) => name.as_str(),
+        }
+    }
+}
+
 /// An import declaration.
 ///
 /// ```text
 /// import foo::bar::Baz
+/// import foo::bar::baz
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedImportDeclaration {
-    pub type_name: TypeName,
-    /// The range of the type name in the source (for error reporting)
-    pub type_name_range: DocumentRange,
-    /// The full path range for error reporting (covers module::TypeName)
+    pub name: ImportedName,
+    /// The range of the imported name in the source (for error reporting)
+    pub name_range: DocumentRange,
+    /// The full path range for error reporting (covers module::name)
     pub path_range: DocumentRange,
     /// The full range of the import declaration, from `import` keyword to end of name.
     pub import_range: DocumentRange,
@@ -339,7 +356,7 @@ impl ParsedImportDeclaration {
             .append(BoxDoc::space())
             .append(BoxDoc::text(self.module_name.to_string()))
             .append(BoxDoc::text("::"))
-            .append(BoxDoc::text(self.type_name.as_str()))
+            .append(BoxDoc::text(self.name.as_str()))
     }
 }
 
@@ -479,7 +496,13 @@ impl ParsedComponentDeclaration {
 
 impl ParsedFunctionDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("fn")
+        let pub_prefix = if self.pub_range.is_some() {
+            BoxDoc::text("pub").append(BoxDoc::space())
+        } else {
+            BoxDoc::nil()
+        };
+        pub_prefix
+            .append(BoxDoc::text("fn"))
             .append(BoxDoc::space())
             .append(BoxDoc::text(self.name.as_str()))
             .append(BoxDoc::text("("))

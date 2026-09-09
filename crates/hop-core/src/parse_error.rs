@@ -260,7 +260,7 @@ pub(crate) enum ParseErrorKind {
     #[error("Expected module path after 'import'")]
     ExpectedModulePath,
 
-    #[error("Import path must have at least two segments: module::Component")]
+    #[error("Import path must have at least two segments: module::Name")]
     ImportPathTooShort,
 
     #[error("Default values are not allowed on view parameters")]
