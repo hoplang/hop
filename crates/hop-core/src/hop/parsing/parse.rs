@@ -518,14 +518,17 @@ fn parse_function_declaration(
         parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
     let (items, _) = parse_parameters(iter, comments, errors, &left_paren)?;
     let (params, rest_param) = build_function_parameters(items, errors);
-    let return_type = match parse_helpers::advance_if(iter, comments, errors, LangToken::Arrow) {
-        Some(_) => parse_type(iter, comments, errors, eof_range),
-        None => Err(errors.emit(
+    let return_type = match tokenize_expr::peek(iter) {
+        Some((LangToken::LeftBrace, _)) => Err(errors.emit(
             ParseErrorKind::FunctionMissingReturnType {
                 name: CheapString::new(name.as_str().to_string()),
             },
             name_range.clone(),
         )),
+        _ => {
+            parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::Arrow)?;
+            parse_type(iter, comments, errors, eof_range)
+        }
     };
     let left_brace =
         parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
@@ -5785,6 +5788,24 @@ mod tests {
                 error: Function 'foo' is missing a return type
                 1 | fn foo(x: Int) {
                   |    ^^^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_with_colon_before_return_type() {
+        reject(
+            indoc! {"
+                fn foo(): Int {
+                  1
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '->' but got ':'
+                1 | fn foo(): Int {
+                  |         ^
                 -- ast --
             "#]],
         );
