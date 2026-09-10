@@ -1298,7 +1298,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `B` is a function and cannot be used as a type
+                error: 'B' is a function and cannot be used as a type
                   --> main.hop (line 4, col 17)
                 3 | }
                 4 | fn Inner(child: B) -> Html {
@@ -1320,7 +1320,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `B` is a function and cannot be used as a type
+                error: 'B' is a function and cannot be used as a type
                   --> main.hop (line 5, col 10)
                 4 | record R {
                 5 |   field: B,
@@ -1536,7 +1536,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Html`
+                error: Mismatched type for attribute: expected String got Html
                   --> main.hop (line 2, col 17)
                 1 | fn Card(children: Html) -> Html {
                 2 |     <div class={children}></div>
@@ -1580,7 +1580,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Content provided both as an explicit `children` argument and as element children
+                error: Content provided both as an explicit 'children' argument and as element children
                   --> main.hop (line 6, col 6)
                 5 | fn Main(children: Html) -> Html {
                 6 |     <Card children={children}>children</Card>
@@ -2054,7 +2054,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Main does not accept content (missing `children: Html` parameter)
+                error: Function Main does not accept content (missing 'children: Html' parameter)
                   --> main.hop (line 6, col 6)
                 5 | fn Bar() -> Html {
                 6 |     <Main>
@@ -2081,7 +2081,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Foo does not accept content (missing `children: Html` parameter)
+                error: Function Foo does not accept content (missing 'children: Html' parameter)
                   --> main.hop (line 4, col 6)
                 3 | fn Bar() -> Html {
                 4 |     <Foo>
@@ -2338,7 +2338,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Main does not accept attribute `b`
+                error: Function Main does not accept attribute 'b'
                   --> main.hop (line 7, col 16)
                 6 | fn Foo() -> Html {
                 7 |     <Main a="" b={1}/>
@@ -2386,7 +2386,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Main does not accept attribute `a`
+                error: Function Main does not accept attribute 'a'
                   --> main.hop (line 7, col 9)
                 6 | fn Foo() -> Html {
                 7 |   <Main a="foo" />
@@ -2419,7 +2419,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `Array[...]` got `Bool`
+                error: Mismatched type: expected Array[...] got Bool
                   --> main.hop (line 12, col 20)
                 11 |       <for {item in params}>
                 12 |           <for {inner in item.k}>
@@ -2820,7 +2820,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'user' of function 'BarComp': expected `bar::User` got `foo::User`
+                error: Mismatched type for argument 'user' of function 'BarComp': expected bar::User got foo::User
                   --> main.hop (line 8, col 22)
                  7 |       <FooComp user={user}/>
                  8 |       <BarComp user={user}/>
@@ -2866,7 +2866,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'user' of function 'BarComp': expected `bar::User` got `foo::User`
+                error: Mismatched type for argument 'user' of function 'BarComp': expected bar::User got foo::User
                   --> main.hop (line 8, col 22)
                  7 |       <FooComp user={user}/>
                  8 |       <BarComp user={user}/>
@@ -3028,7 +3028,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'message' of function 'StringComp': expected `String` got `Int`
+                error: Mismatched type for argument 'message' of function 'StringComp': expected String got Int
                   --> main.hop (line 5, col 23)
                 4 | fn Main() -> Html {
                 5 |     <StringComp message={42}/>
@@ -3052,7 +3052,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected `Bool` got `String`
+                error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected Bool got String
                   --> main.hop (line 7, col 22)
                 6 | fn Main() -> Html {
                 7 |     <ToggleComp enabled=""/>
@@ -3076,7 +3076,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected `Bool` got `String`
+                error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected Bool got String
                   --> main.hop (line 7, col 22)
                 6 | fn Main() -> Html {
                 7 |     <ToggleComp enabled="not a boolean"/>
@@ -3097,7 +3097,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for condition: expected `Bool` got `String`
+                error: Mismatched type for condition: expected Bool got String
                   --> main.hop (line 2, col 10)
                 1 | fn Main() -> Html {
                 2 |     <if {"str"}>
@@ -3198,7 +3198,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for interpolation: expected `String` or `Html` got Bool
+                error: Mismatched type for interpolation: expected String or Html got Bool
                   --> main.hop (line 3, col 8)
                 2 |   <>
                 3 |       {false}
@@ -3803,7 +3803,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Int`
+                error: Mismatched type: expected String got Int
                   --> main.hop (line 9, col 25)
                  8 |         Color::Red => "red",
                  9 |         Color::Green => 42,
@@ -4229,7 +4229,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Int`
+                error: Mismatched type: expected String got Int
                   --> main.hop (line 1, col 28)
                 1 | fn Greeting(name: String = 42) -> Html {
                   |                            ^^
@@ -4754,7 +4754,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'name' of function 'Greeting': expected `Option[String]` got `String`
+                error: Mismatched type for argument 'name' of function 'Greeting': expected Option[String] got String
                   --> main.hop (line 5, col 18)
                 4 | fn Main() -> Html {
                 5 |   <Greeting name="World" />
@@ -4893,7 +4893,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected `Bool` got `Some(x)`
+                error: Mismatched pattern type: expected Bool got Some(x)
                   --> main.hop (line 3, col 16)
                 2 |     <match {flag}>
                 3 |         <case {Some(x)}>yes</case>
@@ -5090,7 +5090,7 @@ mod tests {
                  3 |         <case {Some(x)}>
                    |                     ^
 
-                error: Mismatched type for interpolation: expected `String` or `Html` got Option[String]
+                error: Mismatched type for interpolation: expected String or Html got Option[String]
                   --> main.hop (line 4, col 14)
                  3 |         <case {Some(x)}>
                  4 |             {x}
@@ -5478,7 +5478,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Bool`
+                error: Mismatched type for attribute: expected String got Bool
                   --> main.hop (line 2, col 20)
                 1 | fn Main(is_required: Bool) -> Html {
                 2 |   <input required={is_required}>
@@ -5497,7 +5497,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Bool`
+                error: Mismatched type for attribute: expected String got Bool
                   --> main.hop (line 2, col 20)
                 1 | fn Main() -> Html {
                 2 |   <input required={true}>
@@ -5516,7 +5516,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Option[String]`
+                error: Mismatched type for attribute: expected String got Option[String]
                   --> main.hop (line 2, col 16)
                 1 | fn Main(maybe: Option[String]) -> Html {
                 2 |   <div data-x={maybe}></div>
@@ -5535,7 +5535,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Option[String]`
+                error: Mismatched type for attribute: expected String got Option[String]
                   --> main.hop (line 2, col 16)
                 1 | fn Main() -> Html {
                 2 |   <div data-x={Some("hello")}></div>
@@ -5554,7 +5554,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Option[Int]`
+                error: Mismatched type for attribute: expected String got Option[Int]
                   --> main.hop (line 2, col 16)
                 1 | fn Main(maybe: Option[Int]) -> Html {
                 2 |   <div data-x={maybe}></div>
@@ -5573,7 +5573,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Option[Bool]`
+                error: Mismatched type for attribute: expected String got Option[Bool]
                   --> main.hop (line 2, col 16)
                 1 | fn Main(maybe: Option[Bool]) -> Html {
                 2 |   <div data-x={maybe}></div>
@@ -5592,7 +5592,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Option[Option[String]]`
+                error: Mismatched type for attribute: expected String got Option[Option[String]]
                   --> main.hop (line 2, col 16)
                 1 | fn Main(maybe: Option[Option[String]]) -> Html {
                 2 |   <div data-x={maybe}></div>
@@ -5611,7 +5611,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Int`
+                error: Mismatched type for attribute: expected String got Int
                   --> main.hop (line 2, col 20)
                 1 | fn Main(count: Int) -> Html {
                 2 |   <div data-count={count}></div>
@@ -5630,7 +5630,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `<button>` does not accept attribute `onclick`
+                error: <button> does not accept attribute 'onclick'
                   --> main.hop (line 2, col 11)
                 1 | fn Main() -> Html {
                 2 |   <button onclick="alert(1)">Click</button>
@@ -5652,13 +5652,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `<button>` does not accept attribute `onClick`
+                error: <button> does not accept attribute 'onClick'
                   --> main.hop (line 3, col 13)
                 2 |   <>
                 3 |     <button onClick="alert(1)">Click</button>
                   |             ^^^^^^^
 
-                error: `<button>` does not accept attribute `ONCLICK`
+                error: <button> does not accept attribute 'ONCLICK'
                   --> main.hop (line 4, col 13)
                 3 |     <button onClick="alert(1)">Click</button>
                 4 |     <button ONCLICK="alert(1)">Click</button>
@@ -5677,7 +5677,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `<div>` does not accept attribute `flooble`
+                error: <div> does not accept attribute 'flooble'
                   --> main.hop (line 2, col 8)
                 1 | fn Main() -> Html {
                 2 |   <div flooble="x"></div>
@@ -5714,7 +5714,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `<button>` does not accept attribute `href`
+                error: <button> does not accept attribute 'href'
                   --> main.hop (line 2, col 11)
                 1 | fn Main() -> Html {
                 2 |   <button href="/"></button>
@@ -5755,7 +5755,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Btn does not accept attribute `href`
+                error: Function Btn does not accept attribute 'href'
                   --> main.hop (line 6, col 8)
                 5 | fn Main() -> Html {
                 6 |   <Btn href="/">click</Btn>
@@ -6111,7 +6111,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for spread: expected `main::User` got `main::Admin`
+                error: Mismatched type for spread: expected main::User got main::Admin
                   --> main.hop (line 4, col 25)
                 3 | fn Main(admin: Admin) -> Html {
                 4 |   <let {user = User {...admin}}>
@@ -6346,7 +6346,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Int`
+                error: Mismatched type: expected String got Int
                   --> main.hop (line 2, col 24)
                 1 | fn Main() -> Html {
                 2 |   <let {name: String = 42}>
@@ -7065,7 +7065,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Foo does not accept attribute `data-x`
+                error: Function Foo does not accept attribute 'data-x'
                   --> main.hop (line 6, col 22)
                 5 |   fn body() -> Html {
                 6 |       <Foo class="a" data-x="y"/>
@@ -7282,7 +7282,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Button does not accept attribute `class`
+                error: Function Button does not accept attribute 'class'
                   --> main.hop (line 6, col 15)
                 5 |   fn body() -> Html {
                 6 |       <Button class="forwarded">Hi</Button>
@@ -7306,7 +7306,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Button does not accept attribute `qwerty`
+                error: Function Button does not accept attribute 'qwerty'
                   --> main.hop (line 6, col 27)
                 5 |   fn body() -> Html {
                 6 |       <Button class="p-2" qwerty="z"/>
@@ -7463,7 +7463,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'count' of function 'Wrapper': expected `Int` got `String`
+                error: Mismatched type for argument 'count' of function 'Wrapper': expected Int got String
                   --> main.hop (line 11, col 22)
                 10 |   fn body() -> Html {
                 11 |       <Wrapper count="hi"/>
@@ -7799,7 +7799,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Baz does not accept attribute `data-x`
+                error: Function Baz does not accept attribute 'data-x'
                   --> main.hop (line 12, col 22)
                 11 |   fn body() -> Html {
                 12 |       <Baz class="a" data-x="y"/>
@@ -7826,7 +7826,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Bar does not accept attribute `data-x`
+                error: Function Bar does not accept attribute 'data-x'
                   --> main.hop (line 9, col 22)
                  8 |   fn body() -> Html {
                  9 |       <Bar class="a" data-x="y"/>
@@ -7923,7 +7923,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Card does not accept content (missing `children: Html` parameter)
+                error: Function Card does not accept content (missing 'children: Html' parameter)
                   --> main.hop (line 9, col 8)
                  8 |   fn body() -> Html {
                  9 |       <Card class="a">hi</Card>
@@ -8239,7 +8239,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Wrapper does not accept attribute `title`
+                error: Function Wrapper does not accept attribute 'title'
                   --> main.hop (line 9, col 16)
                  8 |   fn body() -> Html {
                  9 |       <Wrapper title="b"/>
@@ -8266,7 +8266,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Wrapper does not accept attribute `data-foo`
+                error: Function Wrapper does not accept attribute 'data-foo'
                   --> main.hop (line 9, col 16)
                  8 |   fn body() -> Html {
                  9 |       <Wrapper data-foo="b"/>
@@ -8332,7 +8332,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Outer does not accept attribute `title`
+                error: Function Outer does not accept attribute 'title'
                   --> main.hop (line 12, col 14)
                 11 |   fn body() -> Html {
                 12 |       <Outer title="b"/>
@@ -8361,7 +8361,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'tabindex' of function 'B': expected `Int` got `String`
+                error: Mismatched type for argument 'tabindex' of function 'B': expected Int got String
                   --> main.hop (line 11, col 19)
                 10 |   fn body() -> Html {
                 11 |       <B tabindex="nope"/>
@@ -8740,7 +8740,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `Widget` is a function and cannot be used as a type
+                error: 'Widget' is a function and cannot be used as a type
                   --> main.hop (line 2, col 11)
                 1 | record Holder {
                 2 |     part: Widget,
@@ -8770,7 +8770,7 @@ mod tests {
                 2 | import other::Foo
                   |               ^^^
 
-                error: Function Foo does not accept content (missing `children: Html` parameter)
+                error: Function Foo does not accept content (missing 'children: Html' parameter)
                   --> main.hop (line 5, col 3)
                 4 | fn Main() -> Html {
                 5 |     <Foo></Foo>
@@ -9154,7 +9154,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `Index` is a page and cannot be used as a type
+                error: 'Index' is a page and cannot be used as a type
                   --> main.hop (line 7, col 12)
                 6 | 
                 7 | fn Main(x: Index) -> Html {
@@ -9219,7 +9219,7 @@ mod tests {
                 7 |     <div>{add_ten(y: 1).to_string()}</div>
                   |           ^^^^^^^^^^^^^
 
-                error: Function add_ten does not accept argument `y`
+                error: Function add_ten does not accept argument 'y'
                   --> main.hop (line 7, col 19)
                 6 |   fn body() -> Html {
                 7 |     <div>{add_ten(y: 1).to_string()}</div>
@@ -9244,7 +9244,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument `x` is supplied more than once
+                error: Argument 'x' is supplied more than once
                   --> main.hop (line 7, col 25)
                 6 |   fn body() -> Html {
                 7 |     <div>{add_ten(x: 1, x: 2).to_string()}</div>
@@ -9480,7 +9480,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `Int` got `String`
+                error: Mismatched type: expected Int got String
                   --> main.hop (line 1, col 23)
                 1 | fn label(count: Int = "one") -> String {
                   |                       ^^^^^
@@ -9644,7 +9644,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'x' of function 'add_ten': expected `Int` got `String`
+                error: Mismatched type for argument 'x' of function 'add_ten': expected Int got String
                   --> main.hop (line 7, col 19)
                 6 |   fn body() -> Html {
                 7 |     <div>{add_ten("one").to_string()}</div>
@@ -9712,7 +9712,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for function body: expected `String` got `Int`
+                error: Mismatched type for function body: expected String got Int
                   --> main.hop (line 2, col 3)
                 1 | fn label() -> String {
                 2 |   42
@@ -9771,7 +9771,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched type for function body: expected `String` got `Html`
+                error: Mismatched type for function body: expected String got Html
                   --> main.hop (line 2, col 3)
                  1 | fn card() -> String {
                  2 |   <div></div>
@@ -10032,7 +10032,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for function body: expected `Html` got `String`
+                error: Mismatched type for function body: expected Html got String
                   --> main.hop (line 2, col 3)
                 1 | pub fn Outer() -> Html {
                 2 |   "hello"
@@ -10053,7 +10053,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for declaration: expected `Html` got `String`
+                error: Mismatched type for declaration: expected Html got String
                   --> main.hop (line 3, col 5)
                 2 |   fn body() -> Html {
                 3 |     "hello"
@@ -10077,7 +10077,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for declaration: expected `Html` got `String`
+                error: Mismatched type for declaration: expected Html got String
                   --> main.hop (line 3, col 5)
                 2 |   fn head() -> Html {
                 3 |     "hello"

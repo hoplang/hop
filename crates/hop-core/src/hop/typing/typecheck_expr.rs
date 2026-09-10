@@ -1911,11 +1911,11 @@ mod tests {
             &[("count", "Int")],
             "join!(count, count)",
             expect![[r#"
-                error: Mismatched type for 'join': expected `String` got `Int`
+                error: Mismatched type for 'join': expected String got Int
                 join!(count, count)
                       ^^^^^
 
-                error: Mismatched type for 'join': expected `String` got `Int`
+                error: Mismatched type for 'join': expected String got Int
                 join!(count, count)
                              ^^^^^
             "#]],
@@ -1985,7 +1985,7 @@ mod tests {
             &[("name", "String")],
             "!name",
             expect![[r#"
-                error: Mismatched type for negation: expected `Bool` got `String`
+                error: Mismatched type for negation: expected Bool got String
                 !name
                  ^^^^
             "#]],
@@ -1999,7 +1999,7 @@ mod tests {
             &[("count", "Float")],
             "!count",
             expect![[r#"
-                error: Mismatched type for negation: expected `Bool` got `Float`
+                error: Mismatched type for negation: expected Bool got Float
                 !count
                  ^^^^^
             "#]],
@@ -2043,7 +2043,7 @@ mod tests {
             &[("name", "String")],
             "-name",
             expect![[r#"
-                error: Mismatched type for negation: expected `Int` or `Float` got String
+                error: Mismatched type for negation: expected Int or Float got String
                 -name
                  ^^^^
             "#]],
@@ -2057,7 +2057,7 @@ mod tests {
             &[("flag", "Bool")],
             "-flag",
             expect![[r#"
-                error: Mismatched type for negation: expected `Int` or `Float` got Bool
+                error: Mismatched type for negation: expected Int or Float got Bool
                 -flag
                  ^^^^
             "#]],
@@ -2703,7 +2703,7 @@ mod tests {
             &[],
             "[1, true]",
             expect![[r#"
-                error: Mismatched type for array element: expected `Int` got `Bool`
+                error: Mismatched type for array element: expected Int got Bool
                 [1, true]
                     ^^^^
             "#]],
@@ -2792,7 +2792,7 @@ mod tests {
             &[],
             r#"[Some(1), Some("1")]"#,
             expect![[r#"
-                error: Mismatched type for array element: expected `Option[Int]` got `Option[String]`
+                error: Mismatched type for array element: expected Option[Int] got Option[String]
                 [Some(1), Some("1")]
                           ^^^^^^^^^
             "#]],
@@ -2959,7 +2959,7 @@ mod tests {
             &[],
             r#"User {name: "John", age: "thirty"}"#,
             expect![[r#"
-                error: Mismatched type for `age`: expected `Int` got `String`
+                error: Mismatched type for 'age': expected Int got String
                 User {name: "John", age: "thirty"}
                                          ^^^^^^^^
             "#]],
@@ -3071,7 +3071,7 @@ mod tests {
             &[("admin", "Admin")],
             r#"User {...admin, name: "Jane"}"#,
             expect![[r#"
-                error: Mismatched type for spread: expected `test::User` got `test::Admin`
+                error: Mismatched type for spread: expected test::User got test::Admin
                 User {...admin, name: "Jane"}
                          ^^^^^
             "#]],
@@ -3085,7 +3085,7 @@ mod tests {
             &[("name", "String")],
             "User {...name}",
             expect![[r#"
-                error: Mismatched type for spread: expected `test::User` got `String`
+                error: Mismatched type for spread: expected test::User got String
                 User {...name}
                          ^^^^
             "#]],
@@ -3438,7 +3438,7 @@ mod tests {
             &[],
             r#"Outcome::Success {value: "hello"}"#,
             expect![[r#"
-                error: Mismatched type for `value`: expected `Int` got `String`
+                error: Mismatched type for 'value': expected Int got String
                 Outcome::Success {value: "hello"}
                                          ^^^^^^^
             "#]],
@@ -3725,7 +3725,7 @@ mod tests {
             &[],
             r#"User {name: "Alice", age: Some("thirty")}"#,
             expect![[r#"
-                error: Mismatched type for `age`: expected `Option[Int]` got `Option[String]`
+                error: Mismatched type for 'age': expected Option[Int] got Option[String]
                 User {name: "Alice", age: Some("thirty")}
                                           ^^^^^^^^^^^^^^
             "#]],
@@ -3739,7 +3739,7 @@ mod tests {
             &[],
             r#"User {name: "Alice", age: 30}"#,
             expect![[r#"
-                error: Mismatched type for `age`: expected `Option[Int]` got `Int`
+                error: Mismatched type for 'age': expected Option[Int] got Int
                 User {name: "Alice", age: 30}
                                           ^^
             "#]],
@@ -3946,7 +3946,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Int`
+                error: Mismatched type: expected String got Int
                     Color::Green => 42,
                                     ^^
             "#]],
@@ -4155,7 +4155,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected `Bool` got `Color::Red`
+                error: Mismatched pattern type: expected Bool got Color::Red
                     Color::Red => "red",
                     ^^^^^^^^^^
             "#]],
@@ -4174,7 +4174,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected `test::Color` got `true`
+                error: Mismatched pattern type: expected test::Color got true
                     true => 0,
                     ^^^^
             "#]],
@@ -4307,7 +4307,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched type: expected `Int` got `Bool`
+                error: Mismatched type: expected Int got Bool
                     None    => true,
                                ^^^^
             "#]],
@@ -4326,7 +4326,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected `Option[Int]` got `Color::Red`
+                error: Mismatched pattern type: expected Option[Int] got Color::Red
                     Color::Red => 0,
                     ^^^^^^^^^^
             "#]],
@@ -4345,7 +4345,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected `Option[Int]` got `true`
+                error: Mismatched pattern type: expected Option[Int] got true
                     true => 0,
                     ^^^^
             "#]],
@@ -4364,7 +4364,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected `test::Color` got `Some(_)`
+                error: Mismatched pattern type: expected test::Color got Some(_)
                     Some(_)      => 0,
                     ^^^^^^^
             "#]],
@@ -4383,7 +4383,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected `Bool` got `Some(_)`
+                error: Mismatched pattern type: expected Bool got Some(_)
                     Some(_) => 0,
                     ^^^^^^^
             "#]],
@@ -4402,7 +4402,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected `Bool` got `None`
+                error: Mismatched pattern type: expected Bool got None
                     Some(None) => 0,
                          ^^^^
             "#]],
@@ -4438,7 +4438,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected `Bool` got `Some(_)`
+                error: Mismatched pattern type: expected Bool got Some(_)
                     Some(Some(_)) => 0,
                          ^^^^^^^
             "#]],
@@ -4883,7 +4883,7 @@ mod tests {
             &[("count", "Int")],
             "join!(count)",
             expect![[r#"
-                error: Mismatched type for 'join': expected `String` got `Int`
+                error: Mismatched type for 'join': expected String got Int
                 join!(count)
                       ^^^^^
             "#]],
@@ -5337,7 +5337,7 @@ mod tests {
             &[],
             "add_ten(\"hello\")",
             expect![[r#"
-                error: Mismatched type for argument 'x' of function 'add_ten': expected `Int` got `String`
+                error: Mismatched type for argument 'x' of function 'add_ten': expected Int got String
                 add_ten("hello")
                         ^^^^^^^
             "#]],

@@ -639,7 +639,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched pattern type: expected `test::Color` got `true`
+                error: Mismatched pattern type: expected test::Color got true
                     true => 0,
                     ^^^^
             "#]],
@@ -657,7 +657,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched pattern type: expected `test::Color` got `Some(v)`
+                error: Mismatched pattern type: expected test::Color got Some(v)
                     Some(v) => 0,
                     ^^^^^^^
             "#]],
@@ -675,7 +675,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched pattern type: expected `Bool` got `Some(v)`
+                error: Mismatched pattern type: expected Bool got Some(v)
                     Some(Some(v)) => 0,
                          ^^^^^^^
             "#]],

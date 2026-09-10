@@ -87,15 +87,15 @@ pub(crate) enum TypeErrorKind {
     #[error("Unused import '{import_name}'")]
     UnusedImport { import_name: CheapString },
 
-    #[error("Function {name} does not accept content (missing `children: Html` parameter)")]
+    #[error("Function {name} does not accept content (missing 'children: Html' parameter)")]
     FunctionDoesNotAcceptChildren { name: FunctionName },
 
     #[error(
-        "Function {name} returns `{found}`; only a function returning `Html` can be invoked as a tag"
+        "Function {name} returns {found}; only a function returning Html can be invoked as a tag"
     )]
     FunctionTagReturnTypeMismatch { name: FunctionName, found: Type },
 
-    #[error("Content provided both as an explicit `children` argument and as element children")]
+    #[error("Content provided both as an explicit 'children' argument and as element children")]
     ChildContentAmbiguous,
 
     #[error(
@@ -107,16 +107,16 @@ pub(crate) enum TypeErrorKind {
         cycle_display: String,
     },
 
-    #[error("Mismatched type for condition: expected `Bool` got `{found}`")]
+    #[error("Mismatched type for condition: expected Bool got {found}")]
     ConditionTypeMismatch { found: Type },
 
     #[error("Function {name} requires arguments: {args}")]
     MissingArguments { name: FunctionName, args: String },
 
-    #[error("Function {name} does not accept attribute `{attr}`")]
+    #[error("Function {name} does not accept attribute '{attr}'")]
     FunctionDoesNotAcceptAttribute { name: FunctionName, attr: String },
 
-    #[error("Mismatched type for attribute: expected `String` got `{found}`")]
+    #[error("Mismatched type for attribute: expected String got {found}")]
     AttributeTypeMismatch { found: Type },
 
     #[error("Rest spread of {name} forms a cycle and never reaches an element")]
@@ -137,26 +137,26 @@ pub(crate) enum TypeErrorKind {
     #[error("Default values must be constant")]
     DefaultValueMustBeConstant,
 
-    #[error("Mismatched type: expected `{expected}` got `{found}`")]
+    #[error("Mismatched type: expected {expected} got {found}")]
     DefaultValueTypeMismatch {
         param_name: VarName,
         expected: Type,
         found: Type,
     },
 
-    #[error("`<{element}>` does not accept attribute `{attr}`")]
+    #[error("<{element}> does not accept attribute '{attr}'")]
     ElementDoesNotAcceptAttribute { element: String, attr: String },
 
-    #[error("Mismatched type: expected `Array[...]` got `{found}`")]
+    #[error("Mismatched type: expected Array[...] got {found}")]
     IterateeTypeMismatch { found: Type },
 
-    #[error("Mismatched type for range bound: expected `Int` got `{found}`")]
+    #[error("Mismatched type for range bound: expected Int got {found}")]
     RangeBoundTypeMismatch { found: Type },
 
-    #[error("Mismatched type: expected `{expected}` got `{found}`")]
+    #[error("Mismatched type: expected {expected} got {found}")]
     LetBindingTypeMismatch { expected: Type, found: Type },
 
-    #[error("Mismatched type for interpolation: expected `String` or `Html` got {found}")]
+    #[error("Mismatched type for interpolation: expected String or Html got {found}")]
     InterpolationTypeMismatch { found: Type },
 
     #[error("Undefined variable: {name}")]
@@ -174,13 +174,13 @@ pub(crate) enum TypeErrorKind {
     #[error("Cannot compare {left} to {right}")]
     CannotCompareTypes { left: Type, right: Type },
 
-    #[error("Mismatched type for negation: expected `Bool` got `{found}`")]
+    #[error("Mismatched type for negation: expected Bool got {found}")]
     BooleanNegationTypeMismatch { found: Type },
 
-    #[error("Mismatched type for negation: expected `Int` or `Float` got {found}")]
+    #[error("Mismatched type for negation: expected Int or Float got {found}")]
     NumericNegationTypeMismatch { found: Type },
 
-    #[error("Mismatched type for array element: expected `{expected}` got `{found}`")]
+    #[error("Mismatched type for array element: expected {expected} got {found}")]
     ArrayElementTypeMismatch { expected: Type, found: Type },
 
     #[error("Cannot infer type of empty array")]
@@ -210,10 +210,10 @@ pub(crate) enum TypeErrorKind {
     #[error("Type '{type_name}' is not defined")]
     UndefinedType { type_name: TypeName },
 
-    #[error("`{name}` is a function and cannot be used as a type")]
+    #[error("'{name}' is a function and cannot be used as a type")]
     FunctionUsedAsType { name: TypeName },
 
-    #[error("`{name}` is a page and cannot be used as a type")]
+    #[error("'{name}' is a page and cannot be used as a type")]
     PageUsedAsType { name: TypeName },
 
     #[error("Record type '{record_name}' is not defined")]
@@ -231,7 +231,7 @@ pub(crate) enum TypeErrorKind {
         record_name: TypeName,
     },
 
-    #[error("Mismatched type for `{field_name}`: expected `{expected}` got `{found}`")]
+    #[error("Mismatched type for '{field_name}': expected {expected} got {found}")]
     RecordLiteralFieldTypeMismatch {
         field_name: FieldName,
         expected: Type,
@@ -244,7 +244,7 @@ pub(crate) enum TypeErrorKind {
         record_name: TypeName,
     },
 
-    #[error("Mismatched type for spread: expected `{expected}` got `{found}`")]
+    #[error("Mismatched type for spread: expected {expected} got {found}")]
     RecordSpreadTypeMismatch { expected: Type, found: Type },
 
     #[error("Enum type '{enum_name}' is not defined")]
@@ -270,7 +270,7 @@ pub(crate) enum TypeErrorKind {
         field_name: FieldName,
     },
 
-    #[error("Mismatched type for `{field_name}`: expected `{expected}` got `{found}`")]
+    #[error("Mismatched type for '{field_name}': expected {expected} got {found}")]
     EnumVariantFieldTypeMismatch {
         enum_name: TypeName,
         variant_name: TypeName,
@@ -305,7 +305,7 @@ pub(crate) enum TypeErrorKind {
         subject_record: TypeName,
     },
 
-    #[error("Mismatched type: expected `{expected}` got `{found}`")]
+    #[error("Mismatched type: expected {expected} got {found}")]
     MatchArmTypeMismatch { expected: Type, found: Type },
 
     #[error("Match expression is missing arms for: {}", variants.join(", "))]
@@ -314,7 +314,7 @@ pub(crate) enum TypeErrorKind {
     #[error("Unreachable match arm for pattern '{pattern}'")]
     MatchUnreachableArm { pattern: Box<TypedMatchPattern> },
 
-    #[error("Mismatched pattern type: expected `{expected}` got `{found}`")]
+    #[error("Mismatched pattern type: expected {expected} got {found}")]
     MatchPatternTypeMismatch {
         expected: Type,
         // TODO: Make into Type
@@ -339,7 +339,7 @@ pub(crate) enum TypeErrorKind {
     #[error("{name} is already defined")]
     NameIsAlreadyDefined { name: CheapString },
 
-    #[error("Mismatched type for '{macro_name}': expected `{expected}` got `{found}`")]
+    #[error("Mismatched type for '{macro_name}': expected {expected} got {found}")]
     MacroArgumentTypeMismatch {
         macro_name: String,
         expected: Type,
@@ -392,7 +392,7 @@ pub(crate) enum TypeErrorKind {
     },
 
     #[error(
-        "Mismatched type for argument '{param_name}' of function '{name}': expected `{expected}` got `{found}`"
+        "Mismatched type for argument '{param_name}' of function '{name}': expected {expected} got {found}"
     )]
     FunctionArgumentTypeMismatch {
         name: FunctionName,
@@ -401,19 +401,19 @@ pub(crate) enum TypeErrorKind {
         found: Type,
     },
 
-    #[error("Function {name} does not accept argument `{argument}`")]
+    #[error("Function {name} does not accept argument '{argument}'")]
     FunctionDoesNotAcceptArgument {
         name: FunctionName,
         argument: VarName,
     },
 
-    #[error("Argument `{argument}` is supplied more than once")]
+    #[error("Argument '{argument}' is supplied more than once")]
     DuplicateArgument { argument: VarName },
 
-    #[error("Mismatched type for function body: expected `{expected}` got `{found}`")]
+    #[error("Mismatched type for function body: expected {expected} got {found}")]
     FunctionBodyTypeMismatch { expected: Type, found: Type },
 
-    #[error("Mismatched type for declaration: expected `Html` got `{found}`")]
+    #[error("Mismatched type for declaration: expected Html got {found}")]
     DeclarationBodyTypeMismatch { found: Type },
 }
 
