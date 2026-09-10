@@ -37,6 +37,19 @@ pub enum ParsedType {
 }
 
 impl ParsedType {
+    pub fn range(&self) -> &DocumentRange {
+        match self {
+            ParsedType::String { range }
+            | ParsedType::Bool { range }
+            | ParsedType::Int { range }
+            | ParsedType::Float { range }
+            | ParsedType::Fragment { range }
+            | ParsedType::Array { range, .. }
+            | ParsedType::Option { range, .. }
+            | ParsedType::Named { range, .. } => range,
+        }
+    }
+
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             ParsedType::String { .. } => BoxDoc::text("String"),

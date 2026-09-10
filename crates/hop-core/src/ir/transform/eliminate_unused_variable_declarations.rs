@@ -231,7 +231,7 @@ mod tests {
     fn should_discard_unused_for_loop_variable() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.fragment_for(Some("unused"), t.array(vec![t.str("a"), t.str("b")]), |t| {
                         t.raw("Hello")
                     })
@@ -255,7 +255,7 @@ mod tests {
     fn should_preserve_used_for_loop_variable() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.fragment_for(Some("item"), t.array(vec![t.str("a"), t.str("b")]), |t| {
                         t.escape(t.var("item"))
                     })
@@ -279,7 +279,7 @@ mod tests {
     fn should_eliminate_unused_let() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("unused", t.str("value"), |t| t.raw("Hello"))
                 })
                 .build(),
@@ -301,7 +301,7 @@ mod tests {
     fn should_preserve_used_let() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("message", t.str("Hello"), |t| t.escape(t.var("message")))
                 })
                 .build(),
@@ -325,7 +325,7 @@ mod tests {
         // with it the only use of x, so x must be eliminated too.
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("x", t.str("a"), |t| {
                         t.let_expr("y", t.var("x"), |t| t.raw("Hello"))
                     })
@@ -349,7 +349,7 @@ mod tests {
     fn should_eliminate_let_inside_for_loop_body() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.fragment_for(Some("item"), t.array(vec![t.str("a"), t.str("b")]), |t| {
                         t.let_expr("unused", t.str("value"), |t| t.escape(t.var("item")))
                     })
@@ -375,7 +375,7 @@ mod tests {
     fn should_discard_unused_option_match_binding() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.option_match_expr_with_binding(
                         t.some(t.str("x")),
                         "v",
@@ -408,7 +408,7 @@ mod tests {
     fn should_preserve_used_option_match_binding() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.option_match_expr_with_binding(
                         t.some(t.str("x")),
                         "v",
@@ -445,7 +445,7 @@ mod tests {
                     "Status",
                     [("Active", vec![("since", "String")]), ("Inactive", vec![])],
                 )
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.enum_match_expr(
                         t.enum_variant_with_fields(
                             "Status",
@@ -487,7 +487,7 @@ mod tests {
                     "Status",
                     [("Active", vec![("since", "String")]), ("Inactive", vec![])],
                 )
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.enum_match_expr(
                         t.enum_variant_with_fields(
                             "Status",

@@ -270,14 +270,29 @@ pub(crate) enum ParseErrorKind {
     #[error("Import path must have at least two segments: module::Name")]
     ImportPathTooShort,
 
-    #[error("Default values are not allowed on view parameters")]
-    DefaultValueNotAllowedOnView,
+    #[error("Default values are not allowed on page parameters")]
+    DefaultValueNotAllowedOnPage,
 
-    #[error("Expected a 'body' block")]
+    #[error("Expected a 'fn body() -> Fragment' member")]
     ExpectedPageBodyBlock,
 
-    #[error("Rest parameters are not allowed on views")]
-    RestParamNotAllowedOnView,
+    #[error("Expected 'fn head' or 'fn body'")]
+    ExpectedPageMember,
+
+    #[error("Unknown page member '{name}': expected 'head' or 'body'")]
+    UnknownPageMember { name: CheapString },
+
+    #[error("Duplicate page member '{name}'")]
+    DuplicatePageMember { name: CheapString },
+
+    #[error("Page member '{name}' cannot have parameters")]
+    PageMemberHasParameters { name: CheapString },
+
+    #[error("Page member '{name}' must return Fragment")]
+    PageMemberMustReturnFragment { name: CheapString },
+
+    #[error("Rest parameters are not allowed on pages")]
+    RestParamNotAllowedOnPage,
 
     #[error("Examples annotations are not allowed on function parameters")]
     ExamplesNotAllowedOnFunction,

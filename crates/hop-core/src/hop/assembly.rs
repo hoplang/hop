@@ -60,7 +60,14 @@ impl AssembledPageDeclaration {
             .append(BoxDoc::text(") {"))
             .append(
                 BoxDoc::line()
-                    .append(self.body.to_doc())
+                    .append(BoxDoc::text("fn body() -> Fragment {"))
+                    .append(
+                        BoxDoc::line()
+                            .append(self.body.to_doc())
+                            .nest(2)
+                            .append(BoxDoc::line()),
+                    )
+                    .append(BoxDoc::text("}"))
                     .nest(2)
                     .append(BoxDoc::line()),
             )

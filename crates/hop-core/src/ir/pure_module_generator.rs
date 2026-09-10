@@ -96,7 +96,7 @@ pub fn random_module_with_test_view(u: &mut Unstructured<'_>) -> (PureModule, Ty
 
 fn random_module_inner(
     u: &mut Unstructured<'_>,
-    single_test_view: bool,
+    single_test_page: bool,
 ) -> (PureModule, TypeRegistry) {
     let mut g = PureGenerator {
         u,
@@ -187,15 +187,15 @@ fn random_module_inner(
         });
     }
 
-    // Generate views
-    if single_test_view {
-        bodies = bodies.view_no_params("Test", |b| g.expr(b, &Type::Fragment, DEPTH));
+    // Generate pages
+    if single_test_page {
+        bodies = bodies.page_no_params("Test", |b| g.expr(b, &Type::Fragment, DEPTH));
     } else {
         for i in 0..g.count(1..=3) {
             let params: Vec<(String, String)> = (0..g.count(0..=3))
                 .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
                 .collect();
-            bodies = bodies.view(
+            bodies = bodies.page(
                 &format!("V{i}"),
                 params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
                 |b| g.expr(b, &Type::Fragment, DEPTH),

@@ -437,16 +437,18 @@ mod tests {
                   value: Bool,
                 }
 
-                view Test {
-                  <for {f in [Flag {value: true}]}>
-                    <match {f}>
-                      <case {Flag {value: b}}>
-                        <if {b || false}>
-                          yes
-                        </if>
-                      </case>
-                    </match>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {f in [Flag {value: true}]}>
+                      <match {f}>
+                        <case {Flag {value: b}}>
+                          <if {b || false}>
+                            yes
+                          </if>
+                        </case>
+                      </match>
+                    </for>
+                  }
                 }
             "#},
             "yes",
@@ -511,16 +513,18 @@ mod tests {
                   n: Int,
                 }
 
-                view Test {
-                  <for {c in [Count {n: 57}]}>
-                    <match {c}>
-                      <case {Count {n: v}}>
-                        <if {v == 57}>
-                          eq
-                        </if>
-                      </case>
-                    </match>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {c in [Count {n: 57}]}>
+                      <match {c}>
+                        <case {Count {n: v}}>
+                          <if {v == 57}>
+                            eq
+                          </if>
+                        </case>
+                      </match>
+                    </for>
+                  }
                 }
             "#},
             "eq",
@@ -585,14 +589,16 @@ mod tests {
                   value: Bool,
                 }
 
-                view Test {
-                  <for {f in [Flag {value: true}]}>
-                    <match {f}>
-                      <case {Flag {value: b}}>
-                        {match b {true => "yes", false => "no"}}
-                      </case>
-                    </match>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {f in [Flag {value: true}]}>
+                      <match {f}>
+                        <case {Flag {value: b}}>
+                          {match b {true => "yes", false => "no"}}
+                        </case>
+                      </match>
+                    </for>
+                  }
                 }
             "#},
             "yes",
@@ -651,21 +657,23 @@ mod tests {
                   value: Bool,
                 }
 
-                view Test {
-                  <for {f in [Flag {value: true}]}>
-                    <match {f}>
-                      <case {Flag {value: b}}>
-                        <match {b}>
-                          <case {true}>
-                            yes
-                          </case>
-                          <case {false}>
-                            no
-                          </case>
-                        </match>
-                      </case>
-                    </match>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {f in [Flag {value: true}]}>
+                      <match {f}>
+                        <case {Flag {value: b}}>
+                          <match {b}>
+                            <case {true}>
+                              yes
+                            </case>
+                            <case {false}>
+                              no
+                            </case>
+                          </match>
+                        </case>
+                      </match>
+                    </for>
+                  }
                 }
             "#},
             "yes",
@@ -732,16 +740,18 @@ mod tests {
                   value: Bool,
                 }
 
-                view Test {
-                  <for {f in [Flag {value: true}]}>
-                    <match {f}>
-                      <case {Flag {value: b}}>
-                        <if {b}>
-                          yes
-                        </if>
-                      </case>
-                    </match>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {f in [Flag {value: true}]}>
+                      <match {f}>
+                        <case {Flag {value: b}}>
+                          <if {b}>
+                            yes
+                          </if>
+                        </case>
+                      </match>
+                    </for>
+                  }
                 }
             "#},
             "yes",
@@ -811,8 +821,10 @@ mod tests {
                   </button>
                 }
 
-                view Test {
-                  <Button label="Hi" id="submit"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Button label="Hi" id="submit"/>
+                  }
                 }
             "#},
             r#"<button class="btn" id="submit">Hi</button>"#,
@@ -889,8 +901,10 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <First n={1} title="x"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <First n={1} title="x"/>
+                  }
                 }
             "#},
             r#"<div>x</div><div>d</div>"#,
@@ -998,8 +1012,10 @@ mod tests {
                   </section>
                 }
 
-                view Test {
-                  <Card title="Hi" id="x" data-k="v"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card title="Hi" id="x" data-k="v"/>
+                  }
                 }
             "#},
             r#"<section><h1>Hi</h1><div id="x" data-k="v"></div></section>"#,
@@ -1070,8 +1086,10 @@ mod tests {
                   </if>
                 }
 
-                view Test {
-                  <Wrapper show={true} id="x"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrapper show={true} id="x"/>
+                  }
                 }
             "#},
             r#"<div id="x"></div>"#,
@@ -1130,8 +1148,10 @@ mod tests {
                   </button>
                 }
 
-                view Test {
-                  <Button disabled/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Button disabled/>
+                  }
                 }
             "#},
             r#"<button disabled></button>"#,
@@ -1190,8 +1210,10 @@ mod tests {
                   </match>
                 }
 
-                view Test {
-                  <Wrapper show={true} id="x"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrapper show={true} id="x"/>
+                  }
                 }
             "#},
             r#"<div id="x"></div>"#,
@@ -1250,8 +1272,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Panel title={"a'b<c&d"}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Panel title={"a'b<c&d"}/>
+                  }
                 }
             "#},
             r#"<div title="a&#39;b&lt;c&amp;d"></div>"#,
@@ -1302,8 +1326,10 @@ mod tests {
                   <img ...rest>
                 }
 
-                view Test {
-                  <Icon src="a.png" alt="a"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Icon src="a.png" alt="a"/>
+                  }
                 }
             "#},
             r#"<img src="a.png" alt="a">"#,
@@ -1353,8 +1379,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <A/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <A/>
+                  }
                 }
             "#},
             r#"<div></div>"#,
@@ -1407,10 +1435,12 @@ mod tests {
                   </button>
                 }
 
-                view Test {
-                  <Button class="p-2" data-foo="bar">
-                    Hi
-                  </Button>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Button class="p-2" data-foo="bar">
+                      Hi
+                    </Button>
+                  }
                 }
             "#},
             r#"<button class="p-2" data-foo="bar">Hi</button>"#,
@@ -1474,10 +1504,12 @@ mod tests {
                   </button>
                 }
 
-                view Test {
-                  <Button data-x="y">
-                    Hi
-                  </Button>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Button data-x="y">
+                      Hi
+                    </Button>
+                  }
                 }
             "#},
             r#"<button class="builtin" data-x="y">Hi</button>"#,
@@ -1534,8 +1566,10 @@ mod tests {
                   </svg>
                 }
 
-                view Test {
-                  <Svg viewBox="0 0 100 100"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Svg viewBox="0 0 100 100"/>
+                  }
                 }
             "#},
             r#"<svg viewBox="0 0 100 100"></svg>"#,
@@ -1590,8 +1624,10 @@ mod tests {
                   <Card ...rest/>
                 }
 
-                view Test {
-                  <Wrapper title="hi"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrapper title="hi"/>
+                  }
                 }
             "#},
             r#"<div>hi</div>"#,
@@ -1650,8 +1686,10 @@ mod tests {
                   <Card title="explicit" ...rest/>
                 }
 
-                view Test {
-                  <Wrapper/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrapper/>
+                  }
                 }
             "#},
             r#"<div>explicit</div>"#,
@@ -1711,10 +1749,12 @@ mod tests {
                   <Card ...rest/>
                 }
 
-                view Test {
-                  <let {user: User = User {name: "Ada"}}>
-                    <Wrapper user={user}/>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {user: User = User {name: "Ada"}}>
+                      <Wrapper user={user}/>
+                    </let>
+                  }
                 }
             "#},
             r#"<div>Ada</div>"#,
@@ -1769,17 +1809,19 @@ mod tests {
                   value: String,
                 }
 
-                view Test {
-                  <let {v_1: String = "outer"}>
-                    <for {f in [Flag {value: "x"}]}>
-                      <match {f}>
-                        <case {Flag {value: b}}>
-                          {v_1}
-                          {b}
-                        </case>
-                      </match>
-                    </for>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {v_1: String = "outer"}>
+                      <for {f in [Flag {value: "x"}]}>
+                        <match {f}>
+                          <case {Flag {value: b}}>
+                            {v_1}
+                            {b}
+                          </case>
+                        </match>
+                      </for>
+                    </let>
+                  }
                 }
             "#},
             r#"outerx"#,
@@ -1852,8 +1894,10 @@ mod tests {
                   <Bar ...rest/>
                 }
 
-                view Test {
-                  <Baz name="n" title="t"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Baz name="n" title="t"/>
+                  }
                 }
             "#},
             r#"<div>n<div>t</div></div>"#,
@@ -1928,8 +1972,10 @@ mod tests {
                   <Card ...rest/>
                 }
 
-                view Test {
-                  <Wrapper count={3}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrapper count={3}/>
+                  }
                 }
             "#},
             r#"<div>positive</div>"#,
@@ -1999,8 +2045,10 @@ mod tests {
                   <A ...rest/>
                 }
 
-                view Test {
-                  <B count={3} data-foo="bar"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <B count={3} data-foo="bar"/>
+                  }
                 }
             "#},
             r#"<div data-foo="bar">positive</div>"#,
@@ -2071,10 +2119,12 @@ mod tests {
                   <Bar ...rest/>
                 }
 
-                view Test {
-                  <Baz>
-                    deep
-                  </Baz>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Baz>
+                      deep
+                    </Baz>
+                  }
                 }
             "#},
             r#"<div>deep</div>"#,
@@ -2150,8 +2200,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Outer class="x"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Outer class="x"/>
+                  }
                 }
             "#},
             r#"<div class="x"><span class="x"></span></div>"#,
@@ -2234,10 +2286,12 @@ mod tests {
                   </Foo>
                 }
 
-                view Test {
-                  <Button class="primary">
-                    click
-                  </Button>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Button class="primary">
+                      click
+                    </Button>
+                  }
                 }
             "#},
             r#"<div class="primary">click</div>"#,
@@ -2313,8 +2367,10 @@ mod tests {
                   <Inner ...rest/>
                 }
 
-                view Test {
-                  <Wrapper class="y"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrapper class="y"/>
+                  }
                 }
             "#},
             r#"<span class="y"></span>"#,
@@ -2386,8 +2442,10 @@ mod tests {
                   <A class={class} ...rest/>
                 }
 
-                view Test {
-                  <B class="main"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <B class="main"/>
+                  }
                 }
             "#},
             r#"<div class="main"></div>"#,
@@ -2453,8 +2511,10 @@ mod tests {
                   <A class={class} ...rest/>
                 }
 
-                view Test {
-                  <B/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <B/>
+                  }
                 }
             "#},
             r#"<div class="b"></div>"#,
@@ -2518,8 +2578,10 @@ mod tests {
                   <A ...rest/>
                 }
 
-                view Test {
-                  <B/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <B/>
+                  }
                 }
             "#},
             r#"<span>x</span>"#,
@@ -2585,8 +2647,10 @@ mod tests {
                   <Mid ...rest/>
                 }
 
-                view Test {
-                  <Top/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Top/>
+                  }
                 }
             "#},
             r#"<span>x</span>"#,
@@ -2652,8 +2716,10 @@ mod tests {
                   <Inner title="a" ...rest/>
                 }
 
-                view Test {
-                  <Wrapper lang="en"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrapper lang="en"/>
+                  }
                 }
             "#},
             r#"<span title="a" lang="en"></span>"#,
@@ -2719,8 +2785,10 @@ mod tests {
                   <A ...rest/>
                 }
 
-                view Test {
-                  <B tabindex={2} data-x="y"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <B tabindex={2} data-x="y"/>
+                  }
                 }
             "#},
             r#"<div data-x="y">focusable</div>"#,
@@ -2777,25 +2845,27 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {inner: Option[String] = Some("hello")}>
-                    <let {
-                      mapped: Option[String] = match inner {
-                        Some(x) => Some(x),
-                        None => None,
-                      },
-                    }>
-                      <match {mapped}>
-                        <case {Some(result)}>
-                          mapped:
-                          {result}
-                        </case>
-                        <case {None}>
-                          was-none
-                        </case>
-                      </match>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {inner: Option[String] = Some("hello")}>
+                      <let {
+                        mapped: Option[String] = match inner {
+                          Some(x) => Some(x),
+                          None => None,
+                        },
+                      }>
+                        <match {mapped}>
+                          <case {Some(result)}>
+                            mapped:
+                            {result}
+                          </case>
+                          <case {None}>
+                            was-none
+                          </case>
+                        </match>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "mapped:hello",
@@ -2856,15 +2926,17 @@ mod tests {
                   y: String,
                 }
 
-                view Test {
-                  <let {
-                    result: String = match Point {x: "hi", y: "bye"} {
-                      Point {x: a, y: _} => a,
-                    },
-                  }>
-                    got:
-                    {result}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      result: String = match Point {x: "hi", y: "bye"} {
+                        Point {x: a, y: _} => a,
+                      },
+                    }>
+                      got:
+                      {result}
+                    </let>
+                  }
                 }
             "#},
             "got:hi",
@@ -2911,15 +2983,17 @@ mod tests {
                   y: String,
                 }
 
-                view Test {
-                  <let {
-                    result: String = match Point {x: "hi", y: "bye"} {
-                      p => p.x,
-                    },
-                  }>
-                    got:
-                    {result}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      result: String = match Point {x: "hi", y: "bye"} {
+                        p => p.x,
+                      },
+                    }>
+                      got:
+                      {result}
+                    </let>
+                  }
                 }
             "#},
             "got:hi",
@@ -2961,16 +3035,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <match {Some("hi")}>
-                    <case {Some(x)}>
-                      got:
-                      {x}
-                    </case>
-                    <case {None}>
-                      none
-                    </case>
-                  </match>
+                page Test() {
+                  fn body() -> Fragment {
+                    <match {Some("hi")}>
+                      <case {Some(x)}>
+                        got:
+                        {x}
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
+                  }
                 }
             "#},
             "got:hi",
@@ -3019,23 +3095,25 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {inner_opt: Option[String] = Some("inner")}>
-                    <let {
-                      outer: Option[String] = Some(
-                        match inner_opt {Some(x) => x, None => "default"}
-                      ),
-                    }>
-                      <match {outer}>
-                        <case {Some(s)}>
-                          {s}
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {inner_opt: Option[String] = Some("inner")}>
+                      <let {
+                        outer: Option[String] = Some(
+                          match inner_opt {Some(x) => x, None => "default"}
+                        ),
+                      }>
+                        <match {outer}>
+                          <case {Some(s)}>
+                            {s}
+                          </case>
+                          <case {None}>
+                            none
+                          </case>
+                        </match>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "inner",
@@ -3096,11 +3174,13 @@ mod tests {
                   </let>
                 }
 
-                view Test {
-                  <>
-                    <Tag text="a"/>
-                    <Tag text="b"/>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <Tag text="a"/>
+                      <Tag text="b"/>
+                    </>
+                  }
                 }
             "#},
             "<div>a</div><div>b</div>",
@@ -3155,12 +3235,14 @@ mod tests {
                   </p>
                 }
 
-                view Test {
-                  <let {a: String = "A"}>
-                    <let {b: String = "B"}>
-                      <Swap a={b} b={a}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {a: String = "A"}>
+                      <let {b: String = "B"}>
+                        <Swap a={b} b={a}/>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "<p>B A</p>",
@@ -3220,10 +3302,12 @@ mod tests {
                   </for>
                 }
 
-                view Test {
-                  <let {item: String = "outer"}>
-                    <Rows items={["a", "b"]} id={item}/>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {item: String = "outer"}>
+                      <Rows items={["a", "b"]} id={item}/>
+                    </let>
+                  }
                 }
             "#},
             r#"<div id="outer">a</div><div id="outer">b</div>"#,
@@ -3288,15 +3372,17 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    <let {flag: Bool = true}>
-                      {match flag {true => "yes", false => "no"}}
-                    </let>
-                    <let {other: Bool = false}>
-                      {match other {true => "YES", false => "NO"}}
-                    </let>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <let {flag: Bool = true}>
+                        {match flag {true => "yes", false => "no"}}
+                      </let>
+                      <let {other: Bool = false}>
+                        {match other {true => "YES", false => "NO"}}
+                      </let>
+                    </>
+                  }
                 }
             "#},
             "yesNO",
@@ -3344,15 +3430,17 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {path: String = ""}>
-                    <let {git_ref: String = "main"}>
-                      {match path == "" {
-                        true => git_ref,
-                        _ => git_ref + " - " + path,
-                      }}
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {path: String = ""}>
+                      <let {git_ref: String = "main"}>
+                        {match path == "" {
+                          true => git_ref,
+                          _ => git_ref + " - " + path,
+                        }}
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "main",
@@ -3398,16 +3486,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    <let {opt1: Option[String] = Some("hi")}>
-                      {match opt1 {Some(_) => "some", None => "none"}}
-                    </let>
-                    ,
-                    <let {opt2: Option[String] = None}>
-                      {match opt2 {Some(_) => "SOME", None => "NONE"}}
-                    </let>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <let {opt1: Option[String] = Some("hi")}>
+                        {match opt1 {Some(_) => "some", None => "none"}}
+                      </let>
+                      ,
+                      <let {opt2: Option[String] = None}>
+                        {match opt2 {Some(_) => "SOME", None => "NONE"}}
+                      </let>
+                    </>
+                  }
                 }
             "#},
             "some,NONE",
@@ -3456,26 +3546,28 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    <let {outer: Bool = true}>
-                      <let {inner: Bool = false}>
-                        {match outer {
-                          true => match inner {true => "TT", false => "TF"},
-                          false => "F",
-                        }}
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <let {outer: Bool = true}>
+                        <let {inner: Bool = false}>
+                          {match outer {
+                            true => match inner {true => "TT", false => "TF"},
+                            false => "F",
+                          }}
+                        </let>
                       </let>
-                    </let>
-                    ,
-                    <let {outer2: Bool = false}>
-                      <let {inner2: Bool = true}>
-                        {match outer2 {
-                          true => match inner2 {true => "TT", false => "TF"},
-                          false => "F",
-                        }}
+                      ,
+                      <let {outer2: Bool = false}>
+                        <let {inner2: Bool = true}>
+                          {match outer2 {
+                            true => match inner2 {true => "TT", false => "TF"},
+                            false => "F",
+                          }}
+                        </let>
                       </let>
-                    </let>
-                  </>
+                    </>
+                  }
                 }
             "#},
             "TF,F",
@@ -3532,10 +3624,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {num: Int = -123}>
-                    {num.to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {num: Int = -123}>
+                      {num.to_string()}
+                    </let>
+                  }
                 }
             "#},
             "-123",
@@ -3574,10 +3668,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {temp: Float = -2.9}>
-                    {temp.to_int().to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {temp: Float = -2.9}>
+                      {temp.to_int().to_string()}
+                    </let>
+                  }
                 }
             "#},
             "-2",
@@ -3616,10 +3712,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <h1>
-                    Hello, World!
-                  </h1>
+                page Test() {
+                  fn body() -> Fragment {
+                    <h1>
+                      Hello, World!
+                    </h1>
+                  }
                 }
             "#},
             "<h1>Hello, World!</h1>",
@@ -3659,14 +3757,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    <!-- This is a comment -->
-                    <h1>
-                      Hello, World!
-                    </h1>
-                    <!-- Another comment -->
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <!-- This is a comment -->
+                      <h1>
+                        Hello, World!
+                      </h1>
+                      <!-- Another comment -->
+                    </>
+                  }
                 }
             "#},
             "<h1>Hello, World!</h1>",
@@ -3706,13 +3806,15 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {name: String = "Alice"}>
-                    Hello,
-                    {" "}
-                    {name}
-                    !
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {name: String = "Alice"}>
+                      Hello,
+                      {" "}
+                      {name}
+                      !
+                    </let>
+                  }
                 }
             "#},
             "Hello, Alice!",
@@ -3754,15 +3856,17 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {show: Bool = true}>
-                    <if {show}>
-                      Visible
-                    </if>
-                    <if {!show}>
-                      Hidden
-                    </if>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {show: Bool = true}>
+                      <if {show}>
+                        Visible
+                      </if>
+                      <if {!show}>
+                        Hidden
+                      </if>
+                    </let>
+                  }
                 }
             "#},
             "Visible",
@@ -3814,11 +3918,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {item in ["a", "b", "c"]}>
-                    {item}
-                    ,
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {item in ["a", "b", "c"]}>
+                      {item}
+                      ,
+                    </for>
+                  }
                 }
             "#},
             "a,b,c,",
@@ -3861,12 +3967,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {v in [true]}>
-                    <if {v}>
-                      x
-                    </if>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {v in [true]}>
+                      <if {v}>
+                        x
+                      </if>
+                    </for>
+                  }
                 }
             "#},
             "x",
@@ -3919,11 +4027,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {i in 1..=3}>
-                    {i.to_string()}
-                    ,
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {i in 1..=3}>
+                      {i.to_string()}
+                      ,
+                    </for>
+                  }
                 }
             "#},
             "1,2,3,",
@@ -3966,10 +4076,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {x in 0..=5}>
-                    {x.to_string()}
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {x in 0..=5}>
+                      {x.to_string()}
+                    </for>
+                  }
                 }
             "#},
             "012345",
@@ -4010,16 +4122,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {i in 1..=2}>
-                    <for {j in 1..=2}>
-                      (
-                      {i.to_string()}
-                      ,
-                      {j.to_string()}
-                      )
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {i in 1..=2}>
+                      <for {j in 1..=2}>
+                        (
+                        {i.to_string()}
+                        ,
+                        {j.to_string()}
+                        )
+                      </for>
                     </for>
-                  </for>
+                  }
                 }
             "#},
             "(1,1)(1,2)(2,1)(2,2)",
@@ -4072,10 +4186,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {text: String = "<div>Hello & world</div>"}>
-                    {text}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {text: String = "<div>Hello & world</div>"}>
+                      {text}
+                    </let>
+                  }
                 }
             "#},
             "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
@@ -4114,10 +4230,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {message: String = "Hello from let"}>
-                    {message}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {message: String = "Hello from let"}>
+                      {message}
+                    </let>
+                  }
                 }
             "#},
             "Hello from let",
@@ -4156,18 +4274,20 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {name in ["a", "b"]}>
-                    <span class={
-                      join!(
-                        name,
-                        "px-2",
-                        "py-1",
-                      )
-                    }>
-                      {name + "!" + "?"}
-                    </span>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {name in ["a", "b"]}>
+                      <span class={
+                        join!(
+                          name,
+                          "px-2",
+                          "py-1",
+                        )
+                      }>
+                        {name + "!" + "?"}
+                      </span>
+                    </for>
+                  }
                 }
             "#},
             "<span class=\"a px-2 py-1\">a!?</span><span class=\"b px-2 py-1\">b!?</span>",
@@ -4218,12 +4338,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {first: String = "Hello"}>
-                    <let {second: String = " World"}>
-                      {first + second}
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {first: String = "Hello"}>
+                      <let {second: String = " World"}>
+                        {first + second}
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "Hello World",
@@ -4264,14 +4386,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {item in ["A", "B"]}>
-                    <let {prefix: String = "["}>
-                      {prefix}
-                      {item}
-                      ]
-                    </let>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {item in ["A", "B"]}>
+                      <let {prefix: String = "["}>
+                        {prefix}
+                        {item}
+                        ]
+                      </let>
+                    </for>
+                  }
                 }
             "#},
             "[A][B]",
@@ -4318,10 +4442,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <if {"foo" + "bar" == "foobar"}>
-                    equals
-                  </if>
+                page Test() {
+                  fn body() -> Fragment {
+                    <if {"foo" + "bar" == "foobar"}>
+                      equals
+                    </if>
+                  }
                 }
             "#},
             "equals",
@@ -4364,15 +4490,17 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    <if {3 < 5}>
-                      3 &lt; 5
-                    </if>
-                    <if {10 < 2}>
-                      10 &lt; 2
-                    </if>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <if {3 < 5}>
+                        3 &lt; 5
+                      </if>
+                      <if {10 < 2}>
+                        10 &lt; 2
+                      </if>
+                    </>
+                  }
                 }
             "#},
             "3 &lt; 5",
@@ -4422,10 +4550,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <if {1.5 < 2.5}>
-                    1.5 &lt; 2.5
-                  </if>
+                page Test() {
+                  fn body() -> Fragment {
+                    <if {1.5 < 2.5}>
+                      1.5 &lt; 2.5
+                    </if>
+                  }
                 }
             "#},
             "1.5 &lt; 2.5",
@@ -4468,17 +4598,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {flag: Bool = true}>
-                    <match {flag}>
-                      <case {true}>
-                        yes
-                      </case>
-                      <case {false}>
-                        no
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {flag: Bool = true}>
+                      <match {flag}>
+                        <case {true}>
+                          yes
+                        </case>
+                        <case {false}>
+                          no
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "yes",
@@ -4524,17 +4656,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {flag: Bool = false}>
-                    <match {flag}>
-                      <case {true}>
-                        yes
-                      </case>
-                      <case {false}>
-                        no
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {flag: Bool = false}>
+                      <match {flag}>
+                        <case {true}>
+                          yes
+                        </case>
+                        <case {false}>
+                          no
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "no",
@@ -4585,13 +4719,15 @@ mod tests {
                   age: Int,
                 }
 
-                view Test {
-                  <let {person: Person = Person {name: "Alice", age: 30}}>
-                    {person.name}
-                    <if {person.age == 30}>
-                      :30
-                    </if>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {person: Person = Person {name: "Alice", age: 30}}>
+                      {person.name}
+                      <if {person.age == 30}>
+                        :30
+                      </if>
+                    </let>
+                  }
                 }
             "#},
             "Alice:30",
@@ -4642,12 +4778,14 @@ mod tests {
                   second: String,
                 }
 
-                view Test {
-                  <let {pair: Pair = Pair {second: "b", first: "a"}}>
-                    {pair.first}
-                    -
-                    {pair.second}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {pair: Pair = Pair {second: "b", first: "a"}}>
+                      {pair.first}
+                      -
+                      {pair.second}
+                    </let>
+                  }
                 }
             "#},
             "a-b",
@@ -4695,16 +4833,18 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {shape = Shape::Rect {height: "b", width: "a"}}>
-                    <match {shape}>
-                      <case {Shape::Rect {width: w, height: h}}>
-                        {w}
-                        -
-                        {h}
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {shape = Shape::Rect {height: "b", width: "a"}}>
+                      <match {shape}>
+                        <case {Shape::Rect {width: w, height: h}}>
+                          {w}
+                          -
+                          {h}
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "a-b",
@@ -4763,17 +4903,19 @@ mod tests {
                   address: Address,
                 }
 
-                view Test {
-                  <let {
-                    person: Person = Person {
-                      name: "Alice",
-                      address: Address {city: "Paris", zip: "75001"},
-                    },
-                  }>
-                    {person.name}
-                    ,
-                    {person.address.city}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      person: Person = Person {
+                        name: "Alice",
+                        address: Address {city: "Paris", zip: "75001"},
+                      },
+                    }>
+                      {person.name}
+                      ,
+                      {person.address.city}
+                    </let>
+                  }
                 }
             "#},
             "Alice,Paris",
@@ -4817,14 +4959,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {a: Int = 3}>
-                    <let {b: Int = 7}>
-                      <if {a + b == 10}>
-                        correct
-                      </if>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {a: Int = 3}>
+                      <let {b: Int = 7}>
+                        <if {a + b == 10}>
+                          correct
+                        </if>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "correct",
@@ -4871,14 +5015,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {a: Int = 10}>
-                    <let {b: Int = 3}>
-                      <if {a - b == 7}>
-                        correct
-                      </if>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {a: Int = 10}>
+                      <let {b: Int = 3}>
+                        <if {a - b == 7}>
+                          correct
+                        </if>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "correct",
@@ -4925,14 +5071,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {a: Int = 4}>
-                    <let {b: Int = 5}>
-                      <if {a * b == 20}>
-                        correct
-                      </if>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {a: Int = 4}>
+                      <let {b: Int = 5}>
+                        <if {a * b == 20}>
+                          correct
+                        </if>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "correct",
@@ -4979,14 +5127,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {a: Bool = true}>
-                    <let {b: Bool = true}>
-                      <if {a && b}>
-                        TT
-                      </if>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {a: Bool = true}>
+                      <let {b: Bool = true}>
+                        <if {a && b}>
+                          TT
+                        </if>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "TT",
@@ -5033,14 +5183,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {a: Bool = false}>
-                    <let {b: Bool = true}>
-                      <if {a || b}>
-                        FT
-                      </if>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {a: Bool = false}>
+                      <let {b: Bool = true}>
+                        <if {a || b}>
+                          FT
+                        </if>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "FT",
@@ -5087,18 +5239,20 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    <if {3 <= 5}>
-                      A
-                    </if>
-                    <if {5 <= 5}>
-                      B
-                    </if>
-                    <if {7 <= 5}>
-                      C
-                    </if>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <if {3 <= 5}>
+                        A
+                      </if>
+                      <if {5 <= 5}>
+                        B
+                      </if>
+                      <if {7 <= 5}>
+                        C
+                      </if>
+                    </>
+                  }
                 }
             "#},
             "AB",
@@ -5155,17 +5309,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {some_val: Option[String] = Some("hello")}>
-                    <match {some_val}>
-                      <case {Some(s)}>
-                        {s}
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {some_val: Option[String] = Some("hello")}>
+                      <match {some_val}>
+                        <case {Some(s)}>
+                          {s}
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "hello",
@@ -5213,17 +5369,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {opt: Option[String] = Some("hello")}>
-                    <match {opt}>
-                      <case {Some(_)}>
-                        some
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {opt: Option[String] = Some("hello")}>
+                      <match {opt}>
+                        <case {Some(_)}>
+                          some
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "some",
@@ -5269,23 +5427,25 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {inner_opt: Option[String] = Some("inner")}>
-                    <let {
-                      outer: Option[String] = Some(
-                        match inner_opt {Some(x) => x, None => "default"}
-                      ),
-                    }>
-                      <match {outer}>
-                        <case {Some(s)}>
-                          {s}
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {inner_opt: Option[String] = Some("inner")}>
+                      <let {
+                        outer: Option[String] = Some(
+                          match inner_opt {Some(x) => x, None => "default"}
+                        ),
+                      }>
+                        <match {outer}>
+                          <case {Some(s)}>
+                            {s}
+                          </case>
+                          <case {None}>
+                            none
+                          </case>
+                        </match>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "inner",
@@ -5338,19 +5498,21 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {item in [Some("a"), None, Some("b")]}>
-                    <match {item}>
-                      <case {Some(s)}>
-                        [
-                        {s}
-                        ]
-                      </case>
-                      <case {None}>
-                        [_]
-                      </case>
-                    </match>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {item in [Some("a"), None, Some("b")]}>
+                      <match {item}>
+                        <case {Some(s)}>
+                          [
+                          {s}
+                          ]
+                        </case>
+                        <case {None}>
+                          [_]
+                        </case>
+                      </match>
+                    </for>
+                  }
                 }
             "#},
             "[a][_][b]",
@@ -5427,14 +5589,16 @@ mod tests {
                   Blue,
                 }
 
-                view Test {
-                  <let {color: Color = Color::Green}>
-                    {match color {
-                      Color::Red => "red",
-                      Color::Green => "green",
-                      Color::Blue => "blue",
-                    }}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {color: Color = Color::Green}>
+                      {match color {
+                        Color::Red => "red",
+                        Color::Green => "green",
+                        Color::Blue => "blue",
+                      }}
+                    </let>
+                  }
                 }
             "#},
             "green",
@@ -5483,20 +5647,22 @@ mod tests {
                   Blue,
                 }
 
-                view Test {
-                  <let {color: Color = Color::Blue}>
-                    <match {color}>
-                      <case {Color::Red}>
-                        red
-                      </case>
-                      <case {Color::Green}>
-                        green
-                      </case>
-                      <case {Color::Blue}>
-                        blue
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {color: Color = Color::Blue}>
+                      <match {color}>
+                        <case {Color::Red}>
+                          red
+                        </case>
+                        <case {Color::Green}>
+                          green
+                        </case>
+                        <case {Color::Blue}>
+                          blue
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "blue",
@@ -5554,21 +5720,23 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {
-                    result: Outcome = Outcome::Success {value: "hello"},
-                  }>
-                    <match {result}>
-                      <case {Outcome::Success {value: v}}>
-                        Ok:
-                        {v}
-                      </case>
-                      <case {Outcome::Failure {message: m}}>
-                        Err:
-                        {m}
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      result: Outcome = Outcome::Success {value: "hello"},
+                    }>
+                      <match {result}>
+                        <case {Outcome::Success {value: v}}>
+                          Ok:
+                          {v}
+                        </case>
+                        <case {Outcome::Failure {message: m}}>
+                          Err:
+                          {m}
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "Ok:hello",
@@ -5627,18 +5795,20 @@ mod tests {
                   Plain,
                 }
 
-                view Test {
-                  <let {item: Item = Item::Tagged {tag: "news"}}>
-                    <match {item}>
-                      <case {Item::Tagged {tag: t}}>
-                        tag:
-                        {t}
-                      </case>
-                      <case {Item::Plain}>
-                        plain
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {item: Item = Item::Tagged {tag: "news"}}>
+                      <match {item}>
+                        <case {Item::Tagged {tag: t}}>
+                          tag:
+                          {t}
+                        </case>
+                        <case {Item::Plain}>
+                          plain
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "tag:news",
@@ -5696,16 +5866,18 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {
-                    result: String = match Outcome::Success {value: "hi"} {
-                      Outcome::Success {value: v} => v,
-                      Outcome::Failure {message: m} => m,
-                    },
-                  }>
-                    got:
-                    {result}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      result: String = match Outcome::Success {value: "hi"} {
+                        Outcome::Success {value: v} => v,
+                        Outcome::Failure {message: m} => m,
+                      },
+                    }>
+                      got:
+                      {result}
+                    </let>
+                  }
                 }
             "#},
             "got:hi",
@@ -5774,8 +5946,10 @@ mod tests {
                   </match>
                 }
 
-                view Test {
-                  <Badge color={Color::Green}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Badge color={Color::Green}/>
+                  }
                 }
             "#},
             "green",
@@ -5834,23 +6008,25 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {
-                    result: Outcome = Outcome::Failure {
-                      message: "something went wrong",
-                    },
-                  }>
-                    <match {result}>
-                      <case {Outcome::Success {value: v}}>
-                        Ok:
-                        {v}
-                      </case>
-                      <case {Outcome::Failure {message: m}}>
-                        Err:
-                        {m}
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      result: Outcome = Outcome::Failure {
+                        message: "something went wrong",
+                      },
+                    }>
+                      <match {result}>
+                        <case {Outcome::Success {value: v}}>
+                          Ok:
+                          {v}
+                        </case>
+                        <case {Outcome::Failure {message: m}}>
+                          Err:
+                          {m}
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "Err:something went wrong",
@@ -5912,25 +6088,27 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {
-                    resp: Response = Response::Win {
-                      code: "200",
-                      body: "OK",
-                    },
-                  }>
-                    <match {resp}>
-                      <case {Response::Win {code: c, body: b}}>
-                        {c}
-                        :
-                        {b}
-                      </case>
-                      <case {Response::Lose {reason: r}}>
-                        Error:
-                        {r}
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      resp: Response = Response::Win {
+                        code: "200",
+                        body: "OK",
+                      },
+                    }>
+                      <match {resp}>
+                        <case {Response::Win {code: c, body: b}}>
+                          {c}
+                          :
+                          {b}
+                        </case>
+                        <case {Response::Lose {reason: r}}>
+                          Error:
+                          {r}
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "200:OK",
@@ -5994,21 +6172,23 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {
-                    result: Outcome = Outcome::Success {value: "hello"},
-                  }>
-                    <match {result}>
-                      <case {Outcome::Success {value}}>
-                        Ok:
-                        {value}
-                      </case>
-                      <case {Outcome::Failure {message}}>
-                        Err:
-                        {message}
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      result: Outcome = Outcome::Success {value: "hello"},
+                    }>
+                      <match {result}>
+                        <case {Outcome::Success {value}}>
+                          Ok:
+                          {value}
+                        </case>
+                        <case {Outcome::Failure {message}}>
+                          Err:
+                          {message}
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "Ok:hello",
@@ -6060,10 +6240,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {items: Array[String] = ["a", "b", "c"]}>
-                    {items.len().to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {items: Array[String] = ["a", "b", "c"]}>
+                      {items.len().to_string()}
+                    </let>
+                  }
                 }
             "#},
             "3",
@@ -6102,10 +6284,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {items: Array[String] = []}>
-                    {items.len().to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {items: Array[String] = []}>
+                      {items.len().to_string()}
+                    </let>
+                  }
                 }
             "#},
             "0",
@@ -6144,12 +6328,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {items: Array[String] = ["x", "y"]}>
-                    <if {items.len() == 2}>
-                      has two
-                    </if>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {items: Array[String] = ["x", "y"]}>
+                      <if {items.len() == 2}>
+                        has two
+                      </if>
+                    </let>
+                  }
                 }
             "#},
             "has two",
@@ -6194,12 +6380,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {items: Array[String] = ["a"]}>
-                    <if {items.len() < 5}>
-                      less than 5
-                    </if>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {items: Array[String] = ["a"]}>
+                      <if {items.len() < 5}>
+                        less than 5
+                      </if>
+                    </let>
+                  }
                 }
             "#},
             "less than 5",
@@ -6244,10 +6432,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>
-                    {numbers.len().to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>
+                      {numbers.len().to_string()}
+                    </let>
+                  }
                 }
             "#},
             "5",
@@ -6286,17 +6476,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {items: Array[String] = []}>
-                    <match {items.is_empty()}>
-                      <case {true}>
-                        empty
-                      </case>
-                      <case {false}>
-                        not empty
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {items: Array[String] = []}>
+                      <match {items.is_empty()}>
+                        <case {true}>
+                          empty
+                        </case>
+                        <case {false}>
+                          not empty
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "empty",
@@ -6344,17 +6536,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {items: Array[String] = ["a", "b"]}>
-                    <match {items.is_empty()}>
-                      <case {true}>
-                        empty
-                      </case>
-                      <case {false}>
-                        not empty
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {items: Array[String] = ["a", "b"]}>
+                      <match {items.is_empty()}>
+                        <case {true}>
+                          empty
+                        </case>
+                        <case {false}>
+                          not empty
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "not empty",
@@ -6402,17 +6596,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {numbers: Array[Int] = [1, 2, 3]}>
-                    <match {numbers.is_empty()}>
-                      <case {true}>
-                        no numbers
-                      </case>
-                      <case {false}>
-                        has numbers
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {numbers: Array[Int] = [1, 2, 3]}>
+                      <match {numbers.is_empty()}>
+                        <case {true}>
+                          no numbers
+                        </case>
+                        <case {false}>
+                          has numbers
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "has numbers",
@@ -6460,10 +6656,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {count: Int = 42}>
-                    {count.to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {count: Int = 42}>
+                      {count.to_string()}
+                    </let>
+                  }
                 }
             "#},
             "42",
@@ -6502,10 +6700,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {num: Int = 0}>
-                    {num.to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {num: Int = 0}>
+                      {num.to_string()}
+                    </let>
+                  }
                 }
             "#},
             "0",
@@ -6544,10 +6744,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {count: Int = 5}>
-                    {"Count: " + count.to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {count: Int = 5}>
+                      {"Count: " + count.to_string()}
+                    </let>
+                  }
                 }
             "#},
             "Count: 5",
@@ -6586,10 +6788,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {price: Float = 3.7}>
-                    {price.to_int().to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {price: Float = 3.7}>
+                      {price.to_int().to_string()}
+                    </let>
+                  }
                 }
             "#},
             "3",
@@ -6628,10 +6832,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {num: Float = 5.0}>
-                    {num.to_int().to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {num: Float = 5.0}>
+                      {num.to_int().to_string()}
+                    </let>
+                  }
                 }
             "#},
             "5",
@@ -6670,10 +6876,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {_ in 0..=2}>
-                    x
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {_ in 0..=2}>
+                      x
+                    </for>
+                  }
                 }
             "#},
             "xxx",
@@ -6714,13 +6922,15 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {x in ["a", "b"]}>
-                    <if {false}>
-                      {x}
-                    </if>
-                    y
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {x in ["a", "b"]}>
+                      <if {false}>
+                        {x}
+                      </if>
+                      y
+                    </for>
+                  }
                 }
             "#},
             "yy",
@@ -6768,12 +6978,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {items: Array[String] = ["a", "b", "c"]}>
-                    <for {_ in items}>
-                      *
-                    </for>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {items: Array[String] = ["a", "b", "c"]}>
+                      <for {_ in items}>
+                        *
+                      </for>
+                    </let>
+                  }
                 }
             "#},
             "***",
@@ -6816,12 +7028,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {_ in 0..=1}>
-                    <for {_ in 0..=2}>
-                      .
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {_ in 0..=1}>
+                      <for {_ in 0..=2}>
+                        .
+                      </for>
                     </for>
-                  </for>
+                  }
                 }
             "#},
             "......",
@@ -6866,12 +7080,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {i in 1..=2}>
-                    <for {_ in 0..=1}>
-                      {i.to_string()}
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {i in 1..=2}>
+                      <for {_ in 0..=1}>
+                        {i.to_string()}
+                      </for>
                     </for>
-                  </for>
+                  }
                 }
             "#},
             "1122",
@@ -6916,10 +7132,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    {[1, 2, 3].len().to_string()}
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      {[1, 2, 3].len().to_string()}
+                    </>
+                  }
                 }
             "#},
             "3",
@@ -6956,10 +7174,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    {(1 + 2).to_string()}
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      {(1 + 2).to_string()}
+                    </>
+                  }
                 }
             "#},
             "3",
@@ -6996,10 +7216,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    {42.to_string()}
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      {42.to_string()}
+                    </>
+                  }
                 }
             "#},
             "42",
@@ -7036,22 +7258,24 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {
-                    nested: Option[Option[String]] = Some(Some("deep")),
-                  }>
-                    <match {nested}>
-                      <case {Some(Some(x))}>
-                        {x}
-                      </case>
-                      <case {Some(None)}>
-                        some-none
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      nested: Option[Option[String]] = Some(Some("deep")),
+                    }>
+                      <match {nested}>
+                        <case {Some(Some(x))}>
+                          {x}
+                        </case>
+                        <case {Some(None)}>
+                          some-none
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "deep",
@@ -7106,17 +7330,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {opt: Option[String] = Some("x")}>
-                    <match {opt}>
-                      <case {Some(_)}>
-                        some
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {opt: Option[String] = Some("x")}>
+                      <match {opt}>
+                        <case {Some(_)}>
+                          some
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "some",
@@ -7162,17 +7388,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {opt: Option[String] = None}>
-                    <match {opt}>
-                      <case {Some(_)}>
-                        some
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {opt: Option[String] = None}>
+                      <match {opt}>
+                        <case {Some(_)}>
+                          some
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "none",
@@ -7218,10 +7446,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {opt: Option[String] = Some("x")}>
-                    {match opt {Some(_) => "some", None => "none"}}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {opt: Option[String] = Some("x")}>
+                      {match opt {Some(_) => "some", None => "none"}}
+                    </let>
+                  }
                 }
             "#},
             "some",
@@ -7263,10 +7493,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {opt: Option[String] = None}>
-                    {match opt {Some(_) => "some", None => "none"}}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {opt: Option[String] = None}>
+                      {match opt {Some(_) => "some", None => "none"}}
+                    </let>
+                  }
                 }
             "#},
             "none",
@@ -7309,20 +7541,22 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {nested: Option[Option[String]] = Some(Some("x"))}>
-                    <match {nested}>
-                      <case {Some(Some(_))}>
-                        some-some
-                      </case>
-                      <case {Some(None)}>
-                        some-none
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {nested: Option[Option[String]] = Some(Some("x"))}>
+                      <match {nested}>
+                        <case {Some(Some(_))}>
+                          some-some
+                        </case>
+                        <case {Some(None)}>
+                          some-none
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "some-some",
@@ -7376,17 +7610,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {nested: Option[Option[String]] = Some(Some("x"))}>
-                    <match {nested}>
-                      <case {Some(_)}>
-                        some
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {nested: Option[Option[String]] = Some(Some("x"))}>
+                      <match {nested}>
+                        <case {Some(_)}>
+                          some
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "some",
@@ -7442,19 +7678,21 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {
-                    result: Outcome = Outcome::Success {value: "hello"},
-                  }>
-                    <match {result}>
-                      <case {Outcome::Success {value: _}}>
-                        ok
-                      </case>
-                      <case {Outcome::Failure {message: _}}>
-                        err
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      result: Outcome = Outcome::Success {value: "hello"},
+                    }>
+                      <match {result}>
+                        <case {Outcome::Success {value: _}}>
+                          ok
+                        </case>
+                        <case {Outcome::Failure {message: _}}>
+                          err
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "ok",
@@ -7510,19 +7748,21 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {
-                    result: Outcome = Outcome::Failure {message: "failed"},
-                  }>
-                    <match {result}>
-                      <case {Outcome::Success {value: _}}>
-                        ok
-                      </case>
-                      <case {Outcome::Failure {message: _}}>
-                        err
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      result: Outcome = Outcome::Failure {message: "failed"},
+                    }>
+                      <match {result}>
+                        <case {Outcome::Success {value: _}}>
+                          ok
+                        </case>
+                        <case {Outcome::Failure {message: _}}>
+                          err
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "err",
@@ -7574,15 +7814,17 @@ mod tests {
                   age: Int,
                 }
 
-                view Test {
-                  <let {person: Person = Person {name: "Alice", age: 30}}>
-                    <match {person}>
-                      <case {Person {name: _, age: a}}>
-                        age:
-                        {a.to_string()}
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {person: Person = Person {name: "Alice", age: 30}}>
+                      <match {person}>
+                        <case {Person {name: _, age: a}}>
+                          age:
+                          {a.to_string()}
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "age:30",
@@ -7627,27 +7869,29 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {
-                    deep: Option[Option[Option[String]]] = Some(
-                      Some(Some("value"))
-                    ),
-                  }>
-                    <match {deep}>
-                      <case {Some(Some(Some(_)))}>
-                        triple-some
-                      </case>
-                      <case {Some(Some(None))}>
-                        double-some-none
-                      </case>
-                      <case {Some(None)}>
-                        single-some-none
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      deep: Option[Option[Option[String]]] = Some(
+                        Some(Some("value"))
+                      ),
+                    }>
+                      <match {deep}>
+                        <case {Some(Some(Some(_)))}>
+                          triple-some
+                        </case>
+                        <case {Some(Some(None))}>
+                          double-some-none
+                        </case>
+                        <case {Some(None)}>
+                          single-some-none
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "triple-some",
@@ -7726,28 +7970,30 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {
-                    result: Outer = Outer::Success {
-                      value: Inner::Success {value: "deep"},
-                    },
-                  }>
-                    <match {result}>
-                      <case {Outer::Success {
-                        value: Inner::Success {value: _},
-                      }}>
-                        ok-ok
-                      </case>
-                      <case {Outer::Success {
-                        value: Inner::Failure {message: _},
-                      }}>
-                        ok-err
-                      </case>
-                      <case {Outer::Failure {message: _}}>
-                        err
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      result: Outer = Outer::Success {
+                        value: Inner::Success {value: "deep"},
+                      },
+                    }>
+                      <match {result}>
+                        <case {Outer::Success {
+                          value: Inner::Success {value: _},
+                        }}>
+                          ok-ok
+                        </case>
+                        <case {Outer::Success {
+                          value: Inner::Failure {message: _},
+                        }}>
+                          ok-err
+                        </case>
+                        <case {Outer::Failure {message: _}}>
+                          err
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "ok-ok",
@@ -7801,10 +8047,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {b: Bool = true}>
-                    {match b {true => "t", _ => "f"}}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {b: Bool = true}>
+                      {match b {true => "t", _ => "f"}}
+                    </let>
+                  }
                 }
             "#},
             "t",
@@ -7847,10 +8095,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {b: Bool = false}>
-                    {match b {true => "t", _ => "f"}}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {b: Bool = false}>
+                      {match b {true => "t", _ => "f"}}
+                    </let>
+                  }
                 }
             "#},
             "f",
@@ -7892,24 +8142,26 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <match {Some("outer")}>
-                    <case {Some(x)}>
-                      <match {Some("inner")}>
-                        <case {Some(y)}>
-                          {x}
-                          :
-                          {y}
-                        </case>
-                        <case {None}>
-                          inner-none
-                        </case>
-                      </match>
-                    </case>
-                    <case {None}>
-                      outer-none
-                    </case>
-                  </match>
+                page Test() {
+                  fn body() -> Fragment {
+                    <match {Some("outer")}>
+                      <case {Some(x)}>
+                        <match {Some("inner")}>
+                          <case {Some(y)}>
+                            {x}
+                            :
+                            {y}
+                          </case>
+                          <case {None}>
+                            inner-none
+                          </case>
+                        </match>
+                      </case>
+                      <case {None}>
+                        outer-none
+                      </case>
+                    </match>
+                  }
                 }
             "#},
             "outer:inner",
@@ -7970,27 +8222,29 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {
-                    outer: Option[Option[String]] = Some(Some("hello")),
-                  }>
-                    <match {outer}>
-                      <case {Some(inner)}>
-                        <match {inner}>
-                          <case {Some(value)}>
-                            value:
-                            {value}
-                          </case>
-                          <case {None}>
-                            inner-none
-                          </case>
-                        </match>
-                      </case>
-                      <case {None}>
-                        outer-none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      outer: Option[Option[String]] = Some(Some("hello")),
+                    }>
+                      <match {outer}>
+                        <case {Some(inner)}>
+                          <match {inner}>
+                            <case {Some(value)}>
+                              value:
+                              {value}
+                            </case>
+                            <case {None}>
+                              inner-none
+                            </case>
+                          </match>
+                        </case>
+                        <case {None}>
+                          outer-none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "value:hello",
@@ -8048,15 +8302,17 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <div class={
-                    join!(
-                      "foo",
-                      "bar",
-                      "baz",
-                    )
-                  }>
-                  </div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div class={
+                      join!(
+                        "foo",
+                        "bar",
+                        "baz",
+                      )
+                    }>
+                    </div>
+                  }
                 }
             "#},
             r#"<div class="foo bar baz"></div>"#,
@@ -8098,10 +8354,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {delete: String = "removed"}>
-                    {delete}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {delete: String = "removed"}>
+                      {delete}
+                    </let>
+                  }
                 }
             "#},
             "removed",
@@ -8140,11 +8398,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {class: String = "my-class"}>
-                    <div class={class}>
-                    </div>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {class: String = "my-class"}>
+                      <div class={class}>
+                      </div>
+                    </let>
+                  }
                 }
             "#},
             r#"<div class="my-class"></div>"#,
@@ -8188,12 +8448,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {switch: String = "on"}>
-                    <span>
-                      {switch}
-                    </span>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {switch: String = "on"}>
+                      <span>
+                        {switch}
+                      </span>
+                    </let>
+                  }
                 }
             "#},
             r#"<span>on</span>"#,
@@ -8235,10 +8497,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {type: String = "button"}>
-                    <input type={type}>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {type: String = "button"}>
+                      <input type={type}>
+                    </let>
+                  }
                 }
             "#},
             r#"<input type="button">"#,
@@ -8281,10 +8545,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <label for="email">
-                    Email
-                  </label>
+                page Test() {
+                  fn body() -> Fragment {
+                    <label for="email">
+                      Email
+                    </label>
+                  }
                 }
             "#},
             r#"<label for="email">Email</label>"#,
@@ -8321,20 +8587,24 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn view_parameter_named_typescript_reserved_keyword() {
+    fn page_parameter_named_typescript_reserved_keyword() {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    ok
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      ok
+                    </>
+                  }
                 }
 
-                view Other(delete: String) {
-                  <>
-                    {delete}
-                  </>
+                page Other(delete: String) {
+                  fn body() -> Fragment {
+                    <>
+                      {delete}
+                    </>
+                  }
                 }
             "#},
             "ok",
@@ -8373,20 +8643,24 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn view_parameter_named_rust_keyword() {
+    fn page_parameter_named_rust_keyword() {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    ok
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      ok
+                    </>
+                  }
                 }
 
-                view Other(type: String) {
-                  <>
-                    {type}
-                  </>
+                page Other(type: String) {
+                  fn body() -> Fragment {
+                    <>
+                      {type}
+                    </>
+                  }
                 }
             "#},
             "ok",
@@ -8438,8 +8712,10 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <Countdown delete={3}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Countdown delete={3}/>
+                  }
                 }
             "#},
             "3210",
@@ -8505,8 +8781,10 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <Countdown type={3}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Countdown type={3}/>
+                  }
                 }
             "#},
             "3210",
@@ -8563,14 +8841,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    {"\""}
-                    {"\\"}
-                    {"foo\nbar"}
-                    {"foo\tbar"}
-                    {"C:\\Users\\name"}
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      {"\""}
+                      {"\\"}
+                      {"foo\nbar"}
+                      {"foo\tbar"}
+                      {"C:\\Users\\name"}
+                    </>
+                  }
                 }
             "#},
             "&quot;\\foo\nbarfoo\tbarC:\\Users\\name",
@@ -8617,21 +8897,23 @@ mod tests {
                   value: String,
                 }
 
-                view Test {
-                  <let {
-                    items: Array[Item] = [
-                      Item {name: "a", value: "1"},
-                      Item {name: "b", value: "2"},
-                    ],
-                  }>
-                    <for {item in items}>
-                      <let {n: String = item.name}>
-                        [
-                        {n}
-                        ]
-                      </let>
-                    </for>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      items: Array[Item] = [
+                        Item {name: "a", value: "1"},
+                        Item {name: "b", value: "2"},
+                      ],
+                    }>
+                      <for {item in items}>
+                        <let {n: String = item.name}>
+                          [
+                          {n}
+                          ]
+                        </let>
+                      </for>
+                    </let>
+                  }
                 }
             "#},
             "[a][b]",
@@ -8697,27 +8979,29 @@ mod tests {
                   address: Address,
                 }
 
-                view Test {
-                  <let {
-                    people: Array[Person] = [
-                      Person {
-                        name: "alice",
-                        address: Address {city: "paris"},
-                      },
-                      Person {
-                        name: "bob",
-                        address: Address {city: "london"},
-                      },
-                    ],
-                  }>
-                    <for {person in people}>
-                      <let {city: String = person.address.city}>
-                        [
-                        {city}
-                        ]
-                      </let>
-                    </for>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      people: Array[Person] = [
+                        Person {
+                          name: "alice",
+                          address: Address {city: "paris"},
+                        },
+                        Person {
+                          name: "bob",
+                          address: Address {city: "london"},
+                        },
+                      ],
+                    }>
+                      <for {person in people}>
+                        <let {city: String = person.address.city}>
+                          [
+                          {city}
+                          ]
+                        </let>
+                      </for>
+                    </let>
+                  }
                 }
             "#},
             "[paris][london]",
@@ -8789,21 +9073,23 @@ mod tests {
                   label: String,
                 }
 
-                view Test {
-                  <let {
-                    sources: Array[Source] = [
-                      Source {name: "a", value: "1"},
-                      Source {name: "b", value: "2"},
-                    ],
-                  }>
-                    <for {src in sources}>
-                      <let {target: Target = Target {label: src.name}}>
-                        [
-                        {target.label}
-                        ]
-                      </let>
-                    </for>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      sources: Array[Source] = [
+                        Source {name: "a", value: "1"},
+                        Source {name: "b", value: "2"},
+                      ],
+                    }>
+                      <for {src in sources}>
+                        <let {target: Target = Target {label: src.name}}>
+                          [
+                          {target.label}
+                          ]
+                        </let>
+                      </for>
+                    </let>
+                  }
                 }
             "#},
             "[a][b]",
@@ -8864,28 +9150,30 @@ mod tests {
                   name: String,
                 }
 
-                view Test {
-                  <let {
-                    items: Array[Item] = [
-                      Item {name: "a"},
-                      Item {name: "b"},
-                    ],
-                  }>
-                    <for {item in items}>
-                      <let {opt: Option[String] = Some(item.name)}>
-                        <match {opt}>
-                          <case {Some(s)}>
-                            [
-                            {s}
-                            ]
-                          </case>
-                          <case {None}>
-                            [-]
-                          </case>
-                        </match>
-                      </let>
-                    </for>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      items: Array[Item] = [
+                        Item {name: "a"},
+                        Item {name: "b"},
+                      ],
+                    }>
+                      <for {item in items}>
+                        <let {opt: Option[String] = Some(item.name)}>
+                          <match {opt}>
+                            <case {Some(s)}>
+                              [
+                              {s}
+                              ]
+                            </case>
+                            <case {None}>
+                              [-]
+                            </case>
+                          </match>
+                        </let>
+                      </for>
+                    </let>
+                  }
                 }
             "#},
             "[a][b]",
@@ -8954,16 +9242,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {a: String = "hello"}>
-                    <let {b: String = "world"}>
-                      <let {c: String = a + " " + b}>
-                        [
-                        {c}
-                        ]
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {a: String = "hello"}>
+                      <let {b: String = "world"}>
+                        <let {c: String = a + " " + b}>
+                          [
+                          {c}
+                          ]
+                        </let>
                       </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "[hello world]",
@@ -9012,12 +9302,14 @@ mod tests {
                   message: String,
                 }
 
-                view Test {
-                  <let {
-                    g: Greeting = Greeting {message: "hello" + " world"},
-                  }>
-                    {g.message}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      g: Greeting = Greeting {message: "hello" + " world"},
+                    }>
+                      {g.message}
+                    </let>
+                  }
                 }
             "#},
             "hello world",
@@ -9056,14 +9348,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {n: Int = 42}>
-                    <let {s: String = n.to_string()}>
-                      [
-                      {s}
-                      ]
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {n: Int = 42}>
+                      <let {s: String = n.to_string()}>
+                        [
+                        {s}
+                        ]
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "[42]",
@@ -9110,14 +9404,16 @@ mod tests {
                   items: Array[String],
                 }
 
-                view Test {
-                  <let {c: Container = Container {items: ["a", "b"]}}>
-                    <for {item in c.items}>
-                      [
-                      {item}
-                      ]
-                    </for>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {c: Container = Container {items: ["a", "b"]}}>
+                      <for {item in c.items}>
+                        [
+                        {item}
+                        ]
+                      </for>
+                    </let>
+                  }
                 }
             "#},
             "[a][b]",
@@ -9168,12 +9464,14 @@ mod tests {
                   text: String,
                 }
 
-                view Test {
-                  <let {l: Label = Label {text: 42.to_string()}}>
-                    [
-                    {l.text}
-                    ]
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {l: Label = Label {text: 42.to_string()}}>
+                      [
+                      {l.text}
+                      ]
+                    </let>
+                  }
                 }
             "#},
             "[42]",
@@ -9222,16 +9520,18 @@ mod tests {
                   inner: Inner,
                 }
 
-                view Test {
-                  <let {
-                    o: Outer = Outer {inner: Inner {values: ["x", "y"]}},
-                  }>
-                    <for {v in o.inner.values}>
-                      [
-                      {v}
-                      ]
-                    </for>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      o: Outer = Outer {inner: Inner {values: ["x", "y"]}},
+                    }>
+                      <for {v in o.inner.values}>
+                        [
+                        {v}
+                        ]
+                      </for>
+                    </let>
+                  }
                 }
             "#},
             "[x][y]",
@@ -9282,14 +9582,16 @@ mod tests {
                   a: String,
                 }
 
-                view Test {
-                  <let {x: Foo = Foo {a: "hello"}, y: Foo = Foo {a: x.a}}>
-                    [
-                    {x.a}
-                    ][
-                    {y.a}
-                    ]
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {x: Foo = Foo {a: "hello"}, y: Foo = Foo {a: x.a}}>
+                      [
+                      {x.a}
+                      ][
+                      {y.a}
+                      ]
+                    </let>
+                  }
                 }
             "#},
             "[hello][hello]",
@@ -9338,21 +9640,23 @@ mod tests {
                   a: String,
                 }
 
-                view Test {
-                  <let {x: Foo = Foo {a: "hello"}, b: Bool = true}>
-                    <let {
-                      result: String = match b {
-                        true => x.a,
-                        false => "default",
-                      },
-                    }>
-                      [
-                      {result}
-                      ][
-                      {x.a}
-                      ]
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {x: Foo = Foo {a: "hello"}, b: Bool = true}>
+                      <let {
+                        result: String = match b {
+                          true => x.a,
+                          false => "default",
+                        },
+                      }>
+                        [
+                        {result}
+                        ][
+                        {x.a}
+                        ]
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "[hello][hello]",
@@ -9407,12 +9711,14 @@ mod tests {
                   children: Array[TreeNode],
                 }
 
-                view Test {
-                  <let {
-                    leaf: TreeNode = TreeNode {value: "leaf", children: []},
-                  }>
-                    {leaf.value}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      leaf: TreeNode = TreeNode {value: "leaf", children: []},
+                    }>
+                      {leaf.value}
+                    </let>
+                  }
                 }
             "#},
             "leaf",
@@ -9456,10 +9762,12 @@ mod tests {
                   next: Option[Node],
                 }
 
-                view Test {
-                  <let {node: Node = Node {value: "first", next: None}}>
-                    {node.value}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {node: Node = Node {value: "first", next: None}}>
+                      {node.value}
+                    </let>
+                  }
                 }
             "#},
             "first",
@@ -9510,17 +9818,19 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {e: Expr = Expr::Literal {value: "42"}}>
-                    <match {e}>
-                      <case {Expr::Literal {value: v}}>
-                        {v}
-                      </case>
-                      <case {Expr::Neg {inner: _}}>
-                        neg
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {e: Expr = Expr::Literal {value: "42"}}>
+                      <match {e}>
+                        <case {Expr::Literal {value: v}}>
+                          {v}
+                        </case>
+                        <case {Expr::Neg {inner: _}}>
+                          neg
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "42",
@@ -9577,22 +9887,24 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {
-                    e: Expr = Expr::Neg {
-                      inner: Expr::Literal {value: "42"},
-                    },
-                  }>
-                    <match {e}>
-                      <case {Expr::Literal {value: v}}>
-                        lit:
-                        {v}
-                      </case>
-                      <case {Expr::Neg {inner: _}}>
-                        neg
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      e: Expr = Expr::Neg {
+                        inner: Expr::Literal {value: "42"},
+                      },
+                    }>
+                      <match {e}>
+                        <case {Expr::Literal {value: v}}>
+                          lit:
+                          {v}
+                        </case>
+                        <case {Expr::Neg {inner: _}}>
+                          neg
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "neg",
@@ -9650,10 +9962,12 @@ mod tests {
                   owner: Option[Folder],
                 }
 
-                view Test {
-                  <let {f: Folder = Folder {name: "root", parent: None}}>
-                    {f.name}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {f: Folder = Folder {name: "root", parent: None}}>
+                      {f.name}
+                    </let>
+                  }
                 }
             "#},
             "root",
@@ -9712,17 +10026,19 @@ mod tests {
                   back: Option[Expr],
                 }
 
-                view Test {
-                  <let {leaf: Leaf = Leaf {back: None}}>
-                    <match {leaf.back}>
-                      <case {Some(_)}>
-                        some
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {leaf: Leaf = Leaf {back: None}}>
+                      <match {leaf.back}>
+                        <case {Some(_)}>
+                          some
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "none",
@@ -9775,12 +10091,14 @@ mod tests {
                   next: Option[Node],
                 }
 
-                view Test {
-                  <let {tail: Option[Node] = None}>
-                    <let {head: Node = Node {value: "head", next: tail}}>
-                      {head.value}
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {tail: Option[Node] = None}>
+                      <let {head: Node = Node {value: "head", next: tail}}>
+                        {head.value}
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "head",
@@ -9826,20 +10144,22 @@ mod tests {
                   next: Option[Node],
                 }
 
-                view Test {
-                  <let {leaf: Node = Node {value: "leaf", next: None}}>
-                    <let {
-                      head: Node = Node {
-                        value: "head",
-                        next: match true {
-                          true => Some(leaf),
-                          false => None,
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {leaf: Node = Node {value: "leaf", next: None}}>
+                      <let {
+                        head: Node = Node {
+                          value: "head",
+                          next: match true {
+                            true => Some(leaf),
+                            false => None,
+                          },
                         },
-                      },
-                    }>
-                      {head.value}
+                      }>
+                        {head.value}
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "head",
@@ -9896,10 +10216,12 @@ mod tests {
                   next: Option[Option[Node]],
                 }
 
-                view Test {
-                  <let {n: Node = Node {value: "node", next: None}}>
-                    {n.value}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {n: Node = Node {value: "node", next: None}}>
+                      {n.value}
+                    </let>
+                  }
                 }
             "#},
             "node",
@@ -9946,29 +10268,31 @@ mod tests {
                   next: Option[Option[Node]],
                 }
 
-                view Test {
-                  <let {
-                    n: Node = Node {
-                      value: "head",
-                      next: Some(Some(Node {value: "tail", next: None})),
-                    },
-                  }>
-                    <match {n.next}>
-                      <case {Some(inner)}>
-                        <match {inner}>
-                          <case {Some(m)}>
-                            {m.value}
-                          </case>
-                          <case {None}>
-                            inner-none
-                          </case>
-                        </match>
-                      </case>
-                      <case {None}>
-                        outer-none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      n: Node = Node {
+                        value: "head",
+                        next: Some(Some(Node {value: "tail", next: None})),
+                      },
+                    }>
+                      <match {n.next}>
+                        <case {Some(inner)}>
+                          <match {inner}>
+                            <case {Some(m)}>
+                              {m.value}
+                            </case>
+                            <case {None}>
+                              inner-none
+                            </case>
+                          </match>
+                        </case>
+                        <case {None}>
+                          outer-none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "tail",
@@ -10042,19 +10366,21 @@ mod tests {
                   held: Option[Node],
                 }
 
-                view Test {
-                  <let {n: Node = Node {value: "node", next: None}}>
-                    <let {h: Holder = Holder {held: n.next}}>
-                      <match {h.held}>
-                        <case {Some(_)}>
-                          some
-                        </case>
-                        <case {None}>
-                          {n.value}
-                        </case>
-                      </match>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {n: Node = Node {value: "node", next: None}}>
+                      <let {h: Holder = Holder {held: n.next}}>
+                        <match {h.held}>
+                          <case {Some(_)}>
+                            some
+                          </case>
+                          <case {None}>
+                            {n.value}
+                          </case>
+                        </match>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "node",
@@ -10116,18 +10442,20 @@ mod tests {
                   a: Option[A],
                 }
 
-                view Test {
-                  <let {x: A = A {b: B {name: "b", a: None}}}>
-                    {x.b.name}
-                    <match {x.b.a}>
-                      <case {Some(_)}>
-                        some
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {x: A = A {b: B {name: "b", a: None}}}>
+                      {x.b.name}
+                      <match {x.b.a}>
+                        <case {Some(_)}>
+                          some
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "bnone",
@@ -10192,33 +10520,35 @@ mod tests {
                   rest: Option[Tree],
                 }
 
-                view Test {
-                  <let {
-                    tree: Tree = Tree::Node {
-                      label: "a",
-                      left: Tree::Leaf,
-                      right: None,
-                    },
-                  }>
-                    <match {tree}>
-                      <case {Tree::Node {label: l, left: lt, right: r}}>
-                        <let {s: Step = Step {t: lt, rest: r}}>
-                          {l}
-                          <match {s.rest}>
-                            <case {Some(_)}>
-                              some
-                            </case>
-                            <case {None}>
-                              none
-                            </case>
-                          </match>
-                        </let>
-                      </case>
-                      <case {Tree::Leaf}>
-                        empty
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      tree: Tree = Tree::Node {
+                        label: "a",
+                        left: Tree::Leaf,
+                        right: None,
+                      },
+                    }>
+                      <match {tree}>
+                        <case {Tree::Node {label: l, left: lt, right: r}}>
+                          <let {s: Step = Step {t: lt, rest: r}}>
+                            {l}
+                            <match {s.rest}>
+                              <case {Some(_)}>
+                                some
+                              </case>
+                              <case {None}>
+                                none
+                              </case>
+                            </match>
+                          </let>
+                        </case>
+                        <case {Tree::Leaf}>
+                          empty
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "anone",
@@ -10290,30 +10620,32 @@ mod tests {
                   Anonymous,
                 }
 
-                view Test {
-                  <let {
-                    c: Contact = Contact::Email {
-                      address: "a@b.c",
-                      label: Some("work"),
-                    },
-                  }>
-                    <match {c}>
-                      <case {Contact::Email {address: a, label: l}}>
-                        {a}
-                        <match {l}>
-                          <case {Some(s)}>
-                            {s}
-                          </case>
-                          <case {None}>
-                            no-label
-                          </case>
-                        </match>
-                      </case>
-                      <case {Contact::Anonymous}>
-                        anon
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      c: Contact = Contact::Email {
+                        address: "a@b.c",
+                        label: Some("work"),
+                      },
+                    }>
+                      <match {c}>
+                        <case {Contact::Email {address: a, label: l}}>
+                          {a}
+                          <match {l}>
+                            <case {Some(s)}>
+                              {s}
+                            </case>
+                            <case {None}>
+                              no-label
+                            </case>
+                          </match>
+                        </case>
+                        <case {Contact::Anonymous}>
+                          anon
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "a@b.cwork",
@@ -10382,8 +10714,10 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <Greeting name="World"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Greeting name="World"/>
+                  }
                 }
             "#},
             "Hello, World!",
@@ -10438,12 +10772,14 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Card title="Hello">
-                    <p>
-                      world
-                    </p>
-                  </Card>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card title="Hello">
+                      <p>
+                        world
+                      </p>
+                    </Card>
+                  }
                 }
             "#},
             r#"<div class="card"><h2>Hello</h2><p>world</p></div>"#,
@@ -10513,12 +10849,14 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Outer>
-                    <p>
-                      hello
-                    </p>
-                  </Outer>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Outer>
+                      <p>
+                        hello
+                      </p>
+                    </Outer>
+                  }
                 }
             "#},
             r#"<div class="outer"><div class="inner"><p>hello</p></div></div>"#,
@@ -10599,16 +10937,18 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Layout>
-                    <Header title="Welcome"/>
-                    <main>
-                      <p>
-                        Hello world
-                      </p>
-                    </main>
-                    <Footer/>
-                  </Layout>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Layout>
+                      <Header title="Welcome"/>
+                      <main>
+                        <p>
+                          Hello world
+                        </p>
+                      </main>
+                      <Footer/>
+                    </Layout>
+                  }
                 }
             "#},
             r#"<div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>"#,
@@ -10693,12 +11033,14 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <Repeat>
-                    <span>
-                      hi
-                    </span>
-                  </Repeat>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Repeat>
+                      <span>
+                        hi
+                      </span>
+                    </Repeat>
+                  }
                 }
             "#},
             r#"<div class="first"><span>hi</span></div><div class="second"><span>hi</span></div>"#,
@@ -10784,15 +11126,17 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <let {
-                    list: Node = Node {
-                      value: "a",
-                      next: Some(Node {value: "b", next: None}),
-                    },
-                  }>
-                    <NodeView node={list}/>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      list: Node = Node {
+                        value: "a",
+                        next: Some(Node {value: "b", next: None}),
+                      },
+                    }>
+                      <NodeView node={list}/>
+                    </let>
+                  }
                 }
             "#},
             "<strong>a</strong><strong>b</strong>",
@@ -10899,20 +11243,22 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <let {
-                    list: Node = Node {
-                      value: "a",
-                      next: Some(
-                        Node {
-                          value: "b",
-                          next: Some(Node {value: "c", next: None}),
-                        }
-                      ),
-                    },
-                  }>
-                    <NodeView node={list}/>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {
+                      list: Node = Node {
+                        value: "a",
+                        next: Some(
+                          Node {
+                            value: "b",
+                            next: Some(Node {value: "c", next: None}),
+                          }
+                        ),
+                      },
+                    }>
+                      <NodeView node={list}/>
+                    </let>
+                  }
                 }
             "#},
             "<span>a</span><span>b</span><span>c</span>",
@@ -11008,8 +11354,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Card/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card/>
+                  }
                 }
             "#},
             r#"<div>New card</div>"#,
@@ -11058,8 +11406,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Card title="Custom title"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card title="Custom title"/>
+                  }
                 }
             "#},
             r#"<div>Custom title</div>"#,
@@ -11115,8 +11465,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Card title="Hello"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card title="Hello"/>
+                  }
                 }
             "#},
             r#"<div>Hello - No subtitle</div>"#,
@@ -11179,8 +11531,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Card title="Hello" subtitle="World"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card title="Hello" subtitle="World"/>
+                  }
                 }
             "#},
             r#"<div>Hello - World</div>"#,
@@ -11248,8 +11602,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Card subtitle="Custom"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card subtitle="Custom"/>
+                  }
                 }
             "#},
             r#"<div>Default - Custom - End</div>"#,
@@ -11316,8 +11672,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Card title="Hello"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card title="Hello"/>
+                  }
                 }
             "#},
             r#"<div class="card"><h2>Hello</h2></div>"#,
@@ -11380,15 +11738,17 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <>
-                    <Card title="With">
-                      <p>
-                        body
-                      </p>
-                    </Card>
-                    <Card title="Without"/>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <Card title="With">
+                        <p>
+                          body
+                        </p>
+                      </Card>
+                      <Card title="Without"/>
+                    </>
+                  }
                 }
             "#},
             r#"<div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>"#,
@@ -11446,17 +11806,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {name: String = ""}>
-                    <match {name.is_empty()}>
-                      <case {true}>
-                        empty
-                      </case>
-                      <case {false}>
-                        not empty
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {name: String = ""}>
+                      <match {name.is_empty()}>
+                        <case {true}>
+                          empty
+                        </case>
+                        <case {false}>
+                          not empty
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "empty",
@@ -11504,17 +11866,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {name: String = "hello"}>
-                    <match {name.is_empty()}>
-                      <case {true}>
-                        empty
-                      </case>
-                      <case {false}>
-                        not empty
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {name: String = "hello"}>
+                      <match {name.is_empty()}>
+                        <case {true}>
+                          empty
+                        </case>
+                        <case {false}>
+                          not empty
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "not empty",
@@ -11562,17 +11926,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {value: Option[String] = Some("hello")}>
-                    <match {value.is_some()}>
-                      <case {true}>
-                        yes
-                      </case>
-                      <case {false}>
-                        no
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {value: Option[String] = Some("hello")}>
+                      <match {value.is_some()}>
+                        <case {true}>
+                          yes
+                        </case>
+                        <case {false}>
+                          no
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "yes",
@@ -11620,17 +11986,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {value: Option[String] = None}>
-                    <match {value.is_some()}>
-                      <case {true}>
-                        yes
-                      </case>
-                      <case {false}>
-                        no
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {value: Option[String] = None}>
+                      <match {value.is_some()}>
+                        <case {true}>
+                          yes
+                        </case>
+                        <case {false}>
+                          no
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "no",
@@ -11678,17 +12046,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {value: Option[String] = None}>
-                    <match {value.is_none()}>
-                      <case {true}>
-                        yes
-                      </case>
-                      <case {false}>
-                        no
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {value: Option[String] = None}>
+                      <match {value.is_none()}>
+                        <case {true}>
+                          yes
+                        </case>
+                        <case {false}>
+                          no
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "yes",
@@ -11736,17 +12106,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {value: Option[String] = Some("hello")}>
-                    <match {value.is_none()}>
-                      <case {true}>
-                        yes
-                      </case>
-                      <case {false}>
-                        no
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {value: Option[String] = Some("hello")}>
+                      <match {value.is_none()}>
+                        <case {true}>
+                          yes
+                        </case>
+                        <case {false}>
+                          no
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "no",
@@ -11794,12 +12166,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {o: Option[Bool] = None}>
-                    <if {true == o.is_none()}>
-                      x
-                    </if>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {o: Option[Bool] = None}>
+                      <if {true == o.is_none()}>
+                        x
+                      </if>
+                    </let>
+                  }
                 }
             "#},
             "x",
@@ -11844,10 +12218,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <if {"a".is_empty() == "b".is_empty()}>
-                    x
-                  </if>
+                page Test() {
+                  fn body() -> Fragment {
+                    <if {"a".is_empty() == "b".is_empty()}>
+                      x
+                    </if>
+                  }
                 }
             "#},
             "x",
@@ -11890,10 +12266,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    hello world
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      hello world
+                    </>
+                  }
                 }
             "#},
             "hello world",
@@ -11930,11 +12308,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <>
-                    hello
-                    world
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      hello
+                      world
+                    </>
+                  }
                 }
             "#},
             "hello world",
@@ -11994,16 +12374,18 @@ mod tests {
                   </match>
                 }
 
-                view Test {
-                  <>
-                    <RenderItem item={
-                      Item::Todo {label: "Buy milk", done: true}
-                    }/>
-                    ,
-                    <RenderItem item={
-                      Item::Todo {label: "Walk dog", done: false}
-                    }/>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <RenderItem item={
+                        Item::Todo {label: "Buy milk", done: true}
+                      }/>
+                      ,
+                      <RenderItem item={
+                        Item::Todo {label: "Walk dog", done: false}
+                      }/>
+                    </>
+                  }
                 }
             "#},
             "[x]Buy milk,[ ]Walk dog",
@@ -12093,14 +12475,16 @@ mod tests {
                   </match>
                 }
 
-                view Test {
-                  <>
-                    <Render time={TimeAgo::MinutesAgo {count: 1}}/>
-                    ,
-                    <Render time={TimeAgo::MinutesAgo {count: 5}}/>
-                    ,
-                    <Render time={TimeAgo::HoursAgo {count: 1}}/>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <Render time={TimeAgo::MinutesAgo {count: 1}}/>
+                      ,
+                      <Render time={TimeAgo::MinutesAgo {count: 5}}/>
+                      ,
+                      <Render time={TimeAgo::HoursAgo {count: 1}}/>
+                    </>
+                  }
                 }
             "#},
             "1 minute ago,5 minutes ago,1 hour ago",
@@ -12182,10 +12566,12 @@ mod tests {
                   </match>
                 }
 
-                view Test {
-                  <RenderCode block={
-                    CodeBlock::Snippet {language: "rust", code: "fn main()"}
-                  }/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <RenderCode block={
+                      CodeBlock::Snippet {language: "rust", code: "fn main()"}
+                    }/>
+                  }
                 }
             "#},
             "<code>fn main()</code>",
@@ -12259,10 +12645,12 @@ mod tests {
                   </match>
                 }
 
-                view Test {
-                  <Render el={
-                    ButtonElement::Button {disabled: false, type: "submit"}
-                  }/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Render el={
+                      ButtonElement::Button {disabled: false, type: "submit"}
+                    }/>
+                  }
                 }
             "#},
             r#"<button type="submit">btn</button>"#,
@@ -12330,40 +12718,42 @@ mod tests {
                   title: String,
                 }
 
-                view Test {
-                  <let {
-                    target: Option[Target] = Some(
-                      Target {id: "1", title: "hello"}
-                    ),
-                  }>
+                page Test() {
+                  fn body() -> Fragment {
                     <let {
-                      items: Array[Option[String]] = [
-                        match target {
-                          Some(t) => Some(t.title),
-                          None => None,
-                        },
-                      ],
+                      target: Option[Target] = Some(
+                        Target {id: "1", title: "hello"}
+                      ),
                     }>
-                      <for {item in items}>
-                        <match {item}>
-                          <case {Some(s)}>
-                            [
-                            {s}
-                            ]
+                      <let {
+                        items: Array[Option[String]] = [
+                          match target {
+                            Some(t) => Some(t.title),
+                            None => None,
+                          },
+                        ],
+                      }>
+                        <for {item in items}>
+                          <match {item}>
+                            <case {Some(s)}>
+                              [
+                              {s}
+                              ]
+                            </case>
+                            <case {None}>
+                            </case>
+                          </match>
+                        </for>
+                        <match {target}>
+                          <case {Some(t)}>
+                            {t.title}
                           </case>
                           <case {None}>
                           </case>
                         </match>
-                      </for>
-                      <match {target}>
-                        <case {Some(t)}>
-                          {t.title}
-                        </case>
-                        <case {None}>
-                        </case>
-                      </match>
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             "[hello]hello",
@@ -12448,8 +12838,10 @@ mod tests {
         check_with_asset_rewriter(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <img src={asset!("/logo.svg")}>
+                page Test() {
+                  fn body() -> Fragment {
+                    <img src={asset!("/logo.svg")}>
+                  }
                 }
             "#},
             Some(Arc::new(PrefixingAssetRewriter::new(
@@ -12493,8 +12885,10 @@ mod tests {
         check_with_asset_rewriter(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <img src={asset!("/logo.svg")}>
+                page Test() {
+                  fn body() -> Fragment {
+                    <img src={asset!("/logo.svg")}>
+                  }
                 }
             "#},
             Some(Arc::new(ReplacingAssetRewriter::new(HashMap::from([(
@@ -12557,12 +12951,14 @@ mod tests {
                   </match>
                 }
 
-                view Test {
-                  <Nest depth={2}>
-                    <b>
-                      x
-                    </b>
-                  </Nest>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Nest depth={2}>
+                      <b>
+                        x
+                      </b>
+                    </Nest>
+                  }
                 }
             "#},
             "<div><div><b>x</b></div></div>",
@@ -12653,12 +13049,14 @@ mod tests {
                   </let>
                 }
 
-                view Test {
-                  <Foo>
-                    <b>
-                      hi
-                    </b>
-                  </Foo>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Foo>
+                      <b>
+                        hi
+                      </b>
+                    </Foo>
+                  }
                 }
             "#},
             "<div><b>hi</b></div>",
@@ -12728,10 +13126,12 @@ mod tests {
                   </section>
                 }
 
-                view Test {
-                  <Outer>
-                    z
-                  </Outer>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Outer>
+                      z
+                    </Outer>
+                  }
                 }
             "#},
             "<section><em>z</em></section>",
@@ -12795,8 +13195,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Nest n={2} id="root"/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Nest n={2} id="root"/>
+                  }
                 }
             "#},
             r#"<div id="root"><div><div></div></div></div>"#,
@@ -12872,8 +13274,10 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <Countdown n={3}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Countdown n={3}/>
+                  }
                 }
             "#},
             "3210",
@@ -12949,8 +13353,10 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <Loop n={2} label={Some("a")}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Loop n={2} label={Some("a")}/>
+                  }
                 }
             "#},
             "aaa",
@@ -13037,11 +13443,13 @@ mod tests {
                   </if>
                 }
 
-                view Test {
-                  <let {o: Option[String] = Some("a")}>
-                    <C x={o}/>
-                    <C x={o}/>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {o: Option[String] = Some("a")}>
+                      <C x={o}/>
+                      <C x={o}/>
+                    </let>
+                  }
                 }
             "#},
             "",
@@ -13122,8 +13530,10 @@ mod tests {
                   </>
                 }
 
-                view Test {
-                  <Even n={4}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Even n={4}/>
+                  }
                 }
             "#},
             "even",
@@ -13228,10 +13638,12 @@ mod tests {
                   f: Bool,
                 }
 
-                view Test {
-                  <if {R {f: true}.f}>
-                    x
-                  </if>
+                page Test() {
+                  fn body() -> Fragment {
+                    <if {R {f: true}.f}>
+                      x
+                    </if>
+                  }
                 }
             "#},
             "x",
@@ -13280,8 +13692,10 @@ mod tests {
                   </for>
                 }
 
-                view Test {
-                  <C p={["a"]}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <C p={["a"]}/>
+                  }
                 }
             "#},
             "",
@@ -13338,8 +13752,10 @@ mod tests {
                   </if>
                 }
 
-                view Test {
-                  <C p={["a"]}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <C p={["a"]}/>
+                  }
                 }
             "#},
             "",
@@ -13411,8 +13827,10 @@ mod tests {
                   </match>
                 }
 
-                view Test {
-                  <OptBool checked={Some(true)}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <OptBool checked={Some(true)}/>
+                  }
                 }
             "#},
             "<span>yes</span>",
@@ -13471,23 +13889,25 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <let {x: Option[Option[Bool]] = Some(Some(true))}>
-                    <match {x}>
-                      <case {Some(Some(true))}>
-                        tt
-                      </case>
-                      <case {Some(Some(false))}>
-                        tf
-                      </case>
-                      <case {Some(None)}>
-                        some-none
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {x: Option[Option[Bool]] = Some(Some(true))}>
+                      <match {x}>
+                        <case {Some(Some(true))}>
+                          tt
+                        </case>
+                        <case {Some(Some(false))}>
+                          tf
+                        </case>
+                        <case {Some(None)}>
+                          some-none
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             "tt",
@@ -13547,12 +13967,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {n in [1, 2, 3]}>
-                    <if {n > 1}>
-                      {n.to_string()}
-                    </if>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {n in [1, 2, 3]}>
+                      <if {n > 1}>
+                        {n.to_string()}
+                      </if>
+                    </for>
+                  }
                 }
             "#},
             "23",
@@ -13605,12 +14027,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {s in ["a", "b"]}>
-                    <if {s == "a"}>
-                      {s}
-                    </if>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {s in ["a", "b"]}>
+                      <if {s == "a"}>
+                        {s}
+                      </if>
+                    </for>
+                  }
                 }
             "#},
             "a",
@@ -13663,12 +14087,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {f in [1.5, 2.5]}>
-                    <if {f > 2.0}>
-                      big
-                    </if>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {f in [1.5, 2.5]}>
+                      <if {f > 2.0}>
+                        big
+                      </if>
+                    </for>
+                  }
                 }
             "#},
             "big",
@@ -13721,12 +14147,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <for {flag in [true, false]}>
-                    <if {flag && true}>
-                      x
-                    </if>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {flag in [true, false]}>
+                      <if {flag && true}>
+                        x
+                      </if>
+                    </for>
+                  }
                 }
             "#},
             "x",
@@ -13785,12 +14213,14 @@ mod tests {
                   </span>
                 }
 
-                view Test {
-                  <for {s in ["a", "b"]}>
-                    <if {s == "a"}>
-                      <Show label={s}/>
-                    </if>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {s in ["a", "b"]}>
+                      <if {s == "a"}>
+                        <Show label={s}/>
+                      </if>
+                    </for>
+                  }
                 }
             "#},
             "<span>a</span>",
@@ -13855,12 +14285,14 @@ mod tests {
                   class: String,
                 }
 
-                view Test {
-                  <let {foo: Foo = Foo {class: "a"}}>
-                    <div>
-                      {foo.class}
-                    </div>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {foo: Foo = Foo {class: "a"}}>
+                      <div>
+                        {foo.class}
+                      </div>
+                    </let>
+                  }
                 }
             "#},
             r#"<div>a</div>"#,
@@ -13906,12 +14338,14 @@ mod tests {
                   function: String,
                 }
 
-                view Test {
-                  <let {f: Foo = Foo {function: "a"}}>
-                    <div>
-                      {f.function}
-                    </div>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {f: Foo = Foo {function: "a"}}>
+                      <div>
+                        {f.function}
+                      </div>
+                    </let>
+                  }
                 }
             "#},
             r#"<div>a</div>"#,
@@ -13957,12 +14391,14 @@ mod tests {
                   protected: String,
                 }
 
-                view Test {
-                  <let {f: Foo = Foo {protected: "a"}}>
-                    <div>
-                      {f.protected}
-                    </div>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {f: Foo = Foo {protected: "a"}}>
+                      <div>
+                        {f.protected}
+                      </div>
+                    </let>
+                  }
                 }
             "#},
             r#"<div>a</div>"#,
@@ -14008,12 +14444,14 @@ mod tests {
                   eval: String,
                 }
 
-                view Test {
-                  <let {f: Foo = Foo {eval: "a"}}>
-                    <div>
-                      {f.eval}
-                    </div>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {f: Foo = Foo {eval: "a"}}>
+                      <div>
+                        {f.eval}
+                      </div>
+                    </let>
+                  }
                 }
             "#},
             r#"<div>a</div>"#,
@@ -14061,16 +14499,18 @@ mod tests {
                   },
                 }
 
-                view Test {
-                  <let {e: E = E::A {class: "a"}}>
-                    <match {e}>
-                      <case {E::A {class: v}}>
-                        <div>
-                          {v}
-                        </div>
-                      </case>
-                    </match>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {e: E = E::A {class: "a"}}>
+                      <match {e}>
+                        <case {E::A {class: v}}>
+                          <div>
+                            {v}
+                          </div>
+                        </case>
+                      </match>
+                    </let>
+                  }
                 }
             "#},
             r#"<div>a</div>"#,
@@ -14122,12 +14562,14 @@ mod tests {
                   x: Int,
                 }
 
-                view Test {
-                  <let {m: Math = Math {x: 4}}>
-                    <let {b: Int = 5}>
-                      {(m.x * b).to_string()}
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {m: Math = Math {x: 4}}>
+                      <let {b: Int = 5}>
+                        {(m.x * b).to_string()}
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             r#"20"#,
@@ -14172,10 +14614,12 @@ mod tests {
                   x: Float,
                 }
 
-                view Test {
-                  <let {n: Number = Number {x: 3.7}}>
-                    {n.x.to_int().to_string()}
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {n: Number = Number {x: 3.7}}>
+                      {n.x.to_int().to_string()}
+                    </let>
+                  }
                 }
             "#},
             r#"3"#,
@@ -14219,13 +14663,15 @@ mod tests {
                   num: Int,
                 }
 
-                view Test {
-                  <let {base = State {query: "a", num: 1}}>
-                    <let {next = State {...base, num: 2}}>
-                      {next.query}
-                      {next.num.to_string()}
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {base = State {query: "a", num: 1}}>
+                      <let {next = State {...base, num: 2}}>
+                        {next.query}
+                        {next.num.to_string()}
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             r#"a2"#,
@@ -14272,13 +14718,15 @@ mod tests {
                   num: Int,
                 }
 
-                view Test {
-                  <let {base = State {query: "a", num: 1}}>
-                    <let {next = State {...base, query: "b", num: 2}}>
-                      {next.query}
-                      {next.num.to_string()}
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {base = State {query: "a", num: 1}}>
+                      <let {next = State {...base, query: "b", num: 2}}>
+                        {next.query}
+                        {next.num.to_string()}
+                      </let>
                     </let>
-                  </let>
+                  }
                 }
             "#},
             r#"b2"#,
@@ -14325,11 +14773,13 @@ mod tests {
                   num: Int,
                 }
 
-                view Test {
-                  <for {s in [State {query: "a", num: 7}]}>
-                    {State {...s, query: "x"}.query}
-                    {State {...s, query: "x"}.num.to_string()}
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {s in [State {query: "a", num: 7}]}>
+                      {State {...s, query: "x"}.query}
+                      {State {...s, query: "x"}.num.to_string()}
+                    </for>
+                  }
                 }
             "#},
             r#"x7"#,
@@ -14386,17 +14836,19 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <for {item in [Item {label: "a", selected: false}]}>
-                    <match {item.selected}>
-                      <case {true}>
-                        <Row item={Item {...item, label: "on"}}/>
-                      </case>
-                      <case {false}>
-                        <Row item={Item {...item, label: "off"}}/>
-                      </case>
-                    </match>
-                  </for>
+                page Test() {
+                  fn body() -> Fragment {
+                    <for {item in [Item {label: "a", selected: false}]}>
+                      <match {item.selected}>
+                        <case {true}>
+                          <Row item={Item {...item, label: "on"}}/>
+                        </case>
+                        <case {false}>
+                          <Row item={Item {...item, label: "off"}}/>
+                        </case>
+                      </match>
+                    </for>
+                  }
                 }
             "#},
             r#"<div>off</div>"#,
@@ -14486,10 +14938,12 @@ mod tests {
                   </let>
                 }
 
-                view Test {
-                  <let {s = Settings {theme: "light", compact: true}}>
-                    <Dark s={State {query: "q", settings: s}}/>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {s = Settings {theme: "light", compact: true}}>
+                      <Dark s={State {query: "q", settings: s}}/>
+                    </let>
+                  }
                 }
             "#},
             r#"qdark"#,
@@ -14543,10 +14997,12 @@ mod tests {
                   y: String,
                 }
 
-                view Test {
-                  <>
-                    {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.x}
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.x}
+                    </>
+                  }
                 }
             "#},
             r#"bar"#,
@@ -14587,8 +15043,10 @@ mod tests {
                 -- main.hop --
                 import other::label
 
-                view Test {
-                  <div>{label(prefix: "a")}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label(prefix: "a")}</div>
+                  }
                 }
                 -- other.hop --
                 pub fn label(prefix: String, count: Int = 1) -> String {
@@ -14639,12 +15097,16 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label()}{label(count: 2)}{label("y")}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label()}{label(count: 2)}{label("y")}</div>
+                  }
                 }
 
-                view Other(prefix: String) {
-                  <div>{label(prefix: prefix)}</div>
+                page Other(prefix: String) {
+                  fn body() -> Fragment {
+                    <div>{label(prefix: prefix)}</div>
+                  }
                 }
             "#},
             "<div>x1x2y1</div>",
@@ -14714,8 +15176,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Wrapper/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrapper/>
+                  }
                 }
             "#},
             "<div>0,1,2,3,20</div>",
@@ -14774,8 +15238,10 @@ mod tests {
                   <div>{label}</div>
                 }
 
-                view Test {
-                  <>{card("hello")}</>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>{card("hello")}</>
+                  }
                 }
             "#},
             "<div>hello</div>",
@@ -14818,8 +15284,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                view Test {
-                  <div>{<span>hello</span>}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{<span>hello</span>}</div>
+                  }
                 }
             "#},
             "<div><span>hello</span></div>",
@@ -14866,8 +15334,10 @@ mod tests {
                   <div>{children}</div>
                 }
 
-                view Test {
-                  <>{wrap(<span>hello</span>)}</>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>{wrap(<span>hello</span>)}</>
+                  }
                 }
             "#},
             "<div><span>hello</span></div>",
@@ -14919,8 +15389,10 @@ mod tests {
                   <div>{slot}</div>
                 }
 
-                view Test {
-                  <Card slot={<span>hello</span>}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card slot={<span>hello</span>}/>
+                  }
                 }
             "#},
             "<div><span>hello</span></div>",
@@ -14972,8 +15444,10 @@ mod tests {
                   match on {true => <b>yes</b>, false => <i>no</i>}
                 }
 
-                view Test {
-                  <div>{badge(true)}{badge(false)}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{badge(true)}{badge(false)}</div>
+                  }
                 }
             "#},
             "<div><b>yes</b><i>no</i></div>",
@@ -15038,8 +15512,10 @@ mod tests {
                   card("hello")
                 }
 
-                view Test {
-                  <Outer/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Outer/>
+                  }
                 }
             "#},
             "<div>hello</div>",
@@ -15104,8 +15580,10 @@ mod tests {
                   }
                 }
 
-                view Test {
-                  <div>{f().to_string()}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{f().to_string()}</div>
+                  }
                 }
             "#},
             "<div>2</div>",
@@ -15172,22 +15650,24 @@ mod tests {
                   Shape::Square
                 }
 
-                view Test {
-                  <match {mk()}>
-                    <case {Shape::Circle}>
-                      circle
-                    </case>
-                    <case {other}>
-                      <match {other}>
-                        <case {Shape::Square}>
-                          square
-                        </case>
-                        <case {Shape::Circle}>
-                          never
-                        </case>
-                      </match>
-                    </case>
-                  </match>
+                page Test() {
+                  fn body() -> Fragment {
+                    <match {mk()}>
+                      <case {Shape::Circle}>
+                        circle
+                      </case>
+                      <case {other}>
+                        <match {other}>
+                          <case {Shape::Square}>
+                            square
+                          </case>
+                          <case {Shape::Circle}>
+                            never
+                          </case>
+                        </match>
+                      </case>
+                    </match>
+                  }
                 }
             "#},
             "square",
@@ -15259,8 +15739,10 @@ mod tests {
                   }
                 }
 
-                view Test {
-                  <div>{f()}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{f()}</div>
+                  }
                 }
             "#},
             "<div>hi</div>",
@@ -15322,16 +15804,20 @@ mod tests {
                   <span>A</span>
                 }
 
-                view Test {
-                  <Card />
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card />
+                  }
                 }
                 -- other.hop --
                 fn Card() -> Fragment {
                   <span>B</span>
                 }
 
-                view Other {
-                  <Card />
+                page Other() {
+                  fn body() -> Fragment {
+                    <Card />
+                  }
                 }
             "#},
             "<span>A</span>",
@@ -15394,8 +15880,10 @@ mod tests {
                   <b>nav</b>
                 }
 
-                view Test {
-                  <div><NavBar />{nav_bar(1).to_string()}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div><NavBar />{nav_bar(1).to_string()}</div>
+                  }
                 }
             "#},
             "<div><b>nav</b>1</div>",
@@ -15449,8 +15937,10 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label(count: 2, prefix: "n")}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label(count: 2, prefix: "n")}</div>
+                  }
                 }
             "#},
             "<div>n2</div>",

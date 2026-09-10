@@ -264,7 +264,9 @@ mod tests {
             }),
             expect![[r#"
                 page Hello() {
-                  concat(raw("Hello, World!"))
+                  fn body() -> Fragment {
+                    concat(raw("Hello, World!"))
+                  }
                 }
             "#]],
         );
@@ -280,13 +282,15 @@ mod tests {
             }),
             expect![[r#"
                 page Card() {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [class: raw("container")],
-                      children: concat(raw("Content")),
-                    ),
-                  )
+                  fn body() -> Fragment {
+                    concat(
+                      html(
+                        tag: "div",
+                        attrs: [class: raw("container")],
+                        children: concat(raw("Content")),
+                      ),
+                    )
+                  }
                 }
             "#]],
         );
@@ -301,7 +305,9 @@ mod tests {
             }),
             expect![[r#"
                 page Greeting(name: String) {
-                  concat(raw("Hello, "), escape(name))
+                  fn body() -> Fragment {
+                    concat(raw("Hello, "), escape(name))
+                  }
                 }
             "#]],
         );
@@ -325,23 +331,25 @@ mod tests {
             ),
             expect![[r#"
                 page ItemList(items: Array[String]) {
-                  concat(
-                    html(
-                      tag: "ul",
-                      attrs: [],
-                      children: concat(
-                        for item in items {
-                          concat(
-                            html(
-                              tag: "li",
-                              attrs: [],
-                              children: concat(escape(item)),
-                            ),
-                          )
-                        },
+                  fn body() -> Fragment {
+                    concat(
+                      html(
+                        tag: "ul",
+                        attrs: [],
+                        children: concat(
+                          for item in items {
+                            concat(
+                              html(
+                                tag: "li",
+                                attrs: [],
+                                children: concat(escape(item)),
+                              ),
+                            )
+                          },
+                        ),
                       ),
-                    ),
-                  )
+                    )
+                  }
                 }
             "#]],
         );
@@ -359,18 +367,20 @@ mod tests {
             }),
             expect![[r#"
                 page Toggle(visible: Bool) {
-                  concat(
-                    match visible {
-                      true => concat(
-                        html(
-                          tag: "div",
-                          attrs: [],
-                          children: concat(raw("Shown")),
+                  fn body() -> Fragment {
+                    concat(
+                      match visible {
+                        true => concat(
+                          html(
+                            tag: "div",
+                            attrs: [],
+                            children: concat(raw("Shown")),
+                          ),
                         ),
-                      ),
-                      false => concat(),
-                    },
-                  )
+                        false => concat(),
+                      },
+                    )
+                  }
                 }
             "#]],
         );

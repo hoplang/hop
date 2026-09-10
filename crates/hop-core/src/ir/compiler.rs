@@ -721,9 +721,9 @@ mod tests {
         let mut expr_ids = ExprIdCounter::new();
         let mut var_ids = VarIdCounter::new();
         let declared = HashMap::new();
-        let compiled_view =
+        let compiled_page =
             Compiler::new(&mut expr_ids, &mut var_ids, &declared, None).compile_page_decl(page);
-        let after = compiled_view.to_string();
+        let after = compiled_page.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -737,7 +737,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  concat(raw("Hello World"))
+                  fn body() -> Fragment {
+                    concat(raw("Hello World"))
+                  }
                 }
 
                 -- after --
@@ -758,7 +760,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(name: String) {
-                  concat(raw("Hello "), escape(name))
+                  fn body() -> Fragment {
+                    concat(raw("Hello "), escape(name))
+                  }
                 }
 
                 -- after --
@@ -780,13 +784,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(raw("Content")),
-                    ),
-                  )
+                  fn body() -> Fragment {
+                    concat(
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat(raw("Content")),
+                      ),
+                    )
+                  }
                 }
 
                 -- after --
@@ -818,18 +824,20 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(show: Bool) {
-                  concat(
-                    match show {
-                      true => concat(
-                        html(
-                          tag: "div",
-                          attrs: [],
-                          children: concat(raw("Visible")),
+                  fn body() -> Fragment {
+                    concat(
+                      match show {
+                        true => concat(
+                          html(
+                            tag: "div",
+                            attrs: [],
+                            children: concat(raw("Visible")),
+                          ),
                         ),
-                      ),
-                      false => concat(),
-                    },
-                  )
+                        false => concat(),
+                      },
+                    )
+                  }
                 }
 
                 -- after --
@@ -874,23 +882,25 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(items: Array[String]) {
-                  concat(
-                    html(
-                      tag: "ul",
-                      attrs: [],
-                      children: concat(
-                        for item in items {
-                          concat(
-                            html(
-                              tag: "li",
-                              attrs: [],
-                              children: concat(escape(item)),
-                            ),
-                          )
-                        },
+                  fn body() -> Fragment {
+                    concat(
+                      html(
+                        tag: "ul",
+                        attrs: [],
+                        children: concat(
+                          for item in items {
+                            concat(
+                              html(
+                                tag: "li",
+                                attrs: [],
+                                children: concat(escape(item)),
+                              ),
+                            )
+                          },
+                        ),
                       ),
-                    ),
-                  )
+                    )
+                  }
                 }
 
                 -- after --
@@ -935,13 +945,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [class: raw("base"), id: raw("test")],
-                      children: concat(raw("Content")),
-                    ),
-                  )
+                  fn body() -> Fragment {
+                    concat(
+                      html(
+                        tag: "div",
+                        attrs: [class: raw("base"), id: raw("test")],
+                        children: concat(raw("Content")),
+                      ),
+                    )
+                  }
                 }
 
                 -- after --
@@ -977,13 +989,18 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(cls: String) {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [class: raw("base"), data-value: escape(cls)],
-                      children: concat(raw("Content")),
-                    ),
-                  )
+                  fn body() -> Fragment {
+                    concat(
+                      html(
+                        tag: "div",
+                        attrs: [
+                          class: raw("base"),
+                          data-value: escape(cls),
+                        ],
+                        children: concat(raw("Content")),
+                      ),
+                    )
+                  }
                 }
 
                 -- after --
@@ -1025,18 +1042,20 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestComp(name: String, count: String) {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(
-                        raw("Hello "),
-                        escape(name),
-                        raw(", count: "),
-                        escape(count),
+                  fn body() -> Fragment {
+                    concat(
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat(
+                          raw("Hello "),
+                          escape(name),
+                          raw(", count: "),
+                          escape(count),
+                        ),
                       ),
-                    ),
-                  )
+                    )
+                  }
                 }
 
                 -- after --
@@ -1077,12 +1096,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestComp(flag: Bool) {
-                  concat(
-                    match flag {
-                      true => concat(raw("yes")),
-                      false => concat(raw("no")),
-                    },
-                  )
+                  fn body() -> Fragment {
+                    concat(
+                      match flag {
+                        true => concat(raw("yes")),
+                        false => concat(raw("no")),
+                      },
+                    )
+                  }
                 }
 
                 -- after --
@@ -1109,13 +1130,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  concat(
-                    html(
-                      tag: "script",
-                      attrs: [],
-                      children: concat(raw("alert(\"hi\")")),
-                    ),
-                  )
+                  fn body() -> Fragment {
+                    concat(
+                      html(
+                        tag: "script",
+                        attrs: [],
+                        children: concat(raw("alert(\"hi\")")),
+                      ),
+                    )
+                  }
                 }
 
                 -- after --
@@ -1143,7 +1166,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  concat(html(tag: "br", attrs: []))
+                  fn body() -> Fragment {
+                    concat(html(tag: "br", attrs: []))
+                  }
                 }
 
                 -- after --

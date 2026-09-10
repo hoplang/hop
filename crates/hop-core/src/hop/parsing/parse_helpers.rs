@@ -19,7 +19,6 @@ pub const DECLARATION_KEYWORDS: &[LangToken] = &[
     LangToken::Import,
     LangToken::Record,
     LangToken::Enum,
-    LangToken::View,
     LangToken::Page,
     LangToken::Fn,
 ];

@@ -62,7 +62,7 @@ impl PureModuleBuilder {
         self
     }
 
-    /// Freeze the declared types, enabling view and function bodies.
+    /// Freeze the declared types, enabling page and function bodies.
     pub fn freeze(self) -> PureModuleBodiesBuilder {
         PureModuleBodiesBuilder {
             types: Rc::new(self.types_builder.build()),
@@ -75,14 +75,14 @@ impl PureModuleBuilder {
         }
     }
 
-    pub fn view_no_params<F>(self, name: &str, body_fn: F) -> PureModuleBodiesBuilder
+    pub fn page_no_params<F>(self, name: &str, body_fn: F) -> PureModuleBodiesBuilder
     where
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
-        self.freeze().view_no_params(name, body_fn)
+        self.freeze().page_no_params(name, body_fn)
     }
 
-    pub fn view<'a, F>(
+    pub fn page<'a, F>(
         self,
         name: &str,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
@@ -91,7 +91,7 @@ impl PureModuleBuilder {
     where
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
-        self.freeze().view(name, params, body_fn)
+        self.freeze().page(name, params, body_fn)
     }
 
     pub fn function<'a, F>(
@@ -124,7 +124,7 @@ impl From<PureModuleBuilder> for PureModuleBodiesBuilder {
 /// look up the callee's return type.
 type FunctionSignature = (IrFunction, Vec<WriterParameter>, Type);
 
-/// Collects view and function bodies against a frozen set of types.
+/// Collects page and function bodies against a frozen set of types.
 pub struct PureModuleBodiesBuilder {
     types: Rc<TestTypes>,
     expr_ids: Rc<RefCell<ExprIdCounter>>,
@@ -136,14 +136,14 @@ pub struct PureModuleBodiesBuilder {
 }
 
 impl PureModuleBodiesBuilder {
-    pub fn view_no_params<F>(self, name: &str, body_fn: F) -> Self
+    pub fn page_no_params<F>(self, name: &str, body_fn: F) -> Self
     where
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
-        self.view(name, [], body_fn)
+        self.page(name, [], body_fn)
     }
 
-    pub fn view<'a, F>(
+    pub fn page<'a, F>(
         mut self,
         name: &str,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
@@ -154,7 +154,7 @@ impl PureModuleBodiesBuilder {
     {
         let (parameters, body) = self.declaration(params, Type::Fragment, body_fn);
         self.pages.push(PurePageDeclaration {
-            name: TypeName::new(name).expect("Test view name should be valid"),
+            name: TypeName::new(name).expect("Test page name should be valid"),
             parameters,
             body,
         });

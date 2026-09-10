@@ -117,7 +117,7 @@ impl TsTranspiler {
         var_id_ident(self.var_ids.next())
     }
 
-    /// The destructuring parameter of a view or function: the binding pattern
+    /// The destructuring parameter of a page or function: the binding pattern
     /// and the type literal that annotates it, as in `{a: v_0}: {a: string}`.
     fn transpile_parameter_list<'a>(
         &mut self,
@@ -1813,10 +1813,10 @@ mod tests {
     }
 
     #[test]
-    fn simple_view() {
+    fn simple_page() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("HelloWorld", |t| t.raw("<h1>Hello, World!</h1>\n")),
+                .page_no_params("HelloWorld", |t| t.raw("<h1>Hello, World!</h1>\n")),
             expect![[r#"
                 -- before --
                 page HelloWorld() {
@@ -1836,9 +1836,9 @@ mod tests {
     }
 
     #[test]
-    fn view_with_params_and_escaping() {
+    fn page_with_params_and_escaping() {
         check(
-            PureModuleBuilder::new().view(
+            PureModuleBuilder::new().page(
                 "UserInfo",
                 [("name", "String"), ("age", "String")],
                 |t| {
@@ -1904,7 +1904,7 @@ mod tests {
     #[test]
     fn conditional_display() {
         check(
-            PureModuleBuilder::new().view(
+            PureModuleBuilder::new().page(
                 "ConditionalDisplay",
                 [("title", "String"), ("show", "Bool")],
                 |t| {
@@ -1967,7 +1967,7 @@ mod tests {
     #[test]
     fn for_loop_with_array() {
         check(
-            PureModuleBuilder::new().view("ListItems", [("items", "Array[String]")], |t| {
+            PureModuleBuilder::new().page("ListItems", [("items", "Array[String]")], |t| {
                 t.concat(vec![
                     t.raw("<ul>\n"),
                     t.fragment_for(Some("item"), t.var("items"), |t| {
@@ -2023,7 +2023,7 @@ mod tests {
     #[test]
     fn for_loop_with_range() {
         check(
-            PureModuleBuilder::new().view_no_params("Counter", |t| {
+            PureModuleBuilder::new().page_no_params("Counter", |t| {
                 t.fragment_for_range(Some("i"), t.int(1), t.int(3), |t| {
                     t.concat(vec![t.escape(t.int_to_string(t.var("i"))), t.raw(" ")])
                 })
@@ -2066,7 +2066,7 @@ mod tests {
     #[test]
     fn let_binding() {
         check(
-            PureModuleBuilder::new().view_no_params("GreetingCard", |t| {
+            PureModuleBuilder::new().page_no_params("GreetingCard", |t| {
                 t.let_expr("greeting", t.str("Hello from hop!"), |t| {
                     t.concat(vec![
                         t.raw("<div class=\"card\">\n"),
@@ -2118,7 +2118,7 @@ mod tests {
     #[test]
     fn nested_functions_with_let_bindings() {
         check(
-            PureModuleBuilder::new().view_no_params("TestMainComp", |t| {
+            PureModuleBuilder::new().page_no_params("TestMainComp", |t| {
                 t.concat(vec![
                     t.raw("<div data-hop-id=\"test/card-comp\">"),
                     t.let_expr("title", t.str("Hello World"), |t| {
@@ -2172,7 +2172,7 @@ mod tests {
     #[test]
     fn fragment_type() {
         check(
-            PureModuleBuilder::new().view(
+            PureModuleBuilder::new().page(
                 "RenderHtml",
                 [("safe_content", "Fragment"), ("user_input", "String")],
                 |t| {
@@ -2245,7 +2245,7 @@ mod tests {
                     [("name", "String"), ("age", "Int"), ("active", "Bool")],
                 )
                 .record("Address", [("street", "String"), ("city", "String")])
-                .view("UserProfile", [("user", "User")], |t| {
+                .page("UserProfile", [("user", "User")], |t| {
                     t.concat(vec![
                         t.raw("<div>"),
                         t.escape(t.field_access(t.var("user"), "name")),
@@ -2310,7 +2310,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .record("User", [("name", "String"), ("age", "Int")])
-                .view_no_params("CreateUser", |t| {
+                .page_no_params("CreateUser", |t| {
                     let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
                     t.concat(vec![
                         t.raw("<div>"),
@@ -2367,7 +2367,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .record("Node", [("value", "Int"), ("next", "Option[Node]")])
-                .view("Test", [("node", "Node")], |t| {
+                .page("Test", [("node", "Node")], |t| {
                     t.escape(t.int_to_string(t.field_access(t.var("node"), "value")))
                 }),
             expect![[r#"
@@ -2429,7 +2429,7 @@ mod tests {
                         ("Nil", vec![]),
                     ],
                 )
-                .view_no_params("Test", |t| t.raw("hello")),
+                .page_no_params("Test", |t| t.raw("hello")),
             expect![[r#"
                 -- before --
                 page Test() {
@@ -2464,7 +2464,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .record("Node", [("value", "Int"), ("next", "Option[Node]")])
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     let inner =
                         t.record("Node", vec![("value", t.int(1)), ("next", t.none("Node"))]);
                     let node = t.record("Node", vec![("value", t.int(2)), ("next", t.some(inner))]);
@@ -2540,7 +2540,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Green", "Blue"])
-                .view("ColorName", [("color", "Color")], |t| {
+                .page("ColorName", [("color", "Color")], |t| {
                     // Use match expression to convert color to string
                     let match_result = t.enum_match_expr(t.var("color"), |m| {
                         m.arm("Red", |t| t.str("red"));
@@ -2603,7 +2603,7 @@ mod tests {
     #[test]
     fn bool_match_expression() {
         check(
-            PureModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
+            PureModuleBuilder::new().page("IsActive", [("active", "Bool")], |t| {
                 let match_result = t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
                 t.escape(match_result)
             }),
@@ -2640,7 +2640,7 @@ mod tests {
     #[test]
     fn option_match_expression() {
         check(
-            PureModuleBuilder::new().view("CheckOption", [("opt", "Option[Int]")], |t| {
+            PureModuleBuilder::new().page("CheckOption", [("opt", "Option[Int]")], |t| {
                 let match_result =
                     t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
                 t.escape(match_result)
@@ -2694,7 +2694,7 @@ mod tests {
     #[test]
     fn nested_option_match_expression() {
         check(
-            PureModuleBuilder::new().view(
+            PureModuleBuilder::new().page(
                 "CheckNestedOption",
                 [("opt", "Option[Option[Bool]]")],
                 |t| {
@@ -2798,7 +2798,7 @@ mod tests {
     #[test]
     fn let_expression() {
         check(
-            PureModuleBuilder::new().view("LetExpr", [("name", "String")], |t| {
+            PureModuleBuilder::new().page("LetExpr", [("name", "String")], |t| {
                 // let x = name in x
                 let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
                 t.escape(result)
@@ -2835,7 +2835,7 @@ mod tests {
     #[test]
     fn option_match_statement() {
         check(
-            PureModuleBuilder::new().view("DisplayOption", [("opt", "Option[String]")], |t| {
+            PureModuleBuilder::new().page("DisplayOption", [("opt", "Option[String]")], |t| {
                 t.option_match_expr_with_binding(
                     t.var("opt"),
                     "value",
@@ -2916,7 +2916,7 @@ mod tests {
     #[test]
     fn option_literal() {
         check(
-            PureModuleBuilder::new().view(
+            PureModuleBuilder::new().page(
                 "TestOptionLiteral",
                 [("opt1", "Option[String]"), ("opt2", "Option[String]")],
                 |t| {
@@ -2999,7 +2999,7 @@ mod tests {
     #[test]
     fn option_literal_inline_match_stmt() {
         check(
-            PureModuleBuilder::new().view_no_params("TestInlineMatch", |t| {
+            PureModuleBuilder::new().page_no_params("TestInlineMatch", |t| {
                 t.let_expr("opt", t.some(t.str("world")), |t| {
                     t.option_match_expr_with_binding(
                         t.var("opt"),
@@ -3073,7 +3073,7 @@ mod tests {
     #[test]
     fn option_match_statement_on_expression_subject() {
         check(
-            PureModuleBuilder::new().view_no_params("Test", |t| {
+            PureModuleBuilder::new().page_no_params("Test", |t| {
                 t.option_match_expr_with_binding(
                     t.some(t.str("x")),
                     "value",
@@ -3165,7 +3165,7 @@ mod tests {
     #[test]
     fn bool_match_expression_on_expression_subject() {
         check(
-            PureModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
+            PureModuleBuilder::new().page("IsActive", [("active", "Bool")], |t| {
                 let match_result =
                     t.bool_match_expr(t.not(t.var("active")), t.str("yes"), t.str("no"));
                 t.escape(match_result)
@@ -3211,7 +3211,7 @@ mod tests {
                         ("Failure", vec![("message", "String")]),
                     ],
                 )
-                .view("ShowOutcome", [("r", "Outcome")], |t| {
+                .page("ShowOutcome", [("r", "Outcome")], |t| {
                     let ok = t.enum_variant_with_fields(
                         "Outcome",
                         "Success",
@@ -3279,7 +3279,7 @@ mod tests {
                         ("Failure", vec![("message", "String")]),
                     ],
                 )
-                .view("ShowOutcome", [("r", "Outcome")], |t| {
+                .page("ShowOutcome", [("r", "Outcome")], |t| {
                     t.enum_match_expr(t.var("r"), |m| {
                         m.arm_bound("Success", [("value", "v")], |t| {
                             t.concat(vec![t.raw("Value: "), t.escape(t.var("v"))])
@@ -3353,7 +3353,7 @@ mod tests {
     #[test]
     fn transpiles_let_fragment_as_nested_buffer() {
         check(
-            PureModuleBuilder::new().view_no_params("Test", |t| {
+            PureModuleBuilder::new().page_no_params("Test", |t| {
                 t.let_expr("v_0", t.concat(vec![t.raw("<b>hi</b>")]), |t| t.var("v_0"))
             }),
             expect![[r#"
@@ -3395,7 +3395,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .function("Frag", [], "Fragment", |t| t.raw("<b>hi</b>"))
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("x", t.call("Frag", vec![]), |t| t.var("x"))
                 }),
             expect![[r#"
@@ -3448,7 +3448,7 @@ mod tests {
                 .function("format_price", [("price", "Int")], "Int", |t| {
                     t.var("price")
                 })
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.escape(t.int_to_string(t.call("format_price", vec![("price", t.int(5))])))
                 }),
             expect![[r#"
@@ -3492,7 +3492,7 @@ mod tests {
                 .function("foo", [("x", "Int")], "Int", |t| {
                     t.add(t.var("x"), t.int(10))
                 })
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![
                         t.raw("<div>"),
                         t.fragment_for_range(

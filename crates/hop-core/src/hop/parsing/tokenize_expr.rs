@@ -181,7 +181,6 @@ pub fn next(
                     // Wildcard
                     "_" => LangToken::Underscore,
                     // Keywords
-                    "entrypoint" | "view" => LangToken::View,
                     "enum" => LangToken::Enum,
                     "false" => LangToken::False,
                     "fn" => LangToken::Fn,

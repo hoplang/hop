@@ -777,7 +777,7 @@ mod tests {
     fn should_evaluate_bool_match_with_negated_subject() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![t.bool_match_expr(
                         t.not(t.not(t.bool(true))),
                         t.raw("yes"),
@@ -808,7 +808,7 @@ mod tests {
     fn should_preserve_match_with_dynamic_subject() {
         check(
             PureModuleBuilder::new()
-                .view("Test", [("flag", "Bool")], |t| {
+                .page("Test", [("flag", "Bool")], |t| {
                     t.concat(vec![t.bool_match_expr(
                         t.var("flag"),
                         t.raw("yes"),
@@ -844,7 +844,7 @@ mod tests {
     fn should_propagate_constants_through_variables() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("greeting", t.str("Hello"), |t| {
                         t.concat(vec![
                             t.escape(t.var("greeting")),
@@ -871,7 +871,7 @@ mod tests {
     fn should_merge_constants_adjacent_across_a_dynamic_part() {
         check(
             PureModuleBuilder::new()
-                .view("Test", vec![("dyn", "String")], |t| {
+                .page("Test", vec![("dyn", "String")], |t| {
                     t.escape(t.join(vec![t.var("dyn"), t.str("b"), t.str("c"), t.str("d")]))
                 })
                 .build(),
@@ -893,7 +893,7 @@ mod tests {
     fn should_flatten_nested_string_concatenation_before_merging() {
         check(
             PureModuleBuilder::new()
-                .view("Test", vec![("dyn", "String")], |t| {
+                .page("Test", vec![("dyn", "String")], |t| {
                     t.escape(t.string_concat(vec![
                         t.string_concat(vec![t.var("dyn"), t.str("a")]),
                         t.string_concat(vec![t.str("b"), t.var("dyn")]),
@@ -918,7 +918,7 @@ mod tests {
     fn should_drop_empty_strings_from_concatenation() {
         check(
             PureModuleBuilder::new()
-                .view("Test", vec![("dyn", "String")], |t| {
+                .page("Test", vec![("dyn", "String")], |t| {
                     t.escape(t.string_concat(vec![t.str(""), t.var("dyn"), t.str("")]))
                 })
                 .build(),
@@ -940,7 +940,7 @@ mod tests {
     fn should_evaluate_string_concatenation_with_propagated_variables() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("name", t.str("World"), |t| {
                         t.concat(vec![
                             t.escape(t.string_concat(vec![t.str("Hello, "), t.var("name")])),
@@ -966,7 +966,7 @@ mod tests {
     fn should_evaluate_equality_selecting_match_arm() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![t.bool_match_expr(
                         t.eq(t.str("a"), t.str("b")),
                         t.raw("equal"),
@@ -997,7 +997,7 @@ mod tests {
     fn should_evaluate_arithmetic_with_wrapping() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![
                         t.escape(t.int_to_string(t.add(t.int(i32::MAX), t.int(1)))),
                     ])
@@ -1021,7 +1021,7 @@ mod tests {
     fn should_saturate_float_to_int_conversion() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![
                         t.escape(t.int_to_string(t.float_to_int(t.float(1e300)))),
                     ])
@@ -1047,7 +1047,7 @@ mod tests {
     fn should_evaluate_option_match_with_some_binding() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![t.option_match_expr_with_binding(
                         t.some(t.str("present")),
                         "v",
@@ -1079,7 +1079,7 @@ mod tests {
     fn should_evaluate_option_match_with_none() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![t.option_match_expr_with_binding(
                         t.none("String"),
                         "v",
@@ -1118,7 +1118,7 @@ mod tests {
                         ("Inactive", vec![]),
                     ],
                 )
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![t.enum_match_expr(
                         t.enum_variant_with_fields(
                             "Status",
@@ -1166,7 +1166,7 @@ mod tests {
                     "Status",
                     [("Active", vec![("since", "String")]), ("Inactive", vec![])],
                 )
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr(
                         "status",
                         t.enum_variant_with_fields(
@@ -1213,7 +1213,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .enum_("Wrap", [("Value", vec![("inner", "String")])])
-                .view("Test", [("x", "String")], |t| {
+                .page("Test", [("x", "String")], |t| {
                     t.concat(vec![t.enum_match_expr(
                         t.enum_variant_with_fields("Wrap", "Value", vec![("inner", t.var("x"))]),
                         |arms| {
@@ -1245,7 +1245,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .record("User", [("name", "String"), ("title", "String")])
-                .view("Test", [("dynamic", "String")], |t| {
+                .page("Test", [("dynamic", "String")], |t| {
                     t.concat(vec![t.escape(t.field_access(
                         t.record(
                             "User",
@@ -1273,7 +1273,7 @@ mod tests {
     fn should_evaluate_array_length_with_dynamic_elements() {
         check(
             PureModuleBuilder::new()
-                .view("Test", [("x", "Int")], |t| {
+                .page("Test", [("x", "Int")], |t| {
                     t.concat(vec![t.escape(t.int_to_string(
                         t.array_length(t.array(vec![t.var("x"), t.int(2)])),
                     ))])

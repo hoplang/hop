@@ -108,7 +108,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Bundle the single JS entrypoint (if configured) with esbuild. The bundled
     // output is hashed and a src is computed the same way as the CSS link
     // (production_prefix + content-hashed filename), then injected as a
-    // `<script type="module">` into every view's <head>.
+    // `<script type="module">` into every page's <head>.
     let js_bundle = match project.get_js_input_path()? {
         Some(input_path) => {
             let bundled = esbuild_runner::bundle_script(&input_path, true)?;
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     #[ignore]
     fn deterministic_output_order_across_hop_modules() {
-        // Entrypoints are sorted alphabetically by module name.
+        // Pages are sorted alphabetically by module name.
         // With 8 modules, only 1/40320 chance of accidental success if HashMap iteration leaked.
         check(
             indoc! {r#"
@@ -317,36 +317,36 @@ mod tests {
                 [assets]
                 output_dir = "dist/public"
                 -- alpha.hop --
-                view AlphaPage() { <div>Alpha</div> }
+                page AlphaPage() { fn body() -> Fragment { <div>Alpha</div> } }
                 -- beta.hop --
-                view BetaPage() { <div>Beta</div> }
+                page BetaPage() { fn body() -> Fragment { <div>Beta</div> } }
                 -- gamma.hop --
-                view GammaPage() { <div>Gamma</div> }
+                page GammaPage() { fn body() -> Fragment { <div>Gamma</div> } }
                 -- delta.hop --
-                view DeltaPage() { <div>Delta</div> }
+                page DeltaPage() { fn body() -> Fragment { <div>Delta</div> } }
                 -- epsilon.hop --
-                view EpsilonPage() { <div>Epsilon</div> }
+                page EpsilonPage() { fn body() -> Fragment { <div>Epsilon</div> } }
                 -- zeta.hop --
-                view ZetaPage() { <div>Zeta</div> }
+                page ZetaPage() { fn body() -> Fragment { <div>Zeta</div> } }
                 -- eta.hop --
-                view EtaPage() { <div>Eta</div> }
+                page EtaPage() { fn body() -> Fragment { <div>Eta</div> } }
                 -- theta.hop --
-                view ThetaPage() { <div>Theta</div> }
+                page ThetaPage() { fn body() -> Fragment { <div>Theta</div> } }
             "#},
             expect![[r#"
                 -- alpha.hop --
-                view AlphaPage() { <div>Alpha</div> }
+                page AlphaPage() { fn body() -> Fragment { <div>Alpha</div> } }
                 -- beta.hop --
-                view BetaPage() { <div>Beta</div> }
+                page BetaPage() { fn body() -> Fragment { <div>Beta</div> } }
                 -- delta.hop --
-                view DeltaPage() { <div>Delta</div> }
+                page DeltaPage() { fn body() -> Fragment { <div>Delta</div> } }
                 -- dist/public/styles-00000000.css --
                 -- epsilon.hop --
-                view EpsilonPage() { <div>Epsilon</div> }
+                page EpsilonPage() { fn body() -> Fragment { <div>Epsilon</div> } }
                 -- eta.hop --
-                view EtaPage() { <div>Eta</div> }
+                page EtaPage() { fn body() -> Fragment { <div>Eta</div> } }
                 -- gamma.hop --
-                view GammaPage() { <div>Gamma</div> }
+                page GammaPage() { fn body() -> Fragment { <div>Gamma</div> } }
                 -- hop.toml --
                 [compile]
                 target = "ts"
@@ -442,9 +442,9 @@ mod tests {
                 }
                 -- style.css --
                 -- theta.hop --
-                view ThetaPage() { <div>Theta</div> }
+                page ThetaPage() { fn body() -> Fragment { <div>Theta</div> } }
                 -- zeta.hop --
-                view ZetaPage() { <div>Zeta</div> }
+                page ZetaPage() { fn body() -> Fragment { <div>Zeta</div> } }
             "#]],
         )
     }
@@ -468,10 +468,10 @@ mod tests {
                 output_dir = "dist/public"
                 -- main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {
+                    fn body() -> Fragment {
                         <img src={asset!("/icons/star.svg")} />
                     }
                 }
@@ -516,10 +516,10 @@ mod tests {
                 <svg>logo</svg>
                 -- main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {
+                    fn body() -> Fragment {
                         <img src={asset!("/icons/star.svg")} />
                     }
                 }
@@ -548,10 +548,10 @@ mod tests {
                 output_dir = "dist/public"
                 -- main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {
+                    fn body() -> Fragment {
                         <></>
                     }
                 }
@@ -591,10 +591,10 @@ mod tests {
                 <svg>logo</svg>
                 -- main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {
+                    fn body() -> Fragment {
                         <></>
                     }
                 }
@@ -622,10 +622,10 @@ mod tests {
                 output_dir = "../assets"
                 -- hop/main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {
+                    fn body() -> Fragment {
                         <img src={asset!("/icons/star.svg")} />
                     }
                 }
@@ -670,10 +670,10 @@ mod tests {
                 <svg>logo</svg>
                 -- hop/main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {
+                    fn body() -> Fragment {
                         <img src={asset!("/icons/star.svg")} />
                     }
                 }
@@ -693,10 +693,10 @@ mod tests {
                 output_path = "app.ts"
                 -- main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {}
+                    fn body() -> Fragment {}
                 }
                 -- logo.svg --
                 <svg>logo</svg>
@@ -726,10 +726,10 @@ mod tests {
                 output_dir = "dist/public"
                 -- main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {
+                    fn body() -> Fragment {
                         <img src={asset!("/icons/star.svg")} />
                     }
                 }
@@ -774,10 +774,10 @@ mod tests {
                 <svg>logo</svg>
                 -- main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {
+                    fn body() -> Fragment {
                         <img src={asset!("/icons/star.svg")} />
                     }
                 }
@@ -805,11 +805,13 @@ mod tests {
                 [assets]
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <>
-                        <img src={asset!("/images/a.svg")} />
-                        <img src={asset!("/images/b.svg")} />
-                    </>
+                page Home() {
+                  fn body() -> Fragment {
+                      <>
+                          <img src={asset!("/images/a.svg")} />
+                          <img src={asset!("/images/b.svg")} />
+                      </>
+                  }
                 }
                 -- images/a.svg --
                 <svg>same</svg>
@@ -851,11 +853,13 @@ mod tests {
                 -- images/b.svg --
                 <svg>same</svg>
                 -- main.hop --
-                view Home() {
-                    <>
-                        <img src={asset!("/images/a.svg")} />
-                        <img src={asset!("/images/b.svg")} />
-                    </>
+                page Home() {
+                  fn body() -> Fragment {
+                      <>
+                          <img src={asset!("/images/a.svg")} />
+                          <img src={asset!("/images/b.svg")} />
+                      </>
+                  }
                 }
                 -- style.css --
             "#]],
@@ -880,8 +884,10 @@ mod tests {
                 [assets]
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <div class="text-red-500">hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div class="text-red-500">hi</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -910,8 +916,10 @@ mod tests {
                 [assets]
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <div class="text-red-500">hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div class="text-red-500">hi</div>
+                  }
                 }
                 -- style.css --
             "#]],
@@ -937,10 +945,10 @@ mod tests {
                 output_dir = "dist/public"
                 -- main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <title>My page</title>
                     }
-                    body {
+                    fn body() -> Fragment {
                         <div class="text-red-500">hi</div>
                     }
                 }
@@ -972,10 +980,10 @@ mod tests {
                 output_dir = "dist/public"
                 -- main.hop --
                 page Home() {
-                    head {
+                    fn head() -> Fragment {
                         <title>My page</title>
                     }
-                    body {
+                    fn body() -> Fragment {
                         <div class="text-red-500">hi</div>
                     }
                 }
@@ -1003,8 +1011,10 @@ mod tests {
                 production_prefix = "static/v1"
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <div class="text-red-500">hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div class="text-red-500">hi</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1035,8 +1045,10 @@ mod tests {
                 production_prefix = "static/v1"
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <div class="text-red-500">hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div class="text-red-500">hi</div>
+                  }
                 }
                 -- style.css --
             "#]],
@@ -1049,7 +1061,7 @@ mod tests {
         // The single JS entrypoint configured via [js] is bundled with esbuild,
         // emitted as a content-hashed scripts-<hash>.js under the assets output
         // dir, and a <script type="module"> referencing it is injected into the
-        // <head> of every view (mirroring how the Tailwind CSS <link> works).
+        // <head> of every page (mirroring how the Tailwind CSS <link> works).
         check(
             indoc! {r#"
                 -- app.ts --
@@ -1073,8 +1085,10 @@ mod tests {
                 production_prefix = "static/v1"
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <div class="text-red-500">hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div class="text-red-500">hi</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1130,8 +1144,10 @@ mod tests {
                 production_prefix = "static/v1"
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <div class="text-red-500">hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div class="text-red-500">hi</div>
+                  }
                 }
                 -- style.css --
             "#]],
@@ -1163,8 +1179,10 @@ mod tests {
                 [assets]
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <div class="text-red-500">hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div class="text-red-500">hi</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1190,8 +1208,10 @@ mod tests {
                 [assets]
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <div class="text-red-500">hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div class="text-red-500">hi</div>
+                  }
                 }
                 -- out.ts --
                 // Code generated by the hop compiler. DO NOT EDIT.
@@ -1234,8 +1254,10 @@ mod tests {
                     src: --asset("/fonts/inter.woff2") format("woff2");
                 }
                 -- main.hop --
-                view Home() {
-                    <div>hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div>hi</div>
+                  }
                 }
                 -- fonts/inter.woff2 --
                 fake-woff2-bytes
@@ -1276,8 +1298,10 @@ mod tests {
                     src: --asset("/fonts/inter.woff2") format("woff2");
                 }
                 -- main.hop --
-                view Home() {
-                    <div>hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div>hi</div>
+                  }
                 }
             "#]],
         )
@@ -1306,8 +1330,10 @@ mod tests {
                     src: --asset("/fonts/inter.woff2") format("woff2");
                 }
                 -- main.hop --
-                view Home() {
-                    <div>hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div>hi</div>
+                  }
                 }
                 -- fonts/inter.woff2 --
                 fake-woff2-bytes
@@ -1349,8 +1375,10 @@ mod tests {
                     src: --asset("/fonts/inter.woff2") format("woff2");
                 }
                 -- main.hop --
-                view Home() {
-                    <div>hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div>hi</div>
+                  }
                 }
             "#]],
         )
@@ -1377,8 +1405,10 @@ mod tests {
                     src: --asset("/fonts/missing.woff2");
                 }
                 -- main.hop --
-                view Home() {
-                    <div>hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div>hi</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1413,8 +1443,10 @@ mod tests {
                     src: --asset(var(--x));
                 }
                 -- main.hop --
-                view Home() {
-                    <div>hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div>hi</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1447,8 +1479,10 @@ mod tests {
                 -- input.css --
                 @import "tailwindcss";
                 -- main.hop --
-                view Home() {
-                    <div>hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div>hi</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1481,8 +1515,10 @@ mod tests {
                 -- input.css --
                 @import "tailwindcss";
                 -- main.hop --
-                view Home() {
-                    <div>hi</div>
+                page Home() {
+                  fn body() -> Fragment {
+                      <div>hi</div>
+                  }
                 }
             "#]],
         )
@@ -1507,8 +1543,10 @@ mod tests {
                 production_prefix = "/assets"
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <img src={asset!("/logo.svg")} />
+                page Home() {
+                  fn body() -> Fragment {
+                      <img src={asset!("/logo.svg")} />
+                  }
                 }
                 -- logo.svg --
                 <svg>logo</svg>
@@ -1545,8 +1583,10 @@ mod tests {
                 -- logo.svg --
                 <svg>logo</svg>
                 -- main.hop --
-                view Home() {
-                    <img src={asset!("/logo.svg")} />
+                page Home() {
+                  fn body() -> Fragment {
+                      <img src={asset!("/logo.svg")} />
+                  }
                 }
                 -- style.css --
             "#]],

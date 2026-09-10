@@ -118,7 +118,7 @@ mod tests {
     fn check(source: &str, expected: &str) {
         assert_eq!(render(source), expected);
 
-        // Formatting a view must not change what it renders.
+        // Formatting a page must not change what it renders.
         let formatted = reformat(source);
         assert_eq!(
             render(&formatted),
@@ -175,10 +175,12 @@ mod tests {
     fn trims_text_against_the_tags_around_it() {
         check(
             indoc! {"
-                view Test {
-                  <div>
-                    hello
-                  </div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>
+                      hello
+                    </div>
+                  }
                 }
             "},
             "<div>hello</div>",
@@ -189,11 +191,13 @@ mod tests {
     fn turns_a_newline_between_text_into_a_space() {
         check(
             indoc! {"
-                view Test {
-                  <div>
-                    hello
-                    world
-                  </div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>
+                      hello
+                      world
+                    </div>
+                  }
                 }
             "},
             "<div>hello world</div>",
@@ -204,11 +208,13 @@ mod tests {
     fn trims_trailing_whitespace_before_a_newline() {
         check(
             concat!(
-                "view Test {\n",
-                "  <div>\n",
-                "    hello  \n",
-                "    world\n",
-                "  </div>\n",
+                "page Test() {\n",
+                "  fn body() -> Fragment {\n",
+                "    <div>\n",
+                "      hello  \n",
+                "      world\n",
+                "    </div>\n",
+                "  }\n",
                 "}\n",
             ),
             "<div>hello world</div>",
@@ -219,12 +225,14 @@ mod tests {
     fn collapses_a_run_of_newlines_into_one_space() {
         check(
             indoc! {"
-                view Test {
-                  <div>
-                    hello
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>
+                      hello
 
-                    world
-                  </div>
+                      world
+                    </div>
+                  }
                 }
             "},
             "<div>hello world</div>",
@@ -235,11 +243,13 @@ mod tests {
     fn drops_a_newline_between_text_and_expression() {
         check(
             indoc! {r#"
-                view Test {
-                  <div>
-                    hello
-                    {"world"}
-                  </div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>
+                      hello
+                      {"world"}
+                    </div>
+                  }
                 }
             "#},
             "<div>helloworld</div>",
@@ -250,11 +260,13 @@ mod tests {
     fn drops_a_newline_next_to_a_tag() {
         check(
             indoc! {"
-                view Test {
-                  <div>
-                    hello
-                    <span>world</span>
-                  </div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>
+                      hello
+                      <span>world</span>
+                    </div>
+                  }
                 }
             "},
             "<div>hello<span>world</span></div>",
@@ -265,8 +277,10 @@ mod tests {
     fn keeps_a_space_before_a_tag_on_the_same_line() {
         check(
             indoc! {"
-                view Test {
-                  <div>hello <span>world</span></div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>hello <span>world</span></div>
+                  }
                 }
             "},
             "<div>hello <span>world</span></div>",
@@ -275,20 +289,25 @@ mod tests {
 
     #[test]
     fn trims_text_at_the_end_of_a_body() {
-        check("view Test {<>hello </>}\n", "hello");
+        check(
+            "page Test() { fn body() -> Fragment {<>hello </>} }\n",
+            "hello",
+        );
     }
 
     #[test]
     fn preserves_script_content_verbatim() {
         check(
             indoc! {"
-                view Test {
-                  <script>
-                    let x = 1;
-                  </script>
+                page Test() {
+                  fn body() -> Fragment {
+                    <script>
+                      let x = 1;
+                    </script>
+                  }
                 }
             "},
-            "<script>\n    let x = 1;\n  </script>",
+            "<script>\n      let x = 1;\n    </script>",
         );
     }
 
@@ -296,8 +315,10 @@ mod tests {
     fn preserves_spaces_inside_expression() {
         check(
             indoc! {r#"
-                view Test {
-                  <>{"   "}</>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>{"   "}</>
+                  }
                 }
             "#},
             "   ",
@@ -308,10 +329,12 @@ mod tests {
     fn preserves_content_betwen_two_interpolations_on_single_line() {
         check(
             indoc! {r#"
-                view Test {
-                  <let {first: String = "Hello", second: String = "World"}>
-                    <div>{first} {second}</div>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {first: String = "Hello", second: String = "World"}>
+                      <div>{first} {second}</div>
+                    </let>
+                  }
                 }
             "#},
             "<div>Hello World</div>",
@@ -322,8 +345,10 @@ mod tests {
     fn preserves_whitespace_before_tag_on_single_line() {
         check(
             indoc! {"
-                view Test {
-                  <>this looks <b>great</b></>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>this looks <b>great</b></>
+                  }
                 }
             "},
             "this looks <b>great</b>",
@@ -334,13 +359,15 @@ mod tests {
     fn preserves_style_content_verbatim() {
         check(
             indoc! {"
-                view Test {
-                  <style>
-                    .a { color: red; }
-                  </style>
+                page Test() {
+                  fn body() -> Fragment {
+                    <style>
+                      .a { color: red; }
+                    </style>
+                  }
                 }
             "},
-            "<style>\n    .a { color: red; }\n  </style>",
+            "<style>\n      .a { color: red; }\n    </style>",
         );
     }
 
@@ -348,8 +375,10 @@ mod tests {
     fn keeps_a_space_between_two_tags_on_the_same_line() {
         check(
             indoc! {"
-                view Test {
-                  <><b>b</b> <i>i</i></>
+                page Test() {
+                  fn body() -> Fragment {
+                    <><b>b</b> <i>i</i></>
+                  }
                 }
             "},
             "<b>b</b> <i>i</i>",
@@ -360,11 +389,13 @@ mod tests {
     fn drops_a_line_break_between_two_tags() {
         check(
             indoc! {"
-                view Test {
-                  <>
-                    <b>b</b>
-                    <i>i</i>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <b>b</b>
+                      <i>i</i>
+                    </>
+                  }
                 }
             "},
             "<b>b</b><i>i</i>",
@@ -375,8 +406,10 @@ mod tests {
     fn keeps_a_space_between_two_expressions_on_the_same_line() {
         check(
             indoc! {r#"
-                view Test {
-                  <>{"a"} {"b"}</>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>{"a"} {"b"}</>
+                  }
                 }
             "#},
             "a b",
@@ -387,11 +420,13 @@ mod tests {
     fn drops_a_newline_between_two_expressions() {
         check(
             indoc! {r#"
-                view Test {
-                  <>
-                    {"a"}
-                    {"b"}
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      {"a"}
+                      {"b"}
+                    </>
+                  }
                 }
             "#},
             "ab",
@@ -402,8 +437,10 @@ mod tests {
     fn keeps_a_space_between_a_tag_and_an_expression() {
         check(
             indoc! {r#"
-                view Test {
-                  <><b>b</b> {"i"}</>
+                page Test() {
+                  fn body() -> Fragment {
+                    <><b>b</b> {"i"}</>
+                  }
                 }
             "#},
             "<b>b</b> i",
@@ -414,8 +451,10 @@ mod tests {
     fn keeps_a_run_of_spaces_beside_a_tag() {
         check(
             indoc! {"
-                view Test {
-                  <>a  <b>x</b></>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>a  <b>x</b></>
+                  }
                 }
             "},
             "a  <b>x</b>",
@@ -426,8 +465,10 @@ mod tests {
     fn keeps_whitespace_on_the_side_that_has_no_linebreak() {
         check(
             indoc! {r#"
-                view Test {
-                  <><b>x</b>  a {"y"}</>
+                page Test() {
+                  fn body() -> Fragment {
+                    <><b>x</b>  a {"y"}</>
+                  }
                 }
             "#},
             "<b>x</b>  a y",
@@ -438,8 +479,10 @@ mod tests {
     fn renders_a_fragment_as_its_children() {
         check(
             indoc! {"
-                view Test {
-                  <><b>x</b><i>y</i></>
+                page Test() {
+                  fn body() -> Fragment {
+                    <><b>x</b><i>y</i></>
+                  }
                 }
             "},
             "<b>x</b><i>y</i>",
@@ -450,8 +493,10 @@ mod tests {
     fn renders_an_empty_fragment_as_nothing() {
         check(
             indoc! {"
-                view Test {
-                  <></>
+                page Test() {
+                  fn body() -> Fragment {
+                    <></>
+                  }
                 }
             "},
             "",
@@ -462,13 +507,15 @@ mod tests {
     fn trims_the_children_of_a_fragment_against_its_tags() {
         check(
             indoc! {"
-                view Test {
-                  <div>
-                    hello
-                    <>
-                      world
-                    </>
-                  </div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>
+                      hello
+                      <>
+                        world
+                      </>
+                    </div>
+                  }
                 }
             "},
             "<div>helloworld</div>",
@@ -479,8 +526,10 @@ mod tests {
     fn keeps_a_space_written_beside_a_fragment() {
         check(
             indoc! {"
-                view Test {
-                  <>hello <>world</></>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>hello <>world</></>
+                  }
                 }
             "},
             "hello world",
@@ -491,8 +540,10 @@ mod tests {
     fn drops_spaces_written_inside_an_interpolation() {
         check(
             indoc! {r#"
-                view Test {
-                  <div>a{ "b" }c</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>a{ "b" }c</div>
+                  }
                 }
             "#},
             "<div>abc</div>",
@@ -503,10 +554,12 @@ mod tests {
     fn drops_line_breaks_written_inside_an_interpolation() {
         check(
             indoc! {r#"
-                view Test {
-                  <div>a{
-                    "b"
-                  }c</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>a{
+                      "b"
+                    }c</div>
+                  }
                 }
             "#},
             "<div>abc</div>",
@@ -524,8 +577,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <Wrap><b>w</b></Wrap>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrap><b>w</b></Wrap>
+                  }
                 }
             "},
             "<div>hello<b>w</b></div>",
@@ -540,8 +595,10 @@ mod tests {
                   <div>hello {children}</div>
                 }
 
-                view Test {
-                  <Wrap><b>w</b></Wrap>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Wrap><b>w</b></Wrap>
+                  }
                 }
             "},
             "<div>hello <b>w</b></div>",
@@ -552,8 +609,10 @@ mod tests {
     fn trims_text_in_markup_written_in_expression_position() {
         check(
             indoc! {"
-                view Test {
-                  <div>{<span> hello </span>}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{<span> hello </span>}</div>
+                  }
                 }
             "},
             "<div><span>hello</span></div>",
@@ -570,8 +629,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <>{card()}</>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>{card()}</>
+                  }
                 }
             "},
             "<div>hello</div>",
@@ -589,8 +650,10 @@ mod tests {
                   </div>
                 }
 
-                view Test {
-                  <>{card()}</>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>{card()}</>
+                  }
                 }
             "},
             "<div>hello world</div>",
@@ -601,13 +664,15 @@ mod tests {
     fn normalizes_markup_on_both_sides_of_an_interpolation() {
         check(
             indoc! {"
-                view Test {
-                  <div>
-                    hello
-                    {<span>
-                      world
-                    </span>}
-                  </div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>
+                      hello
+                      {<span>
+                        world
+                      </span>}
+                    </div>
+                  }
                 }
             "},
             "<div>hello<span>world</span></div>",
@@ -622,8 +687,10 @@ mod tests {
                   <div>{slot}</div>
                 }
 
-                view Test {
-                  <Card slot={<span>a<b>c</b></span>}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card slot={<span>a<b>c</b></span>}/>
+                  }
                 }
             "},
             "<div><span>a<b>c</b></span></div>",
@@ -638,8 +705,10 @@ mod tests {
                   <div>{slot}</div>
                 }
 
-                view Test {
-                  <Card slot={<span>a <b>c</b></span>}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card slot={<span>a <b>c</b></span>}/>
+                  }
                 }
             "},
             "<div><span>a <b>c</b></span></div>",
@@ -650,8 +719,10 @@ mod tests {
     fn leaves_raw_text_content_in_expression_position_alone() {
         check(
             indoc! {"
-                view Test {
-                  <div>{<style>  a  </style>}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{<style>  a  </style>}</div>
+                  }
                 }
             "},
             "<div><style>  a  </style></div>",
@@ -666,8 +737,10 @@ mod tests {
                   match on {true => <span class="a-fairly-long-class">yes <b>indeed</b></span>, false => <i>no</i>}
                 }
 
-                view Test {
-                  <div>{badge(true)}{badge(false)}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{badge(true)}{badge(false)}</div>
+                  }
                 }
             "#},
             "<div><span class=\"a-fairly-long-class\">yes <b>indeed</b></span><i>no</i></div>",
@@ -682,8 +755,10 @@ mod tests {
                   <div>{a}{b}</div>
                 }
 
-                view Test {
-                  <>{pair(<span>first <b>one</b></span>, <span>second one</span>)}</>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>{pair(<span>first <b>one</b></span>, <span>second one</span>)}</>
+                  }
                 }
             "#},
             "<div><span>first <b>one</b></span><span>second one</span></div>",

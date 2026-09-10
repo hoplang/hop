@@ -679,7 +679,7 @@ mod tests {
     fn should_wrap_int_addition_at_i32_boundary() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     let sum = t.add(t.int(2147483647), t.int(1));
                     t.escape(t.int_to_string(sum))
                 })
@@ -701,7 +701,7 @@ mod tests {
     fn should_evaluate_simple_raw() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| t.raw("<div>Hello World</div>"))
+                .page_no_params("Test", |t| t.raw("<div>Hello World</div>"))
                 .build(),
             vec![],
             expect![[r#"
@@ -720,7 +720,7 @@ mod tests {
     fn should_escape_html_in_expressions() {
         check(
             PureModuleBuilder::new()
-                .view("Test", [("content", "String")], |t| {
+                .page("Test", [("content", "String")], |t| {
                     t.escape(t.var("content"))
                 })
                 .build(),
@@ -744,7 +744,7 @@ mod tests {
     fn should_render_if_body_when_condition_is_true() {
         check(
             PureModuleBuilder::new()
-                .view("Test", [("show", "Bool")], |t| {
+                .page("Test", [("show", "Bool")], |t| {
                     t.bool_match_expr(t.var("show"), t.raw("<div>Visible</div>"), t.concat(vec![]))
                 })
                 .build(),
@@ -768,7 +768,7 @@ mod tests {
     fn should_skip_if_body_when_condition_is_false() {
         check(
             PureModuleBuilder::new()
-                .view("Test", [("show", "Bool")], |t| {
+                .page("Test", [("show", "Bool")], |t| {
                     t.bool_match_expr(t.var("show"), t.raw("<div>Hidden</div>"), t.concat(vec![]))
                 })
                 .build(),
@@ -792,7 +792,7 @@ mod tests {
     fn should_iterate_over_array_in_for_loop() {
         check(
             PureModuleBuilder::new()
-                .view("Test", [("items", "Array[String]")], |t| {
+                .page("Test", [("items", "Array[String]")], |t| {
                     t.fragment_for(Some("item"), t.var("items"), |t| {
                         t.concat(vec![
                             t.raw("<li>"),
@@ -831,7 +831,7 @@ mod tests {
     fn let_binds_a_value_then_uses_it() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("v_0", t.raw("<b>hi</b>"), |t| t.var("v_0"))
                 })
                 .build(),
@@ -851,7 +851,7 @@ mod tests {
     #[test]
     fn should_error_when_required_param_not_provided() {
         let module = PureModuleBuilder::new()
-            .view("Test", [("name", "String")], |t| t.escape(t.var("name")))
+            .page("Test", [("name", "String")], |t| t.escape(t.var("name")))
             .build();
 
         // Call without providing the required argument
@@ -872,7 +872,7 @@ mod tests {
                 .function("C", [("p0", "Int"), ("p1", "Int")], "Fragment", |t| {
                     t.escape(t.int_to_string(t.var("p1")))
                 })
-                .view("Test", [("p0", "Int")], |t| {
+                .page("Test", [("p0", "Int")], |t| {
                     t.call("C", vec![("p0", t.int(999)), ("p1", t.var("p0"))])
                 })
                 .build(),

@@ -101,7 +101,7 @@ impl TypedPageDeclaration {
         let mut blocks: Vec<BoxDoc<'_>> = Vec::new();
         if !matches!(&self.head, TypedExpr::FragmentConcat { nodes } if nodes.is_empty()) {
             blocks.push(
-                BoxDoc::text("head {")
+                BoxDoc::text("fn head() -> Fragment {")
                     .append(
                         BoxDoc::line()
                             .append(self.head.to_doc())
@@ -112,7 +112,7 @@ impl TypedPageDeclaration {
             );
         }
         blocks.push(
-            BoxDoc::text("body {")
+            BoxDoc::text("fn body() -> Fragment {")
                 .append(
                     BoxDoc::line()
                         .append(self.body.to_doc())

@@ -26,8 +26,8 @@ pub enum ParsedDeclaration {
     Import(ParsedImportDeclaration),
     Record(ParsedRecordDeclaration),
     Enum(ParsedEnumDeclaration),
-    Page(ParsedPageDeclaration),
-    Function(ParsedFunctionDeclaration),
+    Page(Box<ParsedPageDeclaration>),
+    Function(Box<ParsedFunctionDeclaration>),
 }
 
 /// A function declaration.
@@ -53,10 +53,10 @@ pub struct ParsedFunctionDeclaration {
 ///
 /// ```text
 /// page Main {
-///   head {
+///   fn head() -> Fragment {
 ///     <title>My page</title>
 ///   }
-///   body {
+///   fn body() -> Fragment {
 ///     <div>
 ///       Welcome!
 ///     </div>
@@ -68,13 +68,22 @@ pub struct ParsedPageDeclaration {
     pub name: TypeName,
     pub name_range: DocumentRange,
     pub params: Vec<ParsedParameter>,
-    pub head: Option<ParsedExpr>,
-    pub body: ParsedExpr,
+    pub head: Option<ParsedFunctionDeclaration>,
+    pub body: ParsedFunctionDeclaration,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,
-    /// True when this declaration was written using the `view` keyword.
-    /// Used only by the formatter to round-trip `view` syntax.
-    pub is_view: bool,
+}
+
+impl ParsedPageDeclaration {
+    /// The page's members in source order.
+    pub fn members(&self) -> impl Iterator<Item = &ParsedFunctionDeclaration> {
+        let (first, second) = match &self.head {
+            Some(head) if head.range.start() < self.body.range.start() => (head, Some(&self.body)),
+            Some(head) => (&self.body, Some(head)),
+            None => (&self.body, None),
+        };
+        std::iter::once(first).chain(second)
+    }
 }
 
 /// An import declaration.
@@ -267,14 +276,14 @@ impl ParsedAst {
 
     pub fn page_declarations(&self) -> impl Iterator<Item = &ParsedPageDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
-            ParsedDeclaration::Page(e) => Some(e),
+            ParsedDeclaration::Page(e) => Some(&**e),
             _ => None,
         })
     }
 
     pub fn function_declarations(&self) -> impl Iterator<Item = &ParsedFunctionDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
-            ParsedDeclaration::Function(f) => Some(f),
+            ParsedDeclaration::Function(f) => Some(&**f),
             _ => None,
         })
     }
@@ -449,19 +458,6 @@ impl ParsedFunctionDeclaration {
 }
 
 impl ParsedPageDeclaration {
-    fn to_doc_block<'a>(name: &'a str, body: &'a ParsedExpr) -> BoxDoc<'a> {
-        BoxDoc::text(name)
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(
-                BoxDoc::line()
-                    .append(body.to_doc())
-                    .nest(2)
-                    .append(BoxDoc::line()),
-            )
-            .append(BoxDoc::text("}"))
-    }
-
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let pub_prefix = if self.pub_range.is_some() {
             BoxDoc::text("pub").append(BoxDoc::space())
@@ -469,7 +465,7 @@ impl ParsedPageDeclaration {
             BoxDoc::nil()
         };
         let header = pub_prefix
-            .append(BoxDoc::text(if self.is_view { "view" } else { "page" }))
+            .append(BoxDoc::text("page"))
             .append(BoxDoc::space())
             .append(BoxDoc::text(self.name.as_str()))
             .append(BoxDoc::text("("))
@@ -481,31 +477,15 @@ impl ParsedPageDeclaration {
             .append(BoxDoc::text(")"))
             .append(BoxDoc::space());
 
-        if self.is_view {
-            header
-                .append(BoxDoc::text("{"))
-                .append(
-                    BoxDoc::line()
-                        .append(self.body.to_doc())
-                        .nest(2)
-                        .append(BoxDoc::line()),
-                )
-                .append(BoxDoc::text("}"))
-        } else {
-            let mut blocks = Vec::new();
-            if let Some(head) = &self.head {
-                blocks.push(Self::to_doc_block("head", head));
-            }
-            blocks.push(Self::to_doc_block("body", &self.body));
-            header
-                .append(BoxDoc::text("{"))
-                .append(
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(blocks, BoxDoc::line()))
-                        .nest(2)
-                        .append(BoxDoc::line()),
-                )
-                .append(BoxDoc::text("}"))
-        }
+        let blocks = self.members().map(|member| member.to_doc());
+        header
+            .append(BoxDoc::text("{"))
+            .append(
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(blocks, BoxDoc::line()))
+                    .nest(2)
+                    .append(BoxDoc::line()),
+            )
+            .append(BoxDoc::text("}"))
     }
 }

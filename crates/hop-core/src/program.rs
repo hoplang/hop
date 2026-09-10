@@ -1220,7 +1220,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_function_invocation_inside_view() {
+    fn should_find_definition_from_function_invocation_inside_page() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
@@ -1228,9 +1228,11 @@ mod tests {
                   <h1>Hello World</h1>
                 }
 
-                view Main() {
-                  <HelloWorld />
-                   ^
+                page Main() {
+                  fn body() -> Fragment {
+                    <HelloWorld />
+                     ^
+                  }
                 }
             "#},
             expect![[r#"
@@ -1797,7 +1799,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_rename_locations_for_enum_type_in_view() {
+    fn should_find_rename_locations_for_enum_type_in_page() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
@@ -1807,27 +1809,29 @@ mod tests {
                   Mobile,
                 }
 
-                view Preview(
+                page Preview(
                   iframe_src: String,
                   device: Device,
                 ) {
-                  <div class={
-                    join!(
-                      "bg-white",
-                      "h-full",
-                      "border",
-                      "border-neutral-300",
-                      "rounded",
-                      "overflow-hidden",
-                      match device {
-                        Device::Mobile => "w-md",
-                        _ => "w-full",
-                      },
-                    )
-                  }>
-                    <iframe src={iframe_src} class="w-full h-full">
-                    </iframe>
-                  </div>
+                  fn body() -> Fragment {
+                    <div class={
+                      join!(
+                        "bg-white",
+                        "h-full",
+                        "border",
+                        "border-neutral-300",
+                        "rounded",
+                        "overflow-hidden",
+                        match device {
+                          Device::Mobile => "w-md",
+                          _ => "w-full",
+                        },
+                      )
+                    }>
+                      <iframe src={iframe_src} class="w-full h-full">
+                      </iframe>
+                    </div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1842,9 +1846,9 @@ mod tests {
                    |           ^^^^^^
 
                 Rename
-                  --> main.hop (line 19, col 9)
-                19 |         Device::Mobile => "w-md",
-                   |         ^^^^^^
+                  --> main.hop (line 20, col 11)
+                20 |           Device::Mobile => "w-md",
+                   |           ^^^^^^
             "#]],
         );
     }
@@ -2485,19 +2489,23 @@ mod tests {
     }
 
     #[test]
-    fn should_evaluate_ir_view_with_parameters() {
+    fn should_evaluate_ir_page_with_parameters() {
         let program = program_from_txtar(indoc! {r#"
             -- main.hop --
-            view HelloWorld(name: String) {
-              <h1>Hello {name}!</h1>
+            page HelloWorld(name: String) {
+              fn body() -> Fragment {
+                <h1>Hello {name}!</h1>
+              }
             }
 
-            view AnotherComp() {
-              <p>Static content</p>
+            page AnotherComp() {
+              fn body() -> Fragment {
+                <p>Static content</p>
+              }
             }
         "#});
 
-        // Test evaluating hello-world view with a name parameter
+        // Test evaluating hello-world page with a name parameter
         let mut args = HashMap::new();
         args.insert(
             VarName::new("name").unwrap(),
@@ -2512,7 +2520,7 @@ mod tests {
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
 
-        // Test evaluating another-comp view without parameters
+        // Test evaluating another-comp page without parameters
         let another_comp = TypeName::new("AnotherComp").unwrap();
         let result = program
             .evaluate_page_with_values(
@@ -2527,7 +2535,7 @@ mod tests {
 
         assert!(result.contains("<p>Static content</p>"));
 
-        // Test error when view doesn't exist
+        // Test error when page doesn't exist
         let non_existent = TypeName::new("NonExistent").unwrap();
         let result = program.evaluate_page_with_values(
             &main_module,
@@ -2556,21 +2564,23 @@ mod tests {
               Blue,
             }
 
-            view Test {
-              <let {color: Color = Color::Red}>
-                <if {color == Color::Red}>
-                  equal
-                </if>
-              </let>
+            page Test() {
+              fn body() -> Fragment {
+                <let {color: Color = Color::Red}>
+                  <if {color == Color::Red}>
+                    equal
+                  </if>
+                </let>
+              }
             }
         "#});
         check_type_errors(
             &program,
             expect![[r#"
                 Type main::Color is not comparable
-                  --> main.hop (line 9, col 10)
-                 9 |     <if {color == Color::Red}>
-                   |          ^^^^^
+                  --> main.hop (line 10, col 12)
+                10 |       <if {color == Color::Red}>
+                   |            ^^^^^
             "#]],
         );
     }
@@ -2585,21 +2595,23 @@ mod tests {
               Blue,
             }
 
-            view Test {
-              <let {color: Color = Color::Red}>
-                <if {color != Color::Red}>
-                  not equal
-                </if>
-              </let>
+            page Test() {
+              fn body() -> Fragment {
+                <let {color: Color = Color::Red}>
+                  <if {color != Color::Red}>
+                    not equal
+                  </if>
+                </let>
+              }
             }
         "#});
         check_type_errors(
             &program,
             expect![[r#"
                 Type main::Color is not comparable
-                  --> main.hop (line 9, col 10)
-                 9 |     <if {color != Color::Red}>
-                   |          ^^^^^
+                  --> main.hop (line 10, col 12)
+                10 |       <if {color != Color::Red}>
+                   |            ^^^^^
             "#]],
         );
     }

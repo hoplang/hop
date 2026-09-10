@@ -11,6 +11,7 @@ use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 
 use crate::hop::parsing::ParsedExpr;
+use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_ast::ParsedParameter;
 use crate::hop::parsing::parsed_node::ParsedNode;
@@ -70,15 +71,17 @@ pub fn parse(document_id: DocumentId, document: Document, errors: &mut ParseErro
             )
             .map(ParsedDeclaration::Enum)
         } else if let Some(keyword) =
-            parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::View)
-        {
-            parse_view_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
-                .map(ParsedDeclaration::Page)
-        } else if let Some(keyword) =
             parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Page)
         {
-            parse_page_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
-                .map(ParsedDeclaration::Page)
+            parse_page_declaration(
+                &mut iter,
+                &mut comments,
+                errors,
+                &document_range,
+                keyword,
+                pub_range,
+            )
+            .map(|page| ParsedDeclaration::Page(Box::new(page)))
         } else if let Some(keyword) =
             parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Fn)
         {
@@ -90,7 +93,7 @@ pub fn parse(document_id: DocumentId, document: Document, errors: &mut ParseErro
                 keyword,
                 pub_range,
             )
-            .map(ParsedDeclaration::Function)
+            .map(|function| ParsedDeclaration::Function(Box::new(function)))
         } else {
             if let Some(pub_range) = pub_range {
                 let _ = errors.emit(ParseErrorKind::UnexpectedPubKeyword {}, pub_range);
@@ -320,12 +323,12 @@ fn parse_field_declarations(
     )
 }
 
-fn parse_page_or_view_header(
+fn parse_page_header(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     keyword_range: &DocumentRange,
-) -> Result<(TypeName, DocumentRange, Vec<ParsedParameter>, DocumentRange), ErrorEmitted> {
+) -> Result<PageHeader, ErrorEmitted> {
     let (name_str, name_range) = match tokenize_expr::next(iter, comments, errors) {
         Some((LangToken::Identifier(name_str), range)) => (name_str, range),
         Some((actual, range)) => {
@@ -349,7 +352,7 @@ fn parse_page_or_view_header(
                         ParameterItem::Parameter(parameter) => {
                             if let Some(value) = &parameter.default_value {
                                 let _ = errors.emit(
-                                    ParseErrorKind::DefaultValueNotAllowedOnView {},
+                                    ParseErrorKind::DefaultValueNotAllowedOnPage {},
                                     value.range().clone(),
                                 );
                             }
@@ -357,7 +360,7 @@ fn parse_page_or_view_header(
                         }
                         ParameterItem::Rest { range, .. } => {
                             let _ =
-                                errors.emit(ParseErrorKind::RestParamNotAllowedOnView {}, range);
+                                errors.emit(ParseErrorKind::RestParamNotAllowedOnPage {}, range);
                         }
                     }
                 }
@@ -366,82 +369,131 @@ fn parse_page_or_view_header(
             None => (Vec::new(), name_range.clone()),
         };
 
-    let name = match TypeName::new(&name_str) {
-        Ok(name) => name,
-        Err(error) => {
-            return Err(errors.emit(ParseErrorKind::InvalidTypeName { error }, name_range));
-        }
-    };
+    let name = TypeName::new(&name_str).map_err(|error| {
+        errors.emit(
+            ParseErrorKind::InvalidTypeName { error },
+            name_range.clone(),
+        )
+    });
 
-    Ok((name, name_range, params, params_range))
-}
-
-fn parse_view_declaration(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    keyword_range: DocumentRange,
-    pub_range: Option<DocumentRange>,
-) -> Result<ParsedPageDeclaration, ErrorEmitted> {
-    let (name, name_range, params, params_range) =
-        parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
-    let (body, body_end) = parse_declaration_body(iter, comments, errors, &params_range)?;
-    Ok(ParsedPageDeclaration {
+    Ok(PageHeader {
         name,
         name_range,
         params,
-        head: None,
-        body,
-        range: pub_range
-            .clone()
-            .unwrap_or_else(|| keyword_range.clone())
-            .to(body_end),
-        pub_range,
-        is_view: true,
+        params_range,
     })
+}
+
+struct PageHeader {
+    name: Result<TypeName, ErrorEmitted>,
+    name_range: DocumentRange,
+    params: Vec<ParsedParameter>,
+    params_range: DocumentRange,
 }
 
 fn parse_page_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedPageDeclaration, ErrorEmitted> {
-    let (name, name_range, params, params_range) =
-        parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
+    let PageHeader {
+        name,
+        name_range,
+        params,
+        params_range,
+    } = parse_page_header(iter, comments, errors, &keyword_range)?;
     let outer_body_start =
         parse_helpers::expect_token(iter, comments, errors, &params_range, &LangToken::LeftBrace)?;
-    let head = if let Some((_, head_keyword_range)) =
-        parse_helpers::next_if_map(iter, comments, errors, |token| {
-            token.identifier().filter(|word| word.as_str() == "head")
-        }) {
-        let (head, _) = parse_declaration_body(iter, comments, errors, &head_keyword_range)?;
-        Some(head)
-    } else {
-        None
-    };
-    let Some((_, body_keyword_range)) =
-        parse_helpers::next_if_map(iter, comments, errors, |token| {
-            token.identifier().filter(|word| word.as_str() == "body")
-        })
-    else {
-        let range = match tokenize_expr::peek(iter) {
-            Some((_, range)) => range,
-            None => name_range,
+
+    let mut head: Option<ParsedFunctionDeclaration> = None;
+    let mut body: Option<ParsedFunctionDeclaration> = None;
+    let mut failed_member: Option<ErrorEmitted> = None;
+    let right_brace = loop {
+        if let Some(right_brace) =
+            parse_helpers::advance_if(iter, comments, errors, LangToken::RightBrace)
+        {
+            break right_brace;
+        }
+        if let Some(member_pub_range) =
+            parse_helpers::advance_if(iter, comments, errors, LangToken::Pub)
+        {
+            let _ = errors.emit(ParseErrorKind::UnexpectedPubKeyword {}, member_pub_range);
+        }
+        let Some(fn_keyword) = parse_helpers::advance_if(iter, comments, errors, LangToken::Fn)
+        else {
+            let Some((_, range)) = tokenize_expr::peek(iter) else {
+                return Err(errors.emit(
+                    ParseErrorKind::UnmatchedToken {
+                        token: LangToken::LeftBrace,
+                    },
+                    outer_body_start,
+                ));
+            };
+            return Err(errors.emit(ParseErrorKind::ExpectedPageMember {}, range));
         };
-        return Err(errors.emit(ParseErrorKind::ExpectedPageBodyBlock {}, range));
+        // A member that fails to parse has already skipped past its body,
+        // so the next member can still be parsed and reported.
+        let member =
+            match parse_function_declaration(iter, comments, errors, eof_range, fn_keyword, None) {
+                Ok(member) => member,
+                Err(reported) => {
+                    failed_member = Some(reported);
+                    continue;
+                }
+            };
+        let member_name = member.name.to_cheap_string();
+        let slot = match member.name.as_str() {
+            "head" => &mut head,
+            "body" => &mut body,
+            _ => {
+                let _ = errors.emit(
+                    ParseErrorKind::UnknownPageMember { name: member_name },
+                    member.name_range.clone(),
+                );
+                continue;
+            }
+        };
+        let parameters_range = match (member.params.first(), &member.rest_param) {
+            (Some(param), _) => Some(param.var_name_range.clone()),
+            (None, Some((_, range))) => Some(range.clone()),
+            (None, None) => None,
+        };
+        if let Some(parameters_range) = parameters_range {
+            let _ = errors.emit(
+                ParseErrorKind::PageMemberHasParameters {
+                    name: member_name.clone(),
+                },
+                parameters_range,
+            );
+        }
+        if !matches!(member.return_type, ParsedType::Fragment { .. }) {
+            let _ = errors.emit(
+                ParseErrorKind::PageMemberMustReturnFragment {
+                    name: member_name.clone(),
+                },
+                member.return_type.range().clone(),
+            );
+        }
+        if slot.is_some() {
+            let _ = errors.emit(
+                ParseErrorKind::DuplicatePageMember { name: member_name },
+                member.name_range.clone(),
+            );
+            continue;
+        }
+        *slot = Some(member);
     };
-    let (body, _) = parse_declaration_body(iter, comments, errors, &body_keyword_range)?;
-    let right_brace = parse_helpers::expect_right_delimiter(
-        iter,
-        comments,
-        errors,
-        LangTokenPair::Braces,
-        &outer_body_start,
-    )?;
+    let Some(body) = body else {
+        return Err(match failed_member {
+            Some(reported) => reported,
+            None => errors.emit(ParseErrorKind::ExpectedPageBodyBlock {}, right_brace),
+        });
+    };
     Ok(ParsedPageDeclaration {
-        name,
+        name: name?,
         name_range,
         params,
         head,
@@ -451,7 +503,6 @@ fn parse_page_declaration(
             .unwrap_or_else(|| keyword_range.clone())
             .to(right_brace),
         pub_range,
-        is_view: false,
     })
 }
 
@@ -487,7 +538,20 @@ fn parse_function_declaration(
         eof_range,
         LangTokenPair::Braces,
         &left_brace,
-        parse_expr::parse_expr,
+        |iter, comments, errors, eof_range| {
+            if let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter)
+                && matches!(return_type, Ok(ParsedType::Fragment { .. }))
+            {
+                let _ = errors.emit(ParseErrorKind::EmptyBody {}, left_brace.clone());
+                return Ok(ParsedExpr::Markup {
+                    node: Box::new(ParsedNode::Fragment {
+                        children: Vec::new(),
+                        range: left_brace.clone(),
+                    }),
+                });
+            }
+            parse_expr::parse_expr(iter, comments, errors, eof_range)
+        },
     )?;
     Ok(ParsedFunctionDeclaration {
         name,
@@ -608,36 +672,6 @@ fn parse_parameters(
                 examples,
                 examples_range,
             })))
-        },
-    )
-}
-
-fn parse_declaration_body(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    range: &DocumentRange,
-) -> Result<(ParsedExpr, DocumentRange), ErrorEmitted> {
-    let left_brace =
-        parse_helpers::expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
-    parse_helpers::parse_delimited(
-        iter,
-        comments,
-        errors,
-        &left_brace,
-        LangTokenPair::Braces,
-        &left_brace,
-        |iter, comments, errors, left_brace| {
-            if let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter) {
-                let _ = errors.emit(ParseErrorKind::EmptyBody {}, left_brace.clone());
-                return Ok(ParsedExpr::Markup {
-                    node: Box::new(ParsedNode::Fragment {
-                        children: Vec::new(),
-                        range: left_brace.clone(),
-                    }),
-                });
-            }
-            parse_expr::parse_expr(iter, comments, errors, left_brace)
         },
     )
 }
@@ -931,20 +965,24 @@ mod tests {
     }
 
     #[test]
-    fn accepts_pub_on_view() {
+    fn accepts_pub_on_page() {
         accept(
             indoc! {"
-                pub view Home {
-                  <div>hi</div>
+                pub page Home() {
+                  fn body() -> Fragment {
+                    <div>hi</div>
+                  }
                 }
             "},
             expect![[r#"
-                pub view Home() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [text("hi")],
-                  )
+                pub page Home() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("hi")],
+                    )
+                  }
                 }
             "#]],
         );
@@ -1364,8 +1402,10 @@ mod tests {
                 fn Card(title: String) -> Fragment {
                   <div>{title}</div>
                 }
-                view Home {
-                  <Card title="hi"/>
+                page Home() {
+                  fn body() -> Fragment {
+                    <Card title="hi"/>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1396,8 +1436,10 @@ mod tests {
                   )
                 }
 
-                view Home() {
-                  Card(attrs: [title: "hi"])
+                page Home() {
+                  fn body() -> Fragment {
+                    Card(attrs: [title: "hi"])
+                  }
                 }
             "#]],
         );
@@ -1605,11 +1647,13 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Unexpected token '}'
+                error: Expected an expression: use <></> for an empty body
                 1 | fn Main() -> Fragment {
-                2 | }
-                  | ^
+                  |                       ^
                 -- ast --
+                fn Main() -> Fragment {
+                  fragment()
+                }
             "#]],
         );
     }
@@ -1640,25 +1684,27 @@ mod tests {
     }
 
     #[test]
-    fn rejects_several_roots_in_a_view_body() {
+    fn rejects_several_roots_in_a_page_body() {
         reject(
             indoc! {"
-                view Main {
-                    <p>one</p>
-                    <p>two</p>
+                page Main() {
+                  fn body() -> Fragment {
+                      <p>one</p>
+                      <p>two</p>
+                  }
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unexpected character: '/'
-                2 |     <p>one</p>
-                3 |     <p>two</p>
-                  |            ^
+                3 |       <p>one</p>
+                4 |       <p>two</p>
+                  |              ^
 
                 error: Unexpected token '}'
-                3 |     <p>two</p>
-                4 | }
-                  | ^
+                4 |       <p>two</p>
+                5 |   }
+                  |   ^
                 -- ast --
             "#]],
         );
@@ -1669,11 +1715,11 @@ mod tests {
         reject(
             indoc! {"
                 page Main {
-                    head {
+                    fn head() -> Fragment {
                         <title>one</title>
                         <meta charset=\"utf-8\"/>
                     }
-                    body {
+                    fn body() -> Fragment {
                         <p>one</p>
                         <p>two</p>
                     }
@@ -1685,6 +1731,16 @@ mod tests {
                  3 |         <title>one</title>
                  4 |         <meta charset="utf-8"/>
                    |               ^^^^^^^
+
+                error: Unexpected character: '/'
+                 7 |         <p>one</p>
+                 8 |         <p>two</p>
+                   |                ^
+
+                error: Unexpected token '}'
+                 8 |         <p>two</p>
+                 9 |     }
+                   |     ^
                 -- ast --
             "#]],
         );
@@ -3145,11 +3201,14 @@ mod tests {
                 2 | fn Main() -> Fragment {
                   | ^^
 
-                error: Unexpected token '}'
+                error: Expected an expression: use <></> for an empty body
+                1 | record
                 2 | fn Main() -> Fragment {
-                3 | }
-                  | ^
+                  |                       ^
                 -- ast --
+                fn Main() -> Fragment {
+                  fragment()
+                }
             "#]],
         );
     }
@@ -3168,11 +3227,14 @@ mod tests {
                 1 | foo
                   | ^^^
 
-                error: Unexpected token '}'
+                error: Expected an expression: use <></> for an empty body
+                1 | foo
                 2 | fn Main() -> Fragment {
-                3 | }
-                  | ^
+                  |                       ^
                 -- ast --
+                fn Main() -> Fragment {
+                  fragment()
+                }
             "#]],
         );
     }
@@ -4359,79 +4421,69 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_declaration() {
+    fn accepts_page_without_parentheses() {
         accept(
             indoc! {"
-                view Index() {
-                    <div>Hello</div>
+                page Index {
+                  fn body() -> Fragment {
+                      <div>Hello</div>
+                  }
                 }
             "},
             expect![[r#"
-                view Index() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [text("Hello")],
-                  )
+                page Index() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Hello")],
+                    )
+                  }
                 }
             "#]],
         );
     }
 
     #[test]
-    fn accepts_view_without_parentheses() {
+    fn accepts_page_with_parameters() {
         accept(
             indoc! {"
-                view Index {
-                    <div>Hello</div>
+                page Index(name: String, count: Int) {
+                  fn body() -> Fragment {
+                      <div>{name}: {count}</div>
+                  }
                 }
             "},
             expect![[r#"
-                view Index() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [text("Hello")],
-                  )
+                page Index(name: String, count: Int) {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        interpolate(name),
+                        text(": "),
+                        interpolate(count),
+                      ],
+                    )
+                  }
                 }
             "#]],
         );
     }
 
     #[test]
-    fn accepts_view_with_parameters() {
-        accept(
-            indoc! {"
-                view Index(name: String, count: Int) {
-                    <div>{name}: {count}</div>
-                }
-            "},
-            expect![[r#"
-                view Index(name: String, count: Int) {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [
-                      interpolate(name),
-                      text(": "),
-                      interpolate(count),
-                    ],
-                  )
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_view_with_function_invocation() {
+    fn accepts_page_with_function_invocation() {
         accept(
             indoc! {"
                 fn Header(title: String) -> Fragment {
                     <h1>{title}</h1>
                 }
 
-                view Index(title: String) {
-                    <Header title={title} />
+                page Index(title: String) {
+                  fn body() -> Fragment {
+                      <Header title={title} />
+                  }
                 }
             "},
             expect![[r#"
@@ -4443,40 +4495,50 @@ mod tests {
                   )
                 }
 
-                view Index(title: String) {
-                  Header(attrs: [title: title])
+                page Index(title: String) {
+                  fn body() -> Fragment {
+                    Header(attrs: [title: title])
+                  }
                 }
             "#]],
         );
     }
 
     #[test]
-    fn accepts_multiple_views() {
+    fn accepts_multiple_pages() {
         accept(
             indoc! {"
-                view Index() {
-                    <div>Index</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>Index</div>
+                  }
                 }
 
-                view About() {
-                    <div>About</div>
+                page About() {
+                  fn body() -> Fragment {
+                      <div>About</div>
+                  }
                 }
             "},
             expect![[r#"
-                view Index() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [text("Index")],
-                  )
+                page Index() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Index")],
+                    )
+                  }
                 }
 
-                view About() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [text("About")],
-                  )
+                page About() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("About")],
+                    )
+                  }
                 }
             "#]],
         );
@@ -4486,26 +4548,30 @@ mod tests {
     fn rejects_let_binding_with_reserved_name() {
         reject(
             indoc! {r#"
-                view Test {
-                  <let {default: String = "x"}>
-                    <div></div>
-                  </let>
+                page Test() {
+                  fn body() -> Fragment {
+                    <let {default: String = "x"}>
+                      <div></div>
+                    </let>
+                  }
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Invalid variable name 'default': Variable name is a reserved word
-                1 | view Test {
-                2 |   <let {default: String = "x"}>
-                  |         ^^^^^^^
+                2 |   fn body() -> Fragment {
+                3 |     <let {default: String = "x"}>
+                  |           ^^^^^^^
                 -- ast --
-                view Test() {
-                  let  in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [],
-                    ),
+                page Test() {
+                  fn body() -> Fragment {
+                    let  in {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [],
+                      ),
+                    }
                   }
                 }
             "#]],
@@ -4513,17 +4579,19 @@ mod tests {
     }
 
     #[test]
-    fn rejects_view_with_reserved_name() {
+    fn rejects_page_with_reserved_name() {
         reject(
             indoc! {"
-                view Error() {
-                    <div>Hello</div>
+                page Error() {
+                  fn body() -> Fragment {
+                      <div>Hello</div>
+                  }
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Type name 'Error' is a reserved word
-                1 | view Error() {
+                1 | page Error() {
                   |      ^^^^^
                 -- ast --
             "#]],
@@ -4568,17 +4636,19 @@ mod tests {
     }
 
     #[test]
-    fn rejects_view_with_lowercase_name() {
+    fn rejects_page_with_lowercase_name() {
         reject(
             indoc! {"
-                view index() {
-                    <div>Hello</div>
+                page index() {
+                  fn body() -> Fragment {
+                      <div>Hello</div>
+                  }
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Type name must start with an uppercase letter
-                1 | view index() {
+                1 | page index() {
                   |      ^^^^^
                 -- ast --
             "#]],
@@ -4586,28 +4656,32 @@ mod tests {
     }
 
     #[test]
-    fn rejects_view_with_default_parameter() {
+    fn rejects_page_with_default_parameter() {
         reject(
             indoc! {r#"
-                view Index(name: String = "World") {
-                    <div>Hello {name}</div>
+                page Index(name: String = "World") {
+                  fn body() -> Fragment {
+                      <div>Hello {name}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- errors --
-                error: Default values are not allowed on view parameters
-                1 | view Index(name: String = "World") {
+                error: Default values are not allowed on page parameters
+                1 | page Index(name: String = "World") {
                   |                           ^^^^^^^
                 -- ast --
-                view Index(name: String = "World") {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [
-                      text("Hello "),
-                      interpolate(name),
-                    ],
-                  )
+                page Index(name: String = "World") {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    )
+                  }
                 }
             "#]],
         );
@@ -4618,24 +4692,24 @@ mod tests {
         accept(
             indoc! {r#"
                 page Index(name: String) {
-                    head {
+                    fn head() -> Fragment {
                         <title>My page</title>
                     }
-                    body {
+                    fn body() -> Fragment {
                         <div>Hello {name}</div>
                     }
                 }
             "#},
             expect![[r#"
                 page Index(name: String) {
-                  head {
+                  fn head() -> Fragment {
                     html(
                       tag: "title",
                       attrs: [],
                       children: [text("My page")],
                     )
                   }
-                  body {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
@@ -4655,14 +4729,14 @@ mod tests {
         accept(
             indoc! {"
                 page Index() {
-                    body {
+                    fn body() -> Fragment {
                         <div>Hello</div>
                     }
                 }
             "},
             expect![[r#"
                 page Index() {
-                  body {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
@@ -4679,14 +4753,14 @@ mod tests {
         reject(
             indoc! {"
                 page Index() {
-                    head {
+                    fn head() -> Fragment {
                         <title>My page</title>
                     }
                 }
             "},
             expect![[r#"
                 -- errors --
-                error: Expected a 'body' block
+                error: Expected a 'fn body() -> Fragment' member
                 4 |     }
                 5 | }
                   | ^
@@ -4696,72 +4770,354 @@ mod tests {
     }
 
     #[test]
-    fn rejects_page_declaration_with_body_before_head() {
+    fn rejects_page_member_with_an_unknown_name() {
         reject(
             indoc! {"
                 page Index() {
-                    body {
+                    fn footer() -> Fragment {
+                        <div>Bye</div>
+                    }
+                    fn body() -> Fragment {
                         <div>Hello</div>
                     }
-                    head {
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unknown page member 'footer': expected 'head' or 'body'
+                1 | page Index() {
+                2 |     fn footer() -> Fragment {
+                  |        ^^^^^^
+                -- ast --
+                page Index() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Hello")],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_page_member() {
+        reject(
+            indoc! {"
+                page Index() {
+                    fn body() -> Fragment {
+                        <div>Hello</div>
+                    }
+                    fn body() -> Fragment {
+                        <div>Again</div>
+                    }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Duplicate page member 'body'
+                4 |     }
+                5 |     fn body() -> Fragment {
+                  |        ^^^^
+                -- ast --
+                page Index() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Hello")],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_member_with_parameters() {
+        reject(
+            indoc! {"
+                page Index() {
+                    fn body(name: String) -> Fragment {
+                        <div>{name}</div>
+                    }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Page member 'body' cannot have parameters
+                1 | page Index() {
+                2 |     fn body(name: String) -> Fragment {
+                  |             ^^^^
+                -- ast --
+                page Index() {
+                  fn body(name: String) -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [interpolate(name)],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_member_with_a_rest_parameter() {
+        reject(
+            indoc! {"
+                page Index() {
+                    fn body(...rest) -> Fragment {
+                        <div>Hello</div>
+                    }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Page member 'body' cannot have parameters
+                1 | page Index() {
+                2 |     fn body(...rest) -> Fragment {
+                  |             ^^^^^^^
+                -- ast --
+                page Index() {
+                  fn body(...rest) -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Hello")],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_member_that_does_not_return_a_fragment() {
+        reject(
+            indoc! {"
+                page Index() {
+                    fn body() -> String {
+                        <div>Hello</div>
+                    }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Page member 'body' must return Fragment
+                1 | page Index() {
+                2 |     fn body() -> String {
+                  |                  ^^^^^^
+                -- ast --
+                page Index() {
+                  fn body() -> String {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Hello")],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_pub_on_a_page_member() {
+        reject(
+            indoc! {"
+                page Index() {
+                    pub fn body() -> Fragment {
+                        <div>Hello</div>
+                    }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: 'pub' is not allowed here
+                1 | page Index() {
+                2 |     pub fn body() -> Fragment {
+                  |     ^^^
+                -- ast --
+                page Index() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Hello")],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_non_member_token_inside_a_page() {
+        reject(
+            indoc! {"
+                page Index() {
+                    <div>Hello</div>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected 'fn head' or 'fn body'
+                1 | page Index() {
+                2 |     <div>Hello</div>
+                  |     ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_end_of_input_inside_a_page() {
+        reject(
+            indoc! {"
+                page Index() {
+                    fn body() -> Fragment {
+                        <div>Hello</div>
+                    }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unmatched '{'
+                1 | page Index() {
+                  |              ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn keeps_parsing_page_members_after_one_fails() {
+        reject(
+            indoc! {"
+                page Index() {
+                    fn head() -> Fragment {
+                        hello world
+                    }
+                    fn body() -> Fragment {
+                        <div>Hello</div>
+                    }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '}' but got 'world'
+                2 |     fn head() -> Fragment {
+                3 |         hello world
+                  |               ^^^^^
+                -- ast --
+                page Index() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Hello")],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn reports_a_page_body_member_that_fails_to_parse_once() {
+        reject(
+            indoc! {"
+                page Index() {
+                    fn body() -> Fragment {
+                        hello world
+                    }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '}' but got 'world'
+                2 |     fn body() -> Fragment {
+                3 |         hello world
+                  |               ^^^^^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_an_empty_body_on_a_function_without_the_fragment_hint() {
+        reject(
+            indoc! {"
+                fn f() -> Int {
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unexpected token '}'
+                1 | fn f() -> Int {
+                2 | }
+                  | ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_page_declaration_with_body_before_head() {
+        accept(
+            indoc! {"
+                page Index() {
+                    fn body() -> Fragment {
+                        <div>Hello</div>
+                    }
+                    fn head() -> Fragment {
                         <title>My page</title>
                     }
                 }
             "},
             expect![[r#"
-                -- errors --
-                error: Expected token '}' but got 'head'
-                4 |     }
-                5 |     head {
-                  |     ^^^^
-
-                error: Expected type name but got '<'
-                5 |     head {
-                6 |         <title>My page</title>
-                  |                       ^
-                -- ast --
+                page Index() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Hello")],
+                    )
+                  }
+                  fn head() -> Fragment {
+                    html(
+                      tag: "title",
+                      attrs: [],
+                      children: [text("My page")],
+                    )
+                  }
+                }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_a_view_with_an_empty_body() {
+    fn rejects_a_page_with_an_empty_body() {
         reject(
             indoc! {"
-                view Index() {
+                page Index() {
+                  fn body() -> Fragment {
+                  }
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Expected an expression: use <></> for an empty body
-                1 | view Index() {
-                  |              ^
+                1 | page Index() {
+                2 |   fn body() -> Fragment {
+                  |                         ^
                 -- ast --
-                view Index() {
-                  fragment()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_view_with_if_statement() {
-        accept(
-            indoc! {"
-                view Index(show: Bool) {
-                    <if {show}>
-                        <div>Visible</div>
-                    </if>
-                }
-            "},
-            expect![[r#"
-                view Index(show: Bool) {
-                  if show {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [text("Visible")],
-                    ),
+                page Index() {
+                  fn body() -> Fragment {
+                    fragment()
                   }
                 }
             "#]],
@@ -4769,23 +5125,27 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_for_loop() {
+    fn accepts_page_with_if_statement() {
         accept(
             indoc! {"
-                view Index(items: Array[String]) {
-                    <for {item in items}>
-                        <div>{item}</div>
-                    </for>
+                page Index(show: Bool) {
+                  fn body() -> Fragment {
+                      <if {show}>
+                          <div>Visible</div>
+                      </if>
+                  }
                 }
             "},
             expect![[r#"
-                view Index(items: Array[String]) {
-                  for item in items {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [interpolate(item)],
-                    ),
+                page Index(show: Bool) {
+                  fn body() -> Fragment {
+                    if show {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [text("Visible")],
+                      ),
+                    }
                   }
                 }
             "#]],
@@ -4793,26 +5153,93 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_let_binding() {
+    fn accepts_page_with_for_loop() {
+        accept(
+            indoc! {"
+                page Index(items: Array[String]) {
+                  fn body() -> Fragment {
+                      <for {item in items}>
+                          <div>{item}</div>
+                      </for>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Index(items: Array[String]) {
+                  fn body() -> Fragment {
+                    for item in items {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [interpolate(item)],
+                      ),
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_page_with_let_binding() {
         accept(
             indoc! {r#"
-                view Index() {
-                    <let {name: String = "World"}>
-                        <div>Hello {name}</div>
-                    </let>
+                page Index() {
+                  fn body() -> Fragment {
+                      <let {name: String = "World"}>
+                          <div>Hello {name}</div>
+                      </let>
+                  }
                 }
             "#},
             expect![[r#"
-                view Index() {
-                  let name: String = "World" in {
+                page Index() {
+                  fn body() -> Fragment {
+                    let name: String = "World" in {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [
+                          text("Hello "),
+                          interpolate(name),
+                        ],
+                      ),
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_page_with_void_elements() {
+        accept(
+            indoc! {"
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>
+                          <br />
+                          <input type=\"text\" />
+                          <hr />
+                      </div>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Index() {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
                       children: [
-                        text("Hello "),
-                        interpolate(name),
+                        html(tag: "br", attrs: []),
+                        html(
+                          tag: "input",
+                          attrs: [type: "text"],
+                        ),
+                        html(tag: "hr", attrs: []),
                       ],
-                    ),
+                    )
                   }
                 }
             "#]],
@@ -4820,88 +5247,23 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_void_elements() {
+    fn accepts_page_with_trailing_comma_in_params() {
         accept(
             indoc! {"
-                view Index() {
-                    <div>
-                        <br />
-                        <input type=\"text\" />
-                        <hr />
-                    </div>
+                page Index(name: String,) {
+                  fn body() -> Fragment {
+                      <div>{name}</div>
+                  }
                 }
             "},
             expect![[r#"
-                view Index() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [
-                      html(tag: "br", attrs: []),
-                      html(
-                        tag: "input",
-                        attrs: [type: "text"],
-                      ),
-                      html(tag: "hr", attrs: []),
-                    ],
-                  )
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_view_with_trailing_comma_in_params() {
-        accept(
-            indoc! {"
-                view Index(name: String,) {
-                    <div>{name}</div>
-                }
-            "},
-            expect![[r#"
-                view Index(name: String) {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [interpolate(name)],
-                  )
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_view_with_match_expression() {
-        accept(
-            indoc! {"
-                view Index(value: Option[String]) {
-                    <match {value}>
-                        <case {Some(s)}>
-                            <div>{s}</div>
-                        </case>
-                        <case {None}>
-                            <div>No value</div>
-                        </case>
-                    </match>
-                }
-            "},
-            expect![[r#"
-                view Index(value: Option[String]) {
-                  match value {
-                    Some(s) => {
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: [interpolate(s)],
-                      ),
-                    },
-                    None => {
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: [text("No value")],
-                      ),
-                    },
+                page Index(name: String) {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [interpolate(name)],
+                    )
                   }
                 }
             "#]],
@@ -4909,7 +5271,49 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_nested_functions() {
+    fn accepts_page_with_match_expression() {
+        accept(
+            indoc! {"
+                page Index(value: Option[String]) {
+                  fn body() -> Fragment {
+                      <match {value}>
+                          <case {Some(s)}>
+                              <div>{s}</div>
+                          </case>
+                          <case {None}>
+                              <div>No value</div>
+                          </case>
+                      </match>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Index(value: Option[String]) {
+                  fn body() -> Fragment {
+                    match value {
+                      Some(s) => {
+                        html(
+                          tag: "div",
+                          attrs: [],
+                          children: [interpolate(s)],
+                        ),
+                      },
+                      None => {
+                        html(
+                          tag: "div",
+                          attrs: [],
+                          children: [text("No value")],
+                        ),
+                      },
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_page_with_nested_functions() {
         accept(
             indoc! {"
                 fn Header(title: String) -> Fragment {
@@ -4920,12 +5324,14 @@ mod tests {
                     <p>Copyright 2024</p>
                 }
 
-                view Index(title: String) {
-                    <div>
-                        <Header title={title} />
-                        <main>Content</main>
-                        <Footer />
-                    </div>
+                page Index(title: String) {
+                  fn body() -> Fragment {
+                      <div>
+                          <Header title={title} />
+                          <main>Content</main>
+                          <Footer />
+                      </div>
+                  }
                 }
             "},
             expect![[r#"
@@ -4945,35 +5351,39 @@ mod tests {
                   )
                 }
 
-                view Index(title: String) {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [
-                      Header(attrs: [title: title]),
-                      html(
-                        tag: "main",
-                        attrs: [],
-                        children: [text("Content")],
-                      ),
-                      Footer(attrs: []),
-                    ],
-                  )
+                page Index(title: String) {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        Header(attrs: [title: title]),
+                        html(
+                          tag: "main",
+                          attrs: [],
+                          children: [text("Content")],
+                        ),
+                        Footer(attrs: []),
+                      ],
+                    )
+                  }
                 }
             "#]],
         );
     }
 
     #[test]
-    fn accepts_view_between_functions() {
+    fn accepts_page_between_functions() {
         accept(
             indoc! {"
                 fn Header() -> Fragment {
                     <h1>Header</h1>
                 }
 
-                view Index() {
-                    <div>Index</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>Index</div>
+                  }
                 }
 
                 fn Footer() -> Fragment {
@@ -4989,12 +5399,14 @@ mod tests {
                   )
                 }
 
-                view Index() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [text("Index")],
-                  )
+                page Index() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Index")],
+                    )
+                  }
                 }
 
                 fn Footer() -> Fragment {
@@ -5009,48 +5421,54 @@ mod tests {
     }
 
     #[test]
-    fn rejects_view_with_multiple_params_mixed_defaults() {
+    fn rejects_page_with_multiple_params_mixed_defaults() {
         reject(
             indoc! {r#"
-                view Index(required: String, optional: Int = 42) {
-                    <div>{required}: {optional}</div>
+                page Index(required: String, optional: Int = 42) {
+                  fn body() -> Fragment {
+                      <div>{required}: {optional}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- errors --
-                error: Default values are not allowed on view parameters
-                1 | view Index(required: String, optional: Int = 42) {
+                error: Default values are not allowed on page parameters
+                1 | page Index(required: String, optional: Int = 42) {
                   |                                              ^^
                 -- ast --
-                view Index(required: String, optional: Int = 42) {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [
-                      interpolate(required),
-                      text(": "),
-                      interpolate(optional),
-                    ],
-                  )
+                page Index(required: String, optional: Int = 42) {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        interpolate(required),
+                        text(": "),
+                        interpolate(optional),
+                      ],
+                    )
+                  }
                 }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_bare_text_as_a_view_body() {
+    fn rejects_bare_text_as_a_page_body() {
         reject(
             indoc! {"
-                view Test {
-                  hello world
+                page Test() {
+                  fn body() -> Fragment {
+                    hello world
+                  }
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Expected token '}' but got 'world'
-                1 | view Test {
-                2 |   hello world
-                  |         ^^^^^
+                2 |   fn body() -> Fragment {
+                3 |     hello world
+                  |           ^^^^^
                 -- ast --
             "#]],
         );
@@ -5447,25 +5865,29 @@ mod tests {
     }
 
     #[test]
-    fn rejects_rest_param_on_view() {
+    fn rejects_rest_param_on_page() {
         reject(
             indoc! {"
-                view Foo(...rest) {
-                  <div></div>
+                page Foo(...rest) {
+                  fn body() -> Fragment {
+                    <div></div>
+                  }
                 }
             "},
             expect![[r#"
                 -- errors --
-                error: Rest parameters are not allowed on views
-                1 | view Foo(...rest) {
+                error: Rest parameters are not allowed on pages
+                1 | page Foo(...rest) {
                   |          ^^^^^^^
                 -- ast --
-                view Foo() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [],
-                  )
+                page Foo() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [],
+                    )
+                  }
                 }
             "#]],
         );
@@ -5557,25 +5979,29 @@ mod tests {
     fn accepts_markup_in_an_interpolation() {
         accept(
             indoc! {"
-                view Test {
-                  <div>{<span>hello</span>}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{<span>hello</span>}</div>
+                  }
                 }
             "},
             expect![[r#"
-                view Test() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [
-                      interpolate(
-                        html(
-                          tag: "span",
-                          attrs: [],
-                          children: [text("hello")],
+                page Test() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        interpolate(
+                          html(
+                            tag: "span",
+                            attrs: [],
+                            children: [text("hello")],
+                          ),
                         ),
-                      ),
-                    ],
-                  )
+                      ],
+                    )
+                  }
                 }
             "#]],
         );
@@ -5585,35 +6011,39 @@ mod tests {
     fn accepts_markup_nested_through_two_interpolations() {
         accept(
             indoc! {"
-                view Test {
-                  <div>{<span>{<b>hello</b>}</span>}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{<span>{<b>hello</b>}</span>}</div>
+                  }
                 }
             "},
             expect![[r#"
-                view Test() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [
-                      interpolate(
-                        html(
-                          tag: "span",
-                          attrs: [],
-                          children: [
-                            interpolate(
-                              html(
-                                tag: "b",
-                                attrs: [],
-                                children: [
-                                  text("hello"),
-                                ],
+                page Test() {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        interpolate(
+                          html(
+                            tag: "span",
+                            attrs: [],
+                            children: [
+                              interpolate(
+                                html(
+                                  tag: "b",
+                                  attrs: [],
+                                  children: [
+                                    text("hello"),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  )
+                      ],
+                    )
+                  }
                 }
             "#]],
         );
@@ -5718,8 +6148,10 @@ mod tests {
                   <div>{slot}</div>
                 }
 
-                view Test {
-                  <Card slot={<span>hello</span>}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card slot={<span>hello</span>}/>
+                  }
                 }
             "},
             expect![[r#"
@@ -5731,16 +6163,18 @@ mod tests {
                   )
                 }
 
-                view Test() {
-                  Card(
-                    attrs: [
-                      slot: html(
-                        tag: "span",
-                        attrs: [],
-                        children: [text("hello")],
-                      ),
-                    ],
-                  )
+                page Test() {
+                  fn body() -> Fragment {
+                    Card(
+                      attrs: [
+                        slot: html(
+                          tag: "span",
+                          attrs: [],
+                          children: [text("hello")],
+                        ),
+                      ],
+                    )
+                  }
                 }
             "#]],
         );
@@ -5938,8 +6372,10 @@ mod tests {
                   age: Int,
                 }
 
-                view Main(#[examples(min = 1)] count: Int) {
-                  <div>{count}</div>
+                page Main(#[examples(min = 1)] count: Int) {
+                  fn body() -> Fragment {
+                    <div>{count}</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -5948,12 +6384,14 @@ mod tests {
                   #[examples(min = 0, max = 120)] age: Int,
                 }
 
-                view Main(#[examples(min = 1)] count: Int) {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [interpolate(count)],
-                  )
+                page Main(#[examples(min = 1)] count: Int) {
+                  fn body() -> Fragment {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [interpolate(count)],
+                    )
+                  }
                 }
             "#]],
         );

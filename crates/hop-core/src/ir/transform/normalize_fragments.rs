@@ -196,7 +196,7 @@ mod tests {
     fn should_escape_constant_string_at_compile_time() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| t.concat(vec![t.escape(t.str("<b> & \"q\""))]))
+                .page_no_params("Test", |t| t.concat(vec![t.escape(t.str("<b> & \"q\""))]))
                 .build(),
             usize::MAX,
             expect![[r#"
@@ -217,7 +217,7 @@ mod tests {
     fn should_merge_adjacent_raws() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![t.raw("<div>"), t.raw("Hello"), t.raw("</div>")])
                 })
                 .build(),
@@ -240,7 +240,7 @@ mod tests {
     fn should_respect_merge_limit() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![t.raw("aaaa"), t.raw("bbbb"), t.raw("cc")])
                 })
                 .build(),
@@ -263,7 +263,7 @@ mod tests {
     fn should_flatten_nested_concats() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![
                         t.raw("a"),
                         t.concat(vec![t.raw("b"), t.concat(vec![t.raw("c")])]),
@@ -289,7 +289,7 @@ mod tests {
     fn should_split_escape_of_concat_and_escape_constant_halves() {
         check(
             PureModuleBuilder::new()
-                .view("Test", [("name", "String")], |t| {
+                .page("Test", [("name", "String")], |t| {
                     t.concat(vec![
                         t.escape(t.string_concat(vec![t.str("Hi <"), t.var("name")])),
                     ])
@@ -314,7 +314,7 @@ mod tests {
     fn should_collapse_nested_constant_string_concat_to_one_raw() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![t.escape(t.string_concat(vec![
                         t.string_concat(vec![t.str("a<"), t.str("b>")]),
                         t.str("c&"),
@@ -340,7 +340,7 @@ mod tests {
     fn should_merge_split_escape_with_neighboring_raws() {
         check(
             PureModuleBuilder::new()
-                .view("Test", [("name", "String")], |t| {
+                .page("Test", [("name", "String")], |t| {
                     t.concat(vec![
                         t.raw("<p>"),
                         t.escape(t.string_concat(vec![t.str("Hi, "), t.var("name")])),
@@ -367,7 +367,7 @@ mod tests {
     fn should_normalize_inside_for_loop_bodies() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.concat(vec![t.fragment_for(
                         Some("item"),
                         t.array(vec![t.str("a")]),

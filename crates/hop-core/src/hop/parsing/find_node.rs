@@ -26,11 +26,11 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
     for n in ast.page_declarations() {
         if n.range.contains_position(position) {
             if let Some(head) = &n.head
-                && let Some(node) = find_node_at_position_in_expr(head, position)
+                && let Some(node) = find_node_at_position_in_expr(&head.body, position)
             {
                 return Some(node);
             }
-            return find_node_at_position_in_expr(&n.body, position);
+            return find_node_at_position_in_expr(&n.body.body, position);
         }
     }
 

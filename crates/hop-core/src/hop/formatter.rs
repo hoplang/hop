@@ -315,57 +315,40 @@ fn format_page_declaration<'a>(
         arena.nil()
     };
 
-    let keyword = if page.is_view { "view" } else { "page" };
+    let mut members_doc = arena.nil();
+    for (i, member) in page.members().enumerate() {
+        if i > 0 {
+            members_doc = members_doc.append(arena.hardline());
+        }
+        members_doc = members_doc.append(format_function_declaration(arena, member, comments));
+    }
 
-    let body_doc = if page.is_view {
+    let has_trailing_comments = comments
+        .front()
+        .is_some_and(|c| c.start() < page.range.end());
+    let body_doc = if has_trailing_comments {
+        let trailing_comments = drain_comments_before(arena, comments, page.range.end());
         arena
-            .line()
-            .append(format_expr(arena, &page.body, comments))
-            .append(arena.line())
+            .hardline()
+            .append(members_doc)
+            .append(arena.hardline())
+            .append(trailing_comments)
             .nest(2)
     } else {
-        let mut inner = arena.nil();
-        if let Some(head) = &page.head {
-            inner = inner
-                .append(arena.text("head {"))
-                .append(
-                    arena
-                        .line()
-                        .append(format_expr(arena, head, comments))
-                        .append(arena.line())
-                        .nest(2),
-                )
-                .append(arena.text("}"))
-                .append(arena.hardline());
-        }
-        inner
-            .append(arena.text("body {"))
-            .append(
-                arena
-                    .line()
-                    .append(format_expr(arena, &page.body, comments))
-                    .append(arena.line())
-                    .nest(2),
-            )
-            .append(arena.text("}"))
+        arena
+            .hardline()
+            .append(members_doc)
+            .nest(2)
+            .append(arena.hardline())
     };
 
     leading_comments
         .append(pub_prefix)
-        .append(arena.text(keyword))
-        .append(arena.text(" "))
+        .append(arena.text("page "))
         .append(arena.text(page.name.as_str()))
         .append(params_doc)
         .append(arena.text(" {"))
-        .append(if page.is_view {
-            body_doc
-        } else {
-            arena
-                .hardline()
-                .append(body_doc)
-                .nest(2)
-                .append(arena.hardline())
-        })
+        .append(body_doc)
         .append(arena.text("}"))
 }
 
@@ -1448,9 +1431,11 @@ mod tests {
                 random_nodes(u, 4, &mut body)?;
                 if body.contains("{x}") {
                     let value = u.choose(STRINGS)?;
-                    format!("view Test {{<let {{x: String = {value:?}}}>{body}</let>}}")
+                    format!(
+                        "page Test() {{ fn body() -> Fragment {{<let {{x: String = {value:?}}}>{body}</let>}} }}"
+                    )
                 } else {
-                    format!("view Test {{<>{body}</>}}")
+                    format!("page Test() {{ fn body() -> Fragment {{<>{body}</>}} }}")
                 }
             };
 
@@ -1479,8 +1464,10 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label(count: 2, prefix: "n")}{label("a", 1)}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label(count: 2, prefix: "n")}{label("a", 1)}</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1491,11 +1478,13 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>
-                    {label(count: 2, prefix: "n")}
-                    {label("a", 1)}
-                  </div>
+                page Test {
+                  fn body() -> Fragment {
+                    <div>
+                      {label(count: 2, prefix: "n")}
+                      {label("a", 1)}
+                    </div>
+                  }
                 }
             "#]],
         );
@@ -1556,18 +1545,22 @@ mod tests {
     }
 
     #[test]
-    fn pub_view() {
+    fn pub_page() {
         check(
             indoc! {"
-                pub view Home {
-                  <div>hi</div>
+                pub page Home() {
+                  fn body() -> Fragment {
+                    <div>hi</div>
+                  }
                 }
             "},
             expect![[r#"
-                pub view Home {
-                  <div>
-                    hi
-                  </div>
+                pub page Home {
+                  fn body() -> Fragment {
+                    <div>
+                      hi
+                    </div>
+                  }
                 }
             "#]],
         );
@@ -3706,6 +3699,118 @@ mod tests {
     }
 
     #[test]
+    fn comment_before_page_member() {
+        check(
+            indoc! {"
+                page Index() {
+                  // the head
+                  fn head() -> Fragment {
+                    <title>Hi</title>
+                  }
+                  fn body() -> Fragment {
+                    <div>Hello</div>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Index {
+                  // the head
+                  fn head() -> Fragment {
+                    <title>
+                      Hi
+                    </title>
+                  }
+                  fn body() -> Fragment {
+                    <div>
+                      Hello
+                    </div>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn comment_between_page_members() {
+        check(
+            indoc! {"
+                page Index() {
+                  fn head() -> Fragment {
+                    <title>Hi</title>
+                  }
+                  // now the body
+                  fn body() -> Fragment {
+                    <div>Hello</div>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Index {
+                  fn head() -> Fragment {
+                    <title>
+                      Hi
+                    </title>
+                  }
+                  // now the body
+                  fn body() -> Fragment {
+                    <div>
+                      Hello
+                    </div>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn trailing_comment_inside_a_page_member_body() {
+        check(
+            indoc! {"
+                page Index() {
+                  fn body() -> Fragment {
+                    <div>Hello</div>
+                    // done
+                  }
+                }
+            "},
+            expect![[r#"
+                page Index {
+                  fn body() -> Fragment {
+                    <div>
+                      Hello
+                    </div>
+                    // done
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn trailing_comment_after_the_last_page_member() {
+        check(
+            indoc! {"
+                page Index() {
+                  fn body() -> Fragment {
+                    <div>Hello</div>
+                  }
+                  // that is all
+                }
+            "},
+            expect![[r#"
+                page Index {
+                  fn body() -> Fragment {
+                    <div>
+                      Hello
+                    </div>
+                  }
+                  // that is all
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn multiple_comments_before_declarations() {
         check(
             indoc! {"
@@ -4528,25 +4633,27 @@ mod tests {
     }
 
     #[test]
-    fn view_with_parameters() {
+    fn page_with_parameters() {
         check(
             indoc! {r#"
                 record LoginLogo { url: String, name: String }
 
-                view LoginFormEntry(x: String, logo: LoginLogo) {
-                  <div>
-                    <div class="flex w-full max-w-sm flex-col gap-6">
-                      <a
-                        href={logo.url}
-                        class="flex items-center gap-2 self-center font-medium"
-                      >
-                        {logo.name}
-                      </a>
-                    </div>
+                page LoginFormEntry(x: String, logo: LoginLogo) {
+                  fn body() -> Fragment {
                     <div>
-                      {x}
+                      <div class="flex w-full max-w-sm flex-col gap-6">
+                        <a
+                          href={logo.url}
+                          class="flex items-center gap-2 self-center font-medium"
+                        >
+                          {logo.name}
+                        </a>
+                      </div>
+                      <div>
+                        {x}
+                      </div>
                     </div>
-                  </div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -4555,69 +4662,79 @@ mod tests {
                   name: String,
                 }
 
-                view LoginFormEntry(
+                page LoginFormEntry(
                   x: String,
                   logo: LoginLogo,
                 ) {
-                  <div>
-                    <div class="flex w-full max-w-sm flex-col gap-6">
-                      <a
-                        href={logo.url}
-                        class="flex items-center gap-2 self-center font-medium"
-                      >
-                        {logo.name}
-                      </a>
-                    </div>
+                  fn body() -> Fragment {
                     <div>
-                      {x}
+                      <div class="flex w-full max-w-sm flex-col gap-6">
+                        <a
+                          href={logo.url}
+                          class="flex items-center gap-2 self-center font-medium"
+                        >
+                          {logo.name}
+                        </a>
+                      </div>
+                      <div>
+                        {x}
+                      </div>
                     </div>
-                  </div>
+                  }
                 }
             "#]],
         );
     }
 
     #[test]
-    fn view_multiline_text() {
+    fn page_multiline_text() {
         check(
             indoc! {"
-                view Test {
-                  <>
-                    hello
-                    world
-                  </>
-                }
-            "},
-            expect![[r#"
-                view Test {
-                  <>
-                    hello
-                    world
-                  </>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn html_comment_in_view() {
-        check(
-            indoc! {"
-                view Test {
-                  <>
-                    <!-- This is a comment -->
-                    <div>hello</div>
-                  </>
-                }
-            "},
-            expect![[r#"
-                view Test {
-                  <>
-                    <!-- This is a comment -->
-                    <div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
                       hello
-                    </div>
-                  </>
+                      world
+                    </>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Test {
+                  fn body() -> Fragment {
+                    <>
+                      hello
+                      world
+                    </>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_comment_in_page() {
+        check(
+            indoc! {"
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <!-- This is a comment -->
+                      <div>hello</div>
+                    </>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Test {
+                  fn body() -> Fragment {
+                    <>
+                      <!-- This is a comment -->
+                      <div>
+                        hello
+                      </div>
+                    </>
+                  }
                 }
             "#]],
         );
@@ -4627,25 +4744,29 @@ mod tests {
     fn html_comment_between_elements() {
         check(
             indoc! {"
-                view Test {
-                  <>
-                    <div>hello</div>
-                    <!-- separator -->
-                    <div>world</div>
-                  </>
+                page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      <div>hello</div>
+                      <!-- separator -->
+                      <div>world</div>
+                    </>
+                  }
                 }
             "},
             expect![[r#"
-                view Test {
-                  <>
-                    <div>
-                      hello
-                    </div>
-                    <!-- separator -->
-                    <div>
-                      world
-                    </div>
-                  </>
+                page Test {
+                  fn body() -> Fragment {
+                    <>
+                      <div>
+                        hello
+                      </div>
+                      <!-- separator -->
+                      <div>
+                        world
+                      </div>
+                    </>
+                  }
                 }
             "#]],
         );
@@ -4655,21 +4776,25 @@ mod tests {
     fn html_comment_inside_element() {
         check(
             indoc! {"
-                view Test {
-                  <div>
-                    <!-- inner comment -->
-                    <span>text</span>
-                  </div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>
+                      <!-- inner comment -->
+                      <span>text</span>
+                    </div>
+                  }
                 }
             "},
             expect![[r#"
-                view Test {
-                  <div>
-                    <!-- inner comment -->
-                    <span>
-                      text
-                    </span>
-                  </div>
+                page Test {
+                  fn body() -> Fragment {
+                    <div>
+                      <!-- inner comment -->
+                      <span>
+                        text
+                      </span>
+                    </div>
+                  }
                 }
             "#]],
         );
@@ -4679,13 +4804,17 @@ mod tests {
     fn html_comment_only() {
         check(
             indoc! {"
-                view Test {
-                  <!-- just a comment -->
+                page Test() {
+                  fn body() -> Fragment {
+                    <!-- just a comment -->
+                  }
                 }
             "},
             expect![[r#"
-                view Test {
-                  <!-- just a comment -->
+                page Test {
+                  fn body() -> Fragment {
+                    <!-- just a comment -->
+                  }
                 }
             "#]],
         );
@@ -4872,17 +5001,21 @@ mod tests {
     fn markup_in_an_interpolation() {
         check(
             indoc! {"
-                view Test {
-                  <div>{<span>hello</span>}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{<span>hello</span>}</div>
+                  }
                 }
             "},
             expect![[r#"
-                view Test {
-                  <div>
-                    {<span>
-                      hello
-                    </span>}
-                  </div>
+                page Test {
+                  fn body() -> Fragment {
+                    <div>
+                      {<span>
+                        hello
+                      </span>}
+                    </div>
+                  }
                 }
             "#]],
         );
@@ -4908,13 +5041,17 @@ mod tests {
     fn markup_as_an_attribute_value() {
         check(
             indoc! {"
-                view Test {
-                  <Card slot={<span>a<b>c</b></span>}/>
+                page Test() {
+                  fn body() -> Fragment {
+                    <Card slot={<span>a<b>c</b></span>}/>
+                  }
                 }
             "},
             expect![[r#"
-                view Test {
-                  <Card slot={<span>a<b>c</b></span>}/>
+                page Test {
+                  fn body() -> Fragment {
+                    <Card slot={<span>a<b>c</b></span>}/>
+                  }
                 }
             "#]],
         );

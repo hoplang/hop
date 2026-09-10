@@ -122,7 +122,7 @@ fn collect_spreads_in_node(node: &ParsedNode, out: &mut Vec<SpreadOccurrence>) {
 ///
 /// Every spread must name the declared rest, and a declared rest must be spread
 /// exactly once. The rest comes with the function that declares it, for the
-/// diagnostic when it is never spread. Pages and views cannot declare one, so
+/// diagnostic when it is never spread. Pages cannot declare one, so
 /// they pass `None` and every spread they contain is rejected.
 pub fn pair_rest_spread(
     rest_param: Option<(&FunctionName, &(VarName, DocumentRange))>,

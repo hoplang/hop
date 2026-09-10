@@ -105,10 +105,10 @@ mod tests {
     }
 
     #[test]
-    fn should_optimize_single_view() {
+    fn should_optimize_single_page() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("unused", t.str("value"), |t| {
                         t.concat(vec![t.raw("Hello"), t.raw(" "), t.raw("World")])
                     })
@@ -131,15 +131,15 @@ mod tests {
     }
 
     #[test]
-    fn should_optimize_multiple_views() {
+    fn should_optimize_multiple_pages() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("First", |t| {
+                .page_no_params("First", |t| {
                     t.let_expr("unused", t.str("x"), |t| {
                         t.concat(vec![t.raw("A"), t.raw("B")])
                     })
                 })
-                .view_no_params("Second", |t| {
+                .page_no_params("Second", |t| {
                     t.concat(vec![t.bool_match_expr(
                         t.bool(true),
                         t.concat(vec![t.raw("C"), t.raw("D")]),
@@ -176,7 +176,7 @@ mod tests {
     fn should_apply_constant_propagation_before_unused_let_elimination() {
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("flag", t.bool(true), |t| {
                         t.concat(vec![t.bool_match_expr(
                             t.var("flag"),
@@ -214,7 +214,7 @@ mod tests {
         // match true { .. }  -- selected, arms coalesced
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("x", t.str("hello"), |t| {
                         t.let_expr("unused", t.var("x"), |t| {
                             t.concat(vec![t.bool_match_expr(
@@ -255,7 +255,7 @@ mod tests {
         // let, and normalization escapes and merges the result.
         check(
             PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
+                .page_no_params("Test", |t| {
                     t.let_expr("name", t.str("<Ada>"), |t| {
                         t.concat(vec![t.raw("<p>"), t.escape(t.var("name")), t.raw("</p>")])
                     })

@@ -464,7 +464,7 @@ mod tests {
                 .function("Badge", [("label", "String")], "Fragment", |t| {
                     t.concat(vec![t.raw("<b>"), t.escape(t.var("label")), t.raw("</b>")])
                 })
-                .view("Main", [("title", "String")], |t| {
+                .page("Main", [("title", "String")], |t| {
                     t.call("Badge", vec![("label", t.var("title"))])
                 })
                 .build(),
@@ -495,7 +495,7 @@ mod tests {
                 .function("Twice", [("body", "Fragment")], "Fragment", |t| {
                     t.concat(vec![t.var("body"), t.var("body")])
                 })
-                .view("Main", [("name", "String")], |t| {
+                .page("Main", [("name", "String")], |t| {
                     t.call("Twice", vec![("body", t.escape(t.var("name")))])
                 })
                 .build(),
@@ -528,7 +528,7 @@ mod tests {
                         t.var("body")
                     })
                 })
-                .view("Main", [("name", "String")], |t| {
+                .page("Main", [("name", "String")], |t| {
                     t.call("Repeat", vec![("body", t.escape(t.var("name")))])
                 })
                 .build(),
@@ -566,7 +566,7 @@ mod tests {
                         t.raw("</i>"),
                     ])
                 })
-                .view("Main", [("name", "String")], |t| {
+                .page("Main", [("name", "String")], |t| {
                     t.call("Outer", vec![("x", t.var("name"))])
                 })
                 .build(),
@@ -654,7 +654,7 @@ mod tests {
     fn should_leave_a_self_recursive_function_alone() {
         let mut module = PureModuleBuilder::new()
             .function("Loop", [("n", "Int")], "Fragment", |t| t.raw("placeholder"))
-            .view_no_params("Main", |t| t.call("Loop", vec![("n", t.int(3))]))
+            .page_no_params("Main", |t| t.call("Loop", vec![("n", t.int(3))]))
             .build();
         patch_to_call(&mut module, "Loop", "Loop", "<li>");
         check(
@@ -686,7 +686,7 @@ mod tests {
             .function("Pong", [("n", "Int")], "Fragment", |t| {
                 t.call("Ping", vec![("n", t.var("n"))])
             })
-            .view_no_params("Main", |t| t.call("Pong", vec![("n", t.int(3))]))
+            .page_no_params("Main", |t| t.call("Pong", vec![("n", t.int(3))]))
             .build();
         patch_to_call(&mut module, "Ping", "Pong", "<ping>");
         check(

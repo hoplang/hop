@@ -307,9 +307,9 @@ fn typecheck_module(
     for page in parsed_ast.page_declarations() {
         let mut spreads = Vec::new();
         if let Some(head) = &page.head {
-            collect_spreads(head, &mut spreads);
+            collect_spreads(&head.body, &mut spreads);
         }
-        collect_spreads(&page.body, &mut spreads);
+        collect_spreads(&page.body.body, &mut spreads);
         pair_rest_spread(None, spreads, errors);
     }
     let type_env = TypeEnv {
@@ -618,7 +618,7 @@ fn typecheck_page_declaration(
 
     let typed_head = head.as_ref().and_then(|head| {
         typecheck_expr(
-            head,
+            &head.body,
             None,
             &[],
             &mut var_env,
@@ -631,7 +631,7 @@ fn typecheck_page_declaration(
         )
     });
     let typed_body = typecheck_expr(
-        body,
+        &body.body,
         None,
         &[],
         &mut var_env,
@@ -657,10 +657,10 @@ fn typecheck_page_declaration(
         name: name.clone(),
         params: typed_params,
         head: match head {
-            Some(head) => check_declaration_body(typed_head, head.range(), errors),
+            Some(head) => check_declaration_body(typed_head, head.body.range(), errors),
             None => TypedExpr::FragmentConcat { nodes: Vec::new() },
         },
-        body: check_declaration_body(typed_body, body.range(), errors),
+        body: check_declaration_body(typed_body, body.body.range(), errors),
     }
 }
 
@@ -953,9 +953,9 @@ fn referenced_names(parsed_ast: &ParsedAst) -> HashSet<CheapString> {
                     collect_names_in_type(&param.var_type, &mut names);
                 }
                 if let Some(head) = &page.head {
-                    collect_names_in_expr(head, &mut names);
+                    collect_names_in_expr(&head.body, &mut names);
                 }
-                collect_names_in_expr(&page.body, &mut names);
+                collect_names_in_expr(&page.body.body, &mut names);
             }
             ParsedDeclaration::Function(function) => {
                 for param in &function.params {
@@ -1227,40 +1227,44 @@ mod tests {
     }
 
     #[test]
-    fn rejects_view_with_duplicate_parameter_names() {
+    fn rejects_page_with_duplicate_parameter_names() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Main(x: Int, x: Int) {
-                  <>
-                    {x.to_string()}
-                  </>
+                page Main(x: Int, x: Int) {
+                  fn body() -> Fragment {
+                    <>
+                      {x.to_string()}
+                    </>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Duplicate parameter 'x'
                   --> main.hop (line 1, col 19)
-                1 | view Main(x: Int, x: Int) {
+                1 | page Main(x: Int, x: Int) {
                   |                   ^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_view_with_duplicate_parameter_names_with_different_types() {
+    fn rejects_page_with_duplicate_parameter_names_with_different_types() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Main(x: Int, x: String) {
-                  <>
-                    {x.to_string()}
-                  </>
+                page Main(x: Int, x: String) {
+                  fn body() -> Fragment {
+                    <>
+                      {x.to_string()}
+                    </>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Duplicate parameter 'x'
                   --> main.hop (line 1, col 19)
-                1 | view Main(x: Int, x: String) {
+                1 | page Main(x: Int, x: String) {
                   |                   ^
             "#]],
         );
@@ -1471,22 +1475,24 @@ mod tests {
     }
 
     #[test]
-    fn rejects_children_in_view() {
+    fn rejects_children_in_page() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Main {
-                    <div>
-                        {children}
-                    </div>
+                page Main() {
+                  fn body() -> Fragment {
+                      <div>
+                          {children}
+                      </div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Undefined variable: children
-                  --> main.hop (line 3, col 10)
-                2 |     <div>
-                3 |         {children}
-                  |          ^^^^^^^^
+                  --> main.hop (line 4, col 12)
+                3 |       <div>
+                4 |           {children}
+                  |            ^^^^^^^^
             "#]],
         );
     }
@@ -6562,18 +6568,20 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_without_parameters() {
+    fn accepts_page_without_parameters() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                view Main() {
-                  <div>Hello</div>
+                page Main() {
+                  fn body() -> Fragment {
+                    <div>Hello</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     html(tag: "div", attrs: [], children: concat(raw("Hello")))
                   }
                 }
@@ -6582,35 +6590,37 @@ mod tests {
     }
 
     #[test]
-    fn rejects_head_and_body_and_html_tags_inside_view() {
+    fn rejects_head_and_body_and_html_tags_inside_page_body() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Main() {
-                  <html>
-                    <head></head>
-                    <body>Hello</body>
-                  </html>
+                page Main() {
+                  fn body() -> Fragment {
+                    <html>
+                      <head></head>
+                      <body>Hello</body>
+                    </html>
+                  }
                 }
             "#},
             expect![[r#"
                 error: <html> is not allowed here
-                  --> main.hop (line 2, col 4)
-                1 | view Main() {
-                2 |   <html>
-                  |    ^^^^
+                  --> main.hop (line 3, col 6)
+                2 |   fn body() -> Fragment {
+                3 |     <html>
+                  |      ^^^^
 
                 error: <head> is not allowed here
-                  --> main.hop (line 3, col 6)
-                2 |   <html>
-                3 |     <head></head>
-                  |      ^^^^
+                  --> main.hop (line 4, col 8)
+                3 |     <html>
+                4 |       <head></head>
+                  |        ^^^^
 
                 error: <body> is not allowed here
-                  --> main.hop (line 4, col 6)
-                3 |     <head></head>
-                4 |     <body>Hello</body>
-                  |      ^^^^
+                  --> main.hop (line 5, col 8)
+                4 |       <head></head>
+                5 |       <body>Hello</body>
+                  |        ^^^^
             "#]],
         );
     }
@@ -6621,8 +6631,8 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  head {<></>}
-                  body {
+                  fn head() -> Fragment {<></>}
+                  fn body() -> Fragment {
                     <head></head>
                   }
                 }
@@ -6630,7 +6640,7 @@ mod tests {
             expect![[r#"
                 error: <head> is not allowed here
                   --> main.hop (line 4, col 6)
-                3 |   body {
+                3 |   fn body() -> Fragment {
                 4 |     <head></head>
                   |      ^^^^
             "#]],
@@ -6638,18 +6648,20 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_string_parameter() {
+    fn accepts_page_with_string_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                view Main(name: String) {
-                  <div>Hello, {name}!</div>
+                page Main(name: String) {
+                  fn body() -> Fragment {
+                    <div>Hello, {name}!</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main(name: String) {
-                  body {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
@@ -6662,18 +6674,20 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_multiple_parameters() {
+    fn accepts_page_with_multiple_parameters() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                view Main(name: String, age: Int) {
-                  <div>Hello, {name}! You are {age.to_string()} years old.</div>
+                page Main(name: String, age: Int) {
+                  fn body() -> Fragment {
+                    <div>Hello, {name}! You are {age.to_string()} years old.</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main(name: String, age: Int) {
-                  body {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
@@ -6692,7 +6706,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_invoking_function() {
+    fn accepts_page_invoking_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6700,14 +6714,16 @@ mod tests {
                   <div>Hello, {name}!</div>
                 }
 
-                view Main(name: String) {
-                  <Greeting name={name} />
+                page Main(name: String) {
+                  fn body() -> Fragment {
+                    <Greeting name={name} />
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main(name: String) {
-                  body {
+                  fn body() -> Fragment {
                     Greeting(name: name)
                   }
                 }
@@ -6724,55 +6740,61 @@ mod tests {
     }
 
     #[test]
-    fn rejects_view_with_undefined_function() {
+    fn rejects_page_with_undefined_function() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Main() {
-                  <UndefinedComponent />
+                page Main() {
+                  fn body() -> Fragment {
+                    <UndefinedComponent />
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function UndefinedComponent is not defined
-                  --> main.hop (line 2, col 4)
-                1 | view Main() {
-                2 |   <UndefinedComponent />
-                  |    ^^^^^^^^^^^^^^^^^^
+                  --> main.hop (line 3, col 6)
+                2 |   fn body() -> Fragment {
+                3 |     <UndefinedComponent />
+                  |      ^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_view_with_unused_parameter() {
+    fn rejects_page_with_unused_parameter() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Main(unused: String) {
-                  <div>Hello</div>
+                page Main(unused: String) {
+                  fn body() -> Fragment {
+                    <div>Hello</div>
+                  }
                 }
             "#},
             expect![[r#"
                 warning: Unused variable unused
                   --> main.hop (line 1, col 11)
-                1 | view Main(unused: String) {
+                1 | page Main(unused: String) {
                   |           ^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_view_with_undefined_parameter_type() {
+    fn rejects_page_with_undefined_parameter_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Main(foo: UndefinedType) {
-                  <div>Hello</div>
+                page Main(foo: UndefinedType) {
+                  fn body() -> Fragment {
+                    <div>Hello</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Type 'UndefinedType' is not defined
                   --> main.hop (line 1, col 16)
-                1 | view Main(foo: UndefinedType) {
+                1 | page Main(foo: UndefinedType) {
                   |                ^^^^^^^^^^^^^
             "#]],
         );
@@ -7013,16 +7035,18 @@ mod tests {
                 fn Foo(class: String) -> Fragment {
                     <div class={class}></div>
                 }
-                view Main {
-                    <Foo class="a" data-x="y"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Foo class="a" data-x="y"/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Foo does not accept attribute `data-x`
-                  --> main.hop (line 5, col 20)
-                4 | view Main {
-                5 |     <Foo class="a" data-x="y"/>
-                  |                    ^^^^^^
+                  --> main.hop (line 6, col 22)
+                5 |   fn body() -> Fragment {
+                6 |       <Foo class="a" data-x="y"/>
+                  |                      ^^^^^^
             "#]],
         );
     }
@@ -7084,20 +7108,22 @@ mod tests {
     }
 
     #[test]
-    fn rejects_spread_in_view() {
+    fn rejects_spread_in_page() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Main {
-                  <div ...rest></div>
+                page Main() {
+                  fn body() -> Fragment {
+                    <div ...rest></div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Spread '...rest' does not refer to a declared rest parameter
-                  --> main.hop (line 2, col 8)
-                1 | view Main {
-                2 |   <div ...rest></div>
-                  |        ^^^^^^^
+                  --> main.hop (line 3, col 10)
+                2 |   fn body() -> Fragment {
+                3 |     <div ...rest></div>
+                  |          ^^^^^^^
             "#]],
         );
     }
@@ -7108,16 +7134,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  head {
+                  fn head() -> Fragment {
                     <meta ...rest/>
                   }
-                  body {<></>}
+                  fn body() -> Fragment {<></>}
                 }
             "#},
             expect![[r#"
                 error: Spread '...rest' does not refer to a declared rest parameter
                   --> main.hop (line 3, col 11)
-                2 |   head {
+                2 |   fn head() -> Fragment {
                 3 |     <meta ...rest/>
                   |           ^^^^^^^
             "#]],
@@ -7156,14 +7182,16 @@ mod tests {
                 fn Button(class: String, children: Fragment, ...rest) -> Fragment {
                     <button class={class} ...rest>{children}</button>
                 }
-                view Main {
-                    <Button class="p-2" data-foo="bar">Hi</Button>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Button class="p-2" data-foo="bar">Hi</Button>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Button(
                       class: "p-2",
                       children: concat(raw("Hi")),
@@ -7191,14 +7219,16 @@ mod tests {
                 fn Button(children: Fragment, ...rest) -> Fragment {
                     <button class="builtin" ...rest>{children}</button>
                 }
-                view Main {
-                    <Button data-x="y">Hi</Button>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Button data-x="y">Hi</Button>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Button(children: concat(raw("Hi")), rest: [data-x: raw("y")])
                   }
                 }
@@ -7222,16 +7252,18 @@ mod tests {
                 fn Button(children: Fragment, ...rest) -> Fragment {
                     <button class="builtin" ...rest>{children}</button>
                 }
-                view Main {
-                    <Button class="forwarded">Hi</Button>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Button class="forwarded">Hi</Button>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Button does not accept attribute `class`
-                  --> main.hop (line 5, col 13)
-                4 | view Main {
-                5 |     <Button class="forwarded">Hi</Button>
-                  |             ^^^^^
+                  --> main.hop (line 6, col 15)
+                5 |   fn body() -> Fragment {
+                6 |       <Button class="forwarded">Hi</Button>
+                  |               ^^^^^
             "#]],
         );
     }
@@ -7244,16 +7276,18 @@ mod tests {
                 fn Button(class: String, ...rest) -> Fragment {
                     <button class={class} ...rest></button>
                 }
-                view Main {
-                    <Button class="p-2" qwerty="z"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Button class="p-2" qwerty="z"/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Button does not accept attribute `qwerty`
-                  --> main.hop (line 5, col 25)
-                4 | view Main {
-                5 |     <Button class="p-2" qwerty="z"/>
-                  |                         ^^^^^^
+                  --> main.hop (line 6, col 27)
+                5 |   fn body() -> Fragment {
+                6 |       <Button class="p-2" qwerty="z"/>
+                  |                           ^^^^^^
             "#]],
         );
     }
@@ -7266,14 +7300,16 @@ mod tests {
                 fn Svg(...rest) -> Fragment {
                     <svg ...rest/>
                 }
-                view Main {
-                    <Svg viewBox="0 0 100 100"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Svg viewBox="0 0 100 100"/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Svg(rest: [viewBox: raw("0 0 100 100")])
                   }
                 }
@@ -7296,14 +7332,16 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Card ...rest/>
                 }
-                view Main {
-                    <Wrapper title="hi"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper title="hi"/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Wrapper(title: "hi", rest: [])
                   }
                 }
@@ -7330,14 +7368,16 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Card title="explicit" ...rest/>
                 }
-                view Main {
-                    <Wrapper/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Wrapper(rest: [])
                   }
                 }
@@ -7364,16 +7404,18 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Card ...rest/>
                 }
-                view Main {
-                    <Wrapper/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Wrapper requires arguments: title
-                  --> main.hop (line 8, col 6)
-                7 | view Main {
-                8 |     <Wrapper/>
-                  |      ^^^^^^^
+                  --> main.hop (line 9, col 8)
+                 8 |   fn body() -> Fragment {
+                 9 |       <Wrapper/>
+                   |        ^^^^^^^
             "#]],
         );
     }
@@ -7391,16 +7433,18 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Card ...rest/>
                 }
-                view Main {
-                    <Wrapper count="hi"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper count="hi"/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'count' of function 'Wrapper': expected `Int` got `String`
-                  --> main.hop (line 10, col 20)
-                 9 | view Main {
-                10 |     <Wrapper count="hi"/>
-                   |                    ^^^^
+                  --> main.hop (line 11, col 22)
+                10 |   fn body() -> Fragment {
+                11 |       <Wrapper count="hi"/>
+                   |                      ^^^^
             "#]],
         );
     }
@@ -7418,8 +7462,10 @@ mod tests {
                         <Inner ...rest/>
                     </div>
                 }
-                view Main {
-                    <Outer class="x"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Outer class="x"/>
+                  }
                 }
             "#},
             expect![[r#"
@@ -7445,14 +7491,16 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Tree ...rest/>
                 }
-                view Main {
-                    <Wrapper x={1}/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper x={1}/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Wrapper(x: 1, rest: [])
                   }
                 }
@@ -7525,14 +7573,16 @@ mod tests {
                 fn Baz(...rest) -> Fragment {
                     <Bar ...rest/>
                 }
-                view Main {
-                    <Baz name="n" title="t"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Baz name="n" title="t"/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Baz(name: "n", title: "t", rest: [])
                   }
                 }
@@ -7573,16 +7623,18 @@ mod tests {
                 fn Baz(...rest) -> Fragment {
                     <Bar ...rest/>
                 }
-                view Main {
-                    <Baz/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Baz/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Baz requires arguments: name, title
-                  --> main.hop (line 14, col 6)
-                13 | view Main {
-                14 |     <Baz/>
-                   |      ^^^
+                  --> main.hop (line 15, col 8)
+                14 |   fn body() -> Fragment {
+                15 |       <Baz/>
+                   |        ^^^
             "#]],
         );
     }
@@ -7598,16 +7650,18 @@ mod tests {
                 fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
-                view Main {
-                    <B/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <B/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function B requires arguments: id
-                  --> main.hop (line 8, col 6)
-                7 | view Main {
-                8 |     <B/>
-                  |      ^
+                  --> main.hop (line 9, col 8)
+                 8 |   fn body() -> Fragment {
+                 9 |       <B/>
+                   |        ^
             "#]],
         );
     }
@@ -7625,14 +7679,16 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Card ...rest/>
                 }
-                view Main {
-                    <Wrapper count={3}/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper count={3}/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Wrapper(count: 3, rest: [])
                   }
                 }
@@ -7668,14 +7724,16 @@ mod tests {
                 fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
-                view Main {
-                    <B count={3} data-foo="bar"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <B count={3} data-foo="bar"/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     B(count: 3, rest: [data-foo: raw("bar")])
                   }
                 }
@@ -7711,16 +7769,18 @@ mod tests {
                 fn Baz(...rest) -> Fragment {
                     <Bar ...rest/>
                 }
-                view Main {
-                    <Baz class="a" data-x="y"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Baz class="a" data-x="y"/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Baz does not accept attribute `data-x`
-                  --> main.hop (line 11, col 20)
-                10 | view Main {
-                11 |     <Baz class="a" data-x="y"/>
-                   |                    ^^^^^^
+                  --> main.hop (line 12, col 22)
+                11 |   fn body() -> Fragment {
+                12 |       <Baz class="a" data-x="y"/>
+                   |                      ^^^^^^
             "#]],
         );
     }
@@ -7736,16 +7796,18 @@ mod tests {
                 fn Bar(...rest) -> Fragment {
                     <Foo ...rest/>
                 }
-                view Main {
-                    <Bar class="a" data-x="y"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Bar class="a" data-x="y"/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Bar does not accept attribute `data-x`
-                  --> main.hop (line 8, col 20)
-                7 | view Main {
-                8 |     <Bar class="a" data-x="y"/>
-                  |                    ^^^^^^
+                  --> main.hop (line 9, col 22)
+                 8 |   fn body() -> Fragment {
+                 9 |       <Bar class="a" data-x="y"/>
+                   |                      ^^^^^^
             "#]],
         );
     }
@@ -7761,16 +7823,18 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Foo ...rest/>
                 }
-                view Main {
-                    <Wrapper/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Wrapper requires arguments: children
-                  --> main.hop (line 8, col 6)
-                7 | view Main {
-                8 |     <Wrapper/>
-                  |      ^^^^^^^
+                  --> main.hop (line 9, col 8)
+                 8 |   fn body() -> Fragment {
+                 9 |       <Wrapper/>
+                   |        ^^^^^^^
             "#]],
         );
     }
@@ -7789,14 +7853,16 @@ mod tests {
                 fn Baz(...rest) -> Fragment {
                     <Bar ...rest/>
                 }
-                view Main {
-                    <Baz>deep</Baz>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Baz>deep</Baz>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Baz(children: concat(raw("deep")), rest: [])
                   }
                 }
@@ -7827,16 +7893,18 @@ mod tests {
                 fn Card(...rest) -> Fragment {
                     <Foo ...rest>inner</Foo>
                 }
-                view Main {
-                    <Card class="a">hi</Card>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Card class="a">hi</Card>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Card does not accept content (missing `children: Fragment` parameter)
-                  --> main.hop (line 8, col 6)
-                7 | view Main {
-                8 |     <Card class="a">hi</Card>
-                  |      ^^^^
+                  --> main.hop (line 9, col 8)
+                 8 |   fn body() -> Fragment {
+                 9 |       <Card class="a">hi</Card>
+                   |        ^^^^
             "#]],
         );
     }
@@ -7854,14 +7922,16 @@ mod tests {
                         <Inner ...rest/>
                     </div>
                 }
-                view Main {
-                    <Outer class="x"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Outer class="x"/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Outer(class: "x", rest: [])
                   }
                 }
@@ -7900,14 +7970,16 @@ mod tests {
                         {children}
                     </Foo>
                 }
-                view Main {
-                    <Button class="primary">click</Button>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Button class="primary">click</Button>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Button(children: concat(raw("click")), class: "primary", rest: [])
                   }
                 }
@@ -7938,14 +8010,16 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Inner ...rest/>
                 }
-                view Main {
-                    <Wrapper class="y"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper class="y"/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Wrapper(class: "y", rest: [])
                   }
                 }
@@ -7976,14 +8050,16 @@ mod tests {
                 fn B(class: String = "", ...rest) -> Fragment {
                     <A class={class} ...rest/>
                 }
-                view Main {
-                    <B class="main"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <B class="main"/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     B(class: "main", rest: [])
                   }
                 }
@@ -8014,14 +8090,16 @@ mod tests {
                 fn B(class: String = "b", ...rest) -> Fragment {
                     <A class={class} ...rest/>
                 }
-                view Main {
-                    <B/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <B/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     B(class: "b", rest: [])
                   }
                 }
@@ -8052,14 +8130,16 @@ mod tests {
                 fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
-                view Main {
-                    <B/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <B/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     B(label: "x", rest: [])
                   }
                 }
@@ -8089,14 +8169,16 @@ mod tests {
                 fn Top(...rest) -> Fragment {
                     <Mid ...rest/>
                 }
-                view Main {
-                    <Top/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Top/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Top(label: "x", rest: [])
                   }
                 }
@@ -8127,16 +8209,18 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Inner title="a" ...rest/>
                 }
-                view Main {
-                    <Wrapper title="b"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper title="b"/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Wrapper does not accept attribute `title`
-                  --> main.hop (line 8, col 14)
-                7 | view Main {
-                8 |     <Wrapper title="b"/>
-                  |              ^^^^^
+                  --> main.hop (line 9, col 16)
+                 8 |   fn body() -> Fragment {
+                 9 |       <Wrapper title="b"/>
+                   |                ^^^^^
             "#]],
         );
     }
@@ -8152,16 +8236,18 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Inner data-foo="a" ...rest/>
                 }
-                view Main {
-                    <Wrapper data-foo="b"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper data-foo="b"/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Wrapper does not accept attribute `data-foo`
-                  --> main.hop (line 8, col 14)
-                7 | view Main {
-                8 |     <Wrapper data-foo="b"/>
-                  |              ^^^^^^^^
+                  --> main.hop (line 9, col 16)
+                 8 |   fn body() -> Fragment {
+                 9 |       <Wrapper data-foo="b"/>
+                   |                ^^^^^^^^
             "#]],
         );
     }
@@ -8177,14 +8263,16 @@ mod tests {
                 fn Wrapper(...rest) -> Fragment {
                     <Inner title="a" ...rest/>
                 }
-                view Main {
-                    <Wrapper lang="en"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Wrapper lang="en"/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Wrapper(rest: [lang: raw("en")])
                   }
                 }
@@ -8214,16 +8302,18 @@ mod tests {
                 fn Outer(...rest) -> Fragment {
                     <Mid ...rest/>
                 }
-                view Main {
-                    <Outer title="b"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Outer title="b"/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function Outer does not accept attribute `title`
-                  --> main.hop (line 11, col 12)
-                10 | view Main {
-                11 |     <Outer title="b"/>
-                   |            ^^^^^
+                  --> main.hop (line 12, col 14)
+                11 |   fn body() -> Fragment {
+                12 |       <Outer title="b"/>
+                   |              ^^^^^
             "#]],
         );
     }
@@ -8241,16 +8331,18 @@ mod tests {
                 fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
-                view Main {
-                    <B tabindex="nope"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <B tabindex="nope"/>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'tabindex' of function 'B': expected `Int` got `String`
-                  --> main.hop (line 10, col 17)
-                 9 | view Main {
-                10 |     <B tabindex="nope"/>
-                   |                 ^^^^^^
+                  --> main.hop (line 11, col 19)
+                10 |   fn body() -> Fragment {
+                11 |       <B tabindex="nope"/>
+                   |                   ^^^^^^
             "#]],
         );
     }
@@ -8268,14 +8360,16 @@ mod tests {
                 fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
-                view Main {
-                    <B tabindex={2} data-x="y"/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <B tabindex={2} data-x="y"/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     B(tabindex: 2, rest: [data-x: raw("y")])
                   }
                 }
@@ -8391,12 +8485,14 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_invoking_later_function() {
+    fn accepts_page_invoking_later_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                view Main() {
-                    <Later/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <Later/>
+                  }
                 }
 
                 fn Later() -> Fragment {
@@ -8406,7 +8502,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     Later()
                   }
                 }
@@ -8516,14 +8612,16 @@ mod tests {
                       <First/>
                   </>
                 }
-                view Main {
-                    <First/>
+                page Main() {
+                  fn body() -> Fragment {
+                      <First/>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     First(title: "d", rest: [])
                   }
                 }
@@ -8842,30 +8940,34 @@ mod tests {
     }
 
     #[test]
-    fn rejects_duplicate_view_names() {
+    fn rejects_duplicate_page_names() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Index() {
-                    <div>First</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>First</div>
+                  }
                 }
 
-                view Index() {
-                    <div>Second</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>Second</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Index is already defined
-                  --> main.hop (line 5, col 6)
-                4 | 
-                5 | view Index() {
-                  |      ^^^^^
+                  --> main.hop (line 7, col 6)
+                 6 | 
+                 7 | page Index() {
+                   |      ^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_view_with_same_name_as_function() {
+    fn rejects_page_with_same_name_as_function() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -8873,22 +8975,24 @@ mod tests {
                     <div>Component</div>
                 }
 
-                view Index() {
-                    <div>Entrypoint</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>Entrypoint</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Index is already defined
                   --> main.hop (line 5, col 6)
                 4 | 
-                5 | view Index() {
+                5 | page Index() {
                   |      ^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_view_with_same_name_as_record() {
+    fn rejects_page_with_same_name_as_record() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -8896,22 +9000,24 @@ mod tests {
                     name: String
                 }
 
-                view Index() {
-                    <div>Hello</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>Hello</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Index is already defined
                   --> main.hop (line 5, col 6)
                 4 | 
-                5 | view Index() {
+                5 | page Index() {
                   |      ^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_view_with_same_name_as_enum() {
+    fn rejects_page_with_same_name_as_enum() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -8920,16 +9026,18 @@ mod tests {
                     Home
                 }
 
-                view Index() {
-                    <div>Hello</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>Hello</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Index is already defined
                   --> main.hop (line 6, col 6)
-                5 | 
-                6 | view Index() {
-                  |      ^^^^^
+                 5 | 
+                 6 | page Index() {
+                   |      ^^^^^
             "#]],
         );
     }
@@ -8960,33 +9068,37 @@ mod tests {
     }
 
     #[test]
-    fn rejects_function_defined_with_same_name_as_view() {
+    fn rejects_function_defined_with_same_name_as_page() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Index() {
-                    <div>Hello</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>Hello</div>
+                  }
                 }
 
                 fn Index() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: Index is already defined
-                  --> main.hop (line 5, col 4)
-                4 | 
-                5 | fn Index() -> Fragment {<></>}
+                  --> main.hop (line 7, col 4)
+                6 | 
+                7 | fn Index() -> Fragment {<></>}
                   |    ^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_record_defined_with_same_name_as_view() {
+    fn rejects_record_defined_with_same_name_as_page() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Index() {
-                    <div>Hello</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>Hello</div>
+                  }
                 }
 
                 record Index {
@@ -8995,21 +9107,23 @@ mod tests {
             "#},
             expect![[r#"
                 error: Index is already defined
-                  --> main.hop (line 5, col 8)
-                4 | 
-                5 | record Index {
+                  --> main.hop (line 7, col 8)
+                6 | 
+                7 | record Index {
                   |        ^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_view_name_used_as_type() {
+    fn rejects_page_name_used_as_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                view Index() {
-                    <div>Hello</div>
+                page Index() {
+                  fn body() -> Fragment {
+                      <div>Hello</div>
+                  }
                 }
 
                 fn Main(x: Index) -> Fragment {
@@ -9018,9 +9132,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: `Index` is a page and cannot be used as a type
-                  --> main.hop (line 5, col 12)
-                4 | 
-                5 | fn Main(x: Index) -> Fragment {
+                  --> main.hop (line 7, col 12)
+                6 | 
+                7 | fn Main(x: Index) -> Fragment {
                   |            ^^^^^
             "#]],
         );
@@ -9035,14 +9149,16 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label(count: 2, prefix: "n")}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label(count: 2, prefix: "n")}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  body {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9067,22 +9183,24 @@ mod tests {
                   x + 10
                 }
 
-                view Test {
-                  <div>{add_ten(y: 1).to_string()}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{add_ten(y: 1).to_string()}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function add_ten requires arguments: x
-                  --> main.hop (line 6, col 9)
-                5 | view Test {
-                6 |   <div>{add_ten(y: 1).to_string()}</div>
-                  |         ^^^^^^^^^^^^^
+                  --> main.hop (line 7, col 11)
+                6 |   fn body() -> Fragment {
+                7 |     <div>{add_ten(y: 1).to_string()}</div>
+                  |           ^^^^^^^^^^^^^
 
                 error: Function add_ten does not accept argument `y`
-                  --> main.hop (line 6, col 17)
-                5 | view Test {
-                6 |   <div>{add_ten(y: 1).to_string()}</div>
-                  |                 ^
+                  --> main.hop (line 7, col 19)
+                6 |   fn body() -> Fragment {
+                7 |     <div>{add_ten(y: 1).to_string()}</div>
+                  |                   ^
             "#]],
         );
     }
@@ -9096,16 +9214,18 @@ mod tests {
                   x + 10
                 }
 
-                view Test {
-                  <div>{add_ten(x: 1, x: 2).to_string()}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{add_ten(x: 1, x: 2).to_string()}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Argument `x` is supplied more than once
-                  --> main.hop (line 6, col 23)
-                5 | view Test {
-                6 |   <div>{add_ten(x: 1, x: 2).to_string()}</div>
-                  |                       ^
+                  --> main.hop (line 7, col 25)
+                6 |   fn body() -> Fragment {
+                7 |     <div>{add_ten(x: 1, x: 2).to_string()}</div>
+                  |                         ^
             "#]],
         );
     }
@@ -9119,16 +9239,18 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label(prefix: "n")}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label(prefix: "n")}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function label requires arguments: count
-                  --> main.hop (line 6, col 9)
-                5 | view Test {
-                6 |   <div>{label(prefix: "n")}</div>
-                  |         ^^^^^^^^^^^^^^^^^^
+                  --> main.hop (line 7, col 11)
+                6 |   fn body() -> Fragment {
+                7 |     <div>{label(prefix: "n")}</div>
+                  |           ^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -9142,14 +9264,16 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label(prefix: "n")}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label(prefix: "n")}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  body {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9174,14 +9298,16 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label(prefix: "n", count: 7)}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label(prefix: "n", count: 7)}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  body {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9206,14 +9332,16 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label()}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label()}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  body {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9238,14 +9366,16 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label("n")}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label("n")}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  body {
+                  fn body() -> Fragment {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9270,16 +9400,18 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label("n", 2, 3)}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label("n", 2, 3)}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function 'label' expects 0 to 2 argument(s), got 3
-                  --> main.hop (line 6, col 9)
-                5 | view Test {
-                6 |   <div>{label("n", 2, 3)}</div>
-                  |         ^^^^^^^^^^^^^^^^
+                  --> main.hop (line 7, col 11)
+                6 |   fn body() -> Fragment {
+                7 |     <div>{label("n", 2, 3)}</div>
+                  |           ^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -9293,16 +9425,18 @@ mod tests {
                   prefix + count.to_string()
                 }
 
-                view Test {
-                  <div>{label("n")}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label("n")}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function 'label' expects 2 argument(s), got 1
-                  --> main.hop (line 6, col 9)
-                5 | view Test {
-                6 |   <div>{label("n")}</div>
-                  |         ^^^^^^^^^^
+                  --> main.hop (line 7, col 11)
+                6 |   fn body() -> Fragment {
+                7 |     <div>{label("n")}</div>
+                  |           ^^^^^^^^^^
             "#]],
         );
     }
@@ -9316,8 +9450,10 @@ mod tests {
                   count.to_string()
                 }
 
-                view Test {
-                  <div>{label(count: 2)}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label(count: 2)}</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -9342,8 +9478,10 @@ mod tests {
                   count.to_string()
                 }
 
-                view Test {
-                  <div>{label(count: 2)}</div>
+                page Test() {
+                  fn body() -> Fragment {
+                    <div>{label(count: 2)}</div>
+                  }
                 }
             "#},
             expect![[r#"
@@ -9395,7 +9533,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_call_in_view_body() {
+    fn accepts_function_call_in_page_body() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -9403,14 +9541,16 @@ mod tests {
                   name
                 }
 
-                view Main {
-                  <div>{shout("hi")}</div>
+                page Main() {
+                  fn body() -> Fragment {
+                    <div>{shout("hi")}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  body {
+                  fn body() -> Fragment {
                     html(tag: "div", attrs: [], children: concat(escape(shout(name: "hi"))))
                   }
                 }
@@ -9449,16 +9589,18 @@ mod tests {
                   x + 10
                 }
 
-                view Main {
-                  <div>{add_ten(1, 2).to_string()}</div>
+                page Main() {
+                  fn body() -> Fragment {
+                    <div>{add_ten(1, 2).to_string()}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Function 'add_ten' expects 1 argument(s), got 2
-                  --> main.hop (line 6, col 9)
-                5 | view Main {
-                6 |   <div>{add_ten(1, 2).to_string()}</div>
-                  |         ^^^^^^^^^^^^^
+                  --> main.hop (line 7, col 11)
+                6 |   fn body() -> Fragment {
+                7 |     <div>{add_ten(1, 2).to_string()}</div>
+                  |           ^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -9472,16 +9614,18 @@ mod tests {
                   x + 10
                 }
 
-                view Main {
-                  <div>{add_ten("one").to_string()}</div>
+                page Main() {
+                  fn body() -> Fragment {
+                    <div>{add_ten("one").to_string()}</div>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'x' of function 'add_ten': expected `Int` got `String`
-                  --> main.hop (line 6, col 17)
-                5 | view Main {
-                6 |   <div>{add_ten("one").to_string()}</div>
-                  |                 ^^^^^
+                  --> main.hop (line 7, col 19)
+                6 |   fn body() -> Fragment {
+                7 |     <div>{add_ten("one").to_string()}</div>
+                  |                   ^^^^^
             "#]],
         );
     }
@@ -9563,16 +9707,18 @@ mod tests {
                   <div>{label}</div>
                 }
 
-                pub view Test {
-                  <>
-                    {card("hello")}
-                  </>
+                pub page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      {card("hello")}
+                    </>
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  body {
+                  fn body() -> Fragment {
                     concat(card(label: "hello"))
                   }
                 }
@@ -9593,18 +9739,20 @@ mod tests {
                   <div></div>
                 }
 
-                pub view Test {
-                  <>
-                    {card()}
-                  </>
+                pub page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      {card()}
+                    </>
+                  }
                 }
             "},
             expect![[r#"
                 error: Mismatched type for function body: expected `String` got `Fragment`
                   --> main.hop (line 2, col 3)
-                1 | fn card() -> String {
-                2 |   <div></div>
-                  |   ^^^^^^^^^^^
+                 1 | fn card() -> String {
+                 2 |   <div></div>
+                   |   ^^^^^^^^^^^
             "#]],
         );
     }
@@ -9618,16 +9766,18 @@ mod tests {
                   <div>{children}</div>
                 }
 
-                pub view Test {
-                  <>
-                    {wrap(<span>hello</span>)}
-                  </>
+                pub page Test() {
+                  fn body() -> Fragment {
+                    <>
+                      {wrap(<span>hello</span>)}
+                    </>
+                  }
                 }
             "},
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  body {
+                  fn body() -> Fragment {
                     concat(
                       wrap(
                         children: html(tag: "span", attrs: [], children: concat(raw("hello"))),
@@ -9648,16 +9798,18 @@ mod tests {
         reject(
             indoc! {"
                 -- main.hop --
-                pub view Test {
-                  <div>{<Missing/>}</div>
+                pub page Test() {
+                  fn body() -> Fragment {
+                    <div>{<Missing/>}</div>
+                  }
                 }
             "},
             expect![[r#"
                 error: Function Missing is not defined
-                  --> main.hop (line 2, col 10)
-                1 | pub view Test {
-                2 |   <div>{<Missing/>}</div>
-                  |          ^^^^^^^
+                  --> main.hop (line 3, col 12)
+                2 |   fn body() -> Fragment {
+                3 |     <div>{<Missing/>}</div>
+                  |            ^^^^^^^
             "#]],
         );
     }
@@ -9867,20 +10019,22 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_string_as_a_view_body() {
+    fn rejects_a_string_as_a_page_body() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                pub view Test {
-                  "hello"
+                pub page Test() {
+                  fn body() -> Fragment {
+                    "hello"
+                  }
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for declaration: expected `Fragment` got `String`
-                  --> main.hop (line 2, col 3)
-                1 | pub view Test {
-                2 |   "hello"
-                  |   ^^^^^^^
+                  --> main.hop (line 3, col 5)
+                2 |   fn body() -> Fragment {
+                3 |     "hello"
+                  |     ^^^^^^^
             "#]],
         );
     }
@@ -9891,10 +10045,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 pub page Test() {
-                  head {
+                  fn head() -> Fragment {
                     "hello"
                   }
-                  body {
+                  fn body() -> Fragment {
                     <div></div>
                   }
                 }
@@ -9902,7 +10056,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type for declaration: expected `Fragment` got `String`
                   --> main.hop (line 3, col 5)
-                2 |   head {
+                2 |   fn head() -> Fragment {
                 3 |     "hello"
                   |     ^^^^^^^
             "#]],
@@ -9918,14 +10072,16 @@ mod tests {
                   <!-- nothing yet -->
                 }
 
-                pub view Test {
-                  <>{f()}</>
+                pub page Test() {
+                  fn body() -> Fragment {
+                    <>{f()}</>
+                  }
                 }
             "},
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  body {
+                  fn body() -> Fragment {
                     concat(f())
                   }
                 }
@@ -9946,14 +10102,16 @@ mod tests {
                   <div>{slot}</div>
                 }
 
-                pub view Test {
-                  <>{wrap(<!-- nothing yet -->)}</>
+                pub page Test() {
+                  fn body() -> Fragment {
+                    <>{wrap(<!-- nothing yet -->)}</>
+                  }
                 }
             "},
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  body {
+                  fn body() -> Fragment {
                     concat(wrap(slot: concat()))
                   }
                 }
@@ -9978,8 +10136,10 @@ mod tests {
                   <Inner ...rest/>
                 }
 
-                pub view Test {
-                  <>{f()}</>
+                pub page Test() {
+                  fn body() -> Fragment {
+                    <>{f()}</>
+                  }
                 }
             "},
             expect![[r#"
@@ -10007,8 +10167,10 @@ mod tests {
                   <div ...rest></div>
                 }
 
-                pub view Test {
-                  <>{f()}</>
+                pub page Test() {
+                  fn body() -> Fragment {
+                    <>{f()}</>
+                  }
                 }
             "},
             expect![[r#"
