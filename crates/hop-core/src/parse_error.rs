@@ -103,8 +103,8 @@ pub(crate) enum ParseErrorKind {
     #[error("Unclosed <>")]
     UnclosedFragment {},
 
-    #[error("Expected an expression: use <></> for an empty body")]
-    EmptyBody,
+    #[error("Function '{name}' has an empty body: a function body must be a single expression")]
+    EmptyFunctionBody { name: CheapString },
 
     #[error("<{tag}> should not be closed using a closing tag")]
     ClosedVoidTag { tag: CheapString },

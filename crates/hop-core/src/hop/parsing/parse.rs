@@ -10,11 +10,9 @@ use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 
-use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_ast::ParsedParameter;
-use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::parsing::token::LangToken;
 use crate::hop::parsing::token::LangTokenPair;
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
@@ -539,16 +537,13 @@ fn parse_function_declaration(
         LangTokenPair::Braces,
         &left_brace,
         |iter, comments, errors, eof_range| {
-            if let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter)
-                && matches!(return_type, Ok(ParsedType::Html { .. }))
-            {
-                let _ = errors.emit(ParseErrorKind::EmptyBody {}, left_brace.clone());
-                return Ok(ParsedExpr::Markup {
-                    node: Box::new(ParsedNode::Fragment {
-                        children: Vec::new(),
-                        range: left_brace.clone(),
-                    }),
-                });
+            if let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter) {
+                return Err(errors.emit(
+                    ParseErrorKind::EmptyFunctionBody {
+                        name: name.to_cheap_string(),
+                    },
+                    name_range.clone(),
+                ));
             }
             parse_expr::parse_expr(iter, comments, errors, eof_range)
         },
@@ -1647,13 +1642,10 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Expected an expression: use <></> for an empty body
+                error: Function 'Main' has an empty body: a function body must be a single expression
                 1 | fn Main() -> Html {
-                  |                   ^
+                  |    ^^^^
                 -- ast --
-                fn Main() -> Html {
-                  fragment()
-                }
             "#]],
         );
     }
@@ -3201,14 +3193,11 @@ mod tests {
                 2 | fn Main() -> Html {
                   | ^^
 
-                error: Expected an expression: use <></> for an empty body
+                error: Function 'Main' has an empty body: a function body must be a single expression
                 1 | record
                 2 | fn Main() -> Html {
-                  |                   ^
+                  |    ^^^^
                 -- ast --
-                fn Main() -> Html {
-                  fragment()
-                }
             "#]],
         );
     }
@@ -3227,14 +3216,11 @@ mod tests {
                 1 | foo
                   | ^^^
 
-                error: Expected an expression: use <></> for an empty body
+                error: Function 'Main' has an empty body: a function body must be a single expression
                 1 | foo
                 2 | fn Main() -> Html {
-                  |                   ^
+                  |    ^^^^
                 -- ast --
-                fn Main() -> Html {
-                  fragment()
-                }
             "#]],
         );
     }
@@ -5056,10 +5042,9 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Unexpected token '}'
+                error: Function 'f' has an empty body: a function body must be a single expression
                 1 | fn f() -> Int {
-                2 | }
-                  | ^
+                  |    ^
                 -- ast --
             "#]],
         );
@@ -5110,16 +5095,11 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Expected an expression: use <></> for an empty body
+                error: Function 'body' has an empty body: a function body must be a single expression
                 1 | page Index() {
                 2 |   fn body() -> Html {
-                  |                     ^
+                  |      ^^^^
                 -- ast --
-                page Index() {
-                  fn body() -> Html {
-                    fragment()
-                  }
-                }
             "#]],
         );
     }
