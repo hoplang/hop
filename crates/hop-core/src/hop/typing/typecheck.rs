@@ -321,10 +321,15 @@ fn typecheck_module(
         if type_env.names[name].definition_range != function.name_range {
             continue;
         }
+        // A function whose signature failed to resolve owns its name but has
+        // nothing to export.
+        let Some(signature) = type_env.functions.get(name) else {
+            continue;
+        };
         module_exports.insert(
             function.name.to_cheap_string(),
             Export::Function {
-                signature: type_env.functions[name].clone(),
+                signature: signature.clone(),
                 definition_range: function.name_range.clone(),
                 is_pub: function.pub_range.is_some(),
             },
@@ -6796,6 +6801,24 @@ mod tests {
                   --> main.hop (line 1, col 16)
                 1 | page Main(foo: UndefinedType) {
                   |                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_with_undefined_return_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> I {
+                  <></>
+                }
+            "#},
+            expect![[r#"
+                error: Type 'I' is not defined
+                  --> main.hop (line 1, col 14)
+                1 | fn Main() -> I {
+                  |              ^
             "#]],
         );
     }
