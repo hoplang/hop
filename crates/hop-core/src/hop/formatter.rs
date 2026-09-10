@@ -1278,7 +1278,11 @@ fn format_match_pattern<'a>(
                     .append(soft_block(arena, fields_doc))
                     .append(arena.text("}"))
             } else if args.is_empty() {
-                base
+                if matches!(constructor, Constructor::Record { .. }) {
+                    base.append(arena.text(" {}"))
+                } else {
+                    base
+                }
             } else {
                 let args_doc = arena.intersperse(
                     args.iter().map(|p| format_match_pattern(arena, p)),
@@ -1346,6 +1350,9 @@ mod tests {
             Document::new(document_id, formatted.clone()),
             &mut errors,
         ));
+        if !errors.is_empty() {
+            panic!("Formatted output does not parse: {:?}", errors);
+        }
         assert_eq!(formatted, formatted_twice, "Formatter is not idempotent");
     }
 
@@ -2854,6 +2861,51 @@ mod tests {
                 fn Main() -> Fragment {
                   <let {e: Empty = Empty {}}>
                   </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn empty_record_pattern_keeps_braces() {
+        check(
+            indoc! {r#"
+                record Empty {}
+                fn Main(e: Empty) -> Fragment {
+                  <div class={match e { Empty {} => "yes" }}>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                record Empty {}
+
+                fn Main(e: Empty) -> Fragment {
+                  <div class={match e {Empty {} => "yes"}}>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_pattern_without_listed_fields_keeps_braces() {
+        check(
+            indoc! {r#"
+                record Point {x: Int, y: Int}
+                fn Main(p: Point) -> Fragment {
+                  <div class={match p { Point {} => "any" }}>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                record Point {
+                  x: Int,
+                  y: Int,
+                }
+
+                fn Main(p: Point) -> Fragment {
+                  <div class={match p {Point {} => "any"}}>
+                  </div>
                 }
             "#]],
         );
