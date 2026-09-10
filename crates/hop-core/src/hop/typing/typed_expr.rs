@@ -230,25 +230,25 @@ pub enum TypedExpr {
         value: Box<Self>,
     },
 
-    /// Concatenation of fragments
-    FragmentConcat {
+    /// Concatenation of Html
+    HtmlConcat {
         nodes: Vec<Self>,
     },
 
     /// Literal markup text, e.g. `Hello`.
     /// Trusted and emitted without escaping.
-    FragmentRaw {
+    HtmlRaw {
         value: CheapString,
     },
 
     /// An interpolation in markup, e.g. `{name}`.
-    /// HTML-escapes a String-typed expression into a Fragment.
-    FragmentEscape {
+    /// HTML-escapes a String-typed expression into Html.
+    HtmlEscape {
         expr: Box<Self>,
     },
 
     /// An HTML element, e.g. `<div class="x">...</div>`
-    FragmentHtml {
+    HtmlElement {
         element: HtmlElementKind,
         attrs: Box<Self>,
         children: Box<Self>,
@@ -367,10 +367,10 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Type::Int,
 
-            TypedExpr::FragmentConcat { .. }
-            | TypedExpr::FragmentRaw { .. }
-            | TypedExpr::FragmentEscape { .. }
-            | TypedExpr::FragmentHtml { .. } => Type::Fragment,
+            TypedExpr::HtmlConcat { .. }
+            | TypedExpr::HtmlRaw { .. }
+            | TypedExpr::HtmlEscape { .. }
+            | TypedExpr::HtmlElement { .. } => Type::Html,
 
             TypedExpr::AttrsConcat { .. } | TypedExpr::AttrsLiteral { .. } => Type::Attrs,
         }
@@ -693,15 +693,15 @@ impl TypedExpr {
             TypedExpr::IntToString { value } => value.to_doc().append(BoxDoc::text(".to_string()")),
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
-            TypedExpr::FragmentConcat { nodes } => concat_to_doc(nodes),
+            TypedExpr::HtmlConcat { nodes } => concat_to_doc(nodes),
             TypedExpr::AttrsConcat { parts } => concat_to_doc(parts),
             TypedExpr::AttrsLiteral { attributes } => {
                 bracketed_to_doc(attributes.iter().map(|attr| attr.to_doc()).collect())
             }
-            TypedExpr::FragmentRaw { value } => BoxDoc::text("raw(")
+            TypedExpr::HtmlRaw { value } => BoxDoc::text("raw(")
                 .append(BoxDoc::text(format!("{:?}", value.as_str())))
                 .append(")"),
-            TypedExpr::FragmentEscape { expr } => {
+            TypedExpr::HtmlEscape { expr } => {
                 BoxDoc::text("escape(").append(expr.to_doc()).append(")")
             }
             TypedExpr::For {
@@ -730,7 +730,7 @@ impl TypedExpr {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
             }
-            TypedExpr::FragmentHtml {
+            TypedExpr::HtmlElement {
                 element,
                 attrs,
                 children,

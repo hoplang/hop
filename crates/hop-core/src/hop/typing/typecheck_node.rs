@@ -53,7 +53,7 @@ pub fn typecheck_node(
                 })
                 .collect();
 
-            Some(TypedExpr::FragmentConcat {
+            Some(TypedExpr::HtmlConcat {
                 nodes: typed_children,
             })
         }
@@ -106,12 +106,12 @@ pub fn typecheck_node(
             Some(TypedExpr::Match {
                 match_: Match::Bool {
                     subject: Box::new(typed_condition),
-                    true_body: Box::new(TypedExpr::FragmentConcat {
+                    true_body: Box::new(TypedExpr::HtmlConcat {
                         nodes: typed_children,
                     }),
-                    false_body: Box::new(TypedExpr::FragmentConcat { nodes: Vec::new() }),
+                    false_body: Box::new(TypedExpr::HtmlConcat { nodes: Vec::new() }),
                 },
-                typ: Type::Fragment,
+                typ: Type::Html,
             })
         }
 
@@ -263,10 +263,10 @@ pub fn typecheck_node(
             Some(TypedExpr::For {
                 var_name: var_name.clone(),
                 source: Box::new(typed_source),
-                body: Box::new(TypedExpr::FragmentConcat {
+                body: Box::new(TypedExpr::HtmlConcat {
                     nodes: typed_children,
                 }),
-                typ: Type::Fragment,
+                typ: Type::Html,
             })
         }
 
@@ -388,7 +388,7 @@ pub fn typecheck_node(
 
             // Build nested Let structure from innermost to outermost
             // Start with children, then wrap with each binding in reverse order
-            let mut result = TypedExpr::FragmentConcat {
+            let mut result = TypedExpr::HtmlConcat {
                 nodes: typed_children,
             };
             for (binding, typed_value) in typed_bindings.into_iter().rev() {
@@ -439,7 +439,7 @@ pub fn typecheck_node(
                 ));
                 return None;
             };
-            if signature.return_type != Type::Fragment {
+            if signature.return_type != Type::Html {
                 errors.push(TypeError::new(
                     TypeErrorKind::FunctionTagReturnTypeMismatch {
                         name: function_name.clone(),
@@ -512,7 +512,7 @@ pub fn typecheck_node(
                 function_name: function_name.clone(),
                 module: callee_module,
                 args,
-                typ: Type::Fragment,
+                typ: Type::Html,
             })
         }
 
@@ -567,7 +567,7 @@ pub fn typecheck_node(
                 })
                 .collect();
 
-            Some(TypedExpr::FragmentHtml {
+            Some(TypedExpr::HtmlElement {
                 element: element.clone(),
                 attrs: Box::new(attrs_expr(
                     typed_attributes,
@@ -578,7 +578,7 @@ pub fn typecheck_node(
                         | ParsedAttribute::String { .. } => None,
                     }),
                 )),
-                children: Box::new(TypedExpr::FragmentConcat {
+                children: Box::new(TypedExpr::HtmlConcat {
                     nodes: typed_children,
                 }),
             })
@@ -602,8 +602,8 @@ pub fn typecheck_node(
             ) {
                 let expr_type = typed_expr.typ();
                 match expr_type {
-                    Type::Fragment => Some(typed_expr),
-                    Type::String => Some(TypedExpr::FragmentEscape {
+                    Type::Html => Some(typed_expr),
+                    Type::String => Some(TypedExpr::HtmlEscape {
                         expr: Box::new(typed_expr),
                     }),
                     _ => {
@@ -632,11 +632,11 @@ pub fn typecheck_node(
             errors,
         ),
 
-        ParsedNode::Text { range } => Some(TypedExpr::FragmentRaw {
+        ParsedNode::Text { range } => Some(TypedExpr::HtmlRaw {
             value: range.to_cheap_string(),
         }),
 
-        ParsedNode::Newline { .. } => Some(TypedExpr::FragmentRaw {
+        ParsedNode::Newline { .. } => Some(TypedExpr::HtmlRaw {
             value: CheapString::new(" ".to_string()),
         }),
 
@@ -729,7 +729,7 @@ fn typecheck_arguments(
     let has_body = children.is_some();
     let children_param = callee_params
         .iter()
-        .find(|p| p.name.as_str() == "children" && p.typ == Type::Fragment);
+        .find(|p| p.name.as_str() == "children" && p.typ == Type::Html);
     let has_explicit_children_arg = attributes.iter().any(|a| {
         a.name_range()
             .is_some_and(|name| name.as_str() == "children")
@@ -830,7 +830,7 @@ fn typecheck_arguments(
     if synthesize_children_arg {
         supplied.push((
             VarName::new("children").unwrap(),
-            Argument::Implied(TypedExpr::FragmentConcat {
+            Argument::Implied(TypedExpr::HtmlConcat {
                 nodes: children.unwrap_or_default(),
             }),
         ));

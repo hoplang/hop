@@ -19,7 +19,7 @@ pub fn resolve_type(
         ParsedType::Bool { range } => (Type::Bool, range),
         ParsedType::Int { range } => (Type::Int, range),
         ParsedType::Float { range } => (Type::Float, range),
-        ParsedType::Fragment { range } => (Type::Fragment, range),
+        ParsedType::Html { range } => (Type::Html, range),
         ParsedType::Option { element, range } => {
             let elem_type = resolve_type(element, names, definition_links, errors)?;
             (Type::Option(Box::new(elem_type)), range)

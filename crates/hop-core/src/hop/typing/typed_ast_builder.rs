@@ -70,7 +70,7 @@ impl TypedAstBuilder {
         AssembledPageDeclaration {
             name: TypeName::new(page_name).unwrap(),
             params: self.params,
-            body: TypedExpr::FragmentConcat {
+            body: TypedExpr::HtmlConcat {
                 nodes: self.children,
             },
         }
@@ -103,14 +103,14 @@ impl TypedAstBuilder {
     }
 
     pub fn text(&mut self, s: &str) {
-        self.children.push(TypedExpr::FragmentRaw {
+        self.children.push(TypedExpr::HtmlRaw {
             value: CheapString::new(s.to_string()),
         });
     }
 
     pub fn text_expr(&mut self, expr: TypedExpr) {
         assert_eq!(expr.typ(), Type::String, "{}", expr);
-        self.children.push(TypedExpr::FragmentEscape {
+        self.children.push(TypedExpr::HtmlEscape {
             expr: Box::new(expr),
         });
     }
@@ -145,8 +145,8 @@ impl TypedAstBuilder {
         self.children.push(TypedExpr::For {
             var_name: Some(VarName::try_from(var.to_string()).unwrap()),
             source: Box::new(TypedLoopSource::Array(array)),
-            body: Box::new(TypedExpr::FragmentConcat { nodes: children }),
-            typ: Type::Fragment,
+            body: Box::new(TypedExpr::HtmlConcat { nodes: children }),
+            typ: Type::Html,
         });
     }
 
@@ -169,11 +169,11 @@ impl TypedAstBuilder {
             })
             .collect();
 
-        self.children.push(TypedExpr::FragmentHtml {
+        self.children.push(TypedExpr::HtmlElement {
             element: HtmlElementKind::parse(tag_name)
                 .expect("builder html() called with an unrecognized tag name"),
             attrs: Box::new(TypedExpr::AttrsLiteral { attributes: attrs }),
-            children: Box::new(TypedExpr::FragmentConcat {
+            children: Box::new(TypedExpr::HtmlConcat {
                 nodes: inner_builder.children,
             }),
         });
@@ -235,14 +235,14 @@ impl TypedAstBuilder {
         self.children.push(TypedExpr::Match {
             match_: Match::Bool {
                 subject: Box::new(subject),
-                true_body: Box::new(TypedExpr::FragmentConcat {
+                true_body: Box::new(TypedExpr::HtmlConcat {
                     nodes: true_builder.children,
                 }),
-                false_body: Box::new(TypedExpr::FragmentConcat {
+                false_body: Box::new(TypedExpr::HtmlConcat {
                     nodes: false_builder.children,
                 }),
             },
-            typ: Type::Fragment,
+            typ: Type::Html,
         });
     }
 }
@@ -264,7 +264,7 @@ mod tests {
             }),
             expect![[r#"
                 page Hello() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(raw("Hello, World!"))
                   }
                 }
@@ -282,7 +282,7 @@ mod tests {
             }),
             expect![[r#"
                 page Card() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       html(
                         tag: "div",
@@ -305,7 +305,7 @@ mod tests {
             }),
             expect![[r#"
                 page Greeting(name: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(raw("Hello, "), escape(name))
                   }
                 }
@@ -331,7 +331,7 @@ mod tests {
             ),
             expect![[r#"
                 page ItemList(items: Array[String]) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       html(
                         tag: "ul",
@@ -367,7 +367,7 @@ mod tests {
             }),
             expect![[r#"
                 page Toggle(visible: Bool) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       match visible {
                         true => concat(

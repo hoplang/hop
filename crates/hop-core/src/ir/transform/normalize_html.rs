@@ -4,26 +4,26 @@ use crate::ir::pure_module::PureExpr;
 
 /// A pass that normalizes fragment structure.
 ///
-/// - A FragmentEscape of a constant string becomes a FragmentRaw with the
+/// - HtmlEscape of a constant string becomes a HtmlRaw with the
 ///   escaping applied at compile time.
-/// - A FragmentEscape distributes over StringConcat: escaping is a monoid
+/// - HtmlEscape distributes over StringConcat: escaping is a monoid
 ///   homomorphism, escape(a + b) = escape(a) <> escape(b), so every constant
 ///   part can be escaped at compile time however deeply it nests.
-/// - Nested FragmentConcats are flattened.
-/// - Adjacent FragmentRaws are merged while the combined length stays below
+/// - Nested HtmlConcats are flattened.
+/// - Adjacent HtmlRaws are merged while the combined length stays below
 ///   the limit.
-pub fn normalize_fragments(expr: PureExpr, expr_ids: &mut ExprIdCounter, limit: usize) -> PureExpr {
+pub fn normalize_html(expr: PureExpr, expr_ids: &mut ExprIdCounter, limit: usize) -> PureExpr {
     transform(expr, expr_ids, limit)
 }
 
 fn transform(expr: PureExpr, expr_ids: &mut ExprIdCounter, limit: usize) -> PureExpr {
     match expr {
-        PureExpr::FragmentEscape { expr: inner, id } => {
+        PureExpr::HtmlEscape { expr: inner, id } => {
             let inner = transform(*inner, expr_ids, limit);
             push_escape(inner, id, expr_ids, limit)
         }
 
-        PureExpr::FragmentConcat { parts, id } => PureExpr::FragmentConcat {
+        PureExpr::HtmlConcat { parts, id } => PureExpr::HtmlConcat {
             parts: flatten_and_merge(
                 parts
                     .into_iter()
@@ -48,7 +48,7 @@ fn push_escape(
         PureExpr::StringLiteral { value, .. } => {
             let mut content = String::new();
             write_escaped_html(value.as_str(), &mut content);
-            PureExpr::FragmentRaw { content, id }
+            PureExpr::HtmlRaw { content, id }
         }
         PureExpr::StringConcat { parts, .. } => {
             let escaped: Vec<PureExpr> = parts
@@ -58,12 +58,12 @@ fn push_escape(
                     push_escape(part, part_id, expr_ids, limit)
                 })
                 .collect();
-            PureExpr::FragmentConcat {
+            PureExpr::HtmlConcat {
                 parts: flatten_and_merge(escaped, limit),
                 id,
             }
         }
-        inner => PureExpr::FragmentEscape {
+        inner => PureExpr::HtmlEscape {
             expr: Box::new(inner),
             id,
         },
@@ -71,23 +71,23 @@ fn push_escape(
 }
 
 /// Flatten already-normalized parts one level and greedily merge adjacent
-/// FragmentRaws whose combined length stays below the limit. A merged raw keeps
+/// HtmlRaws whose combined length stays below the limit. A merged raw keeps
 /// the id of its first chunk.
 fn flatten_and_merge(parts: impl IntoIterator<Item = PureExpr>, limit: usize) -> Vec<PureExpr> {
     let mut merged: Vec<PureExpr> = Vec::new();
     for part in parts {
         let subparts = match part {
-            PureExpr::FragmentConcat { parts, .. } => parts,
+            PureExpr::HtmlConcat { parts, .. } => parts,
             part => vec![part],
         };
         for part in subparts {
             match (merged.last_mut(), part) {
                 (
-                    Some(PureExpr::FragmentRaw {
+                    Some(PureExpr::HtmlRaw {
                         content: accumulated,
                         ..
                     }),
-                    PureExpr::FragmentRaw { content, .. },
+                    PureExpr::HtmlRaw { content, .. },
                 ) if accumulated.len() + content.len() < limit => {
                     accumulated.push_str(&content);
                 }
@@ -163,7 +163,7 @@ mod tests {
             .map(|page| PurePageDeclaration {
                 name: page.name,
                 parameters: page.parameters,
-                body: normalize_fragments(page.body, &mut expr_ids, limit),
+                body: normalize_html(page.body, &mut expr_ids, limit),
             })
             .collect();
         let functions = module
@@ -173,7 +173,7 @@ mod tests {
                 function: function.function,
                 parameters: function.parameters,
                 return_type: function.return_type,
-                body: normalize_fragments(function.body, &mut expr_ids, limit),
+                body: normalize_html(function.body, &mut expr_ids, limit),
             })
             .collect();
         PureModule {
@@ -368,7 +368,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
-                    t.concat(vec![t.fragment_for(
+                    t.concat(vec![t.html_for(
                         Some("item"),
                         t.array(vec![t.str("a")]),
                         |t| t.concat(vec![t.raw("<li>"), t.escape(t.var("item")), t.raw("</li>")]),

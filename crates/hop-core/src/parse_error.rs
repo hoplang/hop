@@ -273,7 +273,7 @@ pub(crate) enum ParseErrorKind {
     #[error("Default values are not allowed on page parameters")]
     DefaultValueNotAllowedOnPage,
 
-    #[error("Expected a 'fn body() -> Fragment' member")]
+    #[error("Expected a 'fn body() -> Html' member")]
     ExpectedPageBodyBlock,
 
     #[error("Expected 'fn head' or 'fn body'")]
@@ -288,8 +288,8 @@ pub(crate) enum ParseErrorKind {
     #[error("Page member '{name}' cannot have parameters")]
     PageMemberHasParameters { name: CheapString },
 
-    #[error("Page member '{name}' must return Fragment")]
-    PageMemberMustReturnFragment { name: CheapString },
+    #[error("Page member '{name}' must return Html")]
+    PageMemberMustReturnHtml { name: CheapString },
 
     #[error("Rest parameters are not allowed on pages")]
     RestParamNotAllowedOnPage,

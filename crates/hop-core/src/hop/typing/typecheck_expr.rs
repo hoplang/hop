@@ -40,7 +40,7 @@ pub fn typecheck_expr(
 ) -> Option<TypedExpr> {
     match parsed_expr {
         ParsedExpr::Markup { node } if matches!(**node, ParsedNode::Comment { .. }) => {
-            Some(TypedExpr::FragmentConcat { nodes: Vec::new() })
+            Some(TypedExpr::HtmlConcat { nodes: Vec::new() })
         }
         ParsedExpr::Markup { node } => typecheck_node(
             node,

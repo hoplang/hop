@@ -11,7 +11,7 @@ pub enum Type {
     Bool,
     Int,
     Float,
-    Fragment,
+    Html,
     Attrs,
     Array(Box<Type>),
     Option(Box<Type>),
@@ -52,7 +52,7 @@ impl Type {
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
             Type::Option(_)
-            | Type::Fragment
+            | Type::Html
             | Type::Attrs
             | Type::Array(_)
             | Type::Named { .. } => None,
@@ -65,7 +65,7 @@ impl Type {
             Type::Float => Some(ComparableType::Float),
             Type::Bool
             | Type::String
-            | Type::Fragment
+            | Type::Html
             | Type::Attrs
             | Type::Array(_)
             | Type::Option(_)
@@ -80,7 +80,7 @@ impl Type {
             Type::String
             | Type::Int
             | Type::Float
-            | Type::Fragment
+            | Type::Html
             | Type::Attrs
             | Type::Array(_) => false,
         }
@@ -100,7 +100,7 @@ impl<'a> Type {
             Type::Float => BoxDoc::text("Float"),
             Type::Int => BoxDoc::text("Int"),
             Type::Bool => BoxDoc::text("Bool"),
-            Type::Fragment => BoxDoc::text("Fragment"),
+            Type::Html => BoxDoc::text("Html"),
             Type::Attrs => BoxDoc::text("Attrs"),
             Type::Array(elem_type) => BoxDoc::nil()
                 .append(BoxDoc::text("Array["))

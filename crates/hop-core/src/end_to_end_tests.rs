@@ -438,7 +438,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {f in [Flag {value: true}]}>
                       <match {f}>
                         <case {Flag {value: b}}>
@@ -514,7 +514,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {c in [Count {n: 57}]}>
                       <match {c}>
                         <case {Count {n: v}}>
@@ -590,7 +590,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {f in [Flag {value: true}]}>
                       <match {f}>
                         <case {Flag {value: b}}>
@@ -658,7 +658,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {f in [Flag {value: true}]}>
                       <match {f}>
                         <case {Flag {value: b}}>
@@ -741,7 +741,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {f in [Flag {value: true}]}>
                       <match {f}>
                         <case {Flag {value: b}}>
@@ -815,14 +815,14 @@ mod tests {
                 fn Button(
                   label: String,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <button class="btn" ...rest>
                     {label}
                   </button>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Button label="Hi" id="submit"/>
                   }
                 }
@@ -830,13 +830,10 @@ mod tests {
             r#"<button class="btn" id="submit">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(
-                  label@v0: String,
-                  rest@v1: Fragment,
-                ) -> Fragment {
+                fn Button@f0(label@v0: String, rest@v1: Html) -> Html {
                   write("<button")
                   write(" class=\"btn\"")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   write_string(v0)
                   write("</button>")
@@ -876,7 +873,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Leaf(title: String = "d") -> Fragment {
+                fn Leaf(title: String = "d") -> Html {
                   <div>
                     {title}
                   </div>
@@ -885,14 +882,14 @@ mod tests {
                 fn First(
                   n: Int,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <Second n={n} ...rest/>
                 }
 
                 fn Second(
                   n: Int,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <>
                     <Leaf ...rest/>
                     <if {0 < n}>
@@ -902,7 +899,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <First n={1} title="x"/>
                   }
                 }
@@ -913,13 +910,13 @@ mod tests {
                 fn First@f0(
                   n@v0: Int,
                   title@v1: String,
-                  rest@v2: Fragment,
-                ) -> Fragment {
+                  rest@v2: Html,
+                ) -> Html {
                   call Second@f2(n = v0, title = v1, rest = {
-                    write_fragment(v2)
+                    write_html(v2)
                   })
                 }
-                fn Leaf@f1(title@v3: String) -> Fragment {
+                fn Leaf@f1(title@v3: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v3)
@@ -928,8 +925,8 @@ mod tests {
                 fn Second@f2(
                   n@v4: Int,
                   title@v5: String,
-                  rest@v6: Fragment,
-                ) -> Fragment {
+                  rest@v6: Html,
+                ) -> Html {
                   call Leaf@f1(title = v5)
                   match (0 < v4) {
                     true => {
@@ -946,17 +943,17 @@ mod tests {
                 fn First@f0(
                   n@v0: Int,
                   title@v1: String,
-                  rest@v2: Fragment,
-                ) -> Fragment {
+                  rest@v2: Html,
+                ) -> Html {
                   call Second@f2(n = v0, title = v1, rest = {
-                    write_fragment(v2)
+                    write_html(v2)
                   })
                 }
                 fn Second@f2(
                   n@v4: Int,
                   title@v5: String,
-                  rest@v6: Fragment,
-                ) -> Fragment {
+                  rest@v6: Html,
+                ) -> Html {
                   write("<div>")
                   write_string(v5)
                   write("</div>")
@@ -995,7 +992,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Base(...rest) -> Fragment {
+                fn Base(...rest) -> Html {
                   <div ...rest>
                   </div>
                 }
@@ -1003,7 +1000,7 @@ mod tests {
                 fn Card(
                   title: String,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <section>
                     <h1>
                       {title}
@@ -1013,7 +1010,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card title="Hi" id="x" data-k="v"/>
                   }
                 }
@@ -1021,16 +1018,13 @@ mod tests {
             r#"<section><h1>Hi</h1><div id="x" data-k="v"></div></section>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Base@f0(rest@v0: Fragment) -> Fragment {
+                fn Base@f0(rest@v0: Html) -> Html {
                   write("<div")
-                  write_fragment(v0)
+                  write_html(v0)
                   write(">")
                   write("</div>")
                 }
-                fn Card@f1(
-                  title@v1: String,
-                  rest@v2: Fragment,
-                ) -> Fragment {
+                fn Card@f1(title@v1: String, rest@v2: Html) -> Html {
                   write("<section")
                   write(">")
                   write("<h1")
@@ -1038,7 +1032,7 @@ mod tests {
                   write_string(v1)
                   write("</h1>")
                   call Base@f0(rest = {
-                    write_fragment(v2)
+                    write_html(v2)
                   })
                   write("</section>")
                 }
@@ -1079,7 +1073,7 @@ mod tests {
                 fn Wrapper(
                   show: Bool,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <if {show}>
                     <div ...rest>
                     </div>
@@ -1087,7 +1081,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrapper show={true} id="x"/>
                   }
                 }
@@ -1095,14 +1089,11 @@ mod tests {
             r#"<div id="x"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Wrapper@f0(
-                  show@v0: Bool,
-                  rest@v1: Fragment,
-                ) -> Fragment {
+                fn Wrapper@f0(show@v0: Bool, rest@v1: Html) -> Html {
                   match v0 {
                     true => {
                       write("<div")
-                      write_fragment(v1)
+                      write_html(v1)
                       write(">")
                       write("</div>")
                     }
@@ -1143,13 +1134,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Button(...rest) -> Fragment {
+                fn Button(...rest) -> Html {
                   <button ...rest>
                   </button>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Button disabled/>
                   }
                 }
@@ -1157,9 +1148,9 @@ mod tests {
             r#"<button disabled></button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(rest@v0: Fragment) -> Fragment {
+                fn Button@f0(rest@v0: Html) -> Html {
                   write("<button")
-                  write_fragment(v0)
+                  write_html(v0)
                   write(">")
                   write("</button>")
                 }
@@ -1199,7 +1190,7 @@ mod tests {
                 fn Wrapper(
                   show: Bool,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <match {show}>
                     <case {true}>
                       <div ...rest>
@@ -1211,7 +1202,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrapper show={true} id="x"/>
                   }
                 }
@@ -1219,14 +1210,11 @@ mod tests {
             r#"<div id="x"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Wrapper@f0(
-                  show@v0: Bool,
-                  rest@v1: Fragment,
-                ) -> Fragment {
+                fn Wrapper@f0(show@v0: Bool, rest@v1: Html) -> Html {
                   match v0 {
                     true => {
                       write("<div")
-                      write_fragment(v1)
+                      write_html(v1)
                       write(">")
                       write("</div>")
                     }
@@ -1267,13 +1255,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Panel(...rest) -> Fragment {
+                fn Panel(...rest) -> Html {
                   <div ...rest>
                   </div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Panel title={"a'b<c&d"}/>
                   }
                 }
@@ -1281,9 +1269,9 @@ mod tests {
             r#"<div title="a&#39;b&lt;c&amp;d"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Panel@f0(rest@v0: Fragment) -> Fragment {
+                fn Panel@f0(rest@v0: Html) -> Html {
                   write("<div")
-                  write_fragment(v0)
+                  write_html(v0)
                   write(">")
                   write("</div>")
                 }
@@ -1322,12 +1310,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Icon(...rest) -> Fragment {
+                fn Icon(...rest) -> Html {
                   <img ...rest>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Icon src="a.png" alt="a"/>
                   }
                 }
@@ -1335,9 +1323,9 @@ mod tests {
             r#"<img src="a.png" alt="a">"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Icon@f0(rest@v0: Fragment) -> Fragment {
+                fn Icon@f0(rest@v0: Html) -> Html {
                   write("<img")
-                  write_fragment(v0)
+                  write_html(v0)
                   write(">")
                 }
                 page Test() {
@@ -1374,13 +1362,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn A(...rest) -> Fragment {
+                fn A(...rest) -> Html {
                   <div ...rest>
                   </div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <A/>
                   }
                 }
@@ -1388,9 +1376,9 @@ mod tests {
             r#"<div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(rest@v0: Fragment) -> Fragment {
+                fn A@f0(rest@v0: Html) -> Html {
                   write("<div")
-                  write_fragment(v0)
+                  write_html(v0)
                   write(">")
                   write("</div>")
                 }
@@ -1427,16 +1415,16 @@ mod tests {
                 -- main.hop --
                 fn Button(
                   class: String,
-                  children: Fragment,
+                  children: Html,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <button class={class} ...rest>
                     {children}
                   </button>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Button class="p-2" data-foo="bar">
                       Hi
                     </Button>
@@ -1448,16 +1436,16 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Button@f0(
                   class@v0: String,
-                  children@v1: Fragment,
-                  rest@v2: Fragment,
-                ) -> Fragment {
+                  children@v1: Html,
+                  rest@v2: Html,
+                ) -> Html {
                   write("<button")
                   write(" class=\"")
                   write_string(v0)
                   write("\"")
-                  write_fragment(v2)
+                  write_html(v2)
                   write(">")
-                  write_fragment(v1)
+                  write_html(v1)
                   write("</button>")
                 }
                 page Test() {
@@ -1496,16 +1484,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Button(
-                  children: Fragment,
+                  children: Html,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <button class="builtin" ...rest>
                     {children}
                   </button>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Button data-x="y">
                       Hi
                     </Button>
@@ -1515,15 +1503,12 @@ mod tests {
             r#"<button class="builtin" data-x="y">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(
-                  children@v0: Fragment,
-                  rest@v1: Fragment,
-                ) -> Fragment {
+                fn Button@f0(children@v0: Html, rest@v1: Html) -> Html {
                   write("<button")
                   write(" class=\"builtin\"")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
-                  write_fragment(v0)
+                  write_html(v0)
                   write("</button>")
                 }
                 page Test() {
@@ -1561,13 +1546,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Svg(...rest) -> Fragment {
+                fn Svg(...rest) -> Html {
                   <svg ...rest>
                   </svg>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Svg viewBox="0 0 100 100"/>
                   }
                 }
@@ -1575,9 +1560,9 @@ mod tests {
             r#"<svg viewBox="0 0 100 100"></svg>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Svg@f0(rest@v0: Fragment) -> Fragment {
+                fn Svg@f0(rest@v0: Html) -> Html {
                   write("<svg")
-                  write_fragment(v0)
+                  write_html(v0)
                   write(">")
                   write("</svg>")
                 }
@@ -1614,18 +1599,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                   <div>
                     {title}
                   </div>
                 }
 
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                   <Card ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrapper title="hi"/>
                   }
                 }
@@ -1633,16 +1618,13 @@ mod tests {
             r#"<div>hi</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String) -> Fragment {
+                fn Card@f0(title@v0: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
                   write("</div>")
                 }
-                fn Wrapper@f1(
-                  title@v1: String,
-                  rest@v2: Fragment,
-                ) -> Fragment {
+                fn Wrapper@f1(title@v1: String, rest@v2: Html) -> Html {
                   call Card@f0(title = v1)
                 }
                 page Test() {
@@ -1676,18 +1658,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                   <div>
                     {title}
                   </div>
                 }
 
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                   <Card title="explicit" ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrapper/>
                   }
                 }
@@ -1695,13 +1677,13 @@ mod tests {
             r#"<div>explicit</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String) -> Fragment {
+                fn Card@f0(title@v0: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
                   write("</div>")
                 }
-                fn Wrapper@f1(rest@v1: Fragment) -> Fragment {
+                fn Wrapper@f1(rest@v1: Html) -> Html {
                   call Card@f0(title = "explicit")
                 }
                 page Test() {
@@ -1739,18 +1721,18 @@ mod tests {
                   name: String,
                 }
 
-                fn Card(user: User) -> Fragment {
+                fn Card(user: User) -> Html {
                   <div>
                     {user.name}
                   </div>
                 }
 
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                   <Card ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {user: User = User {name: "Ada"}}>
                       <Wrapper user={user}/>
                     </let>
@@ -1760,16 +1742,13 @@ mod tests {
             r#"<div>Ada</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(user@v1: main::User) -> Fragment {
+                fn Card@f0(user@v1: main::User) -> Html {
                   write("<div")
                   write(">")
                   write_string(v1.name)
                   write("</div>")
                 }
-                fn Wrapper@f1(
-                  user@v2: main::User,
-                  rest@v3: Fragment,
-                ) -> Fragment {
+                fn Wrapper@f1(user@v2: main::User, rest@v3: Html) -> Html {
                   call Card@f0(user = v2)
                 }
                 page Test() {
@@ -1810,7 +1789,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {v_1: String = "outer"}>
                       <for {f in [Flag {value: "x"}]}>
                         <match {f}>
@@ -1874,7 +1853,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                   <div>
                     {title}
                   </div>
@@ -1883,19 +1862,19 @@ mod tests {
                 fn Bar(
                   name: String,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <div>
                     {name}
                     <Card ...rest/>
                   </div>
                 }
 
-                fn Baz(...rest) -> Fragment {
+                fn Baz(...rest) -> Html {
                   <Bar ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Baz name="n" title="t"/>
                   }
                 }
@@ -1906,8 +1885,8 @@ mod tests {
                 fn Bar@f0(
                   name@v0: String,
                   title@v1: String,
-                  rest@v2: Fragment,
-                ) -> Fragment {
+                  rest@v2: Html,
+                ) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -1917,13 +1896,13 @@ mod tests {
                 fn Baz@f1(
                   name@v3: String,
                   title@v4: String,
-                  rest@v5: Fragment,
-                ) -> Fragment {
+                  rest@v5: Html,
+                ) -> Html {
                   call Bar@f0(name = v3, title = v4, rest = {
-                    write_fragment(v5)
+                    write_html(v5)
                   })
                 }
-                fn Card@f2(title@v6: String) -> Fragment {
+                fn Card@f2(title@v6: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v6)
@@ -1960,7 +1939,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card(count: Int) -> Fragment {
+                fn Card(count: Int) -> Html {
                   <if {count > 0}>
                     <div>
                       positive
@@ -1968,12 +1947,12 @@ mod tests {
                   </if>
                 }
 
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                   <Card ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrapper count={3}/>
                   }
                 }
@@ -1981,7 +1960,7 @@ mod tests {
             r#"<div>positive</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(count@v0: Int) -> Fragment {
+                fn Card@f0(count@v0: Int) -> Html {
                   match (0 < v0) {
                     true => {
                       write("<div")
@@ -1993,10 +1972,7 @@ mod tests {
                     }
                   }
                 }
-                fn Wrapper@f1(
-                  count@v1: Int,
-                  rest@v2: Fragment,
-                ) -> Fragment {
+                fn Wrapper@f1(count@v1: Int, rest@v2: Html) -> Html {
                   call Card@f0(count = v1)
                 }
                 page Test() {
@@ -2033,7 +2009,7 @@ mod tests {
                 fn A(
                   count: Int,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <div ...rest>
                     <if {count > 0}>
                       positive
@@ -2041,12 +2017,12 @@ mod tests {
                   </div>
                 }
 
-                fn B(...rest) -> Fragment {
+                fn B(...rest) -> Html {
                   <A ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <B count={3} data-foo="bar"/>
                   }
                 }
@@ -2054,9 +2030,9 @@ mod tests {
             r#"<div data-foo="bar">positive</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(count@v0: Int, rest@v1: Fragment) -> Fragment {
+                fn A@f0(count@v0: Int, rest@v1: Html) -> Html {
                   write("<div")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   match (0 < v0) {
                     true => {
@@ -2067,9 +2043,9 @@ mod tests {
                   }
                   write("</div>")
                 }
-                fn B@f1(count@v2: Int, rest@v3: Fragment) -> Fragment {
+                fn B@f1(count@v2: Int, rest@v3: Html) -> Html {
                   call A@f0(count = v2, rest = {
-                    write_fragment(v3)
+                    write_html(v3)
                   })
                 }
                 page Test() {
@@ -2105,22 +2081,22 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(children: Fragment) -> Fragment {
+                fn Foo(children: Html) -> Html {
                   <div>
                     {children}
                   </div>
                 }
 
-                fn Bar(...rest) -> Fragment {
+                fn Bar(...rest) -> Html {
                   <Foo ...rest/>
                 }
 
-                fn Baz(...rest) -> Fragment {
+                fn Baz(...rest) -> Html {
                   <Bar ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Baz>
                       deep
                     </Baz>
@@ -2130,24 +2106,18 @@ mod tests {
             r#"<div>deep</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Bar@f0(
-                  children@v0: Fragment,
-                  rest@v1: Fragment,
-                ) -> Fragment {
+                fn Bar@f0(children@v0: Html, rest@v1: Html) -> Html {
                   call Foo@f2(children = v0)
                 }
-                fn Baz@f1(
-                  children@v2: Fragment,
-                  rest@v3: Fragment,
-                ) -> Fragment {
+                fn Baz@f1(children@v2: Html, rest@v3: Html) -> Html {
                   call Bar@f0(children = v2, rest = {
-                    write_fragment(v3)
+                    write_html(v3)
                   })
                 }
-                fn Foo@f2(children@v4: Fragment) -> Fragment {
+                fn Foo@f2(children@v4: Html) -> Html {
                   write("<div")
                   write(">")
-                  write_fragment(v4)
+                  write_html(v4)
                   write("</div>")
                 }
                 page Test() {
@@ -2186,7 +2156,7 @@ mod tests {
                 fn Inner(
                   class: String = "x",
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <span class={class} ...rest>
                   </span>
                 }
@@ -2194,14 +2164,14 @@ mod tests {
                 fn Outer(
                   class: String,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <div class={class}>
                     <Inner ...rest/>
                   </div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Outer class="x"/>
                   }
                 }
@@ -2209,29 +2179,23 @@ mod tests {
             r#"<div class="x"><span class="x"></span></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(
-                  class@v0: String,
-                  rest@v1: Fragment,
-                ) -> Fragment {
+                fn Inner@f0(class@v0: String, rest@v1: Html) -> Html {
                   write("<span")
                   write(" class=\"")
                   write_string(v0)
                   write("\"")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   write("</span>")
                 }
-                fn Outer@f1(
-                  class@v2: String,
-                  rest@v3: Fragment,
-                ) -> Fragment {
+                fn Outer@f1(class@v2: String, rest@v3: Html) -> Html {
                   write("<div")
                   write(" class=\"")
                   write_string(v2)
                   write("\"")
                   write(">")
                   call Inner@f0(class = "x", rest = {
-                    write_fragment(v3)
+                    write_html(v3)
                   })
                   write("</div>")
                 }
@@ -2267,27 +2231,27 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Foo(
-                  children: Fragment,
+                  children: Html,
                   class: String,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <div class={class} ...rest>
                     {children}
                   </div>
                 }
 
                 fn Button(
-                  children: Fragment,
+                  children: Html,
                   class: String = "",
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <Foo class={class} ...rest>
                     {children}
                   </Foo>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Button class="primary">
                       click
                     </Button>
@@ -2298,28 +2262,28 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Button@f0(
-                  children@v0: Fragment,
+                  children@v0: Html,
                   class@v1: String,
-                  rest@v2: Fragment,
-                ) -> Fragment {
+                  rest@v2: Html,
+                ) -> Html {
                   call Foo@f1(children = {
-                    write_fragment(v0)
+                    write_html(v0)
                   }, class = v1, rest = {
-                    write_fragment(v2)
+                    write_html(v2)
                   })
                 }
                 fn Foo@f1(
-                  children@v3: Fragment,
+                  children@v3: Html,
                   class@v4: String,
-                  rest@v5: Fragment,
-                ) -> Fragment {
+                  rest@v5: Html,
+                ) -> Html {
                   write("<div")
                   write(" class=\"")
                   write_string(v4)
                   write("\"")
-                  write_fragment(v5)
+                  write_html(v5)
                   write(">")
-                  write_fragment(v3)
+                  write_html(v3)
                   write("</div>")
                 }
                 page Test() {
@@ -2358,17 +2322,17 @@ mod tests {
                 fn Inner(
                   class: String = "x",
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <span class={class} ...rest>
                   </span>
                 }
 
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                   <Inner ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrapper class="y"/>
                   }
                 }
@@ -2376,24 +2340,18 @@ mod tests {
             r#"<span class="y"></span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(
-                  class@v0: String,
-                  rest@v1: Fragment,
-                ) -> Fragment {
+                fn Inner@f0(class@v0: String, rest@v1: Html) -> Html {
                   write("<span")
                   write(" class=\"")
                   write_string(v0)
                   write("\"")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   write("</span>")
                 }
-                fn Wrapper@f1(
-                  class@v2: String,
-                  rest@v3: Fragment,
-                ) -> Fragment {
+                fn Wrapper@f1(class@v2: String, rest@v3: Html) -> Html {
                   call Inner@f0(class = v2, rest = {
-                    write_fragment(v3)
+                    write_html(v3)
                   })
                 }
                 page Test() {
@@ -2430,7 +2388,7 @@ mod tests {
                 fn A(
                   class: String = "",
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <div class={class} ...rest>
                   </div>
                 }
@@ -2438,12 +2396,12 @@ mod tests {
                 fn B(
                   class: String = "",
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <A class={class} ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <B class="main"/>
                   }
                 }
@@ -2451,18 +2409,18 @@ mod tests {
             r#"<div class="main"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(class@v0: String, rest@v1: Fragment) -> Fragment {
+                fn A@f0(class@v0: String, rest@v1: Html) -> Html {
                   write("<div")
                   write(" class=\"")
                   write_string(v0)
                   write("\"")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   write("</div>")
                 }
-                fn B@f1(class@v2: String, rest@v3: Fragment) -> Fragment {
+                fn B@f1(class@v2: String, rest@v3: Html) -> Html {
                   call A@f0(class = v2, rest = {
-                    write_fragment(v3)
+                    write_html(v3)
                   })
                 }
                 page Test() {
@@ -2499,7 +2457,7 @@ mod tests {
                 fn A(
                   class: String = "a",
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <div class={class} ...rest>
                   </div>
                 }
@@ -2507,12 +2465,12 @@ mod tests {
                 fn B(
                   class: String = "b",
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <A class={class} ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <B/>
                   }
                 }
@@ -2520,18 +2478,18 @@ mod tests {
             r#"<div class="b"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(class@v0: String, rest@v1: Fragment) -> Fragment {
+                fn A@f0(class@v0: String, rest@v1: Html) -> Html {
                   write("<div")
                   write(" class=\"")
                   write_string(v0)
                   write("\"")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   write("</div>")
                 }
-                fn B@f1(class@v2: String, rest@v3: Fragment) -> Fragment {
+                fn B@f1(class@v2: String, rest@v3: Html) -> Html {
                   call A@f0(class = v2, rest = {
-                    write_fragment(v3)
+                    write_html(v3)
                   })
                 }
                 page Test() {
@@ -2568,18 +2526,18 @@ mod tests {
                 fn A(
                   label: String = "x",
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <span ...rest>
                     {label}
                   </span>
                 }
 
-                fn B(...rest) -> Fragment {
+                fn B(...rest) -> Html {
                   <A ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <B/>
                   }
                 }
@@ -2587,16 +2545,16 @@ mod tests {
             r#"<span>x</span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(label@v0: String, rest@v1: Fragment) -> Fragment {
+                fn A@f0(label@v0: String, rest@v1: Html) -> Html {
                   write("<span")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   write_string(v0)
                   write("</span>")
                 }
-                fn B@f1(label@v2: String, rest@v3: Fragment) -> Fragment {
+                fn B@f1(label@v2: String, rest@v3: Html) -> Html {
                   call A@f0(label = v2, rest = {
-                    write_fragment(v3)
+                    write_html(v3)
                   })
                 }
                 page Test() {
@@ -2633,22 +2591,22 @@ mod tests {
                 fn Leaf(
                   label: String = "x",
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <span ...rest>
                     {label}
                   </span>
                 }
 
-                fn Mid(...rest) -> Fragment {
+                fn Mid(...rest) -> Html {
                   <Leaf ...rest/>
                 }
 
-                fn Top(...rest) -> Fragment {
+                fn Top(...rest) -> Html {
                   <Mid ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Top/>
                   }
                 }
@@ -2656,24 +2614,21 @@ mod tests {
             r#"<span>x</span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Leaf@f0(
-                  label@v0: String,
-                  rest@v1: Fragment,
-                ) -> Fragment {
+                fn Leaf@f0(label@v0: String, rest@v1: Html) -> Html {
                   write("<span")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   write_string(v0)
                   write("</span>")
                 }
-                fn Mid@f1(label@v2: String, rest@v3: Fragment) -> Fragment {
+                fn Mid@f1(label@v2: String, rest@v3: Html) -> Html {
                   call Leaf@f0(label = v2, rest = {
-                    write_fragment(v3)
+                    write_html(v3)
                   })
                 }
-                fn Top@f2(label@v4: String, rest@v5: Fragment) -> Fragment {
+                fn Top@f2(label@v4: String, rest@v5: Html) -> Html {
                   call Mid@f1(label = v4, rest = {
-                    write_fragment(v5)
+                    write_html(v5)
                   })
                 }
                 page Test() {
@@ -2707,17 +2662,17 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(...rest) -> Fragment {
+                fn Inner(...rest) -> Html {
                   <span ...rest>
                   </span>
                 }
 
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                   <Inner title="a" ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrapper lang="en"/>
                   }
                 }
@@ -2725,16 +2680,16 @@ mod tests {
             r#"<span title="a" lang="en"></span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(rest@v0: Fragment) -> Fragment {
+                fn Inner@f0(rest@v0: Html) -> Html {
                   write("<span")
-                  write_fragment(v0)
+                  write_html(v0)
                   write(">")
                   write("</span>")
                 }
-                fn Wrapper@f1(rest@v1: Fragment) -> Fragment {
+                fn Wrapper@f1(rest@v1: Html) -> Html {
                   call Inner@f0(rest = {
                     write(" title=\"a\"")
-                    write_fragment(v1)
+                    write_html(v1)
                   })
                 }
                 page Test() {
@@ -2773,7 +2728,7 @@ mod tests {
                 fn A(
                   tabindex: Int,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <div ...rest>
                     <if {tabindex > 0}>
                       focusable
@@ -2781,12 +2736,12 @@ mod tests {
                   </div>
                 }
 
-                fn B(...rest) -> Fragment {
+                fn B(...rest) -> Html {
                   <A ...rest/>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <B tabindex={2} data-x="y"/>
                   }
                 }
@@ -2794,9 +2749,9 @@ mod tests {
             r#"<div data-x="y">focusable</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(tabindex@v0: Int, rest@v1: Fragment) -> Fragment {
+                fn A@f0(tabindex@v0: Int, rest@v1: Html) -> Html {
                   write("<div")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   match (0 < v0) {
                     true => {
@@ -2807,9 +2762,9 @@ mod tests {
                   }
                   write("</div>")
                 }
-                fn B@f1(tabindex@v2: Int, rest@v3: Fragment) -> Fragment {
+                fn B@f1(tabindex@v2: Int, rest@v3: Html) -> Html {
                   call A@f0(tabindex = v2, rest = {
-                    write_fragment(v3)
+                    write_html(v3)
                   })
                 }
                 page Test() {
@@ -2846,7 +2801,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {inner: Option[String] = Some("hello")}>
                       <let {
                         mapped: Option[String] = match inner {
@@ -2927,7 +2882,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       result: String = match Point {x: "hi", y: "bye"} {
                         Point {x: a, y: _} => a,
@@ -2984,7 +2939,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       result: String = match Point {x: "hi", y: "bye"} {
                         p => p.x,
@@ -3036,7 +2991,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <match {Some("hi")}>
                       <case {Some(x)}>
                         got:
@@ -3096,7 +3051,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {inner_opt: Option[String] = Some("inner")}>
                       <let {
                         outer: Option[String] = Some(
@@ -3166,7 +3121,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Tag(text: String) -> Fragment {
+                fn Tag(text: String) -> Html {
                   <let {label: String = text}>
                     <div>
                       {label}
@@ -3175,7 +3130,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <Tag text="a"/>
                       <Tag text="b"/>
@@ -3186,7 +3141,7 @@ mod tests {
             "<div>a</div><div>b</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Tag@f0(text@v0: String) -> Fragment {
+                fn Tag@f0(text@v0: String) -> Html {
                   let v1 = v0 in {
                     write("<div")
                     write(">")
@@ -3229,14 +3184,14 @@ mod tests {
                 fn Swap(
                   a: String,
                   b: String,
-                ) -> Fragment {
+                ) -> Html {
                   <p>
                     {a} {b}
                   </p>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {a: String = "A"}>
                       <let {b: String = "B"}>
                         <Swap a={b} b={a}/>
@@ -3248,7 +3203,7 @@ mod tests {
             "<p>B A</p>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Swap@f0(a@v2: String, b@v3: String) -> Fragment {
+                fn Swap@f0(a@v2: String, b@v3: String) -> Html {
                   write("<p")
                   write(">")
                   write_string(v2)
@@ -3294,7 +3249,7 @@ mod tests {
                 fn Rows(
                   items: Array[String],
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <for {item in items}>
                     <div ...rest>
                       {item}
@@ -3303,7 +3258,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {item: String = "outer"}>
                       <Rows items={["a", "b"]} id={item}/>
                     </let>
@@ -3313,13 +3268,10 @@ mod tests {
             r#"<div id="outer">a</div><div id="outer">b</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Rows@f0(
-                  items@v1: Array[String],
-                  rest@v2: Fragment,
-                ) -> Fragment {
+                fn Rows@f0(items@v1: Array[String], rest@v2: Html) -> Html {
                   for v3 in v1 {
                     write("<div")
-                    write_fragment(v2)
+                    write_html(v2)
                     write(">")
                     write_string(v3)
                     write("</div>")
@@ -3341,7 +3293,7 @@ mod tests {
                   } in {
                     for v6 in ["a", "b"] {
                       write("<div")
-                      write_fragment(v5)
+                      write_html(v5)
                       write(">")
                       write_string(v6)
                       write("</div>")
@@ -3373,7 +3325,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <let {flag: Bool = true}>
                         {match flag {true => "yes", false => "no"}}
@@ -3431,7 +3383,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {path: String = ""}>
                       <let {git_ref: String = "main"}>
                         {match path == "" {
@@ -3487,7 +3439,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <let {opt1: Option[String] = Some("hi")}>
                         {match opt1 {Some(_) => "some", None => "none"}}
@@ -3547,7 +3499,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <let {outer: Bool = true}>
                         <let {inner: Bool = false}>
@@ -3625,7 +3577,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {num: Int = -123}>
                       {num.to_string()}
                     </let>
@@ -3669,7 +3621,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {temp: Float = -2.9}>
                       {temp.to_int().to_string()}
                     </let>
@@ -3713,7 +3665,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <h1>
                       Hello, World!
                     </h1>
@@ -3758,7 +3710,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <!-- This is a comment -->
                       <h1>
@@ -3807,7 +3759,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {name: String = "Alice"}>
                       Hello,
                       {" "}
@@ -3857,7 +3809,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {show: Bool = true}>
                       <if {show}>
                         Visible
@@ -3919,7 +3871,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {item in ["a", "b", "c"]}>
                       {item}
                       ,
@@ -3968,7 +3920,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {v in [true]}>
                       <if {v}>
                         x
@@ -4028,7 +3980,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {i in 1..=3}>
                       {i.to_string()}
                       ,
@@ -4077,7 +4029,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {x in 0..=5}>
                       {x.to_string()}
                     </for>
@@ -4123,7 +4075,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {i in 1..=2}>
                       <for {j in 1..=2}>
                         (
@@ -4187,7 +4139,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {text: String = "<div>Hello & world</div>"}>
                       {text}
                     </let>
@@ -4231,7 +4183,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {message: String = "Hello from let"}>
                       {message}
                     </let>
@@ -4275,7 +4227,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {name in ["a", "b"]}>
                       <span class={
                         join!(
@@ -4339,7 +4291,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {first: String = "Hello"}>
                       <let {second: String = " World"}>
                         {first + second}
@@ -4387,7 +4339,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {item in ["A", "B"]}>
                       <let {prefix: String = "["}>
                         {prefix}
@@ -4443,7 +4395,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <if {"foo" + "bar" == "foobar"}>
                       equals
                     </if>
@@ -4491,7 +4443,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <if {3 < 5}>
                         3 &lt; 5
@@ -4551,7 +4503,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <if {1.5 < 2.5}>
                       1.5 &lt; 2.5
                     </if>
@@ -4599,7 +4551,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {flag: Bool = true}>
                       <match {flag}>
                         <case {true}>
@@ -4657,7 +4609,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {flag: Bool = false}>
                       <match {flag}>
                         <case {true}>
@@ -4720,7 +4672,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {person: Person = Person {name: "Alice", age: 30}}>
                       {person.name}
                       <if {person.age == 30}>
@@ -4779,7 +4731,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {pair: Pair = Pair {second: "b", first: "a"}}>
                       {pair.first}
                       -
@@ -4834,7 +4786,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {shape = Shape::Rect {height: "b", width: "a"}}>
                       <match {shape}>
                         <case {Shape::Rect {width: w, height: h}}>
@@ -4904,7 +4856,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       person: Person = Person {
                         name: "Alice",
@@ -4960,7 +4912,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {a: Int = 3}>
                       <let {b: Int = 7}>
                         <if {a + b == 10}>
@@ -5016,7 +4968,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {a: Int = 10}>
                       <let {b: Int = 3}>
                         <if {a - b == 7}>
@@ -5072,7 +5024,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {a: Int = 4}>
                       <let {b: Int = 5}>
                         <if {a * b == 20}>
@@ -5128,7 +5080,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {a: Bool = true}>
                       <let {b: Bool = true}>
                         <if {a && b}>
@@ -5184,7 +5136,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {a: Bool = false}>
                       <let {b: Bool = true}>
                         <if {a || b}>
@@ -5240,7 +5192,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <if {3 <= 5}>
                         A
@@ -5310,7 +5262,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {some_val: Option[String] = Some("hello")}>
                       <match {some_val}>
                         <case {Some(s)}>
@@ -5370,7 +5322,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {opt: Option[String] = Some("hello")}>
                       <match {opt}>
                         <case {Some(_)}>
@@ -5428,7 +5380,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {inner_opt: Option[String] = Some("inner")}>
                       <let {
                         outer: Option[String] = Some(
@@ -5499,7 +5451,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {item in [Some("a"), None, Some("b")]}>
                       <match {item}>
                         <case {Some(s)}>
@@ -5590,7 +5542,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {color: Color = Color::Green}>
                       {match color {
                         Color::Red => "red",
@@ -5648,7 +5600,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {color: Color = Color::Blue}>
                       <match {color}>
                         <case {Color::Red}>
@@ -5721,7 +5673,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       result: Outcome = Outcome::Success {value: "hello"},
                     }>
@@ -5796,7 +5748,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {item: Item = Item::Tagged {tag: "news"}}>
                       <match {item}>
                         <case {Item::Tagged {tag: t}}>
@@ -5867,7 +5819,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       result: String = match Outcome::Success {value: "hi"} {
                         Outcome::Success {value: v} => v,
@@ -5932,7 +5884,7 @@ mod tests {
                   Blue,
                 }
 
-                fn Badge(color: Color) -> Fragment {
+                fn Badge(color: Color) -> Html {
                   <match {color}>
                     <case {Color::Red}>
                       red
@@ -5947,7 +5899,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Badge color={Color::Green}/>
                   }
                 }
@@ -5955,7 +5907,7 @@ mod tests {
             "green",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Badge@f0(color@v0: main::Color) -> Fragment {
+                fn Badge@f0(color@v0: main::Color) -> Html {
                   match v0 {
                     Color::Red => {
                       write("red")
@@ -6009,7 +5961,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       result: Outcome = Outcome::Failure {
                         message: "something went wrong",
@@ -6089,7 +6041,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       resp: Response = Response::Win {
                         code: "200",
@@ -6173,7 +6125,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       result: Outcome = Outcome::Success {value: "hello"},
                     }>
@@ -6241,7 +6193,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {items: Array[String] = ["a", "b", "c"]}>
                       {items.len().to_string()}
                     </let>
@@ -6285,7 +6237,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {items: Array[String] = []}>
                       {items.len().to_string()}
                     </let>
@@ -6329,7 +6281,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {items: Array[String] = ["x", "y"]}>
                       <if {items.len() == 2}>
                         has two
@@ -6381,7 +6333,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {items: Array[String] = ["a"]}>
                       <if {items.len() < 5}>
                         less than 5
@@ -6433,7 +6385,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>
                       {numbers.len().to_string()}
                     </let>
@@ -6477,7 +6429,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {items: Array[String] = []}>
                       <match {items.is_empty()}>
                         <case {true}>
@@ -6537,7 +6489,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {items: Array[String] = ["a", "b"]}>
                       <match {items.is_empty()}>
                         <case {true}>
@@ -6597,7 +6549,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {numbers: Array[Int] = [1, 2, 3]}>
                       <match {numbers.is_empty()}>
                         <case {true}>
@@ -6657,7 +6609,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {count: Int = 42}>
                       {count.to_string()}
                     </let>
@@ -6701,7 +6653,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {num: Int = 0}>
                       {num.to_string()}
                     </let>
@@ -6745,7 +6697,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {count: Int = 5}>
                       {"Count: " + count.to_string()}
                     </let>
@@ -6789,7 +6741,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {price: Float = 3.7}>
                       {price.to_int().to_string()}
                     </let>
@@ -6833,7 +6785,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {num: Float = 5.0}>
                       {num.to_int().to_string()}
                     </let>
@@ -6877,7 +6829,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {_ in 0..=2}>
                       x
                     </for>
@@ -6923,7 +6875,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {x in ["a", "b"]}>
                       <if {false}>
                         {x}
@@ -6979,7 +6931,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {items: Array[String] = ["a", "b", "c"]}>
                       <for {_ in items}>
                         *
@@ -7029,7 +6981,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {_ in 0..=1}>
                       <for {_ in 0..=2}>
                         .
@@ -7081,7 +7033,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {i in 1..=2}>
                       <for {_ in 0..=1}>
                         {i.to_string()}
@@ -7133,7 +7085,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {[1, 2, 3].len().to_string()}
                     </>
@@ -7175,7 +7127,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {(1 + 2).to_string()}
                     </>
@@ -7217,7 +7169,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {42.to_string()}
                     </>
@@ -7259,7 +7211,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       nested: Option[Option[String]] = Some(Some("deep")),
                     }>
@@ -7331,7 +7283,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {opt: Option[String] = Some("x")}>
                       <match {opt}>
                         <case {Some(_)}>
@@ -7389,7 +7341,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {opt: Option[String] = None}>
                       <match {opt}>
                         <case {Some(_)}>
@@ -7447,7 +7399,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {opt: Option[String] = Some("x")}>
                       {match opt {Some(_) => "some", None => "none"}}
                     </let>
@@ -7494,7 +7446,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {opt: Option[String] = None}>
                       {match opt {Some(_) => "some", None => "none"}}
                     </let>
@@ -7542,7 +7494,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {nested: Option[Option[String]] = Some(Some("x"))}>
                       <match {nested}>
                         <case {Some(Some(_))}>
@@ -7611,7 +7563,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {nested: Option[Option[String]] = Some(Some("x"))}>
                       <match {nested}>
                         <case {Some(_)}>
@@ -7679,7 +7631,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       result: Outcome = Outcome::Success {value: "hello"},
                     }>
@@ -7749,7 +7701,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       result: Outcome = Outcome::Failure {message: "failed"},
                     }>
@@ -7815,7 +7767,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {person: Person = Person {name: "Alice", age: 30}}>
                       <match {person}>
                         <case {Person {name: _, age: a}}>
@@ -7870,7 +7822,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       deep: Option[Option[Option[String]]] = Some(
                         Some(Some("value"))
@@ -7971,7 +7923,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       result: Outer = Outer::Success {
                         value: Inner::Success {value: "deep"},
@@ -8048,7 +8000,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {b: Bool = true}>
                       {match b {true => "t", _ => "f"}}
                     </let>
@@ -8096,7 +8048,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {b: Bool = false}>
                       {match b {true => "t", _ => "f"}}
                     </let>
@@ -8143,7 +8095,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <match {Some("outer")}>
                       <case {Some(x)}>
                         <match {Some("inner")}>
@@ -8223,7 +8175,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       outer: Option[Option[String]] = Some(Some("hello")),
                     }>
@@ -8303,7 +8255,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div class={
                       join!(
                         "foo",
@@ -8355,7 +8307,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {delete: String = "removed"}>
                       {delete}
                     </let>
@@ -8399,7 +8351,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {class: String = "my-class"}>
                       <div class={class}>
                       </div>
@@ -8449,7 +8401,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {switch: String = "on"}>
                       <span>
                         {switch}
@@ -8498,7 +8450,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {type: String = "button"}>
                       <input type={type}>
                     </let>
@@ -8546,7 +8498,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <label for="email">
                       Email
                     </label>
@@ -8592,7 +8544,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       ok
                     </>
@@ -8600,7 +8552,7 @@ mod tests {
                 }
 
                 page Other(delete: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {delete}
                     </>
@@ -8648,7 +8600,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       ok
                     </>
@@ -8656,7 +8608,7 @@ mod tests {
                 }
 
                 page Other(type: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {type}
                     </>
@@ -8703,7 +8655,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Countdown(delete: Int) -> Fragment {
+                fn Countdown(delete: Int) -> Html {
                   <>
                     {delete.to_string()}
                     <if {0 < delete}>
@@ -8713,7 +8665,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Countdown delete={3}/>
                   }
                 }
@@ -8721,7 +8673,7 @@ mod tests {
             "3210",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Countdown@f0(delete@v0: Int) -> Fragment {
+                fn Countdown@f0(delete@v0: Int) -> Html {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -8735,7 +8687,7 @@ mod tests {
                   call Countdown@f0(delete = 3)
                 }
                 -- ir (optimized) --
-                fn Countdown@f0(delete@v0: Int) -> Fragment {
+                fn Countdown@f0(delete@v0: Int) -> Html {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -8772,7 +8724,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Countdown(type: Int) -> Fragment {
+                fn Countdown(type: Int) -> Html {
                   <>
                     {type.to_string()}
                     <if {0 < type}>
@@ -8782,7 +8734,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Countdown type={3}/>
                   }
                 }
@@ -8790,7 +8742,7 @@ mod tests {
             "3210",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Countdown@f0(type@v0: Int) -> Fragment {
+                fn Countdown@f0(type@v0: Int) -> Html {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -8804,7 +8756,7 @@ mod tests {
                   call Countdown@f0(type = 3)
                 }
                 -- ir (optimized) --
-                fn Countdown@f0(type@v0: Int) -> Fragment {
+                fn Countdown@f0(type@v0: Int) -> Html {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -8842,7 +8794,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {"\""}
                       {"\\"}
@@ -8898,7 +8850,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       items: Array[Item] = [
                         Item {name: "a", value: "1"},
@@ -8980,7 +8932,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       people: Array[Person] = [
                         Person {
@@ -9074,7 +9026,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       sources: Array[Source] = [
                         Source {name: "a", value: "1"},
@@ -9151,7 +9103,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       items: Array[Item] = [
                         Item {name: "a"},
@@ -9243,7 +9195,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {a: String = "hello"}>
                       <let {b: String = "world"}>
                         <let {c: String = a + " " + b}>
@@ -9303,7 +9255,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       g: Greeting = Greeting {message: "hello" + " world"},
                     }>
@@ -9349,7 +9301,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {n: Int = 42}>
                       <let {s: String = n.to_string()}>
                         [
@@ -9405,7 +9357,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {c: Container = Container {items: ["a", "b"]}}>
                       <for {item in c.items}>
                         [
@@ -9465,7 +9417,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {l: Label = Label {text: 42.to_string()}}>
                       [
                       {l.text}
@@ -9521,7 +9473,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       o: Outer = Outer {inner: Inner {values: ["x", "y"]}},
                     }>
@@ -9583,7 +9535,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {x: Foo = Foo {a: "hello"}, y: Foo = Foo {a: x.a}}>
                       [
                       {x.a}
@@ -9641,7 +9593,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {x: Foo = Foo {a: "hello"}, b: Bool = true}>
                       <let {
                         result: String = match b {
@@ -9712,7 +9664,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       leaf: TreeNode = TreeNode {value: "leaf", children: []},
                     }>
@@ -9763,7 +9715,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {node: Node = Node {value: "first", next: None}}>
                       {node.value}
                     </let>
@@ -9819,7 +9771,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {e: Expr = Expr::Literal {value: "42"}}>
                       <match {e}>
                         <case {Expr::Literal {value: v}}>
@@ -9888,7 +9840,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       e: Expr = Expr::Neg {
                         inner: Expr::Literal {value: "42"},
@@ -9963,7 +9915,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {f: Folder = Folder {name: "root", parent: None}}>
                       {f.name}
                     </let>
@@ -10027,7 +9979,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {leaf: Leaf = Leaf {back: None}}>
                       <match {leaf.back}>
                         <case {Some(_)}>
@@ -10092,7 +10044,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {tail: Option[Node] = None}>
                       <let {head: Node = Node {value: "head", next: tail}}>
                         {head.value}
@@ -10145,7 +10097,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {leaf: Node = Node {value: "leaf", next: None}}>
                       <let {
                         head: Node = Node {
@@ -10217,7 +10169,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {n: Node = Node {value: "node", next: None}}>
                       {n.value}
                     </let>
@@ -10269,7 +10221,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       n: Node = Node {
                         value: "head",
@@ -10367,7 +10319,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {n: Node = Node {value: "node", next: None}}>
                       <let {h: Holder = Holder {held: n.next}}>
                         <match {h.held}>
@@ -10443,7 +10395,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {x: A = A {b: B {name: "b", a: None}}}>
                       {x.b.name}
                       <match {x.b.a}>
@@ -10521,7 +10473,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       tree: Tree = Tree::Node {
                         label: "a",
@@ -10621,7 +10573,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       c: Contact = Contact::Email {
                         address: "a@b.c",
@@ -10705,7 +10657,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: String) -> Fragment {
+                fn Greeting(name: String) -> Html {
                   <>
                     Hello,
                     {" "}
@@ -10715,7 +10667,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Greeting name="World"/>
                   }
                 }
@@ -10723,7 +10675,7 @@ mod tests {
             "Hello, World!",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Greeting@f0(name@v0: String) -> Fragment {
+                fn Greeting@f0(name@v0: String) -> Html {
                   write("Hello,")
                   write_string(" ")
                   write_string(v0)
@@ -10762,8 +10714,8 @@ mod tests {
                 -- main.hop --
                 fn Card(
                   title: String,
-                  children: Fragment,
-                ) -> Fragment {
+                  children: Html,
+                ) -> Html {
                   <div class="card">
                     <h2>
                       {title}
@@ -10773,7 +10725,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card title="Hello">
                       <p>
                         world
@@ -10785,10 +10737,7 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2><p>world</p></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(
-                  title@v0: String,
-                  children@v1: Fragment,
-                ) -> Fragment {
+                fn Card@f0(title@v0: String, children@v1: Html) -> Html {
                   write("<div")
                   write(" class=\"card\"")
                   write(">")
@@ -10796,7 +10745,7 @@ mod tests {
                   write(">")
                   write_string(v0)
                   write("</h2>")
-                  write_fragment(v1)
+                  write_html(v1)
                   write("</div>")
                 }
                 page Test() {
@@ -10835,13 +10784,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(children: Fragment) -> Fragment {
+                fn Inner(children: Html) -> Html {
                   <div class="inner">
                     {children}
                   </div>
                 }
 
-                fn Outer(children: Fragment) -> Fragment {
+                fn Outer(children: Html) -> Html {
                   <div class="outer">
                     <Inner>
                       {children}
@@ -10850,7 +10799,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Outer>
                       <p>
                         hello
@@ -10862,19 +10811,19 @@ mod tests {
             r#"<div class="outer"><div class="inner"><p>hello</p></div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(children@v0: Fragment) -> Fragment {
+                fn Inner@f0(children@v0: Html) -> Html {
                   write("<div")
                   write(" class=\"inner\"")
                   write(">")
-                  write_fragment(v0)
+                  write_html(v0)
                   write("</div>")
                 }
-                fn Outer@f1(children@v1: Fragment) -> Fragment {
+                fn Outer@f1(children@v1: Html) -> Html {
                   write("<div")
                   write(" class=\"outer\"")
                   write(">")
                   call Inner@f0(children = {
-                    write_fragment(v1)
+                    write_html(v1)
                   })
                   write("</div>")
                 }
@@ -10915,7 +10864,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Header(title: String) -> Fragment {
+                fn Header(title: String) -> Html {
                   <header>
                     <h1>
                       {title}
@@ -10923,7 +10872,7 @@ mod tests {
                   </header>
                 }
 
-                fn Footer() -> Fragment {
+                fn Footer() -> Html {
                   <footer>
                     <p>
                       Copyright 2024
@@ -10931,14 +10880,14 @@ mod tests {
                   </footer>
                 }
 
-                fn Layout(children: Fragment) -> Fragment {
+                fn Layout(children: Html) -> Html {
                   <div class="layout">
                     {children}
                   </div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Layout>
                       <Header title="Welcome"/>
                       <main>
@@ -10954,7 +10903,7 @@ mod tests {
             r#"<div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Footer@f0() -> Fragment {
+                fn Footer@f0() -> Html {
                   write("<footer")
                   write(">")
                   write("<p")
@@ -10963,7 +10912,7 @@ mod tests {
                   write("</p>")
                   write("</footer>")
                 }
-                fn Header@f1(title@v0: String) -> Fragment {
+                fn Header@f1(title@v0: String) -> Html {
                   write("<header")
                   write(">")
                   write("<h1")
@@ -10972,11 +10921,11 @@ mod tests {
                   write("</h1>")
                   write("</header>")
                 }
-                fn Layout@f2(children@v1: Fragment) -> Fragment {
+                fn Layout@f2(children@v1: Html) -> Html {
                   write("<div")
                   write(" class=\"layout\"")
                   write(">")
-                  write_fragment(v1)
+                  write_html(v1)
                   write("</div>")
                 }
                 page Test() {
@@ -11022,7 +10971,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Repeat(children: Fragment) -> Fragment {
+                fn Repeat(children: Html) -> Html {
                   <>
                     <div class="first">
                       {children}
@@ -11034,7 +10983,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Repeat>
                       <span>
                         hi
@@ -11046,16 +10995,16 @@ mod tests {
             r#"<div class="first"><span>hi</span></div><div class="second"><span>hi</span></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Repeat@f0(children@v0: Fragment) -> Fragment {
+                fn Repeat@f0(children@v0: Html) -> Html {
                   write("<div")
                   write(" class=\"first\"")
                   write(">")
-                  write_fragment(v0)
+                  write_html(v0)
                   write("</div>")
                   write("<div")
                   write(" class=\"second\"")
                   write(">")
-                  write_fragment(v0)
+                  write_html(v0)
                   write("</div>")
                 }
                 page Test() {
@@ -11072,9 +11021,9 @@ mod tests {
                     write("<span>hi</span>")
                   } in {
                     write("<div class=\"first\">")
-                    write_fragment(v1)
+                    write_html(v1)
                     write("</div><div class=\"second\">")
-                    write_fragment(v1)
+                    write_html(v1)
                     write("</div>")
                   }
                 }
@@ -11107,13 +11056,13 @@ mod tests {
                   next: Option[Node],
                 }
 
-                fn Badge(text: String) -> Fragment {
+                fn Badge(text: String) -> Html {
                   <strong>
                     {text}
                   </strong>
                 }
 
-                fn NodeView(node: Node) -> Fragment {
+                fn NodeView(node: Node) -> Html {
                   <>
                     <Badge text={node.value}/>
                     <match {node.next}>
@@ -11127,7 +11076,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       list: Node = Node {
                         value: "a",
@@ -11142,13 +11091,13 @@ mod tests {
             "<strong>a</strong><strong>b</strong>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Badge@f0(text@v1: String) -> Fragment {
+                fn Badge@f0(text@v1: String) -> Html {
                   write("<strong")
                   write(">")
                   write_string(v1)
                   write("</strong>")
                 }
-                fn NodeView@f1(node@v2: main::Node) -> Fragment {
+                fn NodeView@f1(node@v2: main::Node) -> Html {
                   call Badge@f0(text = v2.value)
                   let v3 = v2.next in {
                     match v3 {
@@ -11174,7 +11123,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                fn NodeView@f1(node@v2: main::Node) -> Fragment {
+                fn NodeView@f1(node@v2: main::Node) -> Html {
                   write("<strong>")
                   write_string(v2.value)
                   write("</strong>")
@@ -11228,7 +11177,7 @@ mod tests {
                   next: Option[Node],
                 }
 
-                fn NodeView(node: Node) -> Fragment {
+                fn NodeView(node: Node) -> Html {
                   <>
                     <span>
                       {node.value}
@@ -11244,7 +11193,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       list: Node = Node {
                         value: "a",
@@ -11264,7 +11213,7 @@ mod tests {
             "<span>a</span><span>b</span><span>c</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn NodeView@f0(node@v1: main::Node) -> Fragment {
+                fn NodeView@f0(node@v1: main::Node) -> Html {
                   write("<span")
                   write(">")
                   write_string(v1.value)
@@ -11296,7 +11245,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                fn NodeView@f0(node@v1: main::Node) -> Fragment {
+                fn NodeView@f0(node@v1: main::Node) -> Html {
                   write("<span>")
                   write_string(v1.value)
                   write("</span>")
@@ -11348,14 +11297,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String = "New card") -> Fragment {
+                fn Card(title: String = "New card") -> Html {
                   <div>
                     {title}
                   </div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card/>
                   }
                 }
@@ -11363,7 +11312,7 @@ mod tests {
             r#"<div>New card</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String) -> Fragment {
+                fn Card@f0(title@v0: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -11400,14 +11349,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String = "New card") -> Fragment {
+                fn Card(title: String = "New card") -> Html {
                   <div>
                     {title}
                   </div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card title="Custom title"/>
                   }
                 }
@@ -11415,7 +11364,7 @@ mod tests {
             r#"<div>Custom title</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String) -> Fragment {
+                fn Card@f0(title@v0: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -11455,7 +11404,7 @@ mod tests {
                 fn Card(
                   title: String,
                   subtitle: String = "No subtitle",
-                ) -> Fragment {
+                ) -> Html {
                   <div>
                     {title}
                     {" "}
@@ -11466,7 +11415,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card title="Hello"/>
                   }
                 }
@@ -11474,10 +11423,7 @@ mod tests {
             r#"<div>Hello - No subtitle</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(
-                  title@v0: String,
-                  subtitle@v1: String,
-                ) -> Fragment {
+                fn Card@f0(title@v0: String, subtitle@v1: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -11521,7 +11467,7 @@ mod tests {
                 fn Card(
                   title: String,
                   subtitle: String = "No subtitle",
-                ) -> Fragment {
+                ) -> Html {
                   <div>
                     {title}
                     {" "}
@@ -11532,7 +11478,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card title="Hello" subtitle="World"/>
                   }
                 }
@@ -11540,10 +11486,7 @@ mod tests {
             r#"<div>Hello - World</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(
-                  title@v0: String,
-                  subtitle@v1: String,
-                ) -> Fragment {
+                fn Card@f0(title@v0: String, subtitle@v1: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -11588,7 +11531,7 @@ mod tests {
                   title: String = "Default",
                   subtitle: String = "Sub",
                   footer: String = "End",
-                ) -> Fragment {
+                ) -> Html {
                   <div>
                     {title}
                     {" "}
@@ -11603,7 +11546,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card subtitle="Custom"/>
                   }
                 }
@@ -11615,7 +11558,7 @@ mod tests {
                   title@v0: String,
                   subtitle@v1: String,
                   footer@v2: String,
-                ) -> Fragment {
+                ) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -11662,8 +11605,8 @@ mod tests {
                 -- main.hop --
                 fn Card(
                   title: String,
-                  children: Fragment = <></>,
-                ) -> Fragment {
+                  children: Html = <></>,
+                ) -> Html {
                   <div class="card">
                     <h2>
                       {title}
@@ -11673,7 +11616,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card title="Hello"/>
                   }
                 }
@@ -11681,10 +11624,7 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(
-                  title@v0: String,
-                  children@v1: Fragment,
-                ) -> Fragment {
+                fn Card@f0(title@v0: String, children@v1: Html) -> Html {
                   write("<div")
                   write(" class=\"card\"")
                   write(">")
@@ -11692,7 +11632,7 @@ mod tests {
                   write(">")
                   write_string(v0)
                   write("</h2>")
-                  write_fragment(v1)
+                  write_html(v1)
                   write("</div>")
                 }
                 page Test() {
@@ -11728,8 +11668,8 @@ mod tests {
                 -- main.hop --
                 fn Card(
                   title: String,
-                  children: Fragment = <></>,
-                ) -> Fragment {
+                  children: Html = <></>,
+                ) -> Html {
                   <div class="card">
                     <h2>
                       {title}
@@ -11739,7 +11679,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <Card title="With">
                         <p>
@@ -11754,10 +11694,7 @@ mod tests {
             r#"<div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(
-                  title@v0: String,
-                  children@v1: Fragment,
-                ) -> Fragment {
+                fn Card@f0(title@v0: String, children@v1: Html) -> Html {
                   write("<div")
                   write(" class=\"card\"")
                   write(">")
@@ -11765,7 +11702,7 @@ mod tests {
                   write(">")
                   write_string(v0)
                   write("</h2>")
-                  write_fragment(v1)
+                  write_html(v1)
                   write("</div>")
                 }
                 page Test() {
@@ -11807,7 +11744,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {name: String = ""}>
                       <match {name.is_empty()}>
                         <case {true}>
@@ -11867,7 +11804,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {name: String = "hello"}>
                       <match {name.is_empty()}>
                         <case {true}>
@@ -11927,7 +11864,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {value: Option[String] = Some("hello")}>
                       <match {value.is_some()}>
                         <case {true}>
@@ -11987,7 +11924,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {value: Option[String] = None}>
                       <match {value.is_some()}>
                         <case {true}>
@@ -12047,7 +11984,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {value: Option[String] = None}>
                       <match {value.is_none()}>
                         <case {true}>
@@ -12107,7 +12044,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {value: Option[String] = Some("hello")}>
                       <match {value.is_none()}>
                         <case {true}>
@@ -12167,7 +12104,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {o: Option[Bool] = None}>
                       <if {true == o.is_none()}>
                         x
@@ -12219,7 +12156,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <if {"a".is_empty() == "b".is_empty()}>
                       x
                     </if>
@@ -12267,7 +12204,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       hello world
                     </>
@@ -12309,7 +12246,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       hello
                       world
@@ -12360,7 +12297,7 @@ mod tests {
                   },
                 }
 
-                fn RenderItem(item: Item) -> Fragment {
+                fn RenderItem(item: Item) -> Html {
                   <match {item}>
                     <case {Item::Todo {label: l, done: d}}>
                       <if {d}>
@@ -12375,7 +12312,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <RenderItem item={
                         Item::Todo {label: "Buy milk", done: true}
@@ -12391,7 +12328,7 @@ mod tests {
             "[x]Buy milk,[ ]Walk dog",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn RenderItem@f0(item@v0: main::Item) -> Fragment {
+                fn RenderItem@f0(item@v0: main::Item) -> Html {
                   match v0 {
                     Item::Todo(label: v1, done: v2) => {
                       let v3 = v1 in {
@@ -12458,7 +12395,7 @@ mod tests {
                   },
                 }
 
-                fn Render(time: TimeAgo) -> Fragment {
+                fn Render(time: TimeAgo) -> Html {
                   <match {time}>
                     <case {TimeAgo::MinutesAgo {count: c}}>
                       {match c == 1 {
@@ -12476,7 +12413,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <Render time={TimeAgo::MinutesAgo {count: 1}}/>
                       ,
@@ -12490,7 +12427,7 @@ mod tests {
             "1 minute ago,5 minutes ago,1 hour ago",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Render@f0(time@v0: main::TimeAgo) -> Fragment {
+                fn Render@f0(time@v0: main::TimeAgo) -> Html {
                   match v0 {
                     TimeAgo::MinutesAgo(count: v1) => {
                       let v2 = v1 in {
@@ -12556,7 +12493,7 @@ mod tests {
                   },
                 }
 
-                fn RenderCode(block: CodeBlock) -> Fragment {
+                fn RenderCode(block: CodeBlock) -> Html {
                   <match {block}>
                     <case {CodeBlock::Snippet {language: _, code: c}}>
                       <code>
@@ -12567,7 +12504,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <RenderCode block={
                       CodeBlock::Snippet {language: "rust", code: "fn main()"}
                     }/>
@@ -12577,7 +12514,7 @@ mod tests {
             "<code>fn main()</code>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn RenderCode@f0(block@v0: main::CodeBlock) -> Fragment {
+                fn RenderCode@f0(block@v0: main::CodeBlock) -> Html {
                   match v0 {
                     CodeBlock::Snippet(code: v1) => {
                       let v2 = v1 in {
@@ -12630,7 +12567,7 @@ mod tests {
                   },
                 }
 
-                fn Render(el: ButtonElement) -> Fragment {
+                fn Render(el: ButtonElement) -> Html {
                   <match {el}>
                     <case {ButtonElement::Link {href: h}}>
                       <a href={h}>
@@ -12646,7 +12583,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Render el={
                       ButtonElement::Button {disabled: false, type: "submit"}
                     }/>
@@ -12656,7 +12593,7 @@ mod tests {
             r#"<button type="submit">btn</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Render@f0(el@v0: main::ButtonElement) -> Fragment {
+                fn Render@f0(el@v0: main::ButtonElement) -> Html {
                   match v0 {
                     ButtonElement::Link(href: v1) => {
                       let v2 = v1 in {
@@ -12719,7 +12656,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {
                       target: Option[Target] = Some(
                         Target {id: "1", title: "hello"}
@@ -12839,7 +12776,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <img src={asset!("/logo.svg")}>
                   }
                 }
@@ -12886,7 +12823,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <img src={asset!("/logo.svg")}>
                   }
                 }
@@ -12935,8 +12872,8 @@ mod tests {
                 -- main.hop --
                 fn Nest(
                   depth: Int,
-                  children: Fragment,
-                ) -> Fragment {
+                  children: Html,
+                ) -> Html {
                   <match {depth > 0}>
                     <case {true}>
                       <div>
@@ -12952,7 +12889,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Nest depth={2}>
                       <b>
                         x
@@ -12964,22 +12901,19 @@ mod tests {
             "<div><div><b>x</b></div></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Nest@f0(
-                  depth@v0: Int,
-                  children@v1: Fragment,
-                ) -> Fragment {
+                fn Nest@f0(depth@v0: Int, children@v1: Html) -> Html {
                   let v2 = (0 < v0) in {
                     match v2 {
                       true => {
                         write("<div")
                         write(">")
                         call Nest@f0(depth = (v0 - 1), children = {
-                          write_fragment(v1)
+                          write_html(v1)
                         })
                         write("</div>")
                       }
                       false => {
-                        write_fragment(v1)
+                        write_html(v1)
                       }
                     }
                   }
@@ -12993,21 +12927,18 @@ mod tests {
                   })
                 }
                 -- ir (optimized) --
-                fn Nest@f0(
-                  depth@v0: Int,
-                  children@v1: Fragment,
-                ) -> Fragment {
+                fn Nest@f0(depth@v0: Int, children@v1: Html) -> Html {
                   let v2 = (0 < v0) in {
                     match v2 {
                       true => {
                         write("<div>")
                         call Nest@f0(depth = (v0 - 1), children = {
-                          write_fragment(v1)
+                          write_html(v1)
                         })
                         write("</div>")
                       }
                       false => {
-                        write_fragment(v1)
+                        write_html(v1)
                       }
                     }
                   }
@@ -13041,7 +12972,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(children: Fragment) -> Fragment {
+                fn Foo(children: Html) -> Html {
                   <let {x = children}>
                     <div>
                       {x}
@@ -13050,7 +12981,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Foo>
                       <b>
                         hi
@@ -13062,11 +12993,11 @@ mod tests {
             "<div><b>hi</b></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Foo@f0(children@v0: Fragment) -> Fragment {
+                fn Foo@f0(children@v0: Html) -> Html {
                   let v1 = v0 in {
                     write("<div")
                     write(">")
-                    write_fragment(v1)
+                    write_html(v1)
                     write("</div>")
                   }
                 }
@@ -13084,7 +13015,7 @@ mod tests {
                     write("<b>hi</b>")
                   } in {
                     write("<div>")
-                    write_fragment(v3)
+                    write_html(v3)
                     write("</div>")
                   }
                 }
@@ -13112,13 +13043,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(children: Fragment) -> Fragment {
+                fn Inner(children: Html) -> Html {
                   <em>
                     {children}
                   </em>
                 }
 
-                fn Outer(children: Fragment) -> Fragment {
+                fn Outer(children: Html) -> Html {
                   <section>
                     <Inner>
                       {children}
@@ -13127,7 +13058,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Outer>
                       z
                     </Outer>
@@ -13137,17 +13068,17 @@ mod tests {
             "<section><em>z</em></section>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(children@v0: Fragment) -> Fragment {
+                fn Inner@f0(children@v0: Html) -> Html {
                   write("<em")
                   write(">")
-                  write_fragment(v0)
+                  write_html(v0)
                   write("</em>")
                 }
-                fn Outer@f1(children@v1: Fragment) -> Fragment {
+                fn Outer@f1(children@v1: Html) -> Html {
                   write("<section")
                   write(">")
                   call Inner@f0(children = {
-                    write_fragment(v1)
+                    write_html(v1)
                   })
                   write("</section>")
                 }
@@ -13187,7 +13118,7 @@ mod tests {
                 fn Nest(
                   n: Int,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <div ...rest>
                     <if {0 < n}>
                       <Nest n={n - 1}/>
@@ -13196,7 +13127,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Nest n={2} id="root"/>
                   }
                 }
@@ -13204,9 +13135,9 @@ mod tests {
             r#"<div id="root"><div><div></div></div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Nest@f0(n@v0: Int, rest@v1: Fragment) -> Fragment {
+                fn Nest@f0(n@v0: Int, rest@v1: Html) -> Html {
                   write("<div")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   match (0 < v0) {
                     true => {
@@ -13223,9 +13154,9 @@ mod tests {
                   })
                 }
                 -- ir (optimized) --
-                fn Nest@f0(n@v0: Int, rest@v1: Fragment) -> Fragment {
+                fn Nest@f0(n@v0: Int, rest@v1: Html) -> Html {
                   write("<div")
-                  write_fragment(v1)
+                  write_html(v1)
                   write(">")
                   match (0 < v0) {
                     true => {
@@ -13265,7 +13196,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Countdown(n: Int) -> Fragment {
+                fn Countdown(n: Int) -> Html {
                   <>
                     {n.to_string()}
                     <if {0 < n}>
@@ -13275,7 +13206,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Countdown n={3}/>
                   }
                 }
@@ -13283,7 +13214,7 @@ mod tests {
             "3210",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Countdown@f0(n@v0: Int) -> Fragment {
+                fn Countdown@f0(n@v0: Int) -> Html {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -13297,7 +13228,7 @@ mod tests {
                   call Countdown@f0(n = 3)
                 }
                 -- ir (optimized) --
-                fn Countdown@f0(n@v0: Int) -> Fragment {
+                fn Countdown@f0(n@v0: Int) -> Html {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -13337,7 +13268,7 @@ mod tests {
                 fn Loop(
                   n: Int,
                   label: Option[String],
-                ) -> Fragment {
+                ) -> Html {
                   <>
                     <match {label}>
                       <case {Some(text)}>
@@ -13354,7 +13285,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Loop n={2} label={Some("a")}/>
                   }
                 }
@@ -13362,10 +13293,7 @@ mod tests {
             "aaa",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Loop@f0(
-                  n@v0: Int,
-                  label@v1: Option[String],
-                ) -> Fragment {
+                fn Loop@f0(n@v0: Int, label@v1: Option[String]) -> Html {
                   match v1 {
                     Some(v2) => {
                       let v3 = v2 in {
@@ -13388,10 +13316,7 @@ mod tests {
                   call Loop@f0(n = 2, label = Option[String]::Some("a"))
                 }
                 -- ir (optimized) --
-                fn Loop@f0(
-                  n@v0: Int,
-                  label@v1: Option[String],
-                ) -> Fragment {
+                fn Loop@f0(n@v0: Int, label@v1: Option[String]) -> Html {
                   match v1 {
                     Some(v2) => {
                       let v3 = v2 in {
@@ -13437,14 +13362,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn C(x: Option[String]) -> Fragment {
+                fn C(x: Option[String]) -> Html {
                   <if {x.is_none()}>
                     <C x={x}/>
                   </if>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {o: Option[String] = Some("a")}>
                       <C x={o}/>
                       <C x={o}/>
@@ -13455,7 +13380,7 @@ mod tests {
             "",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn C@f0(x@v1: Option[String]) -> Fragment {
+                fn C@f0(x@v1: Option[String]) -> Html {
                   match v1.is_none() {
                     true => {
                       call C@f0(x = v1)
@@ -13471,7 +13396,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                fn C@f0(x@v1: Option[String]) -> Fragment {
+                fn C@f0(x@v1: Option[String]) -> Html {
                   match v1.is_none() {
                     true => {
                       call C@f0(x = v1)
@@ -13508,7 +13433,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Even(n: Int) -> Fragment {
+                fn Even(n: Int) -> Html {
                   <>
                     <if {n == 0}>
                       even
@@ -13519,7 +13444,7 @@ mod tests {
                   </>
                 }
 
-                fn Odd(n: Int) -> Fragment {
+                fn Odd(n: Int) -> Html {
                   <>
                     <if {n == 0}>
                       odd
@@ -13531,7 +13456,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Even n={4}/>
                   }
                 }
@@ -13539,7 +13464,7 @@ mod tests {
             "even",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Even@f0(n@v0: Int) -> Fragment {
+                fn Even@f0(n@v0: Int) -> Html {
                   match (v0 == 0) {
                     true => {
                       write("even")
@@ -13555,7 +13480,7 @@ mod tests {
                     }
                   }
                 }
-                fn Odd@f1(n@v1: Int) -> Fragment {
+                fn Odd@f1(n@v1: Int) -> Html {
                   match (v1 == 0) {
                     true => {
                       write("odd")
@@ -13575,7 +13500,7 @@ mod tests {
                   call Even@f0(n = 4)
                 }
                 -- ir (optimized) --
-                fn Even@f0(n@v0: Int) -> Fragment {
+                fn Even@f0(n@v0: Int) -> Html {
                   match (v0 == 0) {
                     true => {
                       write("even")
@@ -13591,7 +13516,7 @@ mod tests {
                     }
                   }
                 }
-                fn Odd@f1(n@v1: Int) -> Fragment {
+                fn Odd@f1(n@v1: Int) -> Html {
                   match (v1 == 0) {
                     true => {
                       write("odd")
@@ -13639,7 +13564,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <if {R {f: true}.f}>
                       x
                     </if>
@@ -13686,14 +13611,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn C(p: Array[String]) -> Fragment {
+                fn C(p: Array[String]) -> Html {
                   <for {_ in p}>
                     <C p={[]}/>
                   </for>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <C p={["a"]}/>
                   }
                 }
@@ -13701,7 +13626,7 @@ mod tests {
             "",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn C@f0(p@v0: Array[String]) -> Fragment {
+                fn C@f0(p@v0: Array[String]) -> Html {
                   for _ in v0 {
                     call C@f0(p = [])
                   }
@@ -13710,7 +13635,7 @@ mod tests {
                   call C@f0(p = ["a"])
                 }
                 -- ir (optimized) --
-                fn C@f0(p@v0: Array[String]) -> Fragment {
+                fn C@f0(p@v0: Array[String]) -> Html {
                   for _ in v0 {
                     call C@f0(p = [])
                   }
@@ -13746,14 +13671,14 @@ mod tests {
                   f: Array[String],
                 }
 
-                fn C(p: Array[String]) -> Fragment {
+                fn C(p: Array[String]) -> Html {
                   <if {R {f: p}.f.is_empty()}>
                     <C p={[]}/>
                   </if>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <C p={["a"]}/>
                   }
                 }
@@ -13761,7 +13686,7 @@ mod tests {
             "",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn C@f0(p@v0: Array[String]) -> Fragment {
+                fn C@f0(p@v0: Array[String]) -> Html {
                   match R {f: v0}.f.is_empty() {
                     true => {
                       call C@f0(p = [])
@@ -13774,7 +13699,7 @@ mod tests {
                   call C@f0(p = ["a"])
                 }
                 -- ir (optimized) --
-                fn C@f0(p@v0: Array[String]) -> Fragment {
+                fn C@f0(p@v0: Array[String]) -> Html {
                   match v0.is_empty() {
                     true => {
                       call C@f0(p = [])
@@ -13810,7 +13735,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                pub fn OptBool(checked: Option[Bool]) -> Fragment {
+                pub fn OptBool(checked: Option[Bool]) -> Html {
                   <match {checked}>
                     <case {Some(true)}>
                       <span>
@@ -13828,7 +13753,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <OptBool checked={Some(true)}/>
                   }
                 }
@@ -13836,7 +13761,7 @@ mod tests {
             "<span>yes</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn OptBool@f0(checked@v0: Option[Bool]) -> Fragment {
+                fn OptBool@f0(checked@v0: Option[Bool]) -> Html {
                   match v0 {
                     Some(v1) => {
                       match v1 {
@@ -13890,7 +13815,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {x: Option[Option[Bool]] = Some(Some(true))}>
                       <match {x}>
                         <case {Some(Some(true))}>
@@ -13968,7 +13893,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {n in [1, 2, 3]}>
                       <if {n > 1}>
                         {n.to_string()}
@@ -14028,7 +13953,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {s in ["a", "b"]}>
                       <if {s == "a"}>
                         {s}
@@ -14088,7 +14013,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {f in [1.5, 2.5]}>
                       <if {f > 2.0}>
                         big
@@ -14148,7 +14073,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {flag in [true, false]}>
                       <if {flag && true}>
                         x
@@ -14207,14 +14132,14 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                pub fn Show(label: String) -> Fragment {
+                pub fn Show(label: String) -> Html {
                   <span>
                     {label}
                   </span>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {s in ["a", "b"]}>
                       <if {s == "a"}>
                         <Show label={s}/>
@@ -14226,7 +14151,7 @@ mod tests {
             "<span>a</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Show@f0(label@v1: String) -> Fragment {
+                fn Show@f0(label@v1: String) -> Html {
                   write("<span")
                   write(">")
                   write_string(v1)
@@ -14286,7 +14211,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {foo: Foo = Foo {class: "a"}}>
                       <div>
                         {foo.class}
@@ -14339,7 +14264,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {f: Foo = Foo {function: "a"}}>
                       <div>
                         {f.function}
@@ -14392,7 +14317,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {f: Foo = Foo {protected: "a"}}>
                       <div>
                         {f.protected}
@@ -14445,7 +14370,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {f: Foo = Foo {eval: "a"}}>
                       <div>
                         {f.eval}
@@ -14500,7 +14425,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {e: E = E::A {class: "a"}}>
                       <match {e}>
                         <case {E::A {class: v}}>
@@ -14563,7 +14488,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {m: Math = Math {x: 4}}>
                       <let {b: Int = 5}>
                         {(m.x * b).to_string()}
@@ -14615,7 +14540,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {n: Number = Number {x: 3.7}}>
                       {n.x.to_int().to_string()}
                     </let>
@@ -14664,7 +14589,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {base = State {query: "a", num: 1}}>
                       <let {next = State {...base, num: 2}}>
                         {next.query}
@@ -14719,7 +14644,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {base = State {query: "a", num: 1}}>
                       <let {next = State {...base, query: "b", num: 2}}>
                         {next.query}
@@ -14774,7 +14699,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {s in [State {query: "a", num: 7}]}>
                       {State {...s, query: "x"}.query}
                       {State {...s, query: "x"}.num.to_string()}
@@ -14830,14 +14755,14 @@ mod tests {
                   selected: Bool,
                 }
 
-                fn Row(item: Item) -> Fragment {
+                fn Row(item: Item) -> Html {
                   <div>
                     {item.label}
                   </div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <for {item in [Item {label: "a", selected: false}]}>
                       <match {item.selected}>
                         <case {true}>
@@ -14854,7 +14779,7 @@ mod tests {
             r#"<div>off</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Row@f0(item@v2: main::Item) -> Fragment {
+                fn Row@f0(item@v2: main::Item) -> Html {
                   write("<div")
                   write(">")
                   write_string(v2.label)
@@ -14929,7 +14854,7 @@ mod tests {
                   settings: Settings,
                 }
 
-                fn Dark(s: State) -> Fragment {
+                fn Dark(s: State) -> Html {
                   <let {t = Settings {...s.settings, theme: "dark"}}>
                     <let {next = State {...s, settings: t}}>
                       {next.query}
@@ -14939,7 +14864,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {s = Settings {theme: "light", compact: true}}>
                       <Dark s={State {query: "q", settings: s}}/>
                     </let>
@@ -14949,7 +14874,7 @@ mod tests {
             r#"qdark"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Dark@f0(s@v1: main::State) -> Fragment {
+                fn Dark@f0(s@v1: main::State) -> Html {
                   let v3 = let v2 = v1.settings in {
                     Settings {theme: "dark", compact: v2.compact}
                   } in {
@@ -14998,7 +14923,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.x}
                     </>
@@ -15044,7 +14969,7 @@ mod tests {
                 import other::label
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(prefix: "a")}</div>
                   }
                 }
@@ -15098,13 +15023,13 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label()}{label(count: 2)}{label("y")}</div>
                   }
                 }
 
                 page Other(prefix: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(prefix: prefix)}</div>
                   }
                 }
@@ -15166,7 +15091,7 @@ mod tests {
                   x + 10
                 }
 
-                fn Wrapper() -> Fragment {
+                fn Wrapper() -> Html {
                   <div>
                     <for {x in 0..=foo(-7)}>
                       {x.to_string()}
@@ -15177,7 +15102,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrapper/>
                   }
                 }
@@ -15185,7 +15110,7 @@ mod tests {
             "<div>0,1,2,3,20</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Wrapper@f0() -> Fragment {
+                fn Wrapper@f0() -> Html {
                   write("<div")
                   write(">")
                   for v0 in 0..=call foo@f1(x = (-7)) {
@@ -15234,12 +15159,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn card(label: String) -> Fragment {
+                fn card(label: String) -> Html {
                   <div>{label}</div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{card("hello")}</>
                   }
                 }
@@ -15247,7 +15172,7 @@ mod tests {
             "<div>hello</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn card@f0(label@v0: String) -> Fragment {
+                fn card@f0(label@v0: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -15285,7 +15210,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{<span>hello</span>}</div>
                   }
                 }
@@ -15330,12 +15255,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn wrap(children: Fragment) -> Fragment {
+                fn wrap(children: Html) -> Html {
                   <div>{children}</div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{wrap(<span>hello</span>)}</>
                   }
                 }
@@ -15343,10 +15268,10 @@ mod tests {
             "<div><span>hello</span></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn wrap@f0(children@v0: Fragment) -> Fragment {
+                fn wrap@f0(children@v0: Html) -> Html {
                   write("<div")
                   write(">")
-                  write_fragment(v0)
+                  write_html(v0)
                   write("</div>")
                 }
                 page Test() {
@@ -15385,12 +15310,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card(slot: Fragment) -> Fragment {
+                fn Card(slot: Html) -> Html {
                   <div>{slot}</div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card slot={<span>hello</span>}/>
                   }
                 }
@@ -15398,10 +15323,10 @@ mod tests {
             "<div><span>hello</span></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(slot@v0: Fragment) -> Fragment {
+                fn Card@f0(slot@v0: Html) -> Html {
                   write("<div")
                   write(">")
-                  write_fragment(v0)
+                  write_html(v0)
                   write("</div>")
                 }
                 page Test() {
@@ -15440,12 +15365,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn badge(on: Bool) -> Fragment {
+                fn badge(on: Bool) -> Html {
                   match on {true => <b>yes</b>, false => <i>no</i>}
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{badge(true)}{badge(false)}</div>
                   }
                 }
@@ -15453,7 +15378,7 @@ mod tests {
             "<div><b>yes</b><i>no</i></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn badge@f0(on@v0: Bool) -> Fragment {
+                fn badge@f0(on@v0: Bool) -> Html {
                   match v0 {
                     true => {
                       write("<b")
@@ -15504,16 +15429,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn card(label: String) -> Fragment {
+                fn card(label: String) -> Html {
                   <div>{label}</div>
                 }
 
-                fn Outer() -> Fragment {
+                fn Outer() -> Html {
                   card("hello")
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Outer/>
                   }
                 }
@@ -15521,10 +15446,10 @@ mod tests {
             "<div>hello</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Outer@f0() -> Fragment {
+                fn Outer@f0() -> Html {
                   call card@f1(label = "hello")
                 }
-                fn card@f1(label@v0: String) -> Fragment {
+                fn card@f1(label@v0: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -15581,7 +15506,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{f().to_string()}</div>
                   }
                 }
@@ -15651,7 +15576,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <match {mk()}>
                       <case {Shape::Circle}>
                         circle
@@ -15740,7 +15665,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{f()}</div>
                   }
                 }
@@ -15800,22 +15725,22 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card() -> Fragment {
+                fn Card() -> Html {
                   <span>A</span>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card />
                   }
                 }
                 -- other.hop --
-                fn Card() -> Fragment {
+                fn Card() -> Html {
                   <span>B</span>
                 }
 
                 page Other() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card />
                   }
                 }
@@ -15823,13 +15748,13 @@ mod tests {
             "<span>A</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0() -> Fragment {
+                fn Card@f0() -> Html {
                   write("<span")
                   write(">")
                   write("A")
                   write("</span>")
                 }
-                fn Card@f1() -> Fragment {
+                fn Card@f1() -> Html {
                   write("<span")
                   write(">")
                   write("B")
@@ -15876,12 +15801,12 @@ mod tests {
                   x
                 }
 
-                fn NavBar() -> Fragment {
+                fn NavBar() -> Html {
                   <b>nav</b>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div><NavBar />{nav_bar(1).to_string()}</div>
                   }
                 }
@@ -15889,7 +15814,7 @@ mod tests {
             "<div><b>nav</b>1</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn NavBar@f0() -> Fragment {
+                fn NavBar@f0() -> Html {
                   write("<b")
                   write(">")
                   write("nav")
@@ -15938,7 +15863,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(count: 2, prefix: "n")}</div>
                   }
                 }

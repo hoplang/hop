@@ -100,7 +100,7 @@ fn transform(expr: PureExpr, used: &mut HashSet<VarId>) -> PureExpr {
             PureExpr::Match { match_, typ, id }
         }
 
-        PureExpr::FragmentFor {
+        PureExpr::HtmlFor {
             var,
             source,
             body,
@@ -117,7 +117,7 @@ fn transform(expr: PureExpr, used: &mut HashSet<VarId>) -> PureExpr {
                     end: transform(end, used),
                 },
             };
-            PureExpr::FragmentFor {
+            PureExpr::HtmlFor {
                 var,
                 source: Box::new(source),
                 body: Box::new(body),
@@ -232,7 +232,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
-                    t.fragment_for(Some("unused"), t.array(vec![t.str("a"), t.str("b")]), |t| {
+                    t.html_for(Some("unused"), t.array(vec![t.str("a"), t.str("b")]), |t| {
                         t.raw("Hello")
                     })
                 })
@@ -256,7 +256,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
-                    t.fragment_for(Some("item"), t.array(vec![t.str("a"), t.str("b")]), |t| {
+                    t.html_for(Some("item"), t.array(vec![t.str("a"), t.str("b")]), |t| {
                         t.escape(t.var("item"))
                     })
                 })
@@ -350,7 +350,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
-                    t.fragment_for(Some("item"), t.array(vec![t.str("a"), t.str("b")]), |t| {
+                    t.html_for(Some("item"), t.array(vec![t.str("a"), t.str("b")]), |t| {
                         t.let_expr("unused", t.str("value"), |t| t.escape(t.var("item")))
                     })
                 })

@@ -37,7 +37,7 @@ pub enum ResolvedType<'a> {
     Bool,
     Int,
     Float,
-    Fragment,
+    Html,
     Array(&'a Type),
     Option(&'a Type),
     Record {
@@ -108,7 +108,7 @@ impl TypeRegistry {
             Type::Bool => Some(ResolvedType::Bool),
             Type::Int => Some(ResolvedType::Int),
             Type::Float => Some(ResolvedType::Float),
-            Type::Fragment => Some(ResolvedType::Fragment),
+            Type::Html => Some(ResolvedType::Html),
             Type::Attrs => None,
             Type::Array(inner) => Some(ResolvedType::Array(inner)),
             Type::Option(inner) => Some(ResolvedType::Option(inner)),

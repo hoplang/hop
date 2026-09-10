@@ -176,7 +176,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       hello
                     </div>
@@ -192,7 +192,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       hello
                       world
@@ -209,7 +209,7 @@ mod tests {
         check(
             concat!(
                 "page Test() {\n",
-                "  fn body() -> Fragment {\n",
+                "  fn body() -> Html {\n",
                 "    <div>\n",
                 "      hello  \n",
                 "      world\n",
@@ -226,7 +226,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       hello
 
@@ -244,7 +244,7 @@ mod tests {
         check(
             indoc! {r#"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       hello
                       {"world"}
@@ -261,7 +261,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       hello
                       <span>world</span>
@@ -278,7 +278,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>hello <span>world</span></div>
                   }
                 }
@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn trims_text_at_the_end_of_a_body() {
         check(
-            "page Test() { fn body() -> Fragment {<>hello </>} }\n",
+            "page Test() { fn body() -> Html {<>hello </>} }\n",
             "hello",
         );
     }
@@ -300,7 +300,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <script>
                       let x = 1;
                     </script>
@@ -316,7 +316,7 @@ mod tests {
         check(
             indoc! {r#"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{"   "}</>
                   }
                 }
@@ -330,7 +330,7 @@ mod tests {
         check(
             indoc! {r#"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <let {first: String = "Hello", second: String = "World"}>
                       <div>{first} {second}</div>
                     </let>
@@ -346,7 +346,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>this looks <b>great</b></>
                   }
                 }
@@ -360,7 +360,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <style>
                       .a { color: red; }
                     </style>
@@ -376,7 +376,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <><b>b</b> <i>i</i></>
                   }
                 }
@@ -390,7 +390,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <b>b</b>
                       <i>i</i>
@@ -407,7 +407,7 @@ mod tests {
         check(
             indoc! {r#"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{"a"} {"b"}</>
                   }
                 }
@@ -421,7 +421,7 @@ mod tests {
         check(
             indoc! {r#"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {"a"}
                       {"b"}
@@ -438,7 +438,7 @@ mod tests {
         check(
             indoc! {r#"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <><b>b</b> {"i"}</>
                   }
                 }
@@ -452,7 +452,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>a  <b>x</b></>
                   }
                 }
@@ -466,7 +466,7 @@ mod tests {
         check(
             indoc! {r#"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <><b>x</b>  a {"y"}</>
                   }
                 }
@@ -480,7 +480,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <><b>x</b><i>y</i></>
                   }
                 }
@@ -494,7 +494,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <></>
                   }
                 }
@@ -508,7 +508,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       hello
                       <>
@@ -527,7 +527,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>hello <>world</></>
                   }
                 }
@@ -541,7 +541,7 @@ mod tests {
         check(
             indoc! {r#"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>a{ "b" }c</div>
                   }
                 }
@@ -555,7 +555,7 @@ mod tests {
         check(
             indoc! {r#"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>a{
                       "b"
                     }c</div>
@@ -570,7 +570,7 @@ mod tests {
     fn drops_a_newline_beside_a_fragment_valued_expression() {
         check(
             indoc! {"
-                fn Wrap(children: Fragment) -> Fragment {
+                fn Wrap(children: Html) -> Html {
                   <div>
                     hello
                     {children}
@@ -578,7 +578,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrap><b>w</b></Wrap>
                   }
                 }
@@ -591,12 +591,12 @@ mod tests {
     fn keeps_a_space_beside_a_fragment_valued_expression_on_the_same_line() {
         check(
             indoc! {"
-                fn Wrap(children: Fragment) -> Fragment {
+                fn Wrap(children: Html) -> Html {
                   <div>hello {children}</div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Wrap><b>w</b></Wrap>
                   }
                 }
@@ -610,7 +610,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{<span> hello </span>}</div>
                   }
                 }
@@ -623,14 +623,14 @@ mod tests {
     fn drops_line_breaks_in_markup_written_in_expression_position() {
         check(
             indoc! {"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   <div>
                     hello
                   </div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{card()}</>
                   }
                 }
@@ -643,7 +643,7 @@ mod tests {
     fn keeps_a_line_break_between_two_texts_in_expression_position() {
         check(
             indoc! {"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   <div>
                     hello
                     world
@@ -651,7 +651,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{card()}</>
                   }
                 }
@@ -665,7 +665,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       hello
                       {<span>
@@ -683,12 +683,12 @@ mod tests {
     fn adds_no_whitespace_to_markup_laid_out_inline() {
         check(
             indoc! {"
-                fn Card(slot: Fragment) -> Fragment {
+                fn Card(slot: Html) -> Html {
                   <div>{slot}</div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card slot={<span>a<b>c</b></span>}/>
                   }
                 }
@@ -701,12 +701,12 @@ mod tests {
     fn keeps_significant_whitespace_in_markup_laid_out_inline() {
         check(
             indoc! {"
-                fn Card(slot: Fragment) -> Fragment {
+                fn Card(slot: Html) -> Html {
                   <div>{slot}</div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card slot={<span>a <b>c</b></span>}/>
                   }
                 }
@@ -720,7 +720,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{<style>  a  </style>}</div>
                   }
                 }
@@ -733,12 +733,12 @@ mod tests {
     fn keeps_significant_whitespace_in_markup_inside_broken_match_arms() {
         check(
             indoc! {r#"
-                fn badge(on: Bool) -> Fragment {
+                fn badge(on: Bool) -> Html {
                   match on {true => <span class="a-fairly-long-class">yes <b>indeed</b></span>, false => <i>no</i>}
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{badge(true)}{badge(false)}</div>
                   }
                 }
@@ -751,12 +751,12 @@ mod tests {
     fn keeps_significant_whitespace_in_markup_passed_as_call_arguments() {
         check(
             indoc! {r#"
-                fn pair(a: Fragment, b: Fragment) -> Fragment {
+                fn pair(a: Html, b: Html) -> Html {
                   <div>{a}{b}</div>
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{pair(<span>first <b>one</b></span>, <span>second one</span>)}</>
                   }
                 }

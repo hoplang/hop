@@ -41,7 +41,7 @@ pub fn evaluate_page(
 
     let value = evaluate_expr(&page.body, &mut env, &module.functions)?;
     let Value::String(html) = value else {
-        panic!("Page body must evaluate to a Fragment");
+        panic!("Page body must evaluate to Html");
     };
 
     Ok(html)
@@ -113,31 +113,31 @@ fn evaluate_expr(
         }
         PureExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
 
-        PureExpr::FragmentRaw { content, .. } => Ok(Value::String(content.clone())),
+        PureExpr::HtmlRaw { content, .. } => Ok(Value::String(content.clone())),
 
-        PureExpr::FragmentEscape { expr, .. } => {
+        PureExpr::HtmlEscape { expr, .. } => {
             let value = evaluate_expr(expr, env, function_decls)?;
             let Value::String(s) = value else {
-                panic!("FragmentEscape requires a string value");
+                panic!("HtmlEscape requires a string value");
             };
             let mut escaped = String::new();
             write_escaped_html(&s, &mut escaped);
             Ok(Value::String(escaped))
         }
 
-        PureExpr::FragmentConcat { parts, .. } => {
+        PureExpr::HtmlConcat { parts, .. } => {
             let mut result = String::new();
             for part in parts {
                 let value = evaluate_expr(part, env, function_decls)?;
                 let Value::String(s) = value else {
-                    panic!("FragmentConcat requires Fragment parts");
+                    panic!("HtmlConcat requires Html parts");
                 };
                 result.push_str(&s);
             }
             Ok(Value::String(result))
         }
 
-        PureExpr::FragmentFor {
+        PureExpr::HtmlFor {
             var, source, body, ..
         } => {
             let mut result = String::new();
@@ -155,7 +155,7 @@ fn evaluate_expr(
                         }
                         let value = evaluate_expr(body, env, function_decls)?;
                         let Value::String(s) = value else {
-                            panic!("FragmentFor requires a Fragment body");
+                            panic!("HtmlFor requires a Html body");
                         };
                         result.push_str(&s);
                         if let Some(var) = var {
@@ -175,7 +175,7 @@ fn evaluate_expr(
                         }
                         let value = evaluate_expr(body, env, function_decls)?;
                         let Value::String(s) = value else {
-                            panic!("FragmentFor requires a Fragment body");
+                            panic!("HtmlFor requires a Html body");
                         };
                         result.push_str(&s);
                         if let Some(var) = var {
@@ -793,7 +793,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .page("Test", [("items", "Array[String]")], |t| {
-                    t.fragment_for(Some("item"), t.var("items"), |t| {
+                    t.html_for(Some("item"), t.var("items"), |t| {
                         t.concat(vec![
                             t.raw("<li>"),
                             t.escape(t.var("item")),
@@ -869,7 +869,7 @@ mod tests {
         // p0 (999) that gets bound first.
         check(
             PureModuleBuilder::new()
-                .function("C", [("p0", "Int"), ("p1", "Int")], "Fragment", |t| {
+                .function("C", [("p0", "Int"), ("p1", "Int")], "Html", |t| {
                     t.escape(t.int_to_string(t.var("p1")))
                 })
                 .page("Test", [("p0", "Int")], |t| {
@@ -879,7 +879,7 @@ mod tests {
             vec![("p0", Value::Int(42))],
             expect![[r#"
                 -- before --
-                fn C@f0(p0@v0: Int, p1@v1: Int) -> Fragment {
+                fn C@f0(p0@v0: Int, p1@v1: Int) -> Html {
                   escape(v1.to_string())
                 }
                 page Test(p0@v2: Int) {

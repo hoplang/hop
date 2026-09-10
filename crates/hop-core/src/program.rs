@@ -984,14 +984,14 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                pub fn HelloWorld() -> Fragment {
+                pub fn HelloWorld() -> Html {
                   <h1>Hello World</h1>
                 }
 
                 -- main.hop --
                 import hop::components::HelloWorld
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <HelloWorld />
                    ^
                 }
@@ -999,7 +999,7 @@ mod tests {
             expect![[r#"
                 Definition
                   --> hop/components.hop (line 1, col 8)
-                1 | pub fn HelloWorld() -> Fragment {
+                1 | pub fn HelloWorld() -> Html {
                   |        ^^^^^^^^^^
             "#]],
         );
@@ -1010,14 +1010,14 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                pub fn HelloWorld(children: Fragment) -> Fragment {
+                pub fn HelloWorld(children: Html) -> Html {
                   <h1>Hello World {children}</h1>
                 }
 
                 -- main.hop --
                 import hop::components::HelloWorld
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <HelloWorld>
                   </HelloWorld>
                      ^
@@ -1026,7 +1026,7 @@ mod tests {
             expect![[r#"
                 Definition
                   --> hop/components.hop (line 1, col 8)
-                1 | pub fn HelloWorld(children: Fragment) -> Fragment {
+                1 | pub fn HelloWorld(children: Html) -> Html {
                   |        ^^^^^^^^^^
             "#]],
         );
@@ -1037,7 +1037,7 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                pub fn HelloWorld() -> Fragment {
+                pub fn HelloWorld() -> Html {
                   <h1>Hello World</h1>
                 }
 
@@ -1045,14 +1045,14 @@ mod tests {
                 import hop::components::HelloWorld
                                         ^
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <HelloWorld />
                 }
             "#},
             expect![[r#"
                 Definition
                   --> hop/components.hop (line 1, col 8)
-                1 | pub fn HelloWorld() -> Fragment {
+                1 | pub fn HelloWorld() -> Html {
                   |        ^^^^^^^^^^
             "#]],
         );
@@ -1068,7 +1068,7 @@ mod tests {
                 import types::User
                               ^
 
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                   <div>{user.name}</div>
                 }
             "#},
@@ -1091,7 +1091,7 @@ mod tests {
                 import types::Status
                               ^
 
-                fn Main(status: Status) -> Fragment {
+                fn Main(status: Status) -> Html {
                   <match {status}>
                     <case {Status::Active}><span>Active</span></case>
                     <case {Status::Inactive}><span>Inactive</span></case>
@@ -1112,7 +1112,7 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                fn HelloWorld() -> Fragment {
+                fn HelloWorld() -> Html {
                      ^
                   <h1>Hello World</h1>
                 }
@@ -1120,7 +1120,7 @@ mod tests {
             expect![[r#"
                 Definition
                   --> main.hop (line 1, col 4)
-                1 | fn HelloWorld() -> Fragment {
+                1 | fn HelloWorld() -> Html {
                   |    ^^^^^^^^^^
             "#]],
         );
@@ -1173,11 +1173,11 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                fn HelloWorld() -> Fragment {
+                fn HelloWorld() -> Html {
                   <h1>Hello World</h1>
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <HelloWorld />
                    ^
                 }
@@ -1185,7 +1185,7 @@ mod tests {
             expect![[r#"
                 Definition
                   --> main.hop (line 1, col 4)
-                1 | fn HelloWorld() -> Fragment {
+                1 | fn HelloWorld() -> Html {
                   |    ^^^^^^^^^^
             "#]],
         );
@@ -1196,11 +1196,11 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                fn HelloWorld() -> Fragment {
+                fn HelloWorld() -> Html {
                   <h1>Hello World</h1>
                 }
 
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                   <match {x}>
                     <case {Some(_)}>
                       <HelloWorld />
@@ -1213,7 +1213,7 @@ mod tests {
             expect![[r#"
                 Definition
                   --> main.hop (line 1, col 4)
-                 1 | fn HelloWorld() -> Fragment {
+                 1 | fn HelloWorld() -> Html {
                    |    ^^^^^^^^^^
             "#]],
         );
@@ -1224,12 +1224,12 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                fn HelloWorld() -> Fragment {
+                fn HelloWorld() -> Html {
                   <h1>Hello World</h1>
                 }
 
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <HelloWorld />
                      ^
                   }
@@ -1238,7 +1238,7 @@ mod tests {
             expect![[r#"
                 Definition
                   --> main.hop (line 1, col 4)
-                1 | fn HelloWorld() -> Fragment {
+                1 | fn HelloWorld() -> Html {
                   |    ^^^^^^^^^^
             "#]],
         );
@@ -1249,7 +1249,7 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                fn Main(name: String) -> Fragment {
+                fn Main(name: String) -> Html {
                   <span>{name}</span>
                          ^
                 }
@@ -1257,7 +1257,7 @@ mod tests {
             expect![[r#"
                 Definition
                   --> main.hop (line 1, col 9)
-                1 | fn Main(name: String) -> Fragment {
+                1 | fn Main(name: String) -> Html {
                   |         ^^^^
             "#]],
         );
@@ -1268,7 +1268,7 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                fn Main(items: Array[String]) -> Fragment {
+                fn Main(items: Array[String]) -> Html {
                   <ul>
                     <for {item in items}>
                       <li>{item}</li>
@@ -1291,7 +1291,7 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {greeting: String = "Hello"}>
                     <span>{greeting}</span>
                             ^
@@ -1314,7 +1314,7 @@ mod tests {
                 -- main.hop --
                 record User {name: String}
 
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                               ^
                   <span>{user.name}</span>
                 }
@@ -1335,7 +1335,7 @@ mod tests {
                 -- main.hop --
                 record Item {name: String}
 
-                fn Main(items: Array[Item]) -> Fragment {
+                fn Main(items: Array[Item]) -> Html {
                                      ^
                   <for {item in items}>
                     <span>{item.name}</span>
@@ -1361,7 +1361,7 @@ mod tests {
                 -- main.hop --
                 import types::User
 
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                               ^
                   <span>{user.name}</span>
                 }
@@ -1384,14 +1384,14 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
-                pub fn HelloWorld() -> Fragment {
+                pub fn HelloWorld() -> Html {
                   <h1>Hello World</h1>
                 }
 
                 -- main.hop --
                 import components::HelloWorld
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <HelloWorld />
                    ^
                 }
@@ -1399,7 +1399,7 @@ mod tests {
             expect![[r#"
                 Rename
                   --> components.hop (line 1, col 8)
-                1 | pub fn HelloWorld() -> Fragment {
+                1 | pub fn HelloWorld() -> Html {
                   |        ^^^^^^^^^^
 
                 Rename
@@ -1420,11 +1420,11 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                fn HelloWorld() -> Fragment {
+                fn HelloWorld() -> Html {
                   <h1>Hello World</h1>
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <HelloWorld />
                    ^
                 }
@@ -1432,7 +1432,7 @@ mod tests {
             expect![[r#"
                 Rename
                   --> main.hop (line 1, col 4)
-                1 | fn HelloWorld() -> Fragment {
+                1 | fn HelloWorld() -> Html {
                   |    ^^^^^^^^^^
 
                 Rename
@@ -1448,7 +1448,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
-                pub fn HelloWorld() -> Fragment {
+                pub fn HelloWorld() -> Html {
                         ^
                   <h1>Hello World</h1>
                 }
@@ -1456,14 +1456,14 @@ mod tests {
                 -- main.hop --
                 import components::HelloWorld
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <HelloWorld />
                 }
             "#},
             expect![[r#"
                 Rename
                   --> components.hop (line 1, col 8)
-                1 | pub fn HelloWorld() -> Fragment {
+                1 | pub fn HelloWorld() -> Html {
                   |        ^^^^^^^^^^
 
                 Rename
@@ -1487,11 +1487,11 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
-                fn HelloWorld() -> Fragment {
+                fn HelloWorld() -> Html {
                   <h1>Hello World</h1>
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                    ^
                   <HelloWorld />
                 }
@@ -1499,7 +1499,7 @@ mod tests {
                 -- main.hop --
                 import components::HelloWorld
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <HelloWorld />
                 }
             "#},
@@ -1507,7 +1507,7 @@ mod tests {
             expect![[r#"
                 Rename
                   --> components.hop (line 5, col 4)
-                5 | fn Main() -> Fragment {
+                5 | fn Main() -> Html {
                   |    ^^^^
             "#]],
         );
@@ -1518,7 +1518,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <div>
                      ^
                         <span>Content</span>
@@ -1544,7 +1544,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     <div>
                      ^
@@ -1572,7 +1572,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <div>
                         <span>Content</span>
                     </div>
@@ -1598,7 +1598,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <br />
                      ^
                 }
@@ -1627,7 +1627,7 @@ mod tests {
 
                 fn IconItem(
                   icon: Icon,
-                ) -> Fragment {
+                ) -> Html {
                   <a class="flex flex-col gap-2" href={
                     "/icons/" + icon.id,
                   }>
@@ -1643,7 +1643,7 @@ mod tests {
 
                 fn IconsPage(
                   icons: Array[Icon],
-                ) -> Fragment {
+                ) -> Html {
                   <div class="flex">
                       <for {icon in icons}>
                         <IconItem {
@@ -1655,7 +1655,7 @@ mod tests {
 
                 fn IconShowPage(
                   icon: Icon,
-                ) -> Fragment {
+                ) -> Html {
                   <div class="flex">
                     <div class="flex flex-col gap-4 p-8 mx-auto my-8 w-full max-w-4xl">
                       <h1 class="text-xl font-semibold">
@@ -1706,14 +1706,14 @@ mod tests {
                   Inactive,
                 }
 
-                fn UserBadge(status: Status) -> Fragment {
+                fn UserBadge(status: Status) -> Html {
                   <match {status}>
                     <case {Status::Active}><span>Active</span></case>
                     <case {Status::Inactive}><span>Inactive</span></case>
                   </match>
                 }
 
-                fn UsersPage(statuses: Array[Status]) -> Fragment {
+                fn UsersPage(statuses: Array[Status]) -> Html {
                   <for {status in statuses}>
                     <UserBadge {status: status} />
                   </for>
@@ -1727,7 +1727,7 @@ mod tests {
 
                 Rename
                   --> main.hop (line 6, col 22)
-                 6 | fn UserBadge(status: Status) -> Fragment {
+                 6 | fn UserBadge(status: Status) -> Html {
                    |                      ^^^^^^
 
                 Rename
@@ -1742,7 +1742,7 @@ mod tests {
 
                 Rename
                   --> main.hop (line 13, col 30)
-                13 | fn UsersPage(statuses: Array[Status]) -> Fragment {
+                13 | fn UsersPage(statuses: Array[Status]) -> Html {
                    |                              ^^^^^^
             "#]],
         );
@@ -1762,7 +1762,7 @@ mod tests {
                 -- main.hop --
                 import types::Status
 
-                fn Main(status: Status) -> Fragment {
+                fn Main(status: Status) -> Html {
                   <match {status}>
                     <case {Status::Active}><span>Active</span></case>
                     <case {Status::Inactive}><span>Inactive</span></case>
@@ -1777,7 +1777,7 @@ mod tests {
 
                 Rename
                   --> main.hop (line 3, col 17)
-                3 | fn Main(status: Status) -> Fragment {
+                3 | fn Main(status: Status) -> Html {
                   |                 ^^^^^^
 
                 Rename
@@ -1813,7 +1813,7 @@ mod tests {
                   iframe_src: String,
                   device: Device,
                 ) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div class={
                       join!(
                         "bg-white",
@@ -1858,7 +1858,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     ^
                   <div>
                   <span>
@@ -1867,7 +1867,7 @@ mod tests {
             expect![[r#"
                 Rename
                   --> main.hop (line 1, col 4)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                   |    ^^^^
             "#]],
         );
@@ -1882,7 +1882,7 @@ mod tests {
         check_renameable_symbol(
             indoc! {r#"
                 -- main.hop --
-                fn HelloWorld() -> Fragment {
+                fn HelloWorld() -> Html {
                    ^
                   <h1>Hello World</h1>
                 }
@@ -1890,7 +1890,7 @@ mod tests {
             expect![[r#"
                 HelloWorld
                   --> main.hop (line 1, col 4)
-                1 | fn HelloWorld() -> Fragment {
+                1 | fn HelloWorld() -> Html {
                   |    ^^^^^^^^^^
             "#]],
         );
@@ -1903,7 +1903,7 @@ mod tests {
                 -- main.hop --
                 enum Status { Active, Inactive }
                      ^
-                fn Main(status: Status) -> Fragment {
+                fn Main(status: Status) -> Html {
                   <div>{status}</div>
                 }
             "#},
@@ -1921,7 +1921,7 @@ mod tests {
         check_renameable_symbol(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <div>Content</div>
                      ^
                 }
@@ -1945,7 +1945,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {name: String}
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                         ^
                   <h1>Hello {user.name}</h1>
                 }
@@ -1955,7 +1955,7 @@ mod tests {
                 user : main::User
                 ```
                   --> main.hop (line 2, col 9)
-                2 | fn Main(user: User) -> Fragment {
+                2 | fn Main(user: User) -> Html {
                   |         ^^^^
             "#]],
         );
@@ -1966,7 +1966,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: String) -> Fragment {
+                fn Greeting(name: String) -> Html {
                   <div>{name}</div>
                         ^
                 }
@@ -1988,7 +1988,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {name: String}
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {user: User = User{name: "John"}}>
                                      ^
                     {user.name}
@@ -2012,7 +2012,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {color: Color = Color::Red}>
                                        ^
                     <match {color}>
@@ -2039,7 +2039,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Outcome { Success{value: String}, Failure{message: String} }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {result: Outcome = Outcome::Success{value: "ok"}}>
                                           ^
                     <match {result}>
@@ -2065,7 +2065,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                fn Main(items: Array[String]) -> Fragment {
+                fn Main(items: Array[String]) -> Html {
                   <if {items.len() == 0}>
                              ^
                     Empty
@@ -2090,7 +2090,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                fn Main(items: Array[String]) -> Fragment {
+                fn Main(items: Array[String]) -> Html {
                   <if {items.is_empty()}>
                               ^
                     Empty
@@ -2115,7 +2115,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                fn Main(a: String, b: String) -> Fragment {
+                fn Main(a: String, b: String) -> Html {
                   <div class={
                     join!(a, b)
                     ^
@@ -2141,7 +2141,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <img src={
                     asset!("/logo.svg")
                     ^
@@ -2170,14 +2170,14 @@ mod tests {
         check_error_diagnostics(
             indoc! {r#"
                 -- components.hop --
-                pub fn HelloWorld() -> Fragment {
+                pub fn HelloWorld() -> Html {
                   <h1>Hello World</h1>
                 }
 
                 -- main.hop --
                 import components::HelloWorld
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <span>No usage of HelloWorld</span>
                 }
             "#},
@@ -2195,14 +2195,14 @@ mod tests {
     fn should_not_warn_on_used_import() {
         let program = program_from_txtar(indoc! {r#"
             -- components.hop --
-            pub fn HelloWorld() -> Fragment {
+            pub fn HelloWorld() -> Html {
               <h1>Hello World</h1>
             }
 
             -- main.hop --
             import components::HelloWorld
 
-            fn Main() -> Fragment {
+            fn Main() -> Html {
               <HelloWorld />
             }
         "#});
@@ -2228,7 +2228,7 @@ mod tests {
         check_error_diagnostics(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                   <span>unclosed span
                 }
@@ -2257,19 +2257,19 @@ mod tests {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
             import b::BComp
-            pub fn AComp() -> Fragment {
+            pub fn AComp() -> Html {
               <BComp />
             }
 
             -- b.hop --
             import a::AComp
-            pub fn BComp() -> Fragment {
+            pub fn BComp() -> Html {
               <AComp />
             }
 
             -- c.hop --
             import a::AComp
-            fn CComp() -> Fragment {
+            fn CComp() -> Html {
               <AComp />
             }
         "#});
@@ -2293,7 +2293,7 @@ mod tests {
             Document::new(
                 DocumentId::new("a.hop").unwrap(),
                 indoc! {r#"
-                    pub fn AComp() -> Fragment {
+                    pub fn AComp() -> Html {
                       <></>
                     }
                 "#}
@@ -2309,25 +2309,25 @@ mod tests {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
             import b::BComp
-            pub fn AComp() -> Fragment {
+            pub fn AComp() -> Html {
               <BComp />
             }
 
             -- b.hop --
             import c::CComp
-            pub fn BComp() -> Fragment {
+            pub fn BComp() -> Html {
               <CComp />
             }
 
             -- c.hop --
             import d::DComp
-            pub fn CComp() -> Fragment {
+            pub fn CComp() -> Html {
               <DComp />
             }
 
             -- d.hop --
             import a::AComp
-            pub fn DComp() -> Fragment {
+            pub fn DComp() -> Html {
               <AComp />
             }
         "#});
@@ -2361,7 +2361,7 @@ mod tests {
             Document::new(
                 DocumentId::new("c.hop").unwrap(),
                 indoc! {r#"
-                    pub fn CComp() -> Fragment {
+                    pub fn CComp() -> Html {
                       <></>
                     }
                 "#}
@@ -2377,7 +2377,7 @@ mod tests {
                 DocumentId::new("b.hop").unwrap(),
                 indoc! {r#"
                     import a::AComp
-                    pub fn BComp() -> Fragment {
+                    pub fn BComp() -> Html {
                       <AComp />
                     }
                 "#}
@@ -2404,7 +2404,7 @@ mod tests {
             Document::new(
                 DocumentId::new("b.hop").unwrap(),
                 indoc! {r#"
-                    pub fn BComp() -> Fragment {
+                    pub fn BComp() -> Html {
                       <></>
                     }
                 "#}
@@ -2423,14 +2423,14 @@ mod tests {
     fn should_report_type_error_when_imported_module_is_removed() {
         let mut program = program_from_txtar(indoc! {r#"
             -- components.hop --
-            pub fn HelloWorld() -> Fragment {
+            pub fn HelloWorld() -> Html {
               <h1>Hello World</h1>
             }
 
             -- main.hop --
             import components::HelloWorld
 
-            fn Main() -> Fragment {
+            fn Main() -> Html {
               <HelloWorld />
             }
         "#});
@@ -2463,7 +2463,7 @@ mod tests {
             Document::new(
                 DocumentId::new("components.hop").unwrap(),
                 indoc! {r#"
-                    fn HelloWorld() -> Fragment {
+                    fn HelloWorld() -> Html {
                       <h1>Hello World</h1>
                     }
                 "#}
@@ -2493,13 +2493,13 @@ mod tests {
         let program = program_from_txtar(indoc! {r#"
             -- main.hop --
             page HelloWorld(name: String) {
-              fn body() -> Fragment {
+              fn body() -> Html {
                 <h1>Hello {name}!</h1>
               }
             }
 
             page AnotherComp() {
-              fn body() -> Fragment {
+              fn body() -> Html {
                 <p>Static content</p>
               }
             }
@@ -2565,7 +2565,7 @@ mod tests {
             }
 
             page Test() {
-              fn body() -> Fragment {
+              fn body() -> Html {
                 <let {color: Color = Color::Red}>
                   <if {color == Color::Red}>
                     equal
@@ -2596,7 +2596,7 @@ mod tests {
             }
 
             page Test() {
-              fn body() -> Fragment {
+              fn body() -> Html {
                 <let {color: Color = Color::Red}>
                   <if {color != Color::Red}>
                     not equal

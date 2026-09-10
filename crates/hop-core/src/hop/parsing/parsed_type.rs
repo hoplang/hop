@@ -19,7 +19,7 @@ pub enum ParsedType {
     Float {
         range: DocumentRange,
     },
-    Fragment {
+    Html {
         range: DocumentRange,
     },
     Array {
@@ -43,7 +43,7 @@ impl ParsedType {
             | ParsedType::Bool { range }
             | ParsedType::Int { range }
             | ParsedType::Float { range }
-            | ParsedType::Fragment { range }
+            | ParsedType::Html { range }
             | ParsedType::Array { range, .. }
             | ParsedType::Option { range, .. }
             | ParsedType::Named { range, .. } => range,
@@ -56,7 +56,7 @@ impl ParsedType {
             ParsedType::Bool { .. } => BoxDoc::text("Bool"),
             ParsedType::Int { .. } => BoxDoc::text("Int"),
             ParsedType::Float { .. } => BoxDoc::text("Float"),
-            ParsedType::Fragment { .. } => BoxDoc::text("Fragment"),
+            ParsedType::Html { .. } => BoxDoc::text("Html"),
             ParsedType::Option { element, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("Option["))
                 .append(element.to_doc())

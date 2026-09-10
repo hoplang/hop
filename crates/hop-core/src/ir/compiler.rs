@@ -104,7 +104,7 @@ impl<'a> Compiler<'a> {
                 typ: {
                     let typ: &Type = &param.var_type;
                     match *typ {
-                        Type::Attrs => Type::Fragment,
+                        Type::Attrs => Type::Html,
                         _ => typ.clone(),
                     }
                 },
@@ -178,11 +178,11 @@ impl<'a> Compiler<'a> {
 
     fn compile_attribute(&mut self, attr: &TypedAttribute, output: &mut Vec<PureExpr>) {
         match &attr.value {
-            None => output.push(PureExpr::FragmentRaw {
+            None => output.push(PureExpr::HtmlRaw {
                 content: format!(" {}", attr.name.as_str()),
                 id: self.next_expr_id(),
             }),
-            Some(TypedAttributeValue::String(s)) => output.push(PureExpr::FragmentRaw {
+            Some(TypedAttributeValue::String(s)) => output.push(PureExpr::HtmlRaw {
                 content: format!(" {}=\"{}\"", attr.name.as_str(), s.as_str()),
                 id: self.next_expr_id(),
             }),
@@ -193,15 +193,15 @@ impl<'a> Compiler<'a> {
                     attr.name.as_str(),
                     expr.typ()
                 );
-                output.push(PureExpr::FragmentRaw {
+                output.push(PureExpr::HtmlRaw {
                     content: format!(" {}=\"", attr.name.as_str()),
                     id: self.next_expr_id(),
                 });
-                output.push(PureExpr::FragmentEscape {
+                output.push(PureExpr::HtmlEscape {
                     expr: Box::new(self.compile_expr(expr)),
                     id: self.next_expr_id(),
                 });
-                output.push(PureExpr::FragmentRaw {
+                output.push(PureExpr::HtmlRaw {
                     content: "\"".to_string(),
                     id: self.next_expr_id(),
                 });
@@ -216,7 +216,7 @@ impl<'a> Compiler<'a> {
             TypedExpr::Var { value, typ, .. } => PureExpr::VariableReference {
                 value: self.resolve(value),
                 typ: match *typ {
-                    Type::Attrs => Type::Fragment,
+                    Type::Attrs => Type::Html,
                     _ => typ.clone(),
                 },
                 id: expr_id,
@@ -497,19 +497,19 @@ impl<'a> Compiler<'a> {
                 typ: typ.clone(),
                 id: expr_id,
             },
-            TypedExpr::FragmentConcat { nodes } => {
+            TypedExpr::HtmlConcat { nodes } => {
                 let mut parts = Vec::with_capacity(nodes.len());
                 for node in nodes {
                     assert_eq!(
                         node.typ(),
-                        Type::Fragment,
-                        "FragmentConcat must hold Fragments, but holds {node}"
+                        Type::Html,
+                        "HtmlConcat must hold Html, but holds {node}"
                     );
                     parts.push(self.compile_expr(node));
                 }
-                PureExpr::FragmentConcat { parts, id: expr_id }
+                PureExpr::HtmlConcat { parts, id: expr_id }
             }
-            TypedExpr::AttrsConcat { parts } => PureExpr::FragmentConcat {
+            TypedExpr::AttrsConcat { parts } => PureExpr::HtmlConcat {
                 parts: parts.iter().map(|part| self.compile_expr(part)).collect(),
                 id: expr_id,
             },
@@ -518,45 +518,45 @@ impl<'a> Compiler<'a> {
                 for attr in attributes {
                     self.compile_attribute(attr, &mut parts);
                 }
-                PureExpr::FragmentConcat { parts, id: expr_id }
+                PureExpr::HtmlConcat { parts, id: expr_id }
             }
-            TypedExpr::FragmentRaw { value } => PureExpr::FragmentRaw {
+            TypedExpr::HtmlRaw { value } => PureExpr::HtmlRaw {
                 content: value.to_string(),
                 id: expr_id,
             },
-            TypedExpr::FragmentEscape { expr } => {
+            TypedExpr::HtmlEscape { expr } => {
                 assert_eq!(
                     expr.typ(),
                     Type::String,
-                    "FragmentEscape must hold a String, but holds {expr}"
+                    "HtmlEscape must hold a String, but holds {expr}"
                 );
-                PureExpr::FragmentEscape {
+                PureExpr::HtmlEscape {
                     expr: Box::new(self.compile_expr(expr)),
                     id: expr_id,
                 }
             }
-            TypedExpr::FragmentHtml {
+            TypedExpr::HtmlElement {
                 element,
                 attrs,
                 children,
             } => {
-                let mut parts = vec![PureExpr::FragmentRaw {
+                let mut parts = vec![PureExpr::HtmlRaw {
                     content: format!("<{}", element.as_str()),
                     id: self.next_expr_id(),
                 }];
                 parts.push(self.compile_expr(attrs));
-                parts.push(PureExpr::FragmentRaw {
+                parts.push(PureExpr::HtmlRaw {
                     content: ">".to_string(),
                     id: self.next_expr_id(),
                 });
                 if !element.is_void() {
                     parts.push(self.compile_expr(children));
-                    parts.push(PureExpr::FragmentRaw {
+                    parts.push(PureExpr::HtmlRaw {
                         content: format!("</{}>", element.as_str()),
                         id: self.next_expr_id(),
                     });
                 }
-                PureExpr::FragmentConcat { parts, id: expr_id }
+                PureExpr::HtmlConcat { parts, id: expr_id }
             }
             TypedExpr::FunctionCall {
                 function_name,
@@ -602,8 +602,8 @@ impl<'a> Compiler<'a> {
             } => {
                 assert_eq!(
                     *typ,
-                    Type::Fragment,
-                    "For must fold into a Fragment, but folds into {typ}"
+                    Type::Html,
+                    "For must fold into Html, but folds into {typ}"
                 );
                 let pure_source = match &**source {
                     TypedLoopSource::Array(array_expr) => {
@@ -620,7 +620,7 @@ impl<'a> Compiler<'a> {
                 let var = var_name.as_ref().map(|name| self.bind(name));
                 let body = Box::new(self.compile_expr(body));
                 self.pop_scope();
-                PureExpr::FragmentFor {
+                PureExpr::HtmlFor {
                     var,
                     source: Box::new(pure_source),
                     body,
@@ -737,7 +737,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(raw("Hello World"))
                   }
                 }
@@ -760,7 +760,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(name: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(raw("Hello "), escape(name))
                   }
                 }
@@ -784,7 +784,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       html(
                         tag: "div",
@@ -824,7 +824,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(show: Bool) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       match show {
                         true => concat(
@@ -882,7 +882,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(items: Array[String]) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       html(
                         tag: "ul",
@@ -945,7 +945,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       html(
                         tag: "div",
@@ -989,7 +989,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(cls: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       html(
                         tag: "div",
@@ -1042,7 +1042,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestComp(name: String, count: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       html(
                         tag: "div",
@@ -1096,7 +1096,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestComp(flag: Bool) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       match flag {
                         true => concat(raw("yes")),
@@ -1130,7 +1130,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       html(
                         tag: "script",
@@ -1166,7 +1166,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(html(tag: "br", attrs: []))
                   }
                 }

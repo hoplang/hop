@@ -32,7 +32,7 @@ pub struct PurePageDeclaration {
     pub name: TypeName,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
-    /// PureIR expression for the assembled page body. Must be of type `Fragment`.
+    /// PureIR expression for the assembled page body. Must be of type `Html`.
     pub body: PureExpr,
 }
 
@@ -49,7 +49,7 @@ pub struct PureFunctionDeclaration {
     pub body: PureExpr,
 }
 
-/// The source of iteration in a FragmentFor.
+/// The source of iteration in a HtmlFor.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PureForSource {
     /// Iterate over elements of an array.
@@ -106,35 +106,35 @@ pub enum PureExpr {
     /// A StringLiteral expression.
     StringLiteral { value: CheapString, id: ExprId },
 
-    /// A FragmentRaw expression.
+    /// A HtmlRaw expression.
     ///
     /// A trusted, already-escaped HTML atom.
-    FragmentRaw { content: String, id: ExprId },
+    HtmlRaw { content: String, id: ExprId },
 
-    /// A FragmentEscape expression.
+    /// A HtmlEscape expression.
     ///
-    /// HTML-escapes a String-typed expression into a Fragment.
+    /// HTML-escapes a String-typed expression into Html.
     ///
     /// Must hold a String.
-    FragmentEscape { expr: Box<PureExpr>, id: ExprId },
+    HtmlEscape { expr: Box<PureExpr>, id: ExprId },
 
-    /// A FragmentConcat expression.
+    /// A HtmlConcat expression.
     ///
-    /// N-ary mappend over Fragment-typed parts.
+    /// N-ary mappend over Html-typed parts.
     ///
     /// Part order is output order.
     ///
-    /// Every part must be Fragment-typed.
-    FragmentConcat { parts: Vec<PureExpr>, id: ExprId },
+    /// Every part must be Html-typed.
+    HtmlConcat { parts: Vec<PureExpr>, id: ExprId },
 
-    /// A FragmentFor expression.
+    /// A HtmlFor expression.
     ///
     /// A foldMap over source, concatenating body once per element in iteration order.
     ///
     /// When var is None, the loop binds no variable, but still iterates.
     ///
-    /// The type of body must be Fragment.
-    FragmentFor {
+    /// The type of body must be Html.
+    HtmlFor {
         var: Option<IrVar>,
         source: Box<PureForSource>,
         body: Box<PureExpr>,
@@ -368,10 +368,10 @@ impl PureExpr {
             PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => Type::Float,
             PureExpr::IntLiteral { .. } => Type::Int,
 
-            PureExpr::FragmentRaw { .. }
-            | PureExpr::FragmentEscape { .. }
-            | PureExpr::FragmentConcat { .. }
-            | PureExpr::FragmentFor { .. } => Type::Fragment,
+            PureExpr::HtmlRaw { .. }
+            | PureExpr::HtmlEscape { .. }
+            | PureExpr::HtmlConcat { .. }
+            | PureExpr::HtmlFor { .. } => Type::Html,
 
             PureExpr::StringConcat { .. }
             | PureExpr::StringLiteral { .. }
@@ -412,10 +412,10 @@ impl PureExpr {
             | PureExpr::VariableReference { id, .. }
             | PureExpr::FieldAccess { id, .. }
             | PureExpr::StringLiteral { id, .. }
-            | PureExpr::FragmentRaw { id, .. }
-            | PureExpr::FragmentEscape { id, .. }
-            | PureExpr::FragmentConcat { id, .. }
-            | PureExpr::FragmentFor { id, .. }
+            | PureExpr::HtmlRaw { id, .. }
+            | PureExpr::HtmlEscape { id, .. }
+            | PureExpr::HtmlConcat { id, .. }
+            | PureExpr::HtmlFor { id, .. }
             | PureExpr::FunctionCall { id, .. }
             | PureExpr::BooleanLiteral { id, .. }
             | PureExpr::FloatLiteral { id, .. }
@@ -451,7 +451,7 @@ impl PureExpr {
     /// The read-only counterpart to `map_children`, and it treats binding
     /// structure the same way: binders are not distinguished from any other
     /// child, so a visitor that cares about scope must intercept `Let`,
-    /// `Match` and `FragmentFor` before falling through to this.
+    /// `Match` and `HtmlFor` before falling through to this.
     pub fn for_each_child(&self, f: &mut impl FnMut(&PureExpr)) {
         match self {
             PureExpr::Let { value, body, .. } => {
@@ -487,7 +487,7 @@ impl PureExpr {
                 }
             },
 
-            PureExpr::FragmentFor { source, body, .. } => {
+            PureExpr::HtmlFor { source, body, .. } => {
                 match &**source {
                     PureForSource::Array(array) => f(array),
                     PureForSource::RangeInclusive { start, end } => {
@@ -500,9 +500,9 @@ impl PureExpr {
 
             PureExpr::FieldAccess { record, .. } => f(record),
 
-            PureExpr::FragmentEscape { expr, .. } => f(expr),
+            PureExpr::HtmlEscape { expr, .. } => f(expr),
 
-            PureExpr::FragmentConcat { parts, .. } | PureExpr::StringConcat { parts, .. } => {
+            PureExpr::HtmlConcat { parts, .. } | PureExpr::StringConcat { parts, .. } => {
                 for part in parts {
                     f(part);
                 }
@@ -561,7 +561,7 @@ impl PureExpr {
 
             PureExpr::VariableReference { .. }
             | PureExpr::StringLiteral { .. }
-            | PureExpr::FragmentRaw { .. }
+            | PureExpr::HtmlRaw { .. }
             | PureExpr::BooleanLiteral { .. }
             | PureExpr::FloatLiteral { .. }
             | PureExpr::IntLiteral { .. } => {}
@@ -574,7 +574,7 @@ impl PureExpr {
     /// the variants they need no special handling for.
     ///
     /// Binding structure gets no special treatment: the children of `Let`,
-    /// `Match` and `FragmentFor` are mapped like any others, so a pass that
+    /// `Match` and `HtmlFor` are mapped like any others, so a pass that
     /// cares about binders or variable references must intercept those
     /// variants before falling through to this.
     pub fn map_children(self, f: &mut impl FnMut(PureExpr) -> PureExpr) -> PureExpr {
@@ -630,12 +630,12 @@ impl PureExpr {
                 PureExpr::Match { match_, typ, id }
             }
 
-            PureExpr::FragmentFor {
+            PureExpr::HtmlFor {
                 var,
                 source,
                 body,
                 id,
-            } => PureExpr::FragmentFor {
+            } => PureExpr::HtmlFor {
                 var,
                 source: Box::new(match *source {
                     PureForSource::Array(array) => PureForSource::Array(f(array)),
@@ -660,12 +660,12 @@ impl PureExpr {
                 id,
             },
 
-            PureExpr::FragmentEscape { expr, id } => PureExpr::FragmentEscape {
+            PureExpr::HtmlEscape { expr, id } => PureExpr::HtmlEscape {
                 expr: Box::new(f(*expr)),
                 id,
             },
 
-            PureExpr::FragmentConcat { parts, id } => PureExpr::FragmentConcat {
+            PureExpr::HtmlConcat { parts, id } => PureExpr::HtmlConcat {
                 parts: parts.into_iter().map(&mut *f).collect(),
                 id,
             },
@@ -878,7 +878,7 @@ impl PureExpr {
 
             PureExpr::VariableReference { .. }
             | PureExpr::StringLiteral { .. }
-            | PureExpr::FragmentRaw { .. }
+            | PureExpr::HtmlRaw { .. }
             | PureExpr::BooleanLiteral { .. }
             | PureExpr::FloatLiteral { .. }
             | PureExpr::IntLiteral { .. } => self,
@@ -946,13 +946,13 @@ impl PureExpr {
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
             PureExpr::StringLiteral { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
-            PureExpr::FragmentRaw { content, .. } => BoxDoc::text("raw(")
+            PureExpr::HtmlRaw { content, .. } => BoxDoc::text("raw(")
                 .append(BoxDoc::text(format!("{:?}", content)))
                 .append(")"),
-            PureExpr::FragmentEscape { expr, .. } => {
+            PureExpr::HtmlEscape { expr, .. } => {
                 BoxDoc::text("escape(").append(expr.to_doc()).append(")")
             }
-            PureExpr::FragmentConcat { parts, .. } => {
+            PureExpr::HtmlConcat { parts, .. } => {
                 if parts.is_empty() {
                     BoxDoc::text("concat()")
                 } else {
@@ -971,7 +971,7 @@ impl PureExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
-            PureExpr::FragmentFor {
+            PureExpr::HtmlFor {
                 var, source, body, ..
             } => {
                 let source_doc = match source.as_ref() {

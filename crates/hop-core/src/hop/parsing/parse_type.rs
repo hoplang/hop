@@ -28,8 +28,8 @@ pub fn parse_type(
     if let Some(type_range) = advance_if(iter, comments, errors, LangToken::TypeBoolean) {
         return Ok(ParsedType::Bool { range: type_range });
     }
-    if let Some(type_range) = advance_if(iter, comments, errors, LangToken::TypeFragment) {
-        return Ok(ParsedType::Fragment { range: type_range });
+    if let Some(type_range) = advance_if(iter, comments, errors, LangToken::TypeHtml) {
+        return Ok(ParsedType::Html { range: type_range });
     }
     if let Some(type_array) = advance_if(iter, comments, errors, LangToken::TypeArray) {
         let left_bracket = expect_token(iter, comments, errors, range, &LangToken::LeftBracket)?;

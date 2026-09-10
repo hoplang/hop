@@ -533,22 +533,22 @@ fn typecheck_default_value(
 }
 
 /// A declaration body is what the declaration renders, so it has to be a
-/// `Fragment` already.
+/// `Html` already.
 fn check_declaration_body(
     typed_body: Option<TypedExpr>,
     range: &DocumentRange,
     errors: &mut Vec<TypeError>,
 ) -> TypedExpr {
     let Some(typed_body) = typed_body else {
-        return TypedExpr::FragmentConcat { nodes: Vec::new() };
+        return TypedExpr::HtmlConcat { nodes: Vec::new() };
     };
     let found = typed_body.typ();
-    if found != Type::Fragment {
+    if found != Type::Html {
         errors.push(TypeError::new(
             TypeErrorKind::DeclarationBodyTypeMismatch { found },
             range.clone(),
         ));
-        return TypedExpr::FragmentConcat { nodes: Vec::new() };
+        return TypedExpr::HtmlConcat { nodes: Vec::new() };
     }
     typed_body
 }
@@ -658,7 +658,7 @@ fn typecheck_page_declaration(
         params: typed_params,
         head: match head {
             Some(head) => check_declaration_body(typed_head, head.body.range(), errors),
-            None => TypedExpr::FragmentConcat { nodes: Vec::new() },
+            None => TypedExpr::HtmlConcat { nodes: Vec::new() },
         },
         body: check_declaration_body(typed_body, body.body.range(), errors),
     }
@@ -984,7 +984,7 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
         | ParsedType::Bool { .. }
         | ParsedType::Int { .. }
         | ParsedType::Float { .. }
-        | ParsedType::Fragment { .. } => {}
+        | ParsedType::Html { .. } => {}
     }
 }
 
@@ -1191,7 +1191,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(x: Int, x: Int) -> Fragment {
+                fn Foo(x: Int, x: Int) -> Html {
                   <>
                     {x.to_string()}
                   </>
@@ -1200,7 +1200,7 @@ mod tests {
             expect![[r#"
                 error: Duplicate parameter 'x'
                   --> main.hop (line 1, col 16)
-                1 | fn Foo(x: Int, x: Int) -> Fragment {
+                1 | fn Foo(x: Int, x: Int) -> Html {
                   |                ^
             "#]],
         );
@@ -1211,7 +1211,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(x: Int, x: String) -> Fragment {
+                fn Foo(x: Int, x: String) -> Html {
                   <>
                     {x.to_string()}
                   </>
@@ -1220,7 +1220,7 @@ mod tests {
             expect![[r#"
                 error: Duplicate parameter 'x'
                   --> main.hop (line 1, col 16)
-                1 | fn Foo(x: Int, x: String) -> Fragment {
+                1 | fn Foo(x: Int, x: String) -> Html {
                   |                ^
             "#]],
         );
@@ -1232,7 +1232,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main(x: Int, x: Int) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {x.to_string()}
                     </>
@@ -1254,7 +1254,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main(x: Int, x: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {x.to_string()}
                     </>
@@ -1285,10 +1285,10 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn B() -> Fragment {
+                fn B() -> Html {
                   <div></div>
                 }
-                fn Inner(child: B) -> Fragment {
+                fn Inner(child: B) -> Html {
                   <div></div>
                 }
             "#},
@@ -1296,7 +1296,7 @@ mod tests {
                 error: `B` is a function and cannot be used as a type
                   --> main.hop (line 4, col 17)
                 3 | }
-                4 | fn Inner(child: B) -> Fragment {
+                4 | fn Inner(child: B) -> Html {
                   |                 ^
             "#]],
         );
@@ -1307,7 +1307,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn B() -> Fragment {
+                fn B() -> Html {
                   <div></div>
                 }
                 record R {
@@ -1329,7 +1329,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                     <div>
                         {children}
                     </div>
@@ -1337,7 +1337,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                   html(tag: "div", attrs: [], children: concat(children))
                 }
             "#]],
@@ -1349,7 +1349,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card() -> Fragment {
+                fn Card() -> Html {
                     <div>
                         <><b>x</b><i>y</i></>
                     </div>
@@ -1357,7 +1357,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Card() -> Fragment {
+                fn Card() -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1378,21 +1378,21 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                     <div>{children}</div>
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <Card></Card>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                   html(tag: "div", attrs: [], children: concat(children))
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Card(children: concat())
                 }
             "#]],
@@ -1404,18 +1404,18 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                     <div>{children}</div>
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <Card />
                 }
             "#},
             expect![[r#"
                 error: Function Card requires arguments: children
                   --> main.hop (line 6, col 6)
-                5 | fn Main() -> Fragment {
+                5 | fn Main() -> Html {
                 6 |     <Card />
                   |      ^^^^
             "#]],
@@ -1427,21 +1427,21 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                     <div>{children}</div>
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <Card></Card>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                   html(tag: "div", attrs: [], children: concat(children))
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Card(children: concat())
                 }
             "#]],
@@ -1453,21 +1453,21 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                     <div>{children}</div>
                 }
 
-                fn Main(children: Fragment) -> Fragment {
+                fn Main(children: Html) -> Html {
                     <Card children={children} />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                   html(tag: "div", attrs: [], children: concat(children))
                 }
 
-                fn Main(children: Fragment) -> Fragment {
+                fn Main(children: Html) -> Html {
                   Card(children: children)
                 }
             "#]],
@@ -1480,7 +1480,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <div>
                           {children}
                       </div>
@@ -1502,7 +1502,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Tree(children: Fragment) -> Fragment {
+                fn Tree(children: Html) -> Html {
                 	<div>
                 		<Tree>{children}</Tree>
                 	</div>
@@ -1510,7 +1510,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Tree(children: Fragment) -> Fragment {
+                fn Tree(children: Html) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1526,14 +1526,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                     <div class={children}></div>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected `String` got `Fragment`
+                error: Mismatched type for attribute: expected `String` got `Html`
                   --> main.hop (line 2, col 17)
-                1 | fn Card(children: Fragment) -> Fragment {
+                1 | fn Card(children: Html) -> Html {
                 2 |     <div class={children}></div>
                   |                 ^^^^^^^^
             "#]],
@@ -1545,8 +1545,8 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
-                    <let {content: Fragment = children}>
+                fn Card(children: Html) -> Html {
+                    <let {content: Html = children}>
                         <div></div>
                     </let>
                 }
@@ -1554,8 +1554,8 @@ mod tests {
             expect![[r#"
                 warning: Unused variable content
                   --> main.hop (line 2, col 11)
-                1 | fn Card(children: Fragment) -> Fragment {
-                2 |     <let {content: Fragment = children}>
+                1 | fn Card(children: Html) -> Html {
+                2 |     <let {content: Html = children}>
                   |           ^^^^^^^
             "#]],
         );
@@ -1566,18 +1566,18 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                     <div>{children}</div>
                 }
 
-                fn Main(children: Fragment) -> Fragment {
+                fn Main(children: Html) -> Html {
                     <Card children={children}>children</Card>
                 }
             "#},
             expect![[r#"
                 error: Content provided both as an explicit `children` argument and as element children
                   --> main.hop (line 6, col 6)
-                5 | fn Main(children: Fragment) -> Fragment {
+                5 | fn Main(children: Html) -> Html {
                 6 |     <Card children={children}>children</Card>
                   |      ^^^^
             "#]],
@@ -1589,11 +1589,11 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   concat()
                 }
             "#]],
@@ -1605,7 +1605,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                 	<h1>Hello,
                         <Bar>
                             <div></div>
@@ -1628,13 +1628,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                 	<h1>Hello, <Main/>!</h1>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   html(tag: "h1", attrs: [], children: concat(raw("Hello, "), Main(), raw("!")))
                 }
             "#]],
@@ -1648,7 +1648,7 @@ mod tests {
                 -- main.hop --
                 import other::Foo
 
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 error: Module other was not found
@@ -1664,11 +1664,11 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                fn Bar() -> Fragment {<></>}
+                fn Bar() -> Html {<></>}
                 -- main.hop --
                 import other::Foo
 
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 error: Module other does not declare Foo
@@ -1687,7 +1687,7 @@ mod tests {
                 -- main.hop --
                 import other::Foo
 
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 error: Module other does not declare Foo
@@ -1703,11 +1703,11 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                fn Foo() -> Fragment {<></>}
+                fn Foo() -> Html {<></>}
                 -- main.hop --
                 import other::Foo
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Foo/>
                 }
             "#},
@@ -1719,7 +1719,7 @@ mod tests {
 
                 error: Function Foo is not defined
                   --> main.hop (line 4, col 4)
-                3 | fn Main() -> Fragment {
+                3 | fn Main() -> Html {
                 4 |   <Foo/>
                   |    ^^^
             "#]],
@@ -1737,7 +1737,7 @@ mod tests {
                 -- main.hop --
                 import other::Foo
 
-                fn Main(foo: Foo) -> Fragment {
+                fn Main(foo: Foo) -> Html {
                   <div>{foo.name}</div>
                 }
             "#},
@@ -1750,12 +1750,12 @@ mod tests {
                 error: Type 'Foo' is not defined
                   --> main.hop (line 3, col 14)
                 2 | 
-                3 | fn Main(foo: Foo) -> Fragment {
+                3 | fn Main(foo: Foo) -> Html {
                   |              ^^^
 
                 error: Undefined variable: foo
                   --> main.hop (line 4, col 9)
-                3 | fn Main(foo: Foo) -> Fragment {
+                3 | fn Main(foo: Foo) -> Html {
                 4 |   <div>{foo.name}</div>
                   |         ^^^
             "#]],
@@ -1774,7 +1774,7 @@ mod tests {
                 -- main.hop --
                 import other::Color
 
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                   <div>{match color {
                     Color::Red => "red",
                     Color::Green => "green",
@@ -1790,12 +1790,12 @@ mod tests {
                 error: Type 'Color' is not defined
                   --> main.hop (line 3, col 16)
                 2 | 
-                3 | fn Main(color: Color) -> Fragment {
+                3 | fn Main(color: Color) -> Html {
                   |                ^^^^^
 
                 error: Undefined variable: color
                   --> main.hop (line 4, col 15)
-                3 | fn Main(color: Color) -> Fragment {
+                3 | fn Main(color: Color) -> Html {
                 4 |   <div>{match color {
                   |               ^^^^^
             "#]],
@@ -1807,24 +1807,24 @@ mod tests {
         accept(
             indoc! {r#"
                 -- other.hop --
-                pub fn Foo() -> Fragment {
+                pub fn Foo() -> Html {
                   <span>hi</span>
                 }
                 -- main.hop --
                 import other::Foo
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Foo/>
                 }
             "#},
             expect![[r#"
                 -- other.hop --
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   html(tag: "span", attrs: [], children: concat(raw("hi")))
                 }
 
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Foo()
                 }
             "#]],
@@ -1842,7 +1842,7 @@ mod tests {
                 -- main.hop --
                 import other::Foo
 
-                fn Main(foo: Foo) -> Fragment {
+                fn Main(foo: Foo) -> Html {
                   <div>{foo.name}</div>
                 }
             "#},
@@ -1850,7 +1850,7 @@ mod tests {
                 -- other.hop --
 
                 -- main.hop --
-                fn Main(foo: other::Foo) -> Fragment {
+                fn Main(foo: other::Foo) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(foo.name)))
                 }
 
@@ -1874,7 +1874,7 @@ mod tests {
                 -- main.hop --
                 import other::Color
 
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                   <div>{match color {
                     Color::Red => "red",
                     Color::Green => "green",
@@ -1885,7 +1885,7 @@ mod tests {
                 -- other.hop --
 
                 -- main.hop --
-                fn Main(color: other::Color) -> Fragment {
+                fn Main(color: other::Color) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1909,12 +1909,12 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub fn Foo() -> Fragment {<></>}
+                pub fn Foo() -> Html {<></>}
 
                 -- main.hop --
                 import other::Foo
 
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 warning: Unused import 'Foo'
@@ -1930,13 +1930,13 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(a: Int) -> Fragment {
+                fn Foo(a: Int) -> Html {
                   <>{a.to_string()}</>
                 }
-                fn Foo(b: String) -> Fragment {
+                fn Foo(b: String) -> Html {
                   <>{b}</>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Foo a={1}/>
                 }
             "#},
@@ -1944,7 +1944,7 @@ mod tests {
                 error: Foo is already defined
                   --> main.hop (line 4, col 4)
                 3 | }
-                4 | fn Foo(b: String) -> Fragment {
+                4 | fn Foo(b: String) -> Html {
                   |    ^^^
             "#]],
         );
@@ -1960,7 +1960,7 @@ mod tests {
                 -- main.hop --
                 import other::Account
                 import other::User
-                fn Main(account: Account) -> Fragment {
+                fn Main(account: Account) -> Html {
                   <match {account.user}>
                     <case {User {name: n}}>{n}</case>
                   </match>
@@ -1970,7 +1970,7 @@ mod tests {
                 -- other.hop --
 
                 -- main.hop --
-                fn Main(account: other::Account) -> Fragment {
+                fn Main(account: other::Account) -> Html {
                   let v__0 = account.user in let v__1 = v__0.name in let n = v__1 in concat(
                     escape(n),
                   )
@@ -1996,14 +1996,14 @@ mod tests {
                 pub record User {name: String}
                 -- main.hop --
                 import other::User
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>{missing(User {name: "x"})}</>
                 }
             "#},
             expect![[r#"
                 error: Function missing is not defined
                   --> main.hop (line 3, col 6)
-                2 | fn Main() -> Fragment {
+                2 | fn Main() -> Html {
                 3 |   <>{missing(User {name: "x"})}</>
                   |      ^^^^^^^
             "#]],
@@ -2014,19 +2014,19 @@ mod tests {
         accept(
             indoc! {r#"
                 -- other.hop --
-                fn Foo() -> Fragment {<></>}
+                fn Foo() -> Html {<></>}
 
                 -- main.hop --
-                fn Foo() -> Fragment {<></>}
+                fn Foo() -> Html {<></>}
             "#},
             expect![[r#"
                 -- other.hop --
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   concat()
                 }
 
                 -- main.hop --
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   concat()
                 }
             "#]],
@@ -2038,20 +2038,20 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <strong>No children parameter here</strong>
                 }
 
-                fn Bar() -> Fragment {
+                fn Bar() -> Html {
                     <Main>
                         This function has no children parameter
                     </Main>
                 }
             "#},
             expect![[r#"
-                error: Function Main does not accept content (missing `children: Fragment` parameter)
+                error: Function Main does not accept content (missing `children: Html` parameter)
                   --> main.hop (line 6, col 6)
-                5 | fn Bar() -> Fragment {
+                5 | fn Bar() -> Html {
                 6 |     <Main>
                   |      ^^^^
             "#]],
@@ -2063,22 +2063,22 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub fn Foo() -> Fragment {
+                pub fn Foo() -> Html {
                     <strong>No children parameter here</strong>
                 }
                 -- main.hop --
                 import other::Foo
 
-                fn Bar() -> Fragment {
+                fn Bar() -> Html {
                     <Foo>
                         This function has no children parameter
                     </Foo>
                 }
             "#},
             expect![[r#"
-                error: Function Foo does not accept content (missing `children: Fragment` parameter)
+                error: Function Foo does not accept content (missing `children: Html` parameter)
                   --> main.hop (line 4, col 6)
-                3 | fn Bar() -> Fragment {
+                3 | fn Bar() -> Html {
                 4 |     <Foo>
                   |      ^^^
             "#]],
@@ -2094,7 +2094,7 @@ mod tests {
                   foo: Array[String],
                 }
 
-                fn Main(items: Items) -> Fragment {
+                fn Main(items: Items) -> Html {
                   <for {items in items.foo}>
                   </for>
                 }
@@ -2102,7 +2102,7 @@ mod tests {
             expect![[r#"
                 error: Variable items is already defined
                   --> main.hop (line 6, col 9)
-                5 | fn Main(items: Items) -> Fragment {
+                5 | fn Main(items: Items) -> Html {
                 6 |   <for {items in items.foo}>
                   |         ^^^^^
             "#]],
@@ -2119,7 +2119,7 @@ mod tests {
                   b: Array[String],
                 }
 
-                fn Main(items: Items) -> Fragment {
+                fn Main(items: Items) -> Html {
                   <for {item in items.a}>
                     <for {item in items.b}>
                       <div>{item}</div>
@@ -2146,7 +2146,7 @@ mod tests {
                   active: Bool,
                 }
 
-                fn Main(params: Array[Item]) -> Fragment {
+                fn Main(params: Array[Item]) -> Html {
                   <>
                   	<for {item in params}>
                   	  <if {item.active}>
@@ -2172,7 +2172,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(items: Array[String]) -> Fragment {
+                fn Main(items: Array[String]) -> Html {
                   <for {item in items}>
                   </for>
                 }
@@ -2180,7 +2180,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable item
                   --> main.hop (line 2, col 9)
-                1 | fn Main(items: Array[String]) -> Fragment {
+                1 | fn Main(items: Array[String]) -> Html {
                 2 |   <for {item in items}>
                   |         ^^^^
             "#]],
@@ -2188,7 +2188,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(items: Array[String]) -> Fragment {
+                fn Main(items: Array[String]) -> Html {
                   <>
                     <for {item in items}>
                         <div>{item}</div>
@@ -2209,7 +2209,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(items: Array[String]) -> Fragment {
+                fn Main(items: Array[String]) -> Html {
                   <>
                     <for {item in items}>
                     </for>
@@ -2234,7 +2234,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Bar(p: String) -> Fragment {
+                fn Bar(p: String) -> Html {
                   <div>
                   </div>
                 }
@@ -2242,14 +2242,14 @@ mod tests {
             expect![[r#"
                 warning: Unused variable p
                   --> main.hop (line 1, col 8)
-                1 | fn Bar(p: String) -> Fragment {
+                1 | fn Bar(p: String) -> Html {
                   |        ^
             "#]],
         );
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Bar(p: String, s: String) -> Fragment {
+                fn Bar(p: String, s: String) -> Html {
                   <div>
                   	{s}
                   </div>
@@ -2258,7 +2258,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable p
                   --> main.hop (line 1, col 8)
-                1 | fn Bar(p: String, s: String) -> Fragment {
+                1 | fn Bar(p: String, s: String) -> Html {
                   |        ^
             "#]],
         );
@@ -2269,22 +2269,22 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(a: Bool, b: String) -> Fragment {
+                fn Main(a: Bool, b: String) -> Html {
                   <if {a}>
                     <div>{b}</div>
                   </if>
                 }
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   <Main b="foo" a={true}/>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   Main(a: true, b: "foo")
                 }
 
-                fn Main(a: Bool, b: String) -> Fragment {
+                fn Main(a: Bool, b: String) -> Html {
                   match a {
                     true => concat(html(tag: "div", attrs: [], children: concat(escape(b)))),
                     false => concat(),
@@ -2299,19 +2299,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(a: Bool, b: String) -> Fragment {
+                fn Main(a: Bool, b: String) -> Html {
                   <if {a}>
                     <div>{b}</div>
                   </if>
                 }
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   <Main b="foo"/>
                 }
             "#},
             expect![[r#"
                 error: Function Main requires arguments: a
                   --> main.hop (line 7, col 4)
-                6 | fn Foo() -> Fragment {
+                6 | fn Foo() -> Html {
                 7 |   <Main b="foo"/>
                   |    ^^^^
             "#]],
@@ -2323,19 +2323,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(a: String) -> Fragment {
+                fn Main(a: String) -> Html {
                   <>
                     {a}
                   </>
                 }
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                     <Main a="" b={1}/>
                 }
             "#},
             expect![[r#"
                 error: Function Main does not accept attribute `b`
                   --> main.hop (line 7, col 16)
-                6 | fn Foo() -> Fragment {
+                6 | fn Foo() -> Html {
                 7 |     <Main a="" b={1}/>
                   |                ^
             "#]],
@@ -2347,19 +2347,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(a: Bool, b: String) -> Fragment {
+                fn Main(a: Bool, b: String) -> Html {
                   <if {a}>
                     <div>{b}</div>
                   </if>
                 }
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   <Main />
                 }
             "#},
             expect![[r#"
                 error: Function Main requires arguments: a, b
                   --> main.hop (line 7, col 4)
-                6 | fn Foo() -> Fragment {
+                6 | fn Foo() -> Html {
                 7 |   <Main />
                   |    ^^^^
             "#]],
@@ -2371,19 +2371,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     hello world
                   </>
                 }
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   <Main a="foo" />
                 }
             "#},
             expect![[r#"
                 error: Function Main does not accept attribute `a`
                   --> main.hop (line 7, col 9)
-                6 | fn Foo() -> Fragment {
+                6 | fn Foo() -> Html {
                 7 |   <Main a="foo" />
                   |         ^
             "#]],
@@ -2398,7 +2398,7 @@ mod tests {
                 record Item {
                   k: Bool
                 }
-                fn Main(params: Array[Item]) -> Fragment {
+                fn Main(params: Array[Item]) -> Html {
                   <>
                   	<for {item in params}>
                   		<if {item.k}>
@@ -2428,13 +2428,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(params: String) -> Fragment {
+                fn Main(params: String) -> Html {
                 	<div>{params}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(params: String) -> Fragment {
+                fn Main(params: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(params)))
                 }
             "#]],
@@ -2446,7 +2446,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn ToggleComp(enabled: Bool) -> Fragment {
+                fn ToggleComp(enabled: Bool) -> Html {
                 	<if {enabled}>
                 		<div>Enabled</div>
                 	</if>
@@ -2454,7 +2454,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn ToggleComp(enabled: Bool) -> Fragment {
+                fn ToggleComp(enabled: Bool) -> Html {
                   match enabled {
                     true => concat(
                       html(tag: "div", attrs: [], children: concat(raw("Enabled"))),
@@ -2471,7 +2471,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn CounterComp(count: Float) -> Fragment {
+                fn CounterComp(count: Float) -> Html {
                 	<if {count == 0.0}>
                 		<div>Zero</div>
                 	</if>
@@ -2479,7 +2479,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn CounterComp(count: Float) -> Fragment {
+                fn CounterComp(count: Float) -> Html {
                   match (count == 0) {
                     true => concat(html(tag: "div", attrs: [], children: concat(raw("Zero")))),
                     false => concat(),
@@ -2502,7 +2502,7 @@ mod tests {
                   items: Array[Item],
                 }
 
-                fn Main(params: Params) -> Fragment {
+                fn Main(params: Params) -> Html {
                 	<for {item in params.items}>
                 		<if {item.active}>
                 		</if>
@@ -2513,7 +2513,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(params: main::Params) -> Fragment {
+                fn Main(params: main::Params) -> Html {
                   for item in params.items {
                     concat(
                       match item.active {true => concat(), false => concat()},
@@ -2540,7 +2540,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn ListComp(items: Array[String]) -> Fragment {
+                fn ListComp(items: Array[String]) -> Html {
                 	<for {item in items}>
                 		<div>{item}</div>
                 	</for>
@@ -2548,7 +2548,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn ListComp(items: Array[String]) -> Fragment {
+                fn ListComp(items: Array[String]) -> Html {
                   for item in items {
                     concat(html(tag: "div", attrs: [], children: concat(escape(item))))
                   }
@@ -2567,7 +2567,7 @@ mod tests {
                   y: String,
                 }
 
-                fn Main(params: Params) -> Fragment {
+                fn Main(params: Params) -> Html {
                   <if {params.x == params.y}>
                     <div>Values are equal</div>
                   </if>
@@ -2575,7 +2575,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(params: main::Params) -> Fragment {
+                fn Main(params: main::Params) -> Html {
                   match (params.x == params.y) {
                     true => concat(
                       html(tag: "div", attrs: [], children: concat(raw("Values are equal"))),
@@ -2603,7 +2603,7 @@ mod tests {
                   b: Bool,
                 }
 
-                fn Main(params: Array[Item]) -> Fragment {
+                fn Main(params: Array[Item]) -> Html {
                   <>
                   	<for {j in params}>
                   		<if {j.a}>
@@ -2618,7 +2618,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(params: Array[main::Item]) -> Fragment {
+                fn Main(params: Array[main::Item]) -> Html {
                   concat(
                     for j in params {
                       concat(match j.a {true => concat(), false => concat()})
@@ -2643,7 +2643,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(i: Array[Bool]) -> Fragment {
+                fn Main(i: Array[Bool]) -> Html {
                 	<for {j in i}>
                 		<if {j}>
                 		</if>
@@ -2652,7 +2652,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(i: Array[Bool]) -> Fragment {
+                fn Main(i: Array[Bool]) -> Html {
                   for j in i {
                     concat(match j {true => concat(), false => concat()})
                   }
@@ -2666,7 +2666,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(i: Array[Array[Bool]]) -> Fragment {
+                fn Main(i: Array[Array[Bool]]) -> Html {
                 	<for {j in i}>
                 		<for {k in j}>
                 			<if {k}>
@@ -2678,7 +2678,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(i: Array[Array[Bool]]) -> Fragment {
+                fn Main(i: Array[Array[Bool]]) -> Html {
                   for j in i {
                     concat(
                       for k in j {
@@ -2701,7 +2701,7 @@ mod tests {
                   title: String,
                 }
 
-                pub fn WidgetComp(config: Config) -> Fragment {
+                pub fn WidgetComp(config: Config) -> Html {
                   <if {config.enabled}>
                     <div>{config.title}</div>
                   </if>
@@ -2715,7 +2715,7 @@ mod tests {
                   items: Array[Config],
                 }
 
-                pub fn PanelComp(data: Data) -> Fragment {
+                pub fn PanelComp(data: Data) -> Html {
                   <for {item in data.items}>
                     <WidgetComp config={item}/>
                   </for>
@@ -2732,13 +2732,13 @@ mod tests {
                   dashboard: Data,
                 }
 
-                fn Main(settings: Settings) -> Fragment {
+                fn Main(settings: Settings) -> Html {
                   <PanelComp data={settings.dashboard}/>
                 }
             "#},
             expect![[r#"
                 -- a/bar.hop --
-                fn WidgetComp(config: a::bar::Config) -> Fragment {
+                fn WidgetComp(config: a::bar::Config) -> Html {
                   match config.enabled {
                     true => concat(
                       html(tag: "div", attrs: [], children: concat(escape(config.title))),
@@ -2748,14 +2748,14 @@ mod tests {
                 }
 
                 -- foo.hop --
-                fn PanelComp(data: foo::Data) -> Fragment {
+                fn PanelComp(data: foo::Data) -> Html {
                   for item in data.items {
                     concat(WidgetComp(config: item))
                   }
                 }
 
                 -- main.hop --
-                fn Main(settings: main::Settings) -> Fragment {
+                fn Main(settings: main::Settings) -> Html {
                   PanelComp(data: settings.dashboard)
                 }
 
@@ -2789,7 +2789,7 @@ mod tests {
                     name: String,
                 }
 
-                pub fn FooComp(user: User) -> Fragment {
+                pub fn FooComp(user: User) -> Html {
                     <div>{user.name}</div>
                 }
 
@@ -2798,7 +2798,7 @@ mod tests {
                     email: String,
                 }
 
-                pub fn BarComp(user: User) -> Fragment {
+                pub fn BarComp(user: User) -> Html {
                     <div>{user.email}</div>
                 }
 
@@ -2807,7 +2807,7 @@ mod tests {
                 import bar::BarComp
                 import foo::User
 
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                   <>
                       <FooComp user={user}/>
                       <BarComp user={user}/>
@@ -2834,7 +2834,7 @@ mod tests {
                     age: Int,
                 }
 
-                pub fn FooComp(user: User) -> Fragment {
+                pub fn FooComp(user: User) -> Html {
                     <div>{user.name}</div>
                 }
 
@@ -2844,7 +2844,7 @@ mod tests {
                     age: Int,
                 }
 
-                pub fn BarComp(user: User) -> Fragment {
+                pub fn BarComp(user: User) -> Html {
                     <div>{user.name}</div>
                 }
 
@@ -2853,7 +2853,7 @@ mod tests {
                 import bar::BarComp
                 import foo::User
 
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                   <>
                       <FooComp user={user}/>
                       <BarComp user={user}/>
@@ -2876,13 +2876,13 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {url: String, theme: String}
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                   <a href={user.url} class={user.theme}>Link</a>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Fragment {
+                fn Main(user: main::User) -> Html {
                   html(
                     tag: "a",
                     attrs: [href: escape(user.url), class: escape(user.theme)],
@@ -2904,13 +2904,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(children: Fragment) -> Fragment {
+                fn Main(children: Html) -> Html {
                     <strong>
                         {children}
                     </strong>
                 }
 
-                fn Bar() -> Fragment {
+                fn Bar() -> Html {
                     <Main>
                         Here's the content for the children
                     </Main>
@@ -2918,11 +2918,11 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Bar() -> Fragment {
+                fn Bar() -> Html {
                   Main(children: concat(raw("Here's the content for the children")))
                 }
 
-                fn Main(children: Fragment) -> Fragment {
+                fn Main(children: Html) -> Html {
                   html(tag: "strong", attrs: [], children: concat(children))
                 }
             "#]],
@@ -2934,7 +2934,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(params: Array[String]) -> Fragment {
+                fn Main(params: Array[String]) -> Html {
                   <>
                   	<for {x in params}>
                   		{x}
@@ -2961,7 +2961,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {is_active: Bool}
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                   <if {user.is_active}>
                     <div>User is active</div>
                   </if>
@@ -2969,7 +2969,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Fragment {
+                fn Main(user: main::User) -> Html {
                   match user.is_active {
                     true => concat(
                       html(tag: "div", attrs: [], children: concat(raw("User is active"))),
@@ -2994,7 +2994,7 @@ mod tests {
                 record Params {
                   foo: String,
                 }
-                fn Main(p1: Params, p2: Params) -> Fragment {
+                fn Main(p1: Params, p2: Params) -> Html {
                   <if {p1 == p2}>
                     eq 2
                   </if>
@@ -3003,7 +3003,7 @@ mod tests {
             expect![[r#"
                 error: Type main::Params is not comparable
                   --> main.hop (line 5, col 8)
-                4 | fn Main(p1: Params, p2: Params) -> Fragment {
+                4 | fn Main(p1: Params, p2: Params) -> Html {
                 5 |   <if {p1 == p2}>
                   |        ^^
             "#]],
@@ -3015,17 +3015,17 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn StringComp(message: String) -> Fragment {
+                fn StringComp(message: String) -> Html {
                 	<div>{message}</div>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                 	<StringComp message={42}/>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'message' of function 'StringComp': expected `String` got `Int`
                   --> main.hop (line 5, col 23)
-                4 | fn Main() -> Fragment {
+                4 | fn Main() -> Html {
                 5 |     <StringComp message={42}/>
                   |                          ^^
             "#]],
@@ -3037,19 +3037,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn ToggleComp(enabled: Bool) -> Fragment {
+                fn ToggleComp(enabled: Bool) -> Html {
                 	<if {enabled}>
                 		<div>Enabled</div>
                 	</if>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                 	<ToggleComp enabled=""/>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected `Bool` got `String`
                   --> main.hop (line 7, col 22)
-                6 | fn Main() -> Fragment {
+                6 | fn Main() -> Html {
                 7 |     <ToggleComp enabled=""/>
                   |                         ^^
             "#]],
@@ -3061,19 +3061,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn ToggleComp(enabled: Bool) -> Fragment {
+                fn ToggleComp(enabled: Bool) -> Html {
                 	<if {enabled}>
                 		<div>Enabled</div>
                 	</if>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                 	<ToggleComp enabled="not a boolean"/>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected `Bool` got `String`
                   --> main.hop (line 7, col 22)
-                6 | fn Main() -> Fragment {
+                6 | fn Main() -> Html {
                 7 |     <ToggleComp enabled="not a boolean"/>
                   |                         ^^^^^^^^^^^^^^^
             "#]],
@@ -3085,7 +3085,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <if {"str"}>
                       is str?
                     </if>
@@ -3094,7 +3094,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type for condition: expected `Bool` got `String`
                   --> main.hop (line 2, col 10)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |     <if {"str"}>
                   |          ^^^^^
             "#]],
@@ -3106,25 +3106,25 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(a: String, b: String) -> Fragment {
+                fn Main(a: String, b: String) -> Html {
                   <>
                     {a} {b}
                   </>
                 }
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                     <Main a={1 == ""} b={1 == ""}/>
                 }
             "#},
             expect![[r#"
                 error: Cannot compare Int to String
                   --> main.hop (line 7, col 14)
-                6 | fn Foo() -> Fragment {
+                6 | fn Foo() -> Html {
                 7 |     <Main a={1 == ""} b={1 == ""}/>
                   |              ^^^^^^^
 
                 error: Cannot compare Int to String
                   --> main.hop (line 7, col 26)
-                6 | fn Foo() -> Fragment {
+                6 | fn Foo() -> Html {
                 7 |     <Main a={1 == ""} b={1 == ""}/>
                   |                          ^^^^^^^
             "#]],
@@ -3136,7 +3136,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <for {x in []}>
                       not ok
                     </for>
@@ -3145,7 +3145,7 @@ mod tests {
             expect![[r#"
                 error: Cannot infer type of empty array
                   --> main.hop (line 2, col 16)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |     <for {x in []}>
                   |                ^^
             "#]],
@@ -3157,24 +3157,24 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn ListItems(items: Array[String]) -> Fragment {
+                fn ListItems(items: Array[String]) -> Html {
                     <for {item in items}>
                         <li>{item}</li>
                     </for>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <ListItems items={[]}/>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn ListItems(items: Array[String]) -> Fragment {
+                fn ListItems(items: Array[String]) -> Html {
                   for item in items {
                     concat(html(tag: "li", attrs: [], children: concat(escape(item))))
                   }
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   ListItems(items: [])
                 }
             "#]],
@@ -3186,14 +3186,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                       {false}
                   </>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for interpolation: expected `String` or `Fragment` got Bool
+                error: Mismatched type for interpolation: expected `String` or `Html` got Bool
                   --> main.hop (line 3, col 8)
                 2 |   <>
                 3 |       {false}
@@ -3207,14 +3207,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Type 'User' is not defined
                   --> main.hop (line 1, col 15)
-                1 | fn Main(user: User) -> Fragment {
+                1 | fn Main(user: User) -> Html {
                   |               ^^^^
             "#]],
         );
@@ -3225,14 +3225,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(users: Array[User]) -> Fragment {
+                fn Main(users: Array[User]) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Type 'User' is not defined
                   --> main.hop (line 1, col 22)
-                1 | fn Main(users: Array[User]) -> Fragment {
+                1 | fn Main(users: Array[User]) -> Html {
                   |                      ^^^^
             "#]],
         );
@@ -3248,11 +3248,11 @@ mod tests {
                   friend: User,
                 }
 
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   concat()
                 }
 
@@ -3277,11 +3277,11 @@ mod tests {
                   city: String,
                 }
 
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   concat()
                 }
 
@@ -3303,13 +3303,13 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {name: String}
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                     <div>{user.name}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Fragment {
+                fn Main(user: main::User) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(user.name)))
                 }
 
@@ -3328,13 +3328,13 @@ mod tests {
                 -- main.hop --
                 record Address {city: String}
                 record User {name: String, address: Address}
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                     <div>{user.address.city}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Fragment {
+                fn Main(user: main::User) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
 
@@ -3365,7 +3365,7 @@ mod tests {
                 record Database {connection: Connection}
                 record App {ui: UI, api: API, database: Database}
                 record Params {app: App}
-                fn Main(params: Params) -> Fragment {
+                fn Main(params: Params) -> Html {
                   <>
                   	<if {params.app.ui.theme.dark}>
                         ok!
@@ -3381,7 +3381,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(params: main::Params) -> Fragment {
+                fn Main(params: main::Params) -> Html {
                   concat(
                     match params.app.ui.theme.dark {
                       true => concat(raw("ok!")),
@@ -3446,14 +3446,14 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {name: String}
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                     <div>{user.email}</div>
                 }
             "#},
             expect![[r#"
                 error: Field 'email' not found in record 'User'
                   --> main.hop (line 3, col 11)
-                2 | fn Main(user: User) -> Fragment {
+                2 | fn Main(user: User) -> Html {
                 3 |     <div>{user.email}</div>
                   |           ^^^^^^^^^^
             "#]],
@@ -3466,15 +3466,15 @@ mod tests {
             indoc! {r#"
                 -- foo.hop --
                 pub record User {name: String}
-                fn Foo() -> Fragment {<></>}
+                fn Foo() -> Html {<></>}
 
                 -- bar.hop --
                 import foo::User
-                fn Bar() -> Fragment {<></>}
+                fn Bar() -> Html {<></>}
 
                 -- baz.hop --
                 import bar::User
-                fn Baz() -> Fragment {<></>}
+                fn Baz() -> Html {<></>}
             "#},
             expect![[r#"
                 error: Module bar does not declare User
@@ -3499,7 +3499,7 @@ mod tests {
                   city: String,
                 }
 
-                fn Foo() -> Fragment {<></>}
+                fn Foo() -> Html {<></>}
                 -- bar.hop --
                 import foo::Address
 
@@ -3508,30 +3508,30 @@ mod tests {
                   address: Address,
                 }
 
-                pub fn Bar(user: User) -> Fragment {
+                pub fn Bar(user: User) -> Html {
                     <div>{user.address.city}</div>
                 }
                 -- baz.hop --
                 import bar::Bar
                 import bar::User
                 import foo::Address
-                fn Baz() -> Fragment {
+                fn Baz() -> Html {
                     <Bar user={User{name: "Alice", address: Address{city: "NYC"}}} />
                 }
             "#},
             expect![[r#"
                 -- foo.hop --
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   concat()
                 }
 
                 -- bar.hop --
-                fn Bar(user: bar::User) -> Fragment {
+                fn Bar(user: bar::User) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
 
                 -- baz.hop --
-                fn Baz() -> Fragment {
+                fn Baz() -> Html {
                   Bar(user: User {name: "Alice", address: Address {city: "NYC"}})
                 }
 
@@ -3559,7 +3559,7 @@ mod tests {
                     Blue,
                 }
 
-                pub fn ColorDisplay(color: Color) -> Fragment {
+                pub fn ColorDisplay(color: Color) -> Html {
                     <div>{match color {
                         Color::Red => "red",
                         Color::Green => "green",
@@ -3571,13 +3571,13 @@ mod tests {
                 import colors::Color
                 import colors::ColorDisplay
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <ColorDisplay color={Color::Red}/>
                 }
             "#},
             expect![[r#"
                 -- colors.hop --
-                fn ColorDisplay(color: colors::Color) -> Fragment {
+                fn ColorDisplay(color: colors::Color) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3592,7 +3592,7 @@ mod tests {
                 }
 
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   ColorDisplay(color: Color::Red)
                 }
 
@@ -3616,7 +3616,7 @@ mod tests {
                     good: String,
                 }
 
-                fn Main(b: Broken) -> Fragment {
+                fn Main(b: Broken) -> Html {
                     <div>{b.good}</div>
                 }
             "#},
@@ -3640,7 +3640,7 @@ mod tests {
                     Good{label: String},
                 }
 
-                fn Main(s: Status) -> Fragment {
+                fn Main(s: Status) -> Html {
                     <match {s}>
                         <case {Status::Bad{}}>bad</case>
                         <case {Status::Good{label}}>{label}</case>
@@ -3662,9 +3662,9 @@ mod tests {
         reject(
             indoc! {r#"
                 -- hop/button.hop --
-                pub fn Button() -> Fragment {<></>}
+                pub fn Button() -> Html {<></>}
                 -- hop/input.hop --
-                pub fn Input() -> Fragment {<></>}
+                pub fn Input() -> Html {<></>}
                 -- main.hop --
                 import hop::button::Button
                 import hop::input::Input
@@ -3701,7 +3701,7 @@ mod tests {
                 -- main.hop --
                 enum Color {Red, Green, Blue}
 
-                fn Main(a: Color, b: Color) -> Fragment {
+                fn Main(a: Color, b: Color) -> Html {
                     <if {a == b}>
                     </if>
                 }
@@ -3709,7 +3709,7 @@ mod tests {
             expect![[r#"
                 error: Type main::Color is not comparable
                   --> main.hop (line 4, col 10)
-                3 | fn Main(a: Color, b: Color) -> Fragment {
+                3 | fn Main(a: Color, b: Color) -> Html {
                 4 |     <if {a == b}>
                   |          ^
             "#]],
@@ -3727,7 +3727,7 @@ mod tests {
                     Blue,
                 }
 
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                     <div>{match color {
                         Color::Red => "red",
                         Color::Green => "green",
@@ -3737,7 +3737,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(color: main::Color) -> Fragment {
+                fn Main(color: main::Color) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3766,14 +3766,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(name: String) -> Fragment {
+                fn Main(name: String) -> Html {
                     <div>{match name {Color::Red => "red"}}</div>
                 }
             "#},
             expect![[r#"
                 error: Match is not implemented for type String
                   --> main.hop (line 2, col 17)
-                1 | fn Main(name: String) -> Fragment {
+                1 | fn Main(name: String) -> Html {
                 2 |     <div>{match name {Color::Red => "red"}}</div>
                   |                 ^^^^
             "#]],
@@ -3790,7 +3790,7 @@ mod tests {
                     Green,
                 }
 
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                     <div>{match color {
                         Color::Red => "red",
                         Color::Green => 42,
@@ -3818,7 +3818,7 @@ mod tests {
                     Blue,
                 }
 
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                     <div>{match color {
                         Color::Red => "red",
                         Color::Green => "green",
@@ -3828,7 +3828,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Color::Blue
                   --> main.hop (line 8, col 17)
-                 7 | fn Main(color: Color) -> Fragment {
+                 7 | fn Main(color: Color) -> Html {
                  8 |     <div>{match color {
                    |                 ^^^^^
             "#]],
@@ -3850,7 +3850,7 @@ mod tests {
                     Large,
                 }
 
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                     <div>{match color {
                         Color::Red => "red",
                         Size::Small => "small",
@@ -3878,7 +3878,7 @@ mod tests {
                     Blue,
                 }
 
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                     <if {color == Color::Red}>
                         <div>{match color {
                             Color::Red => "red",
@@ -3891,7 +3891,7 @@ mod tests {
             expect![[r#"
                 error: Type main::Color is not comparable
                   --> main.hop (line 8, col 10)
-                 7 | fn Main(color: Color) -> Fragment {
+                 7 | fn Main(color: Color) -> Html {
                  8 |     <if {color == Color::Red}>
                    |          ^^^^^
             "#]],
@@ -3913,7 +3913,7 @@ mod tests {
                     status: Status,
                 }
 
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                     <div>{match user.status {
                         Status::Active => "active",
                         Status::Inactive => "inactive",
@@ -3922,7 +3922,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Fragment {
+                fn Main(user: main::User) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3962,13 +3962,13 @@ mod tests {
                     value: String,
                 }
 
-                fn Main(o: Outer) -> Fragment {
+                fn Main(o: Outer) -> Html {
                     <div>{o.inner.value}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(o: main::Outer) -> Fragment {
+                fn Main(o: main::Outer) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(o.inner.value)))
                 }
 
@@ -3999,13 +3999,13 @@ mod tests {
                     backups: Array[Folder],
                 }
 
-                fn Main(root: Folder) -> Fragment {
+                fn Main(root: Folder) -> Html {
                     <div>{root.name}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(root: main::Folder) -> Fragment {
+                fn Main(root: main::Folder) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(root.name)))
                 }
 
@@ -4037,7 +4037,7 @@ mod tests {
                     root: Node,
                 }
 
-                fn Main(t: Tree) -> Fragment {
+                fn Main(t: Tree) -> Html {
                     <match {t.root}>
                         <case {Node::Leaf{label}}>{label}</case>
                         <case {Node::Branch{children}}>
@@ -4048,7 +4048,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(t: main::Tree) -> Fragment {
+                fn Main(t: main::Tree) -> Html {
                   let v__0 = t.root in match v__0 {
                     Node::Leaf => let label = v__1 in concat(escape(label)),
                     Node::Branch => let children = v__2 in concat(
@@ -4088,7 +4088,7 @@ mod tests {
                     role: Role,
                 }
 
-                fn Main(person: Person) -> Fragment {
+                fn Main(person: Person) -> Html {
                     <if {person.role == Role::Admin}>
                         <div>Welcome, admin!</div>
                     </if>
@@ -4097,7 +4097,7 @@ mod tests {
             expect![[r#"
                 error: Type main::Role is not comparable
                   --> main.hop (line 13, col 10)
-                12 | fn Main(person: Person) -> Fragment {
+                12 | fn Main(person: Person) -> Html {
                 13 |     <if {person.role == Role::Admin}>
                    |          ^^^^^^^^^^^
             "#]],
@@ -4109,22 +4109,22 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: String = "World") -> Fragment {
+                fn Greeting(name: String = "World") -> Html {
                   <>
                     Hello, {name}!
                   </>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Greeting />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Greeting(name: String) -> Fragment {
+                fn Greeting(name: String) -> Html {
                   concat(raw("Hello, "), escape(name), raw("!"))
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Greeting(name: "World")
                 }
             "#]],
@@ -4136,22 +4136,22 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: String = "World") -> Fragment {
+                fn Greeting(name: String = "World") -> Html {
                   <>
                     Hello, {name}!
                   </>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Greeting name="Claude" />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Greeting(name: String) -> Fragment {
+                fn Greeting(name: String) -> Html {
                   concat(raw("Hello, "), escape(name), raw("!"))
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Greeting(name: "Claude")
                 }
             "#]],
@@ -4163,22 +4163,22 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn UserCard(name: String, role: String = "user") -> Fragment {
+                fn UserCard(name: String, role: String = "user") -> Html {
                   <>
                     {name} ({role})
                   </>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <UserCard name="Alice" />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   UserCard(name: "Alice", role: "user")
                 }
 
-                fn UserCard(name: String, role: String) -> Fragment {
+                fn UserCard(name: String, role: String) -> Html {
                   concat(escape(name), raw(" ("), escape(role), raw(")"))
                 }
             "#]],
@@ -4190,19 +4190,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn UserCard(name: String, role: String = "user") -> Fragment {
+                fn UserCard(name: String, role: String = "user") -> Html {
                   <>
                     {name} ({role})
                   </>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <UserCard role="admin" />
                 }
             "#},
             expect![[r#"
                 error: Function UserCard requires arguments: name
                   --> main.hop (line 7, col 4)
-                6 | fn Main() -> Fragment {
+                6 | fn Main() -> Html {
                 7 |   <UserCard role="admin" />
                   |    ^^^^^^^^
             "#]],
@@ -4214,24 +4214,24 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: String = 42) -> Fragment {
+                fn Greeting(name: String = 42) -> Html {
                   <>
                     Hello, {name}!
                   </>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Greeting />
                 }
             "#},
             expect![[r#"
                 error: Mismatched type: expected `String` got `Int`
                   --> main.hop (line 1, col 28)
-                1 | fn Greeting(name: String = 42) -> Fragment {
+                1 | fn Greeting(name: String = 42) -> Html {
                   |                            ^^
 
                 error: Function Greeting requires arguments: name
                   --> main.hop (line 7, col 4)
-                6 | fn Main() -> Fragment {
+                6 | fn Main() -> Html {
                 7 |   <Greeting />
                   |    ^^^^^^^^
             "#]],
@@ -4246,7 +4246,7 @@ mod tests {
                 fn greeting() -> String {
                     "hi"
                 }
-                fn Main(msg: String = greeting()) -> Fragment {
+                fn Main(msg: String = greeting()) -> Html {
                     <div></div>
                 }
             "#},
@@ -4254,13 +4254,13 @@ mod tests {
                 error: Default values must be constant
                   --> main.hop (line 4, col 23)
                 3 | }
-                4 | fn Main(msg: String = greeting()) -> Fragment {
+                4 | fn Main(msg: String = greeting()) -> Html {
                   |                       ^^^^^^^^^^
 
                 warning: Unused variable msg
                   --> main.hop (line 4, col 9)
                 3 | }
-                4 | fn Main(msg: String = greeting()) -> Fragment {
+                4 | fn Main(msg: String = greeting()) -> Html {
                   |         ^^^
             "#]],
         );
@@ -4271,19 +4271,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(msg: String = other) -> Fragment {
+                fn Main(msg: String = other) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
                   --> main.hop (line 1, col 23)
-                1 | fn Main(msg: String = other) -> Fragment {
+                1 | fn Main(msg: String = other) -> Html {
                   |                       ^^^^^
 
                 warning: Unused variable msg
                   --> main.hop (line 1, col 9)
-                1 | fn Main(msg: String = other) -> Fragment {
+                1 | fn Main(msg: String = other) -> Html {
                   |         ^^^
             "#]],
         );
@@ -4294,24 +4294,24 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(a: String, b: String = a) -> Fragment {
+                fn Main(a: String, b: String = a) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
                   --> main.hop (line 1, col 32)
-                1 | fn Main(a: String, b: String = a) -> Fragment {
+                1 | fn Main(a: String, b: String = a) -> Html {
                   |                                ^
 
                 warning: Unused variable a
                   --> main.hop (line 1, col 9)
-                1 | fn Main(a: String, b: String = a) -> Fragment {
+                1 | fn Main(a: String, b: String = a) -> Html {
                   |         ^
 
                 warning: Unused variable b
                   --> main.hop (line 1, col 20)
-                1 | fn Main(a: String, b: String = a) -> Fragment {
+                1 | fn Main(a: String, b: String = a) -> Html {
                   |                    ^
             "#]],
         );
@@ -4322,19 +4322,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(msg: String = "hi".to_uppercase()) -> Fragment {
+                fn Main(msg: String = "hi".to_uppercase()) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
                   --> main.hop (line 1, col 23)
-                1 | fn Main(msg: String = "hi".to_uppercase()) -> Fragment {
+                1 | fn Main(msg: String = "hi".to_uppercase()) -> Html {
                   |                       ^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable msg
                   --> main.hop (line 1, col 9)
-                1 | fn Main(msg: String = "hi".to_uppercase()) -> Fragment {
+                1 | fn Main(msg: String = "hi".to_uppercase()) -> Html {
                   |         ^^^
             "#]],
         );
@@ -4345,19 +4345,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(count: Int = (1 + 2)) -> Fragment {
+                fn Main(count: Int = (1 + 2)) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
                   --> main.hop (line 1, col 23)
-                1 | fn Main(count: Int = (1 + 2)) -> Fragment {
+                1 | fn Main(count: Int = (1 + 2)) -> Html {
                   |                       ^^^^^
 
                 warning: Unused variable count
                   --> main.hop (line 1, col 9)
-                1 | fn Main(count: Int = (1 + 2)) -> Fragment {
+                1 | fn Main(count: Int = (1 + 2)) -> Html {
                   |         ^^^^^
             "#]],
         );
@@ -4368,19 +4368,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(src: String = asset!("/logo.png")) -> Fragment {
+                fn Main(src: String = asset!("/logo.png")) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
                   --> main.hop (line 1, col 23)
-                1 | fn Main(src: String = asset!("/logo.png")) -> Fragment {
+                1 | fn Main(src: String = asset!("/logo.png")) -> Html {
                   |                       ^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable src
                   --> main.hop (line 1, col 9)
-                1 | fn Main(src: String = asset!("/logo.png")) -> Fragment {
+                1 | fn Main(src: String = asset!("/logo.png")) -> Html {
                   |         ^^^
             "#]],
         );
@@ -4391,19 +4391,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(msg: String = match true { true => "y", false => "n" }) -> Fragment {
+                fn Main(msg: String = match true { true => "y", false => "n" }) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
                   --> main.hop (line 1, col 23)
-                1 | fn Main(msg: String = match true { true => "y", false => "n" }) -> Fragment {
+                1 | fn Main(msg: String = match true { true => "y", false => "n" }) -> Html {
                   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable msg
                   --> main.hop (line 1, col 9)
-                1 | fn Main(msg: String = match true { true => "y", false => "n" }) -> Fragment {
+                1 | fn Main(msg: String = match true { true => "y", false => "n" }) -> Html {
                   |         ^^^
             "#]],
         );
@@ -4415,7 +4415,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record Config { name: String }
-                fn Main(config: Config = Config{...base, name: "x"}) -> Fragment {
+                fn Main(config: Config = Config{...base, name: "x"}) -> Html {
                     <div></div>
                 }
             "#},
@@ -4423,13 +4423,13 @@ mod tests {
                 error: Default values must be constant
                   --> main.hop (line 2, col 26)
                 1 | record Config { name: String }
-                2 | fn Main(config: Config = Config{...base, name: "x"}) -> Fragment {
+                2 | fn Main(config: Config = Config{...base, name: "x"}) -> Html {
                   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable config
                   --> main.hop (line 2, col 9)
                 1 | record Config { name: String }
-                2 | fn Main(config: Config = Config{...base, name: "x"}) -> Fragment {
+                2 | fn Main(config: Config = Config{...base, name: "x"}) -> Html {
                   |         ^^^^^^
             "#]],
         );
@@ -4440,19 +4440,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(names: Array[String] = ["a", other]) -> Fragment {
+                fn Main(names: Array[String] = ["a", other]) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
                   --> main.hop (line 1, col 32)
-                1 | fn Main(names: Array[String] = ["a", other]) -> Fragment {
+                1 | fn Main(names: Array[String] = ["a", other]) -> Html {
                   |                                ^^^^^^^^^^^^
 
                 warning: Unused variable names
                   --> main.hop (line 1, col 9)
-                1 | fn Main(names: Array[String] = ["a", other]) -> Fragment {
+                1 | fn Main(names: Array[String] = ["a", other]) -> Html {
                   |         ^^^^^
             "#]],
         );
@@ -4463,20 +4463,20 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Config(debug: Bool = false, timeout: Int = 30) -> Fragment {<></>}
-                fn Main() -> Fragment {
+                fn Config(debug: Bool = false, timeout: Int = 30) -> Html {<></>}
+                fn Main() -> Html {
                   <Config />
                 }
             "#},
             expect![[r#"
                 warning: Unused variable debug
                   --> main.hop (line 1, col 11)
-                1 | fn Config(debug: Bool = false, timeout: Int = 30) -> Fragment {<></>}
+                1 | fn Config(debug: Bool = false, timeout: Int = 30) -> Html {<></>}
                   |           ^^^^^
 
                 warning: Unused variable timeout
                   --> main.hop (line 1, col 32)
-                1 | fn Config(debug: Bool = false, timeout: Int = 30) -> Fragment {<></>}
+                1 | fn Config(debug: Bool = false, timeout: Int = 30) -> Html {<></>}
                   |                                ^^^^^^^
             "#]],
         );
@@ -4487,24 +4487,24 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn ItemList(items: Array[String] = []) -> Fragment {
+                fn ItemList(items: Array[String] = []) -> Html {
                   <for {item in items}>
                     {item}
                   </for>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <ItemList />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn ItemList(items: Array[String]) -> Fragment {
+                fn ItemList(items: Array[String]) -> Html {
                   for item in items {
                     concat(escape(item))
                   }
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   ItemList(items: [])
                 }
             "#]],
@@ -4516,22 +4516,22 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment = <></>) -> Fragment {
+                fn Card(children: Html = <></>) -> Html {
                   <div>
                     {children}
                   </div>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Card />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Card(children: Fragment) -> Fragment {
+                fn Card(children: Html) -> Html {
                   html(tag: "div", attrs: [], children: concat(children))
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Card(children: concat())
                 }
             "#]],
@@ -4543,7 +4543,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Fragment = <div></div>) -> Fragment {
+                fn Card(children: Html = <div></div>) -> Html {
                   <div>
                     {children}
                   </div>
@@ -4551,9 +4551,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 1, col 30)
-                1 | fn Card(children: Fragment = <div></div>) -> Fragment {
-                  |                              ^^^^^^^^^^^
+                  --> main.hop (line 1, col 26)
+                1 | fn Card(children: Html = <div></div>) -> Html {
+                  |                          ^^^^^^^^^^^
             "#]],
         );
     }
@@ -4564,22 +4564,22 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record Config { name: String, enabled: Bool }
-                fn Settings(config: Config = Config{name: "default", enabled: true}) -> Fragment {
+                fn Settings(config: Config = Config{name: "default", enabled: true}) -> Html {
                   <>
                     {config.name}
                   </>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Settings />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Settings(config: Config {name: "default", enabled: true})
                 }
 
-                fn Settings(config: main::Config) -> Fragment {
+                fn Settings(config: main::Config) -> Html {
                   concat(escape(config.name))
                 }
 
@@ -4598,7 +4598,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Status { Active{since: Int}, Inactive, Pending }
-                fn Badge(status: Status = Status::Active{since: 2000}) -> Fragment {
+                fn Badge(status: Status = Status::Active{since: 2000}) -> Html {
                   <>
                     {match status {
                       Status::Active{since: _} => "active",
@@ -4606,13 +4606,13 @@ mod tests {
                     }}
                   </>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Badge />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Badge(status: main::Status) -> Fragment {
+                fn Badge(status: main::Status) -> Html {
                   concat(
                     escape(match status {
                       Status::Active => "active",
@@ -4622,7 +4622,7 @@ mod tests {
                   )
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Badge(status: Status::Active {since: 2000})
                 }
 
@@ -4641,20 +4641,20 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: Option[String]) -> Fragment {
+                fn Greeting(name: Option[String]) -> Html {
                   <if {name.is_none()}></if>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Greeting name={Some("World")} />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Greeting(name: Option[String]) -> Fragment {
+                fn Greeting(name: Option[String]) -> Html {
                   match name.is_none() {true => concat(), false => concat()}
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Greeting(name: Some("World"))
                 }
             "#]],
@@ -4666,20 +4666,20 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: Option[String]) -> Fragment {
+                fn Greeting(name: Option[String]) -> Html {
                   <if {name.is_none()}></if>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Greeting name={None} />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Greeting(name: Option[String]) -> Fragment {
+                fn Greeting(name: Option[String]) -> Html {
                   match name.is_none() {true => concat(), false => concat()}
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Greeting(name: None)
                 }
             "#]],
@@ -4691,20 +4691,20 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: Option[String] = None) -> Fragment {
+                fn Greeting(name: Option[String] = None) -> Html {
                   <if {name.is_none()}></if>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Greeting />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Greeting(name: Option[String]) -> Fragment {
+                fn Greeting(name: Option[String]) -> Html {
                   match name.is_none() {true => concat(), false => concat()}
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Greeting(name: None)
                 }
             "#]],
@@ -4716,20 +4716,20 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: Option[String] = Some("World")) -> Fragment {
+                fn Greeting(name: Option[String] = Some("World")) -> Html {
                   <if {name.is_none()}></if>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Greeting />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Greeting(name: Option[String]) -> Fragment {
+                fn Greeting(name: Option[String]) -> Html {
                   match name.is_none() {true => concat(), false => concat()}
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Greeting(name: Some("World"))
                 }
             "#]],
@@ -4741,17 +4741,17 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: Option[String]) -> Fragment {
+                fn Greeting(name: Option[String]) -> Html {
                   <if {name.is_none()}></if>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Greeting name="World" />
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'name' of function 'Greeting': expected `Option[String]` got `String`
                   --> main.hop (line 5, col 18)
-                4 | fn Main() -> Fragment {
+                4 | fn Main() -> Html {
                 5 |   <Greeting name="World" />
                   |                  ^^^^^^^
             "#]],
@@ -4763,7 +4763,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                     <match {x}>
                         <case {Some(y)}>
                             found {y}
@@ -4776,7 +4776,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                   match x {
                     Some(v__0) => let y = v__0 in concat(raw("found "), escape(y)),
                     None => concat(raw("nothing")),
@@ -4792,7 +4792,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
-                fn Main(c: Color) -> Fragment {
+                fn Main(c: Color) -> Html {
                     <match {c}>
                         <case {Color::Red}>red</case>
                         <case {Color::Green}>green</case>
@@ -4802,7 +4802,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(c: main::Color) -> Fragment {
+                fn Main(c: main::Color) -> Html {
                   match c {
                     Color::Red => concat(raw("red")),
                     Color::Green => concat(raw("green")),
@@ -4826,7 +4826,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Status { Active{name: String}, Inactive }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <match {Status::Active{name: "test"}}>
                         <case {Status::Active{name: n}}>
                             {n}
@@ -4839,7 +4839,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let v__0 = Status::Active {name: "test"} in match v__0 {
                     Status::Active => let n = v__1 in concat(escape(n)),
                     Status::Inactive => concat(raw("none")),
@@ -4860,7 +4860,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(flag: Bool) -> Fragment {
+                fn Main(flag: Bool) -> Html {
                     <match {flag}>
                         <case {true}>yes</case>
                         <case {false}>no</case>
@@ -4869,7 +4869,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(flag: Bool) -> Fragment {
+                fn Main(flag: Bool) -> Html {
                   match flag {true => concat(raw("yes")), false => concat(raw("no"))}
                 }
             "#]],
@@ -4881,7 +4881,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(flag: Bool) -> Fragment {
+                fn Main(flag: Bool) -> Html {
                     <match {flag}>
                         <case {Some(x)}>yes</case>
                     </match>
@@ -4902,7 +4902,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                     <match {x}>
                         <case {Some(name)}>
                             <div class={name}></div>
@@ -4915,7 +4915,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                   match x {
                     Some(v__0) => let name = v__0 in concat(
                       html(tag: "div", attrs: [class: escape(name)], children: concat()),
@@ -4932,7 +4932,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(name: String) -> Fragment {
+                fn Main(name: String) -> Html {
                     <match {name}>
                         <case {Some(x)}>yes</case>
                     </match>
@@ -4941,7 +4941,7 @@ mod tests {
             expect![[r#"
                 error: Match is not implemented for type String
                   --> main.hop (line 2, col 13)
-                1 | fn Main(name: String) -> Fragment {
+                1 | fn Main(name: String) -> Html {
                 2 |     <match {name}>
                   |             ^^^^
             "#]],
@@ -4954,7 +4954,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
-                fn Main(c: Color) -> Fragment {
+                fn Main(c: Color) -> Html {
                     <match {c}>
                         <case {Color::Red}>red</case>
                     </match>
@@ -4963,7 +4963,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Color::Blue, Color::Green
                   --> main.hop (line 3, col 13)
-                2 | fn Main(c: Color) -> Fragment {
+                2 | fn Main(c: Color) -> Html {
                 3 |     <match {c}>
                   |             ^
             "#]],
@@ -4975,7 +4975,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                     <match {x}>
                         <case {Some(y)}>{y}</case>
                     </match>
@@ -4984,7 +4984,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: None
                   --> main.hop (line 2, col 13)
-                1 | fn Main(x: Option[String]) -> Fragment {
+                1 | fn Main(x: Option[String]) -> Html {
                 2 |     <match {x}>
                   |             ^
             "#]],
@@ -4996,7 +4996,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(flag: Bool) -> Fragment {
+                fn Main(flag: Bool) -> Html {
                     <match {flag}>
                         <case {true}>yes</case>
                     </match>
@@ -5005,7 +5005,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: false
                   --> main.hop (line 2, col 13)
-                1 | fn Main(flag: Bool) -> Fragment {
+                1 | fn Main(flag: Bool) -> Html {
                 2 |     <match {flag}>
                   |             ^^^^
             "#]],
@@ -5019,7 +5019,7 @@ mod tests {
                 -- main.hop --
                 enum Color { Red, Green }
                 enum Size { Small, Large }
-                fn Main(c: Color) -> Fragment {
+                fn Main(c: Color) -> Html {
                     <match {c}>
                         <case {Color::Red}>red</case>
                         <case {Size::Small}>small</case>
@@ -5041,7 +5041,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                     <match {x}>
                         <case {Some(unused)}>
                             found something
@@ -5067,7 +5067,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                     <match {x}>
                         <case {Some(x)}>
                             {x}
@@ -5085,7 +5085,7 @@ mod tests {
                  3 |         <case {Some(x)}>
                    |                     ^
 
-                error: Mismatched type for interpolation: expected `String` or `Fragment` got Option[String]
+                error: Mismatched type for interpolation: expected `String` or `Html` got Option[String]
                   --> main.hop (line 4, col 14)
                  3 |         <case {Some(x)}>
                  4 |             {x}
@@ -5100,7 +5100,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Event { Comment {author: String} }
-                fn Main(author: String, event: Event) -> Fragment {
+                fn Main(author: String, event: Event) -> Html {
                     <match {event}>
                         <case {Event::Comment {author}}>
                             {author}
@@ -5124,7 +5124,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
-                fn Main(c: Color) -> Fragment {
+                fn Main(c: Color) -> Html {
                     <match {c}>
                         <case {_}>any color</case>
                     </match>
@@ -5133,7 +5133,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                   --> main.hop (line 3, col 13)
-                2 | fn Main(c: Color) -> Fragment {
+                2 | fn Main(c: Color) -> Html {
                 3 |     <match {c}>
                   |             ^
             "#]],
@@ -5147,7 +5147,7 @@ mod tests {
                 -- main.hop --
                 record Role { title: String, salary: Int }
                 record User { role: Role, created_at: Int }
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                     <match {user}>
                         <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
                         <case {_}>fallback</case>
@@ -5171,7 +5171,7 @@ mod tests {
                 -- main.hop --
                 record Role { title: String, salary: Int }
                 record User { role: Role, created_at: Int }
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                     <match {user}>
                         <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
                     </match>
@@ -5180,7 +5180,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                   --> main.hop (line 4, col 13)
-                3 | fn Main(user: User) -> Fragment {
+                3 | fn Main(user: User) -> Html {
                 4 |     <match {user}>
                   |             ^^^^
             "#]],
@@ -5192,7 +5192,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(x: Option[Option[String]]) -> Fragment {
+                fn Main(x: Option[Option[String]]) -> Html {
                     <match {x}>
                         <case {Some(inner)}>
                             <match {inner}>
@@ -5208,7 +5208,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(x: Option[Option[String]]) -> Fragment {
+                fn Main(x: Option[Option[String]]) -> Html {
                   match x {
                     Some(v__0) => let inner = v__0 in concat(
                       match inner {
@@ -5228,7 +5228,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(items: Array[Option[String]]) -> Fragment {
+                fn Main(items: Array[Option[String]]) -> Html {
                     <for {item in items}>
                         <match {item}>
                             <case {Some(s)}>{s}</case>
@@ -5239,7 +5239,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(items: Array[Option[String]]) -> Fragment {
+                fn Main(items: Array[Option[String]]) -> Html {
                   for item in items {
                     concat(
                       match item {
@@ -5258,7 +5258,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                     <match {x}>
                         <case {Some(_)}>
                             found something
@@ -5271,7 +5271,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                   match x {
                     Some(_) => concat(raw("found something")),
                     None => concat(raw("nothing")),
@@ -5286,7 +5286,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(r1: Option[String], r2: Option[Bool]) -> Fragment {
+                fn Main(r1: Option[String], r2: Option[Bool]) -> Html {
                     <match {r1}>
                         <case {Some(bound)}>{bound}</case>
                         <case {None}>
@@ -5300,7 +5300,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(r1: Option[String], r2: Option[Bool]) -> Fragment {
+                fn Main(r1: Option[String], r2: Option[Bool]) -> Html {
                   match r1 {
                     Some(v__0) => let bound = v__0 in concat(escape(bound)),
                     None => concat(
@@ -5323,7 +5323,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User { name: Option[String] }
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                     <match {user.name}>
                         <case {Some(n)}>{n}</case>
                         <case {None}>anonymous</case>
@@ -5332,7 +5332,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Fragment {
+                fn Main(user: main::User) -> Html {
                   let v__0 = user.name in match v__0 {
                     Some(v__1) => let n = v__1 in concat(escape(n)),
                     None => concat(raw("anonymous")),
@@ -5352,7 +5352,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(count: Int) -> Fragment {
+                fn Main(count: Int) -> Html {
                     <match {count}>
                         <case {Some(x)}>{x}</case>
                     </match>
@@ -5361,7 +5361,7 @@ mod tests {
             expect![[r#"
                 error: Match is not implemented for type Int
                   --> main.hop (line 2, col 13)
-                1 | fn Main(count: Int) -> Fragment {
+                1 | fn Main(count: Int) -> Html {
                 2 |     <match {count}>
                   |             ^^^^^
             "#]],
@@ -5373,7 +5373,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(show: Bool, x: Option[String]) -> Fragment {
+                fn Main(show: Bool, x: Option[String]) -> Html {
                     <if {show}>
                         <match {x}>
                             <case {Some(v)}>{v}</case>
@@ -5384,7 +5384,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(show: Bool, x: Option[String]) -> Fragment {
+                fn Main(show: Bool, x: Option[String]) -> Html {
                   match show {
                     true => concat(
                       match x {
@@ -5404,7 +5404,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                     <div>
                         <match {x}>
                             <case {Some(v)}><span>{v}</span></case>
@@ -5415,7 +5415,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(x: Option[String]) -> Fragment {
+                fn Main(x: Option[String]) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -5440,7 +5440,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(c: Option[String]) -> Fragment {
+                fn Main(c: Option[String]) -> Html {
                   <match {c}>
                     <case {Some(x)}>
                       {match Some("foo") {
@@ -5468,14 +5468,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(is_required: Bool) -> Fragment {
+                fn Main(is_required: Bool) -> Html {
                   <input required={is_required}>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected `String` got `Bool`
                   --> main.hop (line 2, col 20)
-                1 | fn Main(is_required: Bool) -> Fragment {
+                1 | fn Main(is_required: Bool) -> Html {
                 2 |   <input required={is_required}>
                   |                    ^^^^^^^^^^^
             "#]],
@@ -5487,14 +5487,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <input required={true}>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected `String` got `Bool`
                   --> main.hop (line 2, col 20)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <input required={true}>
                   |                    ^^^^
             "#]],
@@ -5506,14 +5506,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(maybe: Option[String]) -> Fragment {
+                fn Main(maybe: Option[String]) -> Html {
                   <div data-x={maybe}></div>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected `String` got `Option[String]`
                   --> main.hop (line 2, col 16)
-                1 | fn Main(maybe: Option[String]) -> Fragment {
+                1 | fn Main(maybe: Option[String]) -> Html {
                 2 |   <div data-x={maybe}></div>
                   |                ^^^^^
             "#]],
@@ -5525,14 +5525,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div data-x={Some("hello")}></div>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected `String` got `Option[String]`
                   --> main.hop (line 2, col 16)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <div data-x={Some("hello")}></div>
                   |                ^^^^^^^^^^^^^
             "#]],
@@ -5544,14 +5544,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(maybe: Option[Int]) -> Fragment {
+                fn Main(maybe: Option[Int]) -> Html {
                   <div data-x={maybe}></div>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected `String` got `Option[Int]`
                   --> main.hop (line 2, col 16)
-                1 | fn Main(maybe: Option[Int]) -> Fragment {
+                1 | fn Main(maybe: Option[Int]) -> Html {
                 2 |   <div data-x={maybe}></div>
                   |                ^^^^^
             "#]],
@@ -5563,14 +5563,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(maybe: Option[Bool]) -> Fragment {
+                fn Main(maybe: Option[Bool]) -> Html {
                   <div data-x={maybe}></div>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected `String` got `Option[Bool]`
                   --> main.hop (line 2, col 16)
-                1 | fn Main(maybe: Option[Bool]) -> Fragment {
+                1 | fn Main(maybe: Option[Bool]) -> Html {
                 2 |   <div data-x={maybe}></div>
                   |                ^^^^^
             "#]],
@@ -5582,14 +5582,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(maybe: Option[Option[String]]) -> Fragment {
+                fn Main(maybe: Option[Option[String]]) -> Html {
                   <div data-x={maybe}></div>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected `String` got `Option[Option[String]]`
                   --> main.hop (line 2, col 16)
-                1 | fn Main(maybe: Option[Option[String]]) -> Fragment {
+                1 | fn Main(maybe: Option[Option[String]]) -> Html {
                 2 |   <div data-x={maybe}></div>
                   |                ^^^^^
             "#]],
@@ -5601,14 +5601,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(count: Int) -> Fragment {
+                fn Main(count: Int) -> Html {
                   <div data-count={count}></div>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected `String` got `Int`
                   --> main.hop (line 2, col 20)
-                1 | fn Main(count: Int) -> Fragment {
+                1 | fn Main(count: Int) -> Html {
                 2 |   <div data-count={count}></div>
                   |                    ^^^^^
             "#]],
@@ -5620,14 +5620,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <button onclick="alert(1)">Click</button>
                 }
             "#},
             expect![[r#"
                 error: `<button>` does not accept attribute `onclick`
                   --> main.hop (line 2, col 11)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <button onclick="alert(1)">Click</button>
                   |           ^^^^^^^
             "#]],
@@ -5639,7 +5639,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     <button onClick="alert(1)">Click</button>
                     <button ONCLICK="alert(1)">Click</button>
@@ -5667,14 +5667,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div flooble="x"></div>
                 }
             "#},
             expect![[r#"
                 error: `<div>` does not accept attribute `flooble`
                   --> main.hop (line 2, col 8)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <div flooble="x"></div>
                   |        ^^^^^^^
             "#]],
@@ -5686,13 +5686,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <my-widget foo="x"></my-widget>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   html(tag: "my-widget", attrs: [foo: raw("x")], children: concat())
                 }
             "#]],
@@ -5704,14 +5704,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <button href="/"></button>
                 }
             "#},
             expect![[r#"
                 error: `<button>` does not accept attribute `href`
                   --> main.hop (line 2, col 11)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <button href="/"></button>
                   |           ^^^^
             "#]],
@@ -5723,13 +5723,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <a href="/">link</a>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   html(tag: "a", attrs: [href: raw("/")], children: concat(raw("link")))
                 }
             "#]],
@@ -5741,18 +5741,18 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Btn(children: Fragment, ...rest) -> Fragment {
+                fn Btn(children: Html, ...rest) -> Html {
                   <button ...rest>{children}</button>
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Btn href="/">click</Btn>
                 }
             "#},
             expect![[r#"
                 error: Function Btn does not accept attribute `href`
                   --> main.hop (line 6, col 8)
-                5 | fn Main() -> Fragment {
+                5 | fn Main() -> Html {
                 6 |   <Btn href="/">click</Btn>
                   |        ^^^^
             "#]],
@@ -5764,21 +5764,21 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Btn(children: Fragment, ...rest) -> Fragment {
+                fn Btn(children: Html, ...rest) -> Html {
                   <button ...rest>{children}</button>
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Btn disabled>click</Btn>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Btn(children: Fragment, rest: Attrs) -> Fragment {
+                fn Btn(children: Html, rest: Attrs) -> Html {
                   html(tag: "button", attrs: concat([], rest), children: concat(children))
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Btn(children: concat(raw("click")), rest: [disabled])
                 }
             "#]],
@@ -5790,13 +5790,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div data-x="1" aria-label="hello"></div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   html(
                     tag: "div",
                     attrs: [data-x: raw("1"), aria-label: raw("hello")],
@@ -5812,13 +5812,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <svg viewBox="0 0 10 10"><path d="M0 0 L10 10"></path></svg>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   html(
                     tag: "svg",
                     attrs: [viewBox: raw("0 0 10 10")],
@@ -5836,17 +5836,17 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Separator(children: Option[Fragment] = None) -> Fragment {
+                fn Separator(children: Option[Html] = None) -> Html {
                   <li>separator</li>
                 }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Separator />
                 }
             "#},
             expect![[r#"
                 warning: Unused variable children
                   --> main.hop (line 1, col 14)
-                1 | fn Separator(children: Option[Fragment] = None) -> Fragment {
+                1 | fn Separator(children: Option[Html] = None) -> Html {
                   |              ^^^^^^^^
             "#]],
         );
@@ -5857,7 +5857,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = "World"}>
                     <div>Hello {name}</div>
                   </let>
@@ -5865,7 +5865,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let name = "World" in concat(
                     html(tag: "div", attrs: [], children: concat(raw("Hello "), escape(name))),
                   )
@@ -5879,7 +5879,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name = "World"}>
                     <div>{name}</div>
                   </let>
@@ -5887,7 +5887,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let name = "World" in concat(
                     html(tag: "div", attrs: [], children: concat(escape(name))),
                   )
@@ -5901,7 +5901,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {count = 42}>
                     <div>{count.to_string()}</div>
                   </let>
@@ -5909,7 +5909,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let count = 42 in concat(
                     html(tag: "div", attrs: [], children: concat(escape(count.to_string()))),
                   )
@@ -5923,7 +5923,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {price = 2.5}>
                     <div>{price.to_int().to_string()}</div>
                   </let>
@@ -5931,7 +5931,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let price = 2.5 in concat(
                     html(
                       tag: "div",
@@ -5949,7 +5949,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {items = [1, 2, 3]}>
                     <div>{items.len().to_string()}</div>
                   </let>
@@ -5957,7 +5957,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let items = [1, 2, 3] in concat(
                     html(
                       tag: "div",
@@ -5976,7 +5976,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User { name: String, age: Int }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {user = User {name: "Alice", age: 30}}>
                     <div>{user.name}</div>
                   </let>
@@ -5984,7 +5984,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let user = User {name: "Alice", age: 30} in concat(
                     html(tag: "div", attrs: [], children: concat(escape(user.name))),
                   )
@@ -6005,7 +6005,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User { name: String, age: Int }
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                   <let {updated = User {...user, name: "Jane"}}>
                     <div>{updated.name}</div>
                   </let>
@@ -6013,7 +6013,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Fragment {
+                fn Main(user: main::User) -> Html {
                   let updated = User {name: "Jane", age: user.age} in concat(
                     html(tag: "div", attrs: [], children: concat(escape(updated.name))),
                   )
@@ -6035,7 +6035,7 @@ mod tests {
                 -- main.hop --
                 record State { query: String, num: Int }
                 record App { state: State }
-                fn Main(app: App) -> Fragment {
+                fn Main(app: App) -> Html {
                   <let {next = State {...app.state, num: 1}}>
                     <div>{next.query}</div>
                   </let>
@@ -6043,7 +6043,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(app: main::App) -> Fragment {
+                fn Main(app: main::App) -> Html {
                   let next = let v__0 = app.state in State {
                     query: v__0.query,
                     num: 1,
@@ -6069,7 +6069,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User { name: String, age: Int }
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                   <let {updated = User {...user, name: "Jane", age: 30}}>
                     <div>{updated.name}</div>
                   </let>
@@ -6077,7 +6077,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Fragment {
+                fn Main(user: main::User) -> Html {
                   let updated = User {name: "Jane", age: 30} in concat(
                     html(tag: "div", attrs: [], children: concat(escape(updated.name))),
                   )
@@ -6099,7 +6099,7 @@ mod tests {
                 -- main.hop --
                 record User { name: String }
                 record Admin { name: String }
-                fn Main(admin: Admin) -> Fragment {
+                fn Main(admin: Admin) -> Html {
                   <let {user = User {...admin}}>
                     <div>{user.name}</div>
                   </let>
@@ -6108,7 +6108,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type for spread: expected `main::User` got `main::Admin`
                   --> main.hop (line 4, col 25)
-                3 | fn Main(admin: Admin) -> Fragment {
+                3 | fn Main(admin: Admin) -> Html {
                 4 |   <let {user = User {...admin}}>
                   |                         ^^^^^
 
@@ -6126,7 +6126,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {first: String = "Hello", second = "World"}>
                     <div>{first}{second}</div>
                   </let>
@@ -6134,7 +6134,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let first = "Hello" in let second = "World" in concat(
                     html(
                       tag: "div",
@@ -6152,7 +6152,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {greeting = "Hello", shout = greeting}>
                     <div>{shout}</div>
                   </let>
@@ -6160,7 +6160,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let greeting = "Hello" in let shout = greeting in concat(
                     html(tag: "div", attrs: [], children: concat(escape(shout))),
                   )
@@ -6174,7 +6174,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name = "World"}>
                     <div>x</div>
                   </let>
@@ -6183,7 +6183,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable name
                   --> main.hop (line 2, col 9)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {name = "World"}>
                   |         ^^^^
             "#]],
@@ -6195,7 +6195,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {items = []}>
                     <div>x</div>
                   </let>
@@ -6204,7 +6204,7 @@ mod tests {
             expect![[r#"
                 error: Cannot infer type of empty array
                   --> main.hop (line 2, col 17)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {items = []}>
                   |                 ^^
             "#]],
@@ -6216,7 +6216,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {maybe = None}>
                     <div>x</div>
                   </let>
@@ -6225,7 +6225,7 @@ mod tests {
             expect![[r#"
                 error: Cannot infer type of None without context
                   --> main.hop (line 2, col 17)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {maybe = None}>
                   |                 ^^^^
             "#]],
@@ -6237,7 +6237,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = "World"}>
                     <div>Hello</div>
                   </let>
@@ -6246,7 +6246,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable name
                   --> main.hop (line 2, col 9)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {name: String = "World"}>
                   |         ^^^^
             "#]],
@@ -6258,7 +6258,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(name: String) -> Fragment {
+                fn Main(name: String) -> Html {
                   <let {name: String = "Shadow"}>
                     <div>{name}</div>
                   </let>
@@ -6267,7 +6267,7 @@ mod tests {
             expect![[r#"
                 error: Variable name is already defined
                   --> main.hop (line 2, col 9)
-                1 | fn Main(name: String) -> Fragment {
+                1 | fn Main(name: String) -> Html {
                 2 |   <let {name: String = "Shadow"}>
                   |         ^^^^
             "#]],
@@ -6279,7 +6279,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = "First"}>
                     <let {name: String = "Second"}>
                       <div>{name}</div>
@@ -6302,7 +6302,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     <let {name: String = "First"}>
                       <div>{name}</div>
@@ -6315,7 +6315,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   concat(
                     let name = "First" in concat(
                       html(tag: "div", attrs: [], children: concat(escape(name))),
@@ -6334,7 +6334,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = 42}>
                     <div>{name}</div>
                   </let>
@@ -6343,7 +6343,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type: expected `String` got `Int`
                   --> main.hop (line 2, col 24)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {name: String = 42}>
                   |                        ^^
             "#]],
@@ -6355,7 +6355,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {first: String = "Hello", second: String = "World"}>
                     <div>{first} {second}</div>
                   </let>
@@ -6363,7 +6363,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let first = "Hello" in let second = "World" in concat(
                     html(
                       tag: "div",
@@ -6381,7 +6381,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = "Hello", name: String = "World"}>
                     <div>{name}</div>
                   </let>
@@ -6390,7 +6390,7 @@ mod tests {
             expect![[r#"
                 error: Variable name is already defined
                   --> main.hop (line 2, col 33)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {name: String = "Hello", name: String = "World"}>
                   |                                 ^^^^
             "#]],
@@ -6402,7 +6402,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = "Hello", count: Int = 42}>
                     <div>{name}</div>
                   </let>
@@ -6411,7 +6411,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable count
                   --> main.hop (line 2, col 33)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {name: String = "Hello", count: Int = 42}>
                   |                                 ^^^^^
             "#]],
@@ -6423,7 +6423,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {greeting: String = "Hello", message: String = greeting}>
                     <div>{message}</div>
                   </let>
@@ -6431,7 +6431,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let greeting = "Hello" in let message = greeting in concat(
                     html(tag: "div", attrs: [], children: concat(escape(message))),
                   )
@@ -6445,7 +6445,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: Int = 0, y: Int = x + 1, z: Int = y + 2}>
                     <if {z == 3}>
                       <div>correct</div>
@@ -6455,7 +6455,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   let x = 0 in let y = (x + 1) in let z = (y + 2) in concat(
                     match (z == 3) {
                       true => concat(
@@ -6474,7 +6474,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: Int = y + 1, y: Int = 0}>
                     <if {x == 1}>
                       <div>correct</div>
@@ -6485,13 +6485,13 @@ mod tests {
             expect![[r#"
                 error: Undefined variable: y
                   --> main.hop (line 2, col 18)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {x: Int = y + 1, y: Int = 0}>
                   |                  ^
 
                 warning: Unused variable y
                   --> main.hop (line 2, col 25)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {x: Int = y + 1, y: Int = 0}>
                   |                         ^
             "#]],
@@ -6503,7 +6503,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: Int = x}>
                     <div>{x.to_string()}</div>
                   </let>
@@ -6512,7 +6512,7 @@ mod tests {
             expect![[r#"
                 error: Undefined variable: x
                   --> main.hop (line 2, col 18)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {x: Int = x}>
                   |                  ^
             "#]],
@@ -6524,7 +6524,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x = x}>
                     <div>{x.to_string()}</div>
                   </let>
@@ -6533,7 +6533,7 @@ mod tests {
             expect![[r#"
                 error: Undefined variable: x
                   --> main.hop (line 2, col 13)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {x = x}>
                   |             ^
 
@@ -6551,7 +6551,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: Int = missing, y: Int = x + 1}>
                     <div>{y.to_string()}</div>
                   </let>
@@ -6560,7 +6560,7 @@ mod tests {
             expect![[r#"
                 error: Undefined variable: missing
                   --> main.hop (line 2, col 18)
-                1 | fn Main() -> Fragment {
+                1 | fn Main() -> Html {
                 2 |   <let {x: Int = missing, y: Int = x + 1}>
                   |                  ^^^^^^^
             "#]],
@@ -6573,7 +6573,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>Hello</div>
                   }
                 }
@@ -6581,7 +6581,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     html(tag: "div", attrs: [], children: concat(raw("Hello")))
                   }
                 }
@@ -6595,7 +6595,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <html>
                       <head></head>
                       <body>Hello</body>
@@ -6606,7 +6606,7 @@ mod tests {
             expect![[r#"
                 error: <html> is not allowed here
                   --> main.hop (line 3, col 6)
-                2 |   fn body() -> Fragment {
+                2 |   fn body() -> Html {
                 3 |     <html>
                   |      ^^^^
 
@@ -6631,8 +6631,8 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  fn head() -> Fragment {<></>}
-                  fn body() -> Fragment {
+                  fn head() -> Html {<></>}
+                  fn body() -> Html {
                     <head></head>
                   }
                 }
@@ -6640,7 +6640,7 @@ mod tests {
             expect![[r#"
                 error: <head> is not allowed here
                   --> main.hop (line 4, col 6)
-                3 |   fn body() -> Fragment {
+                3 |   fn body() -> Html {
                 4 |     <head></head>
                   |      ^^^^
             "#]],
@@ -6653,7 +6653,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main(name: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>Hello, {name}!</div>
                   }
                 }
@@ -6661,7 +6661,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main(name: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     html(
                       tag: "div",
                       attrs: [],
@@ -6679,7 +6679,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main(name: String, age: Int) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>Hello, {name}! You are {age.to_string()} years old.</div>
                   }
                 }
@@ -6687,7 +6687,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main(name: String, age: Int) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     html(
                       tag: "div",
                       attrs: [],
@@ -6710,12 +6710,12 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: String) -> Fragment {
+                fn Greeting(name: String) -> Html {
                   <div>Hello, {name}!</div>
                 }
 
                 page Main(name: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Greeting name={name} />
                   }
                 }
@@ -6723,12 +6723,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main(name: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Greeting(name: name)
                   }
                 }
 
-                fn Greeting(name: String) -> Fragment {
+                fn Greeting(name: String) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -6745,7 +6745,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <UndefinedComponent />
                   }
                 }
@@ -6753,7 +6753,7 @@ mod tests {
             expect![[r#"
                 error: Function UndefinedComponent is not defined
                   --> main.hop (line 3, col 6)
-                2 |   fn body() -> Fragment {
+                2 |   fn body() -> Html {
                 3 |     <UndefinedComponent />
                   |      ^^^^^^^^^^^^^^^^^^
             "#]],
@@ -6766,7 +6766,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main(unused: String) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>Hello</div>
                   }
                 }
@@ -6786,7 +6786,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main(foo: UndefinedType) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>Hello</div>
                   }
                 }
@@ -6810,11 +6810,11 @@ mod tests {
                   children: Array[TreeNode],
                 }
 
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   concat()
                 }
 
@@ -6837,11 +6837,11 @@ mod tests {
                   Neg{inner: Expr},
                 }
 
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   concat()
                 }
 
@@ -6863,11 +6863,11 @@ mod tests {
                   #[examples(min = 1, max = 100)]
                   price: Int,
                 }
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   concat()
                 }
 
@@ -6888,7 +6888,7 @@ mod tests {
                   #[examples(min = 1, max = 100)]
                   name: String,
                 }
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min = ..., max = ...)] is only valid on Int fields, found String
@@ -6909,7 +6909,7 @@ mod tests {
                   #[examples(min = 100, max = 1)]
                   price: Int,
                 }
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min = 100)] must be less than or equal to max = 1
@@ -6930,11 +6930,11 @@ mod tests {
                   #[examples(min_len = 2, max_len = 5)]
                   tags: Array[String],
                 }
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   concat()
                 }
 
@@ -6955,7 +6955,7 @@ mod tests {
                   #[examples(min_len = 1, max_len = 5)]
                   name: String,
                 }
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min_len = ..., max_len = ...)] is only valid on Array fields, found String
@@ -6976,7 +6976,7 @@ mod tests {
                   #[examples(min_len = -1, max_len = 5)]
                   tags: Array[String],
                 }
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min_len = ..., max_len = ...)] must be non-negative, found -1
@@ -6997,7 +6997,7 @@ mod tests {
                   #[examples(min_len = 5, max_len = 2)]
                   tags: Array[String],
                 }
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min_len = 5)] must be less than or equal to max_len = 2
@@ -7014,13 +7014,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(...rest) -> Fragment {
+                fn Foo(...rest) -> Html {
                     <div ...rest><Foo/></div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Foo(rest: Attrs) -> Fragment {
+                fn Foo(rest: Attrs) -> Html {
                   html(tag: "div", attrs: concat([], rest), children: concat(Foo(rest: [])))
                 }
             "#]],
@@ -7032,11 +7032,11 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(class: String) -> Fragment {
+                fn Foo(class: String) -> Html {
                     <div class={class}></div>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Foo class="a" data-x="y"/>
                   }
                 }
@@ -7044,7 +7044,7 @@ mod tests {
             expect![[r#"
                 error: Function Foo does not accept attribute `data-x`
                   --> main.hop (line 6, col 22)
-                5 |   fn body() -> Fragment {
+                5 |   fn body() -> Html {
                 6 |       <Foo class="a" data-x="y"/>
                   |                      ^^^^^^
             "#]],
@@ -7056,14 +7056,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(...rest) -> Fragment {
+                fn Foo(...rest) -> Html {
                   <div></div>
                 }
             "#},
             expect![[r#"
                 error: Function Foo declares rest parameter 'rest' but never spreads it
                   --> main.hop (line 1, col 8)
-                1 | fn Foo(...rest) -> Fragment {
+                1 | fn Foo(...rest) -> Html {
                   |        ^^^^^^^
             "#]],
         );
@@ -7074,14 +7074,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   <div ...rest></div>
                 }
             "#},
             expect![[r#"
                 error: Spread '...rest' does not refer to a declared rest parameter
                   --> main.hop (line 2, col 8)
-                1 | fn Foo() -> Fragment {
+                1 | fn Foo() -> Html {
                 2 |   <div ...rest></div>
                   |        ^^^^^^^
             "#]],
@@ -7093,14 +7093,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(...rest) -> Fragment {
+                fn Foo(...rest) -> Html {
                   <div ...rest><span ...rest></span></div>
                 }
             "#},
             expect![[r#"
                 error: Rest parameter 'rest' is spread more than once
                   --> main.hop (line 2, col 22)
-                1 | fn Foo(...rest) -> Fragment {
+                1 | fn Foo(...rest) -> Html {
                 2 |   <div ...rest><span ...rest></span></div>
                   |                      ^^^^^^^
             "#]],
@@ -7113,7 +7113,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div ...rest></div>
                   }
                 }
@@ -7121,7 +7121,7 @@ mod tests {
             expect![[r#"
                 error: Spread '...rest' does not refer to a declared rest parameter
                   --> main.hop (line 3, col 10)
-                2 |   fn body() -> Fragment {
+                2 |   fn body() -> Html {
                 3 |     <div ...rest></div>
                   |          ^^^^^^^
             "#]],
@@ -7134,16 +7134,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  fn head() -> Fragment {
+                  fn head() -> Html {
                     <meta ...rest/>
                   }
-                  fn body() -> Fragment {<></>}
+                  fn body() -> Html {<></>}
                 }
             "#},
             expect![[r#"
                 error: Spread '...rest' does not refer to a declared rest parameter
                   --> main.hop (line 3, col 11)
-                2 |   fn head() -> Fragment {
+                2 |   fn head() -> Html {
                 3 |     <meta ...rest/>
                   |           ^^^^^^^
             "#]],
@@ -7155,7 +7155,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(show: Bool) -> Fragment {
+                fn Foo(show: Bool) -> Html {
                   <match {show}>
                     <case {true}>
                       <div ...rest></div>
@@ -7179,11 +7179,11 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Button(class: String, children: Fragment, ...rest) -> Fragment {
+                fn Button(class: String, children: Html, ...rest) -> Html {
                     <button class={class} ...rest>{children}</button>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Button class="p-2" data-foo="bar">Hi</Button>
                   }
                 }
@@ -7191,7 +7191,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Button(
                       class: "p-2",
                       children: concat(raw("Hi")),
@@ -7200,7 +7200,7 @@ mod tests {
                   }
                 }
 
-                fn Button(class: String, children: Fragment, rest: Attrs) -> Fragment {
+                fn Button(class: String, children: Html, rest: Attrs) -> Html {
                   html(
                     tag: "button",
                     attrs: concat([class: escape(class)], rest),
@@ -7216,11 +7216,11 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Button(children: Fragment, ...rest) -> Fragment {
+                fn Button(children: Html, ...rest) -> Html {
                     <button class="builtin" ...rest>{children}</button>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Button data-x="y">Hi</Button>
                   }
                 }
@@ -7228,12 +7228,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Button(children: concat(raw("Hi")), rest: [data-x: raw("y")])
                   }
                 }
 
-                fn Button(children: Fragment, rest: Attrs) -> Fragment {
+                fn Button(children: Html, rest: Attrs) -> Html {
                   html(
                     tag: "button",
                     attrs: concat([class: raw("builtin")], rest),
@@ -7249,11 +7249,11 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Button(children: Fragment, ...rest) -> Fragment {
+                fn Button(children: Html, ...rest) -> Html {
                     <button class="builtin" ...rest>{children}</button>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Button class="forwarded">Hi</Button>
                   }
                 }
@@ -7261,7 +7261,7 @@ mod tests {
             expect![[r#"
                 error: Function Button does not accept attribute `class`
                   --> main.hop (line 6, col 15)
-                5 |   fn body() -> Fragment {
+                5 |   fn body() -> Html {
                 6 |       <Button class="forwarded">Hi</Button>
                   |               ^^^^^
             "#]],
@@ -7273,11 +7273,11 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Button(class: String, ...rest) -> Fragment {
+                fn Button(class: String, ...rest) -> Html {
                     <button class={class} ...rest></button>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Button class="p-2" qwerty="z"/>
                   }
                 }
@@ -7285,7 +7285,7 @@ mod tests {
             expect![[r#"
                 error: Function Button does not accept attribute `qwerty`
                   --> main.hop (line 6, col 27)
-                5 |   fn body() -> Fragment {
+                5 |   fn body() -> Html {
                 6 |       <Button class="p-2" qwerty="z"/>
                   |                           ^^^^^^
             "#]],
@@ -7297,11 +7297,11 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Svg(...rest) -> Fragment {
+                fn Svg(...rest) -> Html {
                     <svg ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Svg viewBox="0 0 100 100"/>
                   }
                 }
@@ -7309,12 +7309,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Svg(rest: [viewBox: raw("0 0 100 100")])
                   }
                 }
 
-                fn Svg(rest: Attrs) -> Fragment {
+                fn Svg(rest: Attrs) -> Html {
                   html(tag: "svg", attrs: concat([], rest), children: concat())
                 }
             "#]],
@@ -7326,14 +7326,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                     <div>{title}</div>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Card ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper title="hi"/>
                   }
                 }
@@ -7341,16 +7341,16 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Wrapper(title: "hi", rest: [])
                   }
                 }
 
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
-                fn Wrapper(title: String, rest: Attrs) -> Fragment {
+                fn Wrapper(title: String, rest: Attrs) -> Html {
                   Card(title: title)
                 }
             "#]],
@@ -7362,14 +7362,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                     <div>{title}</div>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Card title="explicit" ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper/>
                   }
                 }
@@ -7377,16 +7377,16 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Wrapper(rest: [])
                   }
                 }
 
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
-                fn Wrapper(rest: Attrs) -> Fragment {
+                fn Wrapper(rest: Attrs) -> Html {
                   Card(title: "explicit")
                 }
             "#]],
@@ -7398,14 +7398,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                     <div>{title}</div>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Card ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper/>
                   }
                 }
@@ -7413,7 +7413,7 @@ mod tests {
             expect![[r#"
                 error: Function Wrapper requires arguments: title
                   --> main.hop (line 9, col 8)
-                 8 |   fn body() -> Fragment {
+                 8 |   fn body() -> Html {
                  9 |       <Wrapper/>
                    |        ^^^^^^^
             "#]],
@@ -7425,16 +7425,16 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Card(count: Int) -> Fragment {
+                fn Card(count: Int) -> Html {
                     <if {count > 0}>
                         <div>positive</div>
                     </if>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Card ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper count="hi"/>
                   }
                 }
@@ -7442,7 +7442,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type for argument 'count' of function 'Wrapper': expected `Int` got `String`
                   --> main.hop (line 11, col 22)
-                10 |   fn body() -> Fragment {
+                10 |   fn body() -> Html {
                 11 |       <Wrapper count="hi"/>
                    |                      ^^^^
             "#]],
@@ -7454,16 +7454,16 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(class: String, ...rest) -> Fragment {
+                fn Inner(class: String, ...rest) -> Html {
                     <span class={class} ...rest></span>
                 }
-                fn Outer(class: String, ...rest) -> Fragment {
+                fn Outer(class: String, ...rest) -> Html {
                     <div class={class}>
                         <Inner ...rest/>
                     </div>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Outer class="x"/>
                   }
                 }
@@ -7483,16 +7483,16 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Tree(x: Int) -> Fragment {
+                fn Tree(x: Int) -> Html {
                     <div>
                         <Tree x={x}/>
                     </div>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Tree ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper x={1}/>
                   }
                 }
@@ -7500,16 +7500,16 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Wrapper(x: 1, rest: [])
                   }
                 }
 
-                fn Tree(x: Int) -> Fragment {
+                fn Tree(x: Int) -> Html {
                   html(tag: "div", attrs: [], children: concat(Tree(x: x)))
                 }
 
-                fn Wrapper(x: Int, rest: Attrs) -> Fragment {
+                fn Wrapper(x: Int, rest: Attrs) -> Html {
                   Tree(x: x)
                 }
             "#]],
@@ -7524,27 +7524,27 @@ mod tests {
                 record User {
                     name: String,
                 }
-                fn Card(user: User) -> Fragment {
+                fn Card(user: User) -> Html {
                     <div>{user.name}</div>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Card ...rest/>
                 }
-                fn Page(user: User) -> Fragment {
+                fn Page(user: User) -> Html {
                     <Wrapper user={user}/>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Card(user: main::User) -> Fragment {
+                fn Card(user: main::User) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(user.name)))
                 }
 
-                fn Page(user: main::User) -> Fragment {
+                fn Page(user: main::User) -> Html {
                   Wrapper(user: user, rest: [])
                 }
 
-                fn Wrapper(user: main::User, rest: Attrs) -> Fragment {
+                fn Wrapper(user: main::User, rest: Attrs) -> Html {
                   Card(user: user)
                 }
 
@@ -7561,20 +7561,20 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                     <div>{title}</div>
                 }
-                fn Bar(name: String, ...rest) -> Fragment {
+                fn Bar(name: String, ...rest) -> Html {
                     <div>
                         {name}
                         <Card ...rest/>
                     </div>
                 }
-                fn Baz(...rest) -> Fragment {
+                fn Baz(...rest) -> Html {
                     <Bar ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Baz name="n" title="t"/>
                   }
                 }
@@ -7582,12 +7582,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Baz(name: "n", title: "t", rest: [])
                   }
                 }
 
-                fn Bar(name: String, title: String, rest: Attrs) -> Fragment {
+                fn Bar(name: String, title: String, rest: Attrs) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -7595,11 +7595,11 @@ mod tests {
                   )
                 }
 
-                fn Baz(name: String, title: String, rest: Attrs) -> Fragment {
+                fn Baz(name: String, title: String, rest: Attrs) -> Html {
                   Bar(name: name, title: title, rest: concat([], rest))
                 }
 
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(title)))
                 }
             "#]],
@@ -7611,20 +7611,20 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String) -> Fragment {
+                fn Card(title: String) -> Html {
                     <div>{title}</div>
                 }
-                fn Bar(name: String, ...rest) -> Fragment {
+                fn Bar(name: String, ...rest) -> Html {
                     <div>
                         {name}
                         <Card ...rest/>
                     </div>
                 }
-                fn Baz(...rest) -> Fragment {
+                fn Baz(...rest) -> Html {
                     <Bar ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Baz/>
                   }
                 }
@@ -7632,7 +7632,7 @@ mod tests {
             expect![[r#"
                 error: Function Baz requires arguments: name, title
                   --> main.hop (line 15, col 8)
-                14 |   fn body() -> Fragment {
+                14 |   fn body() -> Html {
                 15 |       <Baz/>
                    |        ^^^
             "#]],
@@ -7644,14 +7644,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn A(id: String, ...rest) -> Fragment {
+                fn A(id: String, ...rest) -> Html {
                     <div id={id} ...rest></div>
                 }
-                fn B(...rest) -> Fragment {
+                fn B(...rest) -> Html {
                     <A ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <B/>
                   }
                 }
@@ -7659,7 +7659,7 @@ mod tests {
             expect![[r#"
                 error: Function B requires arguments: id
                   --> main.hop (line 9, col 8)
-                 8 |   fn body() -> Fragment {
+                 8 |   fn body() -> Html {
                  9 |       <B/>
                    |        ^
             "#]],
@@ -7671,16 +7671,16 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(count: Int) -> Fragment {
+                fn Card(count: Int) -> Html {
                     <if {count > 0}>
                         <div>positive</div>
                     </if>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Card ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper count={3}/>
                   }
                 }
@@ -7688,12 +7688,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Wrapper(count: 3, rest: [])
                   }
                 }
 
-                fn Card(count: Int) -> Fragment {
+                fn Card(count: Int) -> Html {
                   match (count > 0) {
                     true => concat(
                       html(tag: "div", attrs: [], children: concat(raw("positive"))),
@@ -7702,7 +7702,7 @@ mod tests {
                   }
                 }
 
-                fn Wrapper(count: Int, rest: Attrs) -> Fragment {
+                fn Wrapper(count: Int, rest: Attrs) -> Html {
                   Card(count: count)
                 }
             "#]],
@@ -7714,18 +7714,18 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn A(count: Int, ...rest) -> Fragment {
+                fn A(count: Int, ...rest) -> Html {
                     <div ...rest>
                         <if {count > 0}>
                             positive
                         </if>
                     </div>
                 }
-                fn B(...rest) -> Fragment {
+                fn B(...rest) -> Html {
                     <A ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <B count={3} data-foo="bar"/>
                   }
                 }
@@ -7733,12 +7733,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     B(count: 3, rest: [data-foo: raw("bar")])
                   }
                 }
 
-                fn A(count: Int, rest: Attrs) -> Fragment {
+                fn A(count: Int, rest: Attrs) -> Html {
                   html(
                     tag: "div",
                     attrs: concat([], rest),
@@ -7748,7 +7748,7 @@ mod tests {
                   )
                 }
 
-                fn B(count: Int, rest: Attrs) -> Fragment {
+                fn B(count: Int, rest: Attrs) -> Html {
                   A(count: count, rest: concat([], rest))
                 }
             "#]],
@@ -7760,17 +7760,17 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(class: String) -> Fragment {
+                fn Foo(class: String) -> Html {
                     <div class={class}></div>
                 }
-                fn Bar(...rest) -> Fragment {
+                fn Bar(...rest) -> Html {
                     <Foo ...rest/>
                 }
-                fn Baz(...rest) -> Fragment {
+                fn Baz(...rest) -> Html {
                     <Bar ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Baz class="a" data-x="y"/>
                   }
                 }
@@ -7778,7 +7778,7 @@ mod tests {
             expect![[r#"
                 error: Function Baz does not accept attribute `data-x`
                   --> main.hop (line 12, col 22)
-                11 |   fn body() -> Fragment {
+                11 |   fn body() -> Html {
                 12 |       <Baz class="a" data-x="y"/>
                    |                      ^^^^^^
             "#]],
@@ -7790,14 +7790,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(class: String) -> Fragment {
+                fn Foo(class: String) -> Html {
                     <div class={class}></div>
                 }
-                fn Bar(...rest) -> Fragment {
+                fn Bar(...rest) -> Html {
                     <Foo ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Bar class="a" data-x="y"/>
                   }
                 }
@@ -7805,7 +7805,7 @@ mod tests {
             expect![[r#"
                 error: Function Bar does not accept attribute `data-x`
                   --> main.hop (line 9, col 22)
-                 8 |   fn body() -> Fragment {
+                 8 |   fn body() -> Html {
                  9 |       <Bar class="a" data-x="y"/>
                    |                      ^^^^^^
             "#]],
@@ -7817,14 +7817,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(children: Fragment) -> Fragment {
+                fn Foo(children: Html) -> Html {
                     <div>{children}</div>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Foo ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper/>
                   }
                 }
@@ -7832,7 +7832,7 @@ mod tests {
             expect![[r#"
                 error: Function Wrapper requires arguments: children
                   --> main.hop (line 9, col 8)
-                 8 |   fn body() -> Fragment {
+                 8 |   fn body() -> Html {
                  9 |       <Wrapper/>
                    |        ^^^^^^^
             "#]],
@@ -7844,17 +7844,17 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(children: Fragment) -> Fragment {
+                fn Foo(children: Html) -> Html {
                     <div>{children}</div>
                 }
-                fn Bar(...rest) -> Fragment {
+                fn Bar(...rest) -> Html {
                     <Foo ...rest/>
                 }
-                fn Baz(...rest) -> Fragment {
+                fn Baz(...rest) -> Html {
                     <Bar ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Baz>deep</Baz>
                   }
                 }
@@ -7862,20 +7862,20 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Baz(children: concat(raw("deep")), rest: [])
                   }
                 }
 
-                fn Bar(children: Fragment, rest: Attrs) -> Fragment {
+                fn Bar(children: Html, rest: Attrs) -> Html {
                   Foo(children: children)
                 }
 
-                fn Baz(children: Fragment, rest: Attrs) -> Fragment {
+                fn Baz(children: Html, rest: Attrs) -> Html {
                   Bar(children: children, rest: concat([], rest))
                 }
 
-                fn Foo(children: Fragment) -> Fragment {
+                fn Foo(children: Html) -> Html {
                   html(tag: "div", attrs: [], children: concat(children))
                 }
             "#]],
@@ -7887,22 +7887,22 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(children: Fragment, class: String, ...rest) -> Fragment {
+                fn Foo(children: Html, class: String, ...rest) -> Html {
                     <div class={class} ...rest>{children}</div>
                 }
-                fn Card(...rest) -> Fragment {
+                fn Card(...rest) -> Html {
                     <Foo ...rest>inner</Foo>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Card class="a">hi</Card>
                   }
                 }
             "#},
             expect![[r#"
-                error: Function Card does not accept content (missing `children: Fragment` parameter)
+                error: Function Card does not accept content (missing `children: Html` parameter)
                   --> main.hop (line 9, col 8)
-                 8 |   fn body() -> Fragment {
+                 8 |   fn body() -> Html {
                  9 |       <Card class="a">hi</Card>
                    |        ^^^^
             "#]],
@@ -7914,16 +7914,16 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(class: String = "x", ...rest) -> Fragment {
+                fn Inner(class: String = "x", ...rest) -> Html {
                     <span class={class} ...rest></span>
                 }
-                fn Outer(class: String, ...rest) -> Fragment {
+                fn Outer(class: String, ...rest) -> Html {
                     <div class={class}>
                         <Inner ...rest/>
                     </div>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Outer class="x"/>
                   }
                 }
@@ -7931,12 +7931,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Outer(class: "x", rest: [])
                   }
                 }
 
-                fn Inner(class: String, rest: Attrs) -> Fragment {
+                fn Inner(class: String, rest: Attrs) -> Html {
                   html(
                     tag: "span",
                     attrs: concat([class: escape(class)], rest),
@@ -7944,7 +7944,7 @@ mod tests {
                   )
                 }
 
-                fn Outer(class: String, rest: Attrs) -> Fragment {
+                fn Outer(class: String, rest: Attrs) -> Html {
                   html(
                     tag: "div",
                     attrs: [class: escape(class)],
@@ -7960,18 +7960,18 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(children: Fragment, class: String, ...rest) -> Fragment {
+                fn Foo(children: Html, class: String, ...rest) -> Html {
                     <div class={class} ...rest>
                         {children}
                     </div>
                 }
-                fn Button(children: Fragment, class: String = "", ...rest) -> Fragment {
+                fn Button(children: Html, class: String = "", ...rest) -> Html {
                     <Foo class={class} ...rest>
                         {children}
                     </Foo>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Button class="primary">click</Button>
                   }
                 }
@@ -7979,16 +7979,16 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Button(children: concat(raw("click")), class: "primary", rest: [])
                   }
                 }
 
-                fn Button(children: Fragment, class: String, rest: Attrs) -> Fragment {
+                fn Button(children: Html, class: String, rest: Attrs) -> Html {
                   Foo(children: concat(children), class: class, rest: concat([], rest))
                 }
 
-                fn Foo(children: Fragment, class: String, rest: Attrs) -> Fragment {
+                fn Foo(children: Html, class: String, rest: Attrs) -> Html {
                   html(
                     tag: "div",
                     attrs: concat([class: escape(class)], rest),
@@ -8004,14 +8004,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(class: String = "x", ...rest) -> Fragment {
+                fn Inner(class: String = "x", ...rest) -> Html {
                     <span class={class} ...rest></span>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Inner ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper class="y"/>
                   }
                 }
@@ -8019,12 +8019,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Wrapper(class: "y", rest: [])
                   }
                 }
 
-                fn Inner(class: String, rest: Attrs) -> Fragment {
+                fn Inner(class: String, rest: Attrs) -> Html {
                   html(
                     tag: "span",
                     attrs: concat([class: escape(class)], rest),
@@ -8032,7 +8032,7 @@ mod tests {
                   )
                 }
 
-                fn Wrapper(class: String, rest: Attrs) -> Fragment {
+                fn Wrapper(class: String, rest: Attrs) -> Html {
                   Inner(class: class, rest: concat([], rest))
                 }
             "#]],
@@ -8044,14 +8044,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn A(class: String = "", ...rest) -> Fragment {
+                fn A(class: String = "", ...rest) -> Html {
                     <div class={class} ...rest/>
                 }
-                fn B(class: String = "", ...rest) -> Fragment {
+                fn B(class: String = "", ...rest) -> Html {
                     <A class={class} ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <B class="main"/>
                   }
                 }
@@ -8059,12 +8059,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     B(class: "main", rest: [])
                   }
                 }
 
-                fn A(class: String, rest: Attrs) -> Fragment {
+                fn A(class: String, rest: Attrs) -> Html {
                   html(
                     tag: "div",
                     attrs: concat([class: escape(class)], rest),
@@ -8072,7 +8072,7 @@ mod tests {
                   )
                 }
 
-                fn B(class: String, rest: Attrs) -> Fragment {
+                fn B(class: String, rest: Attrs) -> Html {
                   A(class: class, rest: concat([], rest))
                 }
             "#]],
@@ -8084,14 +8084,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn A(class: String = "a", ...rest) -> Fragment {
+                fn A(class: String = "a", ...rest) -> Html {
                     <div class={class} ...rest/>
                 }
-                fn B(class: String = "b", ...rest) -> Fragment {
+                fn B(class: String = "b", ...rest) -> Html {
                     <A class={class} ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <B/>
                   }
                 }
@@ -8099,12 +8099,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     B(class: "b", rest: [])
                   }
                 }
 
-                fn A(class: String, rest: Attrs) -> Fragment {
+                fn A(class: String, rest: Attrs) -> Html {
                   html(
                     tag: "div",
                     attrs: concat([class: escape(class)], rest),
@@ -8112,7 +8112,7 @@ mod tests {
                   )
                 }
 
-                fn B(class: String, rest: Attrs) -> Fragment {
+                fn B(class: String, rest: Attrs) -> Html {
                   A(class: class, rest: concat([], rest))
                 }
             "#]],
@@ -8124,14 +8124,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn A(label: String = "x", ...rest) -> Fragment {
+                fn A(label: String = "x", ...rest) -> Html {
                     <span ...rest>{label}</span>
                 }
-                fn B(...rest) -> Fragment {
+                fn B(...rest) -> Html {
                     <A ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <B/>
                   }
                 }
@@ -8139,16 +8139,16 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     B(label: "x", rest: [])
                   }
                 }
 
-                fn A(label: String, rest: Attrs) -> Fragment {
+                fn A(label: String, rest: Attrs) -> Html {
                   html(tag: "span", attrs: concat([], rest), children: concat(escape(label)))
                 }
 
-                fn B(label: String, rest: Attrs) -> Fragment {
+                fn B(label: String, rest: Attrs) -> Html {
                   A(label: label, rest: concat([], rest))
                 }
             "#]],
@@ -8160,17 +8160,17 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Leaf(label: String = "x", ...rest) -> Fragment {
+                fn Leaf(label: String = "x", ...rest) -> Html {
                     <span ...rest>{label}</span>
                 }
-                fn Mid(...rest) -> Fragment {
+                fn Mid(...rest) -> Html {
                     <Leaf ...rest/>
                 }
-                fn Top(...rest) -> Fragment {
+                fn Top(...rest) -> Html {
                     <Mid ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Top/>
                   }
                 }
@@ -8178,20 +8178,20 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Top(label: "x", rest: [])
                   }
                 }
 
-                fn Leaf(label: String, rest: Attrs) -> Fragment {
+                fn Leaf(label: String, rest: Attrs) -> Html {
                   html(tag: "span", attrs: concat([], rest), children: concat(escape(label)))
                 }
 
-                fn Mid(label: String, rest: Attrs) -> Fragment {
+                fn Mid(label: String, rest: Attrs) -> Html {
                   Leaf(label: label, rest: concat([], rest))
                 }
 
-                fn Top(label: String, rest: Attrs) -> Fragment {
+                fn Top(label: String, rest: Attrs) -> Html {
                   Mid(label: label, rest: concat([], rest))
                 }
             "#]],
@@ -8203,14 +8203,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(...rest) -> Fragment {
+                fn Inner(...rest) -> Html {
                     <span ...rest></span>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Inner title="a" ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper title="b"/>
                   }
                 }
@@ -8218,7 +8218,7 @@ mod tests {
             expect![[r#"
                 error: Function Wrapper does not accept attribute `title`
                   --> main.hop (line 9, col 16)
-                 8 |   fn body() -> Fragment {
+                 8 |   fn body() -> Html {
                  9 |       <Wrapper title="b"/>
                    |                ^^^^^
             "#]],
@@ -8230,14 +8230,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(...rest) -> Fragment {
+                fn Inner(...rest) -> Html {
                     <span ...rest></span>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Inner data-foo="a" ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper data-foo="b"/>
                   }
                 }
@@ -8245,7 +8245,7 @@ mod tests {
             expect![[r#"
                 error: Function Wrapper does not accept attribute `data-foo`
                   --> main.hop (line 9, col 16)
-                 8 |   fn body() -> Fragment {
+                 8 |   fn body() -> Html {
                  9 |       <Wrapper data-foo="b"/>
                    |                ^^^^^^^^
             "#]],
@@ -8257,14 +8257,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(...rest) -> Fragment {
+                fn Inner(...rest) -> Html {
                     <span ...rest></span>
                 }
-                fn Wrapper(...rest) -> Fragment {
+                fn Wrapper(...rest) -> Html {
                     <Inner title="a" ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Wrapper lang="en"/>
                   }
                 }
@@ -8272,16 +8272,16 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Wrapper(rest: [lang: raw("en")])
                   }
                 }
 
-                fn Inner(rest: Attrs) -> Fragment {
+                fn Inner(rest: Attrs) -> Html {
                   html(tag: "span", attrs: concat([], rest), children: concat())
                 }
 
-                fn Wrapper(rest: Attrs) -> Fragment {
+                fn Wrapper(rest: Attrs) -> Html {
                   Inner(rest: concat([title: raw("a")], rest))
                 }
             "#]],
@@ -8293,17 +8293,17 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(...rest) -> Fragment {
+                fn Inner(...rest) -> Html {
                     <span ...rest></span>
                 }
-                fn Mid(...rest) -> Fragment {
+                fn Mid(...rest) -> Html {
                     <Inner title="a" ...rest/>
                 }
-                fn Outer(...rest) -> Fragment {
+                fn Outer(...rest) -> Html {
                     <Mid ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Outer title="b"/>
                   }
                 }
@@ -8311,7 +8311,7 @@ mod tests {
             expect![[r#"
                 error: Function Outer does not accept attribute `title`
                   --> main.hop (line 12, col 14)
-                11 |   fn body() -> Fragment {
+                11 |   fn body() -> Html {
                 12 |       <Outer title="b"/>
                    |              ^^^^^
             "#]],
@@ -8323,16 +8323,16 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn A(tabindex: Int, ...rest) -> Fragment {
+                fn A(tabindex: Int, ...rest) -> Html {
                     <div ...rest>
                         <if {tabindex > 0}>focusable</if>
                     </div>
                 }
-                fn B(...rest) -> Fragment {
+                fn B(...rest) -> Html {
                     <A ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <B tabindex="nope"/>
                   }
                 }
@@ -8340,7 +8340,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type for argument 'tabindex' of function 'B': expected `Int` got `String`
                   --> main.hop (line 11, col 19)
-                10 |   fn body() -> Fragment {
+                10 |   fn body() -> Html {
                 11 |       <B tabindex="nope"/>
                    |                   ^^^^^^
             "#]],
@@ -8352,16 +8352,16 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn A(tabindex: Int, ...rest) -> Fragment {
+                fn A(tabindex: Int, ...rest) -> Html {
                     <div ...rest>
                         <if {tabindex > 0}>focusable</if>
                     </div>
                 }
-                fn B(...rest) -> Fragment {
+                fn B(...rest) -> Html {
                     <A ...rest/>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <B tabindex={2} data-x="y"/>
                   }
                 }
@@ -8369,12 +8369,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     B(tabindex: 2, rest: [data-x: raw("y")])
                   }
                 }
 
-                fn A(tabindex: Int, rest: Attrs) -> Fragment {
+                fn A(tabindex: Int, rest: Attrs) -> Html {
                   html(
                     tag: "div",
                     attrs: concat([], rest),
@@ -8387,7 +8387,7 @@ mod tests {
                   )
                 }
 
-                fn B(tabindex: Int, rest: Attrs) -> Fragment {
+                fn B(tabindex: Int, rest: Attrs) -> Html {
                   A(tabindex: tabindex, rest: concat([], rest))
                 }
             "#]],
@@ -8399,13 +8399,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Ping(n: Int) -> Fragment {
+                fn Ping(n: Int) -> Html {
                     <if {n > 0}>
                         <Pong n={n - 1}/>
                     </if>
                 }
 
-                fn Pong(n: Int) -> Fragment {
+                fn Pong(n: Int) -> Html {
                     <if {n > 0}>
                         <Ping n={n - 1}/>
                     </if>
@@ -8413,11 +8413,11 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Ping(n: Int) -> Fragment {
+                fn Ping(n: Int) -> Html {
                   match (n > 0) {true => concat(Pong(n: (n - 1))), false => concat()}
                 }
 
-                fn Pong(n: Int) -> Fragment {
+                fn Pong(n: Int) -> Html {
                   match (n > 0) {true => concat(Ping(n: (n - 1))), false => concat()}
                 }
             "#]],
@@ -8429,29 +8429,29 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn A(n: Int) -> Fragment {
+                fn A(n: Int) -> Html {
                     <if {n > 0}><B n={n - 1}/></if>
                 }
 
-                fn B(n: Int) -> Fragment {
+                fn B(n: Int) -> Html {
                     <if {n > 0}><C n={n - 1}/></if>
                 }
 
-                fn C(n: Int) -> Fragment {
+                fn C(n: Int) -> Html {
                     <if {n > 0}><A n={n - 1}/></if>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn A(n: Int) -> Fragment {
+                fn A(n: Int) -> Html {
                   match (n > 0) {true => concat(B(n: (n - 1))), false => concat()}
                 }
 
-                fn B(n: Int) -> Fragment {
+                fn B(n: Int) -> Html {
                   match (n > 0) {true => concat(C(n: (n - 1))), false => concat()}
                 }
 
-                fn C(n: Int) -> Fragment {
+                fn C(n: Int) -> Html {
                   match (n > 0) {true => concat(A(n: (n - 1))), false => concat()}
                 }
             "#]],
@@ -8463,21 +8463,21 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <Later/>
                 }
 
-                fn Later() -> Fragment {
+                fn Later() -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Later() -> Fragment {
+                fn Later() -> Html {
                   html(tag: "div", attrs: [], children: concat())
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   Later()
                 }
             "#]],
@@ -8490,24 +8490,24 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <Later/>
                   }
                 }
 
-                fn Later() -> Fragment {
+                fn Later() -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     Later()
                   }
                 }
 
-                fn Later() -> Fragment {
+                fn Later() -> Html {
                   html(tag: "div", attrs: [], children: concat())
                 }
             "#]],
@@ -8519,27 +8519,27 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Render(item: Option[Int]) -> Fragment {
+                fn Render(item: Option[Int]) -> Html {
                     <match {item}>
                         <case {Some(n)}><Wrap n={n}/></case>
                         <case {None}>done</case>
                     </match>
                 }
 
-                fn Wrap(n: Int) -> Fragment {
+                fn Wrap(n: Int) -> Html {
                     <Render item={Some(n)}/>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Render(item: Option[Int]) -> Fragment {
+                fn Render(item: Option[Int]) -> Html {
                   match item {
                     Some(v__0) => let n = v__0 in concat(Wrap(n: n)),
                     None => concat(raw("done")),
                   }
                 }
 
-                fn Wrap(n: Int) -> Fragment {
+                fn Wrap(n: Int) -> Html {
                   Render(item: Some(n))
                 }
             "#]],
@@ -8553,14 +8553,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(...rest) -> Fragment {
+                fn Foo(...rest) -> Html {
                     <Foo ...rest/>
                 }
             "#},
             expect![[r#"
                 error: Rest spread of Foo forms a cycle and never reaches an element
                   --> main.hop (line 2, col 10)
-                1 | fn Foo(...rest) -> Fragment {
+                1 | fn Foo(...rest) -> Html {
                 2 |     <Foo ...rest/>
                   |          ^^^^^^^
             "#]],
@@ -8575,13 +8575,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Foo(...rest) -> Fragment {
+                fn Foo(...rest) -> Html {
                     <div ...rest><Foo id="x"/></div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Foo(rest: Attrs) -> Fragment {
+                fn Foo(rest: Attrs) -> Html {
                   html(
                     tag: "div",
                     attrs: concat([], rest),
@@ -8600,20 +8600,20 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Leaf(title: String = "d") -> Fragment {
+                fn Leaf(title: String = "d") -> Html {
                     <div>{title}</div>
                 }
-                fn First(...rest) -> Fragment {
+                fn First(...rest) -> Html {
                     <Second ...rest/>
                 }
-                fn Second(...rest) -> Fragment {
+                fn Second(...rest) -> Html {
                   <>
                       <Leaf ...rest/>
                       <First/>
                   </>
                 }
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <First/>
                   }
                 }
@@ -8621,20 +8621,20 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     First(title: "d", rest: [])
                   }
                 }
 
-                fn First(title: String, rest: Attrs) -> Fragment {
+                fn First(title: String, rest: Attrs) -> Html {
                   Second(title: title, rest: concat([], rest))
                 }
 
-                fn Leaf(title: String) -> Fragment {
+                fn Leaf(title: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
-                fn Second(title: String, rest: Attrs) -> Fragment {
+                fn Second(title: String, rest: Attrs) -> Html {
                   concat(Leaf(title: title), First(title: "d", rest: []))
                 }
             "#]],
@@ -8648,21 +8648,21 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn First(n: Int, ...rest) -> Fragment {
+                fn First(n: Int, ...rest) -> Html {
                     <Second n={n} ...rest/>
                 }
 
-                fn Second(n: Int) -> Fragment {
+                fn Second(n: Int) -> Html {
                     <First n={n}/>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn First(n: Int, rest: Attrs) -> Fragment {
+                fn First(n: Int, rest: Attrs) -> Html {
                   Second(n: n)
                 }
 
-                fn Second(n: Int) -> Fragment {
+                fn Second(n: Int) -> Html {
                   First(n: n, rest: [])
                 }
             "#]],
@@ -8674,29 +8674,29 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Outer(...rest) -> Fragment {
+                fn Outer(...rest) -> Html {
                     <First ...rest/>
                 }
 
-                fn First(n: Int) -> Fragment {
+                fn First(n: Int) -> Html {
                     <Second n={n}/>
                 }
 
-                fn Second(n: Int) -> Fragment {
+                fn Second(n: Int) -> Html {
                     <First n={n}/>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn First(n: Int) -> Fragment {
+                fn First(n: Int) -> Html {
                   Second(n: n)
                 }
 
-                fn Outer(n: Int, rest: Attrs) -> Fragment {
+                fn Outer(n: Int, rest: Attrs) -> Html {
                   First(n: n)
                 }
 
-                fn Second(n: Int) -> Fragment {
+                fn Second(n: Int) -> Html {
                   First(n: n)
                 }
             "#]],
@@ -8712,7 +8712,7 @@ mod tests {
                     part: Widget,
                 }
 
-                fn Widget() -> Fragment {
+                fn Widget() -> Html {
                     <div></div>
                 }
             "#},
@@ -8731,12 +8731,12 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub fn Foo() -> Fragment {<></>}
+                pub fn Foo() -> Html {<></>}
                 -- main.hop --
                 import other::Foo
                 import other::Foo
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                 	<Foo></Foo>
                 }
             "#},
@@ -8747,9 +8747,9 @@ mod tests {
                 2 | import other::Foo
                   |               ^^^
 
-                error: Function Foo does not accept content (missing `children: Fragment` parameter)
+                error: Function Foo does not accept content (missing `children: Html` parameter)
                   --> main.hop (line 5, col 3)
-                4 | fn Main() -> Fragment {
+                4 | fn Main() -> Html {
                 5 |     <Foo></Foo>
                   |      ^^^
             "#]],
@@ -8761,15 +8761,15 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Foo() -> Fragment {<></>}
+                fn Foo() -> Html {<></>}
 
-                fn Foo() -> Fragment {<></>}
+                fn Foo() -> Html {<></>}
             "#},
             expect![[r#"
                 error: Foo is already defined
                   --> main.hop (line 3, col 4)
                 2 | 
-                3 | fn Foo() -> Fragment {<></>}
+                3 | fn Foo() -> Html {<></>}
                   |    ^^^
             "#]],
         );
@@ -8780,14 +8780,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub fn Foo() -> Fragment {<></>
+                pub fn Foo() -> Html {<></>
                 }
                 -- main.hop --
                 import other::Foo
 
-                fn Foo() -> Fragment {<></>}
+                fn Foo() -> Html {<></>}
 
-                fn Bar() -> Fragment {
+                fn Bar() -> Html {
                 	<Foo/>
                 }
             "#},
@@ -8795,7 +8795,7 @@ mod tests {
                 error: Foo is already defined
                   --> main.hop (line 3, col 4)
                 2 | 
-                3 | fn Foo() -> Fragment {<></>}
+                3 | fn Foo() -> Html {<></>}
                   |    ^^^
             "#]],
         );
@@ -8810,13 +8810,13 @@ mod tests {
                   name: String,
                 }
 
-                fn User() -> Fragment {<></>}
+                fn User() -> Html {<></>}
             "#},
             expect![[r#"
                 error: User is already defined
                   --> main.hop (line 5, col 4)
                 4 | 
-                5 | fn User() -> Fragment {<></>}
+                5 | fn User() -> Html {<></>}
                   |    ^^^^
             "#]],
         );
@@ -8901,13 +8901,13 @@ mod tests {
                 -- main.hop --
                 enum Color {Red, Green, Blue}
 
-                fn Color() -> Fragment {<></>}
+                fn Color() -> Html {<></>}
             "#},
             expect![[r#"
                 error: Color is already defined
                   --> main.hop (line 3, col 4)
                 2 | 
-                3 | fn Color() -> Fragment {<></>}
+                3 | fn Color() -> Html {<></>}
                   |    ^^^^^
             "#]],
         );
@@ -8945,13 +8945,13 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <div>First</div>
                   }
                 }
 
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <div>Second</div>
                   }
                 }
@@ -8971,12 +8971,12 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Index() -> Fragment {
+                fn Index() -> Html {
                     <div>Component</div>
                 }
 
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <div>Entrypoint</div>
                   }
                 }
@@ -9001,7 +9001,7 @@ mod tests {
                 }
 
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <div>Hello</div>
                   }
                 }
@@ -9027,7 +9027,7 @@ mod tests {
                 }
 
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <div>Hello</div>
                   }
                 }
@@ -9073,18 +9073,18 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <div>Hello</div>
                   }
                 }
 
-                fn Index() -> Fragment {<></>}
+                fn Index() -> Html {<></>}
             "#},
             expect![[r#"
                 error: Index is already defined
                   --> main.hop (line 7, col 4)
                 6 | 
-                7 | fn Index() -> Fragment {<></>}
+                7 | fn Index() -> Html {<></>}
                   |    ^^^^^
             "#]],
         );
@@ -9096,7 +9096,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <div>Hello</div>
                   }
                 }
@@ -9121,12 +9121,12 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                       <div>Hello</div>
                   }
                 }
 
-                fn Main(x: Index) -> Fragment {
+                fn Main(x: Index) -> Html {
                     <div></div>
                 }
             "#},
@@ -9134,7 +9134,7 @@ mod tests {
                 error: `Index` is a page and cannot be used as a type
                   --> main.hop (line 7, col 12)
                 6 | 
-                7 | fn Main(x: Index) -> Fragment {
+                7 | fn Main(x: Index) -> Html {
                   |            ^^^^^
             "#]],
         );
@@ -9150,7 +9150,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(count: 2, prefix: "n")}</div>
                   }
                 }
@@ -9158,7 +9158,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9184,7 +9184,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{add_ten(y: 1).to_string()}</div>
                   }
                 }
@@ -9192,13 +9192,13 @@ mod tests {
             expect![[r#"
                 error: Function add_ten requires arguments: x
                   --> main.hop (line 7, col 11)
-                6 |   fn body() -> Fragment {
+                6 |   fn body() -> Html {
                 7 |     <div>{add_ten(y: 1).to_string()}</div>
                   |           ^^^^^^^^^^^^^
 
                 error: Function add_ten does not accept argument `y`
                   --> main.hop (line 7, col 19)
-                6 |   fn body() -> Fragment {
+                6 |   fn body() -> Html {
                 7 |     <div>{add_ten(y: 1).to_string()}</div>
                   |                   ^
             "#]],
@@ -9215,7 +9215,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{add_ten(x: 1, x: 2).to_string()}</div>
                   }
                 }
@@ -9223,7 +9223,7 @@ mod tests {
             expect![[r#"
                 error: Argument `x` is supplied more than once
                   --> main.hop (line 7, col 25)
-                6 |   fn body() -> Fragment {
+                6 |   fn body() -> Html {
                 7 |     <div>{add_ten(x: 1, x: 2).to_string()}</div>
                   |                         ^
             "#]],
@@ -9240,7 +9240,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(prefix: "n")}</div>
                   }
                 }
@@ -9248,7 +9248,7 @@ mod tests {
             expect![[r#"
                 error: Function label requires arguments: count
                   --> main.hop (line 7, col 11)
-                6 |   fn body() -> Fragment {
+                6 |   fn body() -> Html {
                 7 |     <div>{label(prefix: "n")}</div>
                   |           ^^^^^^^^^^^^^^^^^^
             "#]],
@@ -9265,7 +9265,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(prefix: "n")}</div>
                   }
                 }
@@ -9273,7 +9273,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9299,7 +9299,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(prefix: "n", count: 7)}</div>
                   }
                 }
@@ -9307,7 +9307,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9333,7 +9333,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label()}</div>
                   }
                 }
@@ -9341,7 +9341,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9367,7 +9367,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label("n")}</div>
                   }
                 }
@@ -9375,7 +9375,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     html(
                       tag: "div",
                       attrs: [],
@@ -9401,7 +9401,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label("n", 2, 3)}</div>
                   }
                 }
@@ -9409,7 +9409,7 @@ mod tests {
             expect![[r#"
                 error: Function 'label' expects 0 to 2 argument(s), got 3
                   --> main.hop (line 7, col 11)
-                6 |   fn body() -> Fragment {
+                6 |   fn body() -> Html {
                 7 |     <div>{label("n", 2, 3)}</div>
                   |           ^^^^^^^^^^^^^^^^
             "#]],
@@ -9426,7 +9426,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label("n")}</div>
                   }
                 }
@@ -9434,7 +9434,7 @@ mod tests {
             expect![[r#"
                 error: Function 'label' expects 2 argument(s), got 1
                   --> main.hop (line 7, col 11)
-                6 |   fn body() -> Fragment {
+                6 |   fn body() -> Html {
                 7 |     <div>{label("n")}</div>
                   |           ^^^^^^^^^^
             "#]],
@@ -9451,7 +9451,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(count: 2)}</div>
                   }
                 }
@@ -9479,7 +9479,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(count: 2)}</div>
                   }
                 }
@@ -9503,7 +9503,7 @@ mod tests {
                   x + 10
                 }
 
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   <div>
                     <for {x in 0..=add_ten(10)}>
                       {x.to_string()}
@@ -9513,7 +9513,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Foo() -> Fragment {
+                fn Foo() -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -9542,7 +9542,7 @@ mod tests {
                 }
 
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{shout("hi")}</div>
                   }
                 }
@@ -9550,7 +9550,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     html(tag: "div", attrs: [], children: concat(escape(shout(name: "hi"))))
                   }
                 }
@@ -9590,7 +9590,7 @@ mod tests {
                 }
 
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{add_ten(1, 2).to_string()}</div>
                   }
                 }
@@ -9598,7 +9598,7 @@ mod tests {
             expect![[r#"
                 error: Function 'add_ten' expects 1 argument(s), got 2
                   --> main.hop (line 7, col 11)
-                6 |   fn body() -> Fragment {
+                6 |   fn body() -> Html {
                 7 |     <div>{add_ten(1, 2).to_string()}</div>
                   |           ^^^^^^^^^^^^^
             "#]],
@@ -9615,7 +9615,7 @@ mod tests {
                 }
 
                 page Main() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{add_ten("one").to_string()}</div>
                   }
                 }
@@ -9623,7 +9623,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type for argument 'x' of function 'add_ten': expected `Int` got `String`
                   --> main.hop (line 7, col 19)
-                6 |   fn body() -> Fragment {
+                6 |   fn body() -> Html {
                 7 |     <div>{add_ten("one").to_string()}</div>
                   |                   ^^^^^
             "#]],
@@ -9662,13 +9662,13 @@ mod tests {
                   x
                 }
 
-                fn NavBar() -> Fragment {
+                fn NavBar() -> Html {
                   <div></div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn NavBar() -> Fragment {
+                fn NavBar() -> Html {
                   html(tag: "div", attrs: [], children: concat())
                 }
 
@@ -9703,12 +9703,12 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn card(label: String) -> Fragment {
+                fn card(label: String) -> Html {
                   <div>{label}</div>
                 }
 
                 pub page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {card("hello")}
                     </>
@@ -9718,12 +9718,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(card(label: "hello"))
                   }
                 }
 
-                fn card(label: String) -> Fragment {
+                fn card(label: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(label)))
                 }
             "#]],
@@ -9740,7 +9740,7 @@ mod tests {
                 }
 
                 pub page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {card()}
                     </>
@@ -9748,7 +9748,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched type for function body: expected `String` got `Fragment`
+                error: Mismatched type for function body: expected `String` got `Html`
                   --> main.hop (line 2, col 3)
                  1 | fn card() -> String {
                  2 |   <div></div>
@@ -9762,12 +9762,12 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                fn wrap(children: Fragment) -> Fragment {
+                fn wrap(children: Html) -> Html {
                   <div>{children}</div>
                 }
 
                 pub page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       {wrap(<span>hello</span>)}
                     </>
@@ -9777,7 +9777,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(
                       wrap(
                         children: html(tag: "span", attrs: [], children: concat(raw("hello"))),
@@ -9786,7 +9786,7 @@ mod tests {
                   }
                 }
 
-                fn wrap(children: Fragment) -> Fragment {
+                fn wrap(children: Html) -> Html {
                   html(tag: "div", attrs: [], children: concat(children))
                 }
             "#]],
@@ -9799,7 +9799,7 @@ mod tests {
             indoc! {"
                 -- main.hop --
                 pub page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{<Missing/>}</div>
                   }
                 }
@@ -9807,7 +9807,7 @@ mod tests {
             expect![[r#"
                 error: Function Missing is not defined
                   --> main.hop (line 3, col 12)
-                2 |   fn body() -> Fragment {
+                2 |   fn body() -> Html {
                 3 |     <div>{<Missing/>}</div>
                   |            ^^^^^^^
             "#]],
@@ -9819,21 +9819,21 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                pub fn Inner(a: String) -> Fragment {
+                pub fn Inner(a: String) -> Html {
                   <div>{a}</div>
                 }
 
-                pub fn Outer(...rest) -> Fragment {
+                pub fn Outer(...rest) -> Html {
                   <div>{<Inner ...rest/>}</div>
                 }
             "},
             expect![[r#"
                 -- main.hop --
-                fn Inner(a: String) -> Fragment {
+                fn Inner(a: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(a)))
                 }
 
-                fn Outer(a: String, rest: Attrs) -> Fragment {
+                fn Outer(a: String, rest: Attrs) -> Html {
                   html(tag: "div", attrs: [], children: concat(Inner(a: a)))
                 }
             "#]],
@@ -9845,29 +9845,29 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                pub fn Inner(a: String) -> Fragment {
+                pub fn Inner(a: String) -> Html {
                   <div>{a}</div>
                 }
 
-                pub fn Slot(slot: Fragment) -> Fragment {
+                pub fn Slot(slot: Html) -> Html {
                   <div>{slot}</div>
                 }
 
-                pub fn Outer(...rest) -> Fragment {
+                pub fn Outer(...rest) -> Html {
                   <Slot slot={<Inner ...rest/>}/>
                 }
             "},
             expect![[r#"
                 -- main.hop --
-                fn Inner(a: String) -> Fragment {
+                fn Inner(a: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(a)))
                 }
 
-                fn Outer(a: String, rest: Attrs) -> Fragment {
+                fn Outer(a: String, rest: Attrs) -> Html {
                   Slot(slot: Inner(a: a))
                 }
 
-                fn Slot(slot: Fragment) -> Fragment {
+                fn Slot(slot: Html) -> Html {
                   html(tag: "div", attrs: [], children: concat(slot))
                 }
             "#]],
@@ -9879,24 +9879,24 @@ mod tests {
         reject(
             indoc! {"
                 -- main.hop --
-                pub fn Inner(a: String) -> Fragment {
+                pub fn Inner(a: String) -> Html {
                   <div>{a}</div>
                 }
 
-                pub fn Outer(...rest) -> Fragment {
+                pub fn Outer(...rest) -> Html {
                   <div ...rest>{<Inner ...rest/>}</div>
                 }
             "},
             expect![[r#"
                 error: Function Inner requires arguments: a
                   --> main.hop (line 6, col 18)
-                5 | pub fn Outer(...rest) -> Fragment {
+                5 | pub fn Outer(...rest) -> Html {
                 6 |   <div ...rest>{<Inner ...rest/>}</div>
                   |                  ^^^^^
 
                 error: Rest parameter 'rest' is spread more than once
                   --> main.hop (line 6, col 24)
-                5 | pub fn Outer(...rest) -> Fragment {
+                5 | pub fn Outer(...rest) -> Html {
                 6 |   <div ...rest>{<Inner ...rest/>}</div>
                   |                        ^^^^^^^
             "#]],
@@ -9908,21 +9908,21 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                pub fn Outer() -> Fragment {
+                pub fn Outer() -> Html {
                   <div>{<Inner a="x"/>}</div>
                 }
 
-                pub fn Inner(a: String) -> Fragment {
+                pub fn Inner(a: String) -> Html {
                   <div>{a}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Inner(a: String) -> Fragment {
+                fn Inner(a: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(a)))
                 }
 
-                fn Outer() -> Fragment {
+                fn Outer() -> Html {
                   html(tag: "div", attrs: [], children: concat(Inner(a: "x")))
                 }
             "#]],
@@ -9934,7 +9934,7 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                pub fn Outer(flag: Bool, ...rest) -> Fragment {
+                pub fn Outer(flag: Bool, ...rest) -> Html {
                   <match {flag}>
                     <case {true}><div ...rest></div></case>
                     <case {false}><span></span></case>
@@ -9943,7 +9943,7 @@ mod tests {
             "},
             expect![[r#"
                 -- main.hop --
-                fn Outer(flag: Bool, rest: Attrs) -> Fragment {
+                fn Outer(flag: Bool, rest: Attrs) -> Html {
                   match flag {
                     true => concat(
                       html(tag: "div", attrs: concat([], rest), children: concat()),
@@ -9960,21 +9960,21 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn card(label: String) -> Fragment {
+                fn card(label: String) -> Html {
                   <div>{label}</div>
                 }
 
-                pub fn Outer() -> Fragment {
+                pub fn Outer() -> Html {
                   card("hello")
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Outer() -> Fragment {
+                fn Outer() -> Html {
                   card(label: "hello")
                 }
 
-                fn card(label: String) -> Fragment {
+                fn card(label: String) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(label)))
                 }
             "#]],
@@ -9986,13 +9986,13 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                pub fn Outer(children: Fragment) -> Fragment {
+                pub fn Outer(children: Html) -> Html {
                   children
                 }
             "},
             expect![[r#"
                 -- main.hop --
-                fn Outer(children: Fragment) -> Fragment {
+                fn Outer(children: Html) -> Html {
                   children
                 }
             "#]],
@@ -10004,14 +10004,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                pub fn Outer() -> Fragment {
+                pub fn Outer() -> Html {
                   "hello"
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for function body: expected `Fragment` got `String`
+                error: Mismatched type for function body: expected `Html` got `String`
                   --> main.hop (line 2, col 3)
-                1 | pub fn Outer() -> Fragment {
+                1 | pub fn Outer() -> Html {
                 2 |   "hello"
                   |   ^^^^^^^
             "#]],
@@ -10024,15 +10024,15 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 pub page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     "hello"
                   }
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for declaration: expected `Fragment` got `String`
+                error: Mismatched type for declaration: expected `Html` got `String`
                   --> main.hop (line 3, col 5)
-                2 |   fn body() -> Fragment {
+                2 |   fn body() -> Html {
                 3 |     "hello"
                   |     ^^^^^^^
             "#]],
@@ -10045,18 +10045,18 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 pub page Test() {
-                  fn head() -> Fragment {
+                  fn head() -> Html {
                     "hello"
                   }
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div></div>
                   }
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for declaration: expected `Fragment` got `String`
+                error: Mismatched type for declaration: expected `Html` got `String`
                   --> main.hop (line 3, col 5)
-                2 |   fn head() -> Fragment {
+                2 |   fn head() -> Html {
                 3 |     "hello"
                   |     ^^^^^^^
             "#]],
@@ -10068,12 +10068,12 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                fn f() -> Fragment {
+                fn f() -> Html {
                   <!-- nothing yet -->
                 }
 
                 pub page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{f()}</>
                   }
                 }
@@ -10081,12 +10081,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(f())
                   }
                 }
 
-                fn f() -> Fragment {
+                fn f() -> Html {
                   concat()
                 }
             "#]],
@@ -10098,12 +10098,12 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                fn wrap(slot: Fragment) -> Fragment {
+                fn wrap(slot: Html) -> Html {
                   <div>{slot}</div>
                 }
 
                 pub page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{wrap(<!-- nothing yet -->)}</>
                   }
                 }
@@ -10111,12 +10111,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     concat(wrap(slot: concat()))
                   }
                 }
 
-                fn wrap(slot: Fragment) -> Fragment {
+                fn wrap(slot: Html) -> Html {
                   html(tag: "div", attrs: [], children: concat(slot))
                 }
             "#]],
@@ -10128,16 +10128,16 @@ mod tests {
         reject(
             indoc! {"
                 -- main.hop --
-                pub fn Inner(a: String) -> Fragment {
+                pub fn Inner(a: String) -> Html {
                   <div>{a}</div>
                 }
 
-                fn f() -> Fragment {
+                fn f() -> Html {
                   <Inner ...rest/>
                 }
 
                 pub page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{f()}</>
                   }
                 }
@@ -10145,13 +10145,13 @@ mod tests {
             expect![[r#"
                 error: Function Inner requires arguments: a
                   --> main.hop (line 6, col 4)
-                 5 | fn f() -> Fragment {
+                 5 | fn f() -> Html {
                  6 |   <Inner ...rest/>
                    |    ^^^^^
 
                 error: Spread '...rest' does not refer to a declared rest parameter
                   --> main.hop (line 6, col 10)
-                 5 | fn f() -> Fragment {
+                 5 | fn f() -> Html {
                  6 |   <Inner ...rest/>
                    |          ^^^^^^^
             "#]],
@@ -10163,12 +10163,12 @@ mod tests {
         reject(
             indoc! {"
                 -- main.hop --
-                fn f() -> Fragment {
+                fn f() -> Html {
                   <div ...rest></div>
                 }
 
                 pub page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>{f()}</>
                   }
                 }
@@ -10176,7 +10176,7 @@ mod tests {
             expect![[r#"
                 error: Spread '...rest' does not refer to a declared rest parameter
                   --> main.hop (line 2, col 8)
-                1 | fn f() -> Fragment {
+                1 | fn f() -> Html {
                 2 |   <div ...rest></div>
                   |        ^^^^^^^
             "#]],

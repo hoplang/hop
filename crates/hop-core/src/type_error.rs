@@ -87,11 +87,11 @@ pub(crate) enum TypeErrorKind {
     #[error("Unused import '{import_name}'")]
     UnusedImport { import_name: CheapString },
 
-    #[error("Function {name} does not accept content (missing `children: Fragment` parameter)")]
+    #[error("Function {name} does not accept content (missing `children: Html` parameter)")]
     FunctionDoesNotAcceptChildren { name: FunctionName },
 
     #[error(
-        "Function {name} returns `{found}`; only a function returning `Fragment` can be invoked as a tag"
+        "Function {name} returns `{found}`; only a function returning `Html` can be invoked as a tag"
     )]
     FunctionTagReturnTypeMismatch { name: FunctionName, found: Type },
 
@@ -156,7 +156,7 @@ pub(crate) enum TypeErrorKind {
     #[error("Mismatched type: expected `{expected}` got `{found}`")]
     LetBindingTypeMismatch { expected: Type, found: Type },
 
-    #[error("Mismatched type for interpolation: expected `String` or `Fragment` got {found}")]
+    #[error("Mismatched type for interpolation: expected `String` or `Html` got {found}")]
     InterpolationTypeMismatch { found: Type },
 
     #[error("Undefined variable: {name}")]
@@ -413,7 +413,7 @@ pub(crate) enum TypeErrorKind {
     #[error("Mismatched type for function body: expected `{expected}` got `{found}`")]
     FunctionBodyTypeMismatch { expected: Type, found: Type },
 
-    #[error("Mismatched type for declaration: expected `Fragment` got `{found}`")]
+    #[error("Mismatched type for declaration: expected `Html` got `{found}`")]
     DeclarationBodyTypeMismatch { found: Type },
 }
 

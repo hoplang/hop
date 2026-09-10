@@ -4,7 +4,7 @@ use crate::ir::{expr_id::ExprIdCounter, transform};
 fn optimize_body(body: PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
     let body = transform::perform_partial_evaluation(body, expr_ids);
     let body = transform::eliminate_unused_variable_declarations(body);
-    transform::normalize_fragments(body, expr_ids, 60)
+    transform::normalize_html(body, expr_ids, 60)
 }
 
 pub fn optimize(module: PureModule) -> PureModule {

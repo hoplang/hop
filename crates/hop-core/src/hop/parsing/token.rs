@@ -101,7 +101,7 @@ pub enum LangToken {
     TypeInt,
     TypeFloat,
     TypeBoolean,
-    TypeFragment,
+    TypeHtml,
     TypeArray,
     TypeOption,
 }
@@ -291,7 +291,7 @@ impl fmt::Display for LangToken {
             LangToken::TypeInt => write!(f, "Int"),
             LangToken::TypeFloat => write!(f, "Float"),
             LangToken::TypeBoolean => write!(f, "Bool"),
-            LangToken::TypeFragment => write!(f, "Fragment"),
+            LangToken::TypeHtml => write!(f, "Html"),
             LangToken::TypeArray => write!(f, "Array"),
             LangToken::TypeOption => write!(f, "Option"),
             LangToken::HashBracket => write!(f, "#["),

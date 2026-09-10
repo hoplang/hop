@@ -189,7 +189,7 @@ fn random_module_inner(
 
     // Generate pages
     if single_test_page {
-        bodies = bodies.page_no_params("Test", |b| g.expr(b, &Type::Fragment, DEPTH));
+        bodies = bodies.page_no_params("Test", |b| g.expr(b, &Type::Html, DEPTH));
     } else {
         for i in 0..g.count(1..=3) {
             let params: Vec<(String, String)> = (0..g.count(0..=3))
@@ -198,7 +198,7 @@ fn random_module_inner(
             bodies = bodies.page(
                 &format!("V{i}"),
                 params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
-                |b| g.expr(b, &Type::Fragment, DEPTH),
+                |b| g.expr(b, &Type::Html, DEPTH),
             );
         }
     }
@@ -283,7 +283,7 @@ impl PureGenerator<'_, '_> {
         }
         match self.u.choose(&kinds).unwrap() {
             P::Scalar => {
-                let scalars = ["Int", "String", "Bool", "Float", "Fragment"];
+                let scalars = ["Int", "String", "Bool", "Float", "Html"];
                 scalars[self.index(scalars.len())].to_string()
             }
             P::Named => {
@@ -361,10 +361,10 @@ impl PureGenerator<'_, '_> {
             Mul,
             Raw,
             Escape,
-            FragmentConcat,
-            FragmentForArray,
-            FragmentForRange,
-            FragmentIf,
+            HtmlConcat,
+            HtmlForArray,
+            HtmlForRange,
+            HtmlIf,
             Call,
         }
         let mut productions = vec![P::Lit];
@@ -410,14 +410,14 @@ impl PureGenerator<'_, '_> {
             if *target == Type::String {
                 productions.extend([P::Concat, P::IntToString]);
             }
-            if *target == Type::Fragment {
+            if *target == Type::Html {
                 productions.extend([
                     P::Raw,
                     P::Escape,
-                    P::FragmentConcat,
-                    P::FragmentForArray,
-                    P::FragmentForRange,
-                    P::FragmentIf,
+                    P::HtmlConcat,
+                    P::HtmlForArray,
+                    P::HtmlForRange,
+                    P::HtmlIf,
                 ]);
             }
             if self
@@ -594,33 +594,31 @@ impl PureGenerator<'_, '_> {
                 let operand = self.expr(b, &Type::String, depth - 1);
                 b.escape(operand)
             }
-            P::FragmentConcat => {
+            P::HtmlConcat => {
                 let parts = (0..self.count(0..=4))
-                    .map(|_| self.expr(b, &Type::Fragment, depth - 1))
+                    .map(|_| self.expr(b, &Type::Html, depth - 1))
                     .collect();
                 b.concat(parts)
             }
-            P::FragmentForArray => {
+            P::HtmlForArray => {
                 let array_ty = Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
                 let array = self.expr(b, &array_ty, depth);
                 let var = self.fresh_var_name();
-                b.fragment_for(Some(&var), array, |b| {
-                    self.expr(b, &Type::Fragment, depth - 1)
-                })
+                b.html_for(Some(&var), array, |b| self.expr(b, &Type::Html, depth - 1))
             }
-            P::FragmentForRange => {
+            P::HtmlForRange => {
                 // Literal bounds only, generated arithmetic can produce huge
                 // Int values, which would make evaluation iterate forever.
                 let start = b.int(self.zigzag(3));
                 let end = b.int(self.zigzag(3));
                 let var = self.coin().then(|| self.fresh_var_name());
-                b.fragment_for_range(var.as_deref(), start, end, |b| {
-                    self.expr(b, &Type::Fragment, depth - 1)
+                b.html_for_range(var.as_deref(), start, end, |b| {
+                    self.expr(b, &Type::Html, depth - 1)
                 })
             }
-            P::FragmentIf => {
+            P::HtmlIf => {
                 let condition = self.expr(b, &Type::Bool, depth - 1);
-                let true_body = self.expr(b, &Type::Fragment, depth - 1);
+                let true_body = self.expr(b, &Type::Html, depth - 1);
                 let false_body = b.concat(Vec::new());
                 b.bool_match_expr(condition, true_body, false_body)
             }
@@ -650,7 +648,7 @@ impl PureGenerator<'_, '_> {
         // Note: we use saturating_sub here since we might be forced to construct
         // something deeper than depth.
         match &target {
-            Type::Attrs => unreachable!("Attrs is erased to Fragment before the IR"),
+            Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
             Type::String => b.str(self.u.choose(STRING_LITERALS).unwrap()),
             Type::Int => {
                 if self.count(0..=7) == 0 {
@@ -707,7 +705,7 @@ impl PureGenerator<'_, '_> {
                     b.enum_variant_with_fields(name.as_str(), variant, values)
                 }
             }
-            Type::Fragment => b.concat(Vec::new()),
+            Type::Html => b.concat(Vec::new()),
         }
     }
 }

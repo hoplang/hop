@@ -30,10 +30,10 @@ fn lower_page(decl: PurePageDeclaration) -> WriterPageDeclaration {
 }
 
 /// Lower a function declaration, choosing the calling convention from its
-/// return type. Fragment compiles to destination-passing, everything else
+/// return type. Html compiles to destination-passing, everything else
 /// compiles as an ordinary value-returning function.
 fn lower_function(decl: PureFunctionDeclaration) -> WriterFunctionDeclaration {
-    let body = if matches!(decl.return_type, Type::Fragment) {
+    let body = if matches!(decl.return_type, Type::Html) {
         let mut statements = Vec::new();
         lower_output(decl.body, &mut statements);
         WriterFunctionBody::Writes(statements)
@@ -48,25 +48,25 @@ fn lower_function(decl: PureFunctionDeclaration) -> WriterFunctionDeclaration {
     }
 }
 
-/// Lower a Fragment-typed PureExpr in output position.
+/// Lower a Html-typed PureExpr in output position.
 fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
     match expr {
-        PureExpr::FragmentRaw { content, .. } => {
+        PureExpr::HtmlRaw { content, .. } => {
             out.push(WriterStatement::Write { content });
         }
 
-        PureExpr::FragmentEscape { expr, .. } => {
+        PureExpr::HtmlEscape { expr, .. } => {
             let expr = lower_value(*expr);
             out.push(WriterStatement::WriteString { expr });
         }
 
-        PureExpr::FragmentConcat { parts, .. } => {
+        PureExpr::HtmlConcat { parts, .. } => {
             for part in parts {
                 lower_output(part, out);
             }
         }
 
-        PureExpr::FragmentFor {
+        PureExpr::HtmlFor {
             var, source, body, ..
         } => {
             let source = lower_for_source(*source);
@@ -86,8 +86,8 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
             ..
         } => {
             assert!(
-                matches!(typ, Type::Fragment),
-                "non-Fragment function call in output position: {}",
+                matches!(typ, Type::Html),
+                "non-Html function call in output position: {}",
                 function
             );
             let args = args
@@ -120,12 +120,12 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
 
         PureExpr::VariableReference { ref typ, .. } | PureExpr::FieldAccess { ref typ, .. } => {
             assert!(
-                matches!(*typ, Type::Fragment),
-                "non-Fragment expression in output position: {:?}",
+                matches!(*typ, Type::Html),
+                "non-Html expression in output position: {:?}",
                 expr
             );
             let expr = lower_value(expr);
-            out.push(WriterStatement::WriteFragment { expr });
+            out.push(WriterStatement::WriteHtml { expr });
         }
 
         PureExpr::StringLiteral { .. }
@@ -155,10 +155,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
         | PureExpr::IntToString { .. }
         | PureExpr::FloatToInt { .. }
         | PureExpr::IntToFloat { .. } => {
-            panic!(
-                "non-Fragment-typed expression in output position: {:?}",
-                expr
-            );
+            panic!("non-Html-typed expression in output position: {:?}", expr);
         }
     }
 }
@@ -271,19 +268,19 @@ fn lower_match_value(
 /// Lower a PureExpr in value position.
 fn lower_value(expr: PureExpr) -> WriterExpr {
     match expr {
-        expr @ (PureExpr::FragmentRaw { .. }
-        | PureExpr::FragmentEscape { .. }
-        | PureExpr::FragmentConcat { .. }
-        | PureExpr::FragmentFor { .. }) => {
+        expr @ (PureExpr::HtmlRaw { .. }
+        | PureExpr::HtmlEscape { .. }
+        | PureExpr::HtmlConcat { .. }
+        | PureExpr::HtmlFor { .. }) => {
             let mut body = Vec::new();
             lower_output(expr, &mut body);
-            WriterExpr::FragmentLiteral { body }
+            WriterExpr::HtmlLiteral { body }
         }
 
         PureExpr::FunctionCall {
             function,
             args,
-            typ: Type::Fragment,
+            typ: Type::Html,
             ..
         } => {
             let args = args
@@ -293,7 +290,7 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
                     expr: lower_value(arg.expr),
                 })
                 .collect();
-            WriterExpr::FragmentLiteral {
+            WriterExpr::HtmlLiteral {
                 body: vec![WriterStatement::WriteFunction { function, args }],
             }
         }

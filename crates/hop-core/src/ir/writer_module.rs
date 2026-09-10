@@ -102,13 +102,13 @@ pub enum WriterStatement {
     /// The type of expr must be String.
     WriteString { expr: WriterExpr },
 
-    /// Write a Fragment expression to the output stream.
+    /// Write an Html expression to the output stream.
     ///
-    /// WriteFragment performs no escaping, a Fragment is already-escaped HTML
+    /// WriteHtml performs no escaping, Html is already-escaped HTML
     /// by construction.
     ///
-    /// The type of expr must be Fragment.
-    WriteFragment { expr: WriterExpr },
+    /// The type of expr must be Html.
+    WriteHtml { expr: WriterExpr },
 
     /// Invoke a function and write its effects to the output stream.
     WriteFunction {
@@ -146,7 +146,7 @@ pub enum WriterStatement {
 
 /// IR expression type.
 ///
-/// Expressions produce no side effects. The statements inside a FragmentLiteral
+/// Expressions produce no side effects. The statements inside an HtmlLiteral
 /// write into a fresh buffer, not the enclosing output stream.
 ///
 /// The Int type is an i32 with wrapping add/sub/mul/neg.
@@ -191,10 +191,10 @@ pub enum WriterExpr {
     /// A StringLiteral expression.
     StringLiteral { value: CheapString },
 
-    /// A FragmentLiteral expression.
+    /// A HtmlLiteral expression.
     ///
     /// Produced by rendering the body into a fresh buffer.
-    FragmentLiteral { body: Vec<WriterStatement> },
+    HtmlLiteral { body: Vec<WriterStatement> },
 
     /// A FunctionCall expression.
     ///
@@ -402,7 +402,7 @@ impl WriterStatement {
                 .append(BoxDoc::text("("))
                 .append(expr.to_doc())
                 .append(BoxDoc::text(")")),
-            WriterStatement::WriteFragment { expr, .. } => BoxDoc::text("write_fragment")
+            WriterStatement::WriteHtml { expr, .. } => BoxDoc::text("write_html")
                 .append(BoxDoc::text("("))
                 .append(expr.to_doc())
                 .append(BoxDoc::text(")")),
@@ -604,7 +604,7 @@ impl WriterExpr {
             WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => Type::Float,
             WriterExpr::IntLiteral { .. } => Type::Int,
 
-            WriterExpr::FragmentLiteral { .. } => Type::Fragment,
+            WriterExpr::HtmlLiteral { .. } => Type::Html,
 
             WriterExpr::StringConcat { .. }
             | WriterExpr::StringLiteral { .. }
@@ -649,7 +649,7 @@ impl WriterExpr {
                 BoxDoc::text(format!("{:?}", value.as_str()))
             }
 
-            WriterExpr::FragmentLiteral { body, .. } => BoxDoc::text("{")
+            WriterExpr::HtmlLiteral { body, .. } => BoxDoc::text("{")
                 .append(if body.is_empty() {
                     BoxDoc::nil()
                 } else {

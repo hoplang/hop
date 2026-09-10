@@ -42,7 +42,7 @@ pub(crate) fn can_construct(
         | ResolvedType::Bool
         | ResolvedType::Int
         | ResolvedType::Float
-        | ResolvedType::Fragment
+        | ResolvedType::Html
         // Arrays and options can always terminate as empty and None
         | ResolvedType::Array(_)
         | ResolvedType::Option(_) => true,
@@ -124,7 +124,7 @@ fn generate(
             Value::Int(rng.random_range(min..=max))
         }
         ResolvedType::Float => Value::Float(rng.random_range(0.0..100.0)),
-        ResolvedType::Fragment => Value::String("<span>sample</span>".to_string()),
+        ResolvedType::Html => Value::String("<span>sample</span>".to_string()),
         ResolvedType::Array(inner) => {
             let len = if depth >= MAX_DEPTH {
                 0

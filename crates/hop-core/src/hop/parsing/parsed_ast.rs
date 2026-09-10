@@ -53,10 +53,10 @@ pub struct ParsedFunctionDeclaration {
 ///
 /// ```text
 /// page Main {
-///   fn head() -> Fragment {
+///   fn head() -> Html {
 ///     <title>My page</title>
 ///   }
-///   fn body() -> Fragment {
+///   fn body() -> Html {
 ///     <div>
 ///       Welcome!
 ///     </div>

@@ -553,10 +553,10 @@ fn is_const(expr: &PureExpr) -> bool {
         | PureExpr::Match { .. }
         | PureExpr::VariableReference { .. }
         | PureExpr::FieldAccess { .. }
-        | PureExpr::FragmentRaw { .. }
-        | PureExpr::FragmentEscape { .. }
-        | PureExpr::FragmentConcat { .. }
-        | PureExpr::FragmentFor { .. }
+        | PureExpr::HtmlRaw { .. }
+        | PureExpr::HtmlEscape { .. }
+        | PureExpr::HtmlConcat { .. }
+        | PureExpr::HtmlFor { .. }
         | PureExpr::FunctionCall { .. }
         | PureExpr::StringConcat { .. }
         | PureExpr::NumericAdd { .. }
@@ -650,10 +650,10 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
         | PureExpr::Match { .. }
         | PureExpr::VariableReference { .. }
         | PureExpr::FieldAccess { .. }
-        | PureExpr::FragmentRaw { .. }
-        | PureExpr::FragmentEscape { .. }
-        | PureExpr::FragmentConcat { .. }
-        | PureExpr::FragmentFor { .. }
+        | PureExpr::HtmlRaw { .. }
+        | PureExpr::HtmlEscape { .. }
+        | PureExpr::HtmlConcat { .. }
+        | PureExpr::HtmlFor { .. }
         | PureExpr::FunctionCall { .. }
         | PureExpr::StringConcat { .. }
         | PureExpr::NumericAdd { .. }

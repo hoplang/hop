@@ -198,7 +198,7 @@ pub fn next(
                     "Array" => LangToken::TypeArray,
                     "Bool" => LangToken::TypeBoolean,
                     "Float" => LangToken::TypeFloat,
-                    "Fragment" => LangToken::TypeFragment,
+                    "Html" => LangToken::TypeHtml,
                     "Int" => LangToken::TypeInt,
                     "Option" => LangToken::TypeOption,
                     "String" => LangToken::TypeString,
@@ -705,31 +705,31 @@ mod tests {
     #[test]
     fn accepts_type_keywords() {
         accept(
-            "String Int Float Bool Fragment Array",
+            "String Int Float Bool Html Array",
             expect![[r#"
                 token: TypeString
-                String Int Float Bool Fragment Array
+                String Int Float Bool Html Array
                 ^^^^^^
 
                 token: TypeInt
-                String Int Float Bool Fragment Array
+                String Int Float Bool Html Array
                        ^^^
 
                 token: TypeFloat
-                String Int Float Bool Fragment Array
+                String Int Float Bool Html Array
                            ^^^^^
 
                 token: TypeBoolean
-                String Int Float Bool Fragment Array
+                String Int Float Bool Html Array
                                  ^^^^
 
-                token: TypeFragment
-                String Int Float Bool Fragment Array
-                                      ^^^^^^^^
+                token: TypeHtml
+                String Int Float Bool Html Array
+                                      ^^^^
 
                 token: TypeArray
-                String Int Float Bool Fragment Array
-                                               ^^^^^
+                String Int Float Bool Html Array
+                                           ^^^^^
             "#]],
         );
     }

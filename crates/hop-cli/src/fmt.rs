@@ -116,7 +116,7 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                fn Main(name: String, count: Int) -> Fragment {<div>{name}</div>}
+                fn Main(name: String, count: Int) -> Html {<div>{name}</div>}
             "#},
             expect![[r#"
                 -- hop.toml --
@@ -127,7 +127,7 @@ mod tests {
                 fn Main(
                   name: String,
                   count: Int,
-                ) -> Fragment {
+                ) -> Html {
                   <div>
                     {name}
                   </div>
@@ -145,9 +145,9 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                fn Main() -> Fragment {<div>hello</div>}
+                fn Main() -> Html {<div>hello</div>}
                 -- other.hop --
-                fn Other() -> Fragment {<span>world</span>}
+                fn Other() -> Html {<span>world</span>}
             "#},
             expect![[r#"
                 -- hop.toml --
@@ -155,13 +155,13 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     hello
                   </div>
                 }
                 -- other.hop --
-                fn Other() -> Fragment {
+                fn Other() -> Html {
                   <span>
                     world
                   </span>
@@ -179,9 +179,9 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                fn Main() -> Fragment {<div>hello</div>}
+                fn Main() -> Html {<div>hello</div>}
                 -- other.hop --
-                fn Other() -> Fragment {<span>world</span>}
+                fn Other() -> Html {<span>world</span>}
             "#},
             "main.hop",
             expect![[r#"
@@ -190,13 +190,13 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     hello
                   </div>
                 }
                 -- other.hop --
-                fn Other() -> Fragment {<span>world</span>}
+                fn Other() -> Html {<span>world</span>}
             "#]],
         )
     }
@@ -210,34 +210,34 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                fn Main() -> Fragment {<div>hello</div>}
+                fn Main() -> Html {<div>hello</div>}
                 -- broken.hop --
-                fn Broken() -> Fragment {
+                fn Broken() -> Html {
                   <div>
             "#},
             expect![[r#"
                 Formatting failed:
                 error: Unmatched '{'
-                  --> broken.hop (line 1, col 25)
-                1 | fn Broken() -> Fragment {
-                  |                         ^
+                  --> broken.hop (line 1, col 21)
+                1 | fn Broken() -> Html {
+                  |                     ^
 
                 error: Unclosed <div>
                   --> broken.hop (line 2, col 4)
-                1 | fn Broken() -> Fragment {
+                1 | fn Broken() -> Html {
                 2 |   <div>
                   |    ^^^
             "#]],
             expect![[r#"
                 -- broken.hop --
-                fn Broken() -> Fragment {
+                fn Broken() -> Html {
                   <div>
                 -- hop.toml --
                 [compile]
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                fn Main() -> Fragment {<div>hello</div>}
+                fn Main() -> Html {<div>hello</div>}
             "#]],
         )
     }

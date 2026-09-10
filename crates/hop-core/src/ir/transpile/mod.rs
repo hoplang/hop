@@ -39,7 +39,7 @@ pub trait Transpiler {
         arena: &'a Arena<'a>,
         expr: &'a WriterExpr,
     ) -> Doc<'a>;
-    fn transpile_write_fragment_statement<'a>(
+    fn transpile_write_html_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         expr: &'a WriterExpr,
@@ -92,8 +92,8 @@ pub trait Transpiler {
             WriterStatement::WriteString { expr, .. } => {
                 self.transpile_write_string_statement(arena, expr)
             }
-            WriterStatement::WriteFragment { expr, .. } => {
-                self.transpile_write_fragment_statement(arena, expr)
+            WriterStatement::WriteHtml { expr, .. } => {
+                self.transpile_write_html_statement(arena, expr)
             }
             WriterStatement::For {
                 var, source, body, ..
@@ -118,7 +118,7 @@ pub trait Transpiler {
     fn transpile_string_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_int_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
-    fn transpile_fragment_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
+    fn transpile_html_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &Type) -> Doc<'a>;
     fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &Type) -> Doc<'a>;
     fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
@@ -129,8 +129,8 @@ pub trait Transpiler {
             Type::String => self.transpile_string_type(arena),
             Type::Float => self.transpile_float_type(arena),
             Type::Int => self.transpile_int_type(arena),
-            Type::Fragment => self.transpile_fragment_type(arena),
-            Type::Attrs => unreachable!("Attrs is erased to Fragment before the IR"),
+            Type::Html => self.transpile_html_type(arena),
+            Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
             Type::Array(elem) => self.transpile_array_type(arena, elem),
             Type::Option(inner) => self.transpile_option_type(arena, inner),
             Type::Named { name, .. } => {
@@ -158,7 +158,7 @@ pub trait Transpiler {
         field: &'a FieldName,
     ) -> Doc<'a>;
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a>;
-    fn transpile_fragment<'a>(
+    fn transpile_html<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         body: &'a [WriterStatement],
@@ -364,7 +364,7 @@ pub trait Transpiler {
                 ..
             } => self.transpile_field_access(arena, object, field),
             WriterExpr::StringLiteral { value, .. } => self.transpile_string_literal(arena, value),
-            WriterExpr::FragmentLiteral { body, .. } => self.transpile_fragment(arena, body),
+            WriterExpr::HtmlLiteral { body, .. } => self.transpile_html(arena, body),
             WriterExpr::FunctionCall { function, args, .. } => {
                 self.transpile_function_call_expr(arena, function, args.as_slice())
             }

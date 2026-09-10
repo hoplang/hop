@@ -883,7 +883,7 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
         ParsedType::Bool { .. } => arena.text("Bool"),
         ParsedType::Int { .. } => arena.text("Int"),
         ParsedType::Float { .. } => arena.text("Float"),
-        ParsedType::Fragment { .. } => arena.text("Fragment"),
+        ParsedType::Html { .. } => arena.text("Html"),
         ParsedType::Option { element, .. } => arena
             .text("Option[")
             .append(format_type(arena, element))
@@ -1447,10 +1447,10 @@ mod tests {
                 if body.contains("{x}") {
                     let value = u.choose(STRINGS)?;
                     format!(
-                        "page Test() {{ fn body() -> Fragment {{<let {{x: String = {value:?}}}>{body}</let>}} }}"
+                        "page Test() {{ fn body() -> Html {{<let {{x: String = {value:?}}}>{body}</let>}} }}"
                     )
                 } else {
-                    format!("page Test() {{ fn body() -> Fragment {{<>{body}</>}} }}")
+                    format!("page Test() {{ fn body() -> Html {{<>{body}</>}} }}")
                 }
             };
 
@@ -1480,7 +1480,7 @@ mod tests {
                 }
 
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{label(count: 2, prefix: "n")}{label("a", 1)}</div>
                   }
                 }
@@ -1494,7 +1494,7 @@ mod tests {
                 }
 
                 page Test {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       {label(count: 2, prefix: "n")}
                       {label("a", 1)}
@@ -1539,14 +1539,14 @@ mod tests {
     fn pub_function() {
         check(
             indoc! {"
-                pub fn Button(label: String) -> Fragment {
+                pub fn Button(label: String) -> Html {
                   <button>{label}</button>
                 }
 
                 pub fn label(x: Int) -> Int { x + 10 }
             "},
             expect![[r#"
-                pub fn Button(label: String) -> Fragment {
+                pub fn Button(label: String) -> Html {
                   <button>
                     {label}
                   </button>
@@ -1564,14 +1564,14 @@ mod tests {
         check(
             indoc! {"
                 pub page Home() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>hi</div>
                   }
                 }
             "},
             expect![[r#"
                 pub page Home {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       hi
                     </div>
@@ -1603,7 +1603,7 @@ mod tests {
             indoc! {"
                 pub record A { x: Int }
                 record B { y: Int }
-                pub fn C() -> Fragment {<p>hi</p>}
+                pub fn C() -> Html {<p>hi</p>}
             "},
             expect![[r#"
                 pub record A {
@@ -1614,7 +1614,7 @@ mod tests {
                   y: Int,
                 }
 
-                pub fn C() -> Fragment {
+                pub fn C() -> Html {
                   <p>
                     hi
                   </p>
@@ -1723,7 +1723,7 @@ mod tests {
     fn function_declaration() {
         check(
             indoc! {"
-                fn Main(name: String, count: Int) -> Fragment {
+                fn Main(name: String, count: Int) -> Html {
                   <div>{name}</div>
                 }
             "},
@@ -1731,7 +1731,7 @@ mod tests {
                 fn Main(
                   name: String,
                   count: Int,
-                ) -> Fragment {
+                ) -> Html {
                   <div>
                     {name}
                   </div>
@@ -1744,7 +1744,7 @@ mod tests {
     fn function_declaration_with_many_parameters() {
         check(
             indoc! {"
-                fn Main(first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String) -> Fragment {<></>}
+                fn Main(first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String) -> Html {<></>}
             "},
             expect![[r#"
                 fn Main(
@@ -1754,7 +1754,7 @@ mod tests {
                   age: Int,
                   active: Bool,
                   role: String,
-                ) -> Fragment {
+                ) -> Html {
                   <></>
                 }
             "#]],
@@ -1766,7 +1766,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Color { Red, Green, Blue }
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                   <div class={match color { Color::Red => "red", Color::Green => "green", Color::Blue => "blue" }}></div>
                 }
             "#},
@@ -1777,7 +1777,7 @@ mod tests {
                   Blue,
                 }
 
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                   <div class={
                     match color {
                       Color::Red => "red",
@@ -1797,7 +1797,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Color { Red }
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                   <div class={match color { Color::Red{} => "red" }}></div>
                 }
             "#},
@@ -1806,7 +1806,7 @@ mod tests {
                   Red,
                 }
 
-                fn Main(color: Color) -> Fragment {
+                fn Main(color: Color) -> Html {
                   <div class={match color {Color::Red => "red"}}>
                   </div>
                 }
@@ -1819,7 +1819,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Outcome { Success {value: String}, Failure {message: String} }
-                fn Main(result: Outcome) -> Fragment {
+                fn Main(result: Outcome) -> Html {
                   <match {result}>
                     <case {Outcome::Success {value}}>
                       {value}
@@ -1840,7 +1840,7 @@ mod tests {
                   },
                 }
 
-                fn Main(result: Outcome) -> Fragment {
+                fn Main(result: Outcome) -> Html {
                   <match {result}>
                     <case {Outcome::Success {value}}>
                       {value}
@@ -1859,7 +1859,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Event { Click {x: Int, y: Int} }
-                fn Main(event: Event) -> Fragment {
+                fn Main(event: Event) -> Html {
                   <div>{match event { Event::Click {x, y: b} => x + b }}</div>
                 }
             "#},
@@ -1871,7 +1871,7 @@ mod tests {
                   },
                 }
 
-                fn Main(event: Event) -> Fragment {
+                fn Main(event: Event) -> Html {
                   <div>
                     {match event {Event::Click {x, y: b} => x + b}}
                   </div>
@@ -1885,7 +1885,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Outcome { Success {value: String} }
-                fn Main(result: Outcome) -> Fragment {
+                fn Main(result: Outcome) -> Html {
                   <match {result}>
                     <case {Outcome::Success {value: value}}>
                       {value}
@@ -1900,7 +1900,7 @@ mod tests {
                   },
                 }
 
-                fn Main(result: Outcome) -> Fragment {
+                fn Main(result: Outcome) -> Html {
                   <match {result}>
                     <case {Outcome::Success {value}}>
                       {value}
@@ -1924,7 +1924,7 @@ mod tests {
                     popover_trigger: Boolean,
                   }
                 }
-                fn Main(event: Event) -> Fragment {
+                fn Main(event: Event) -> Html {
                   <match {event}>
                     <case {Event::Button {type, name, value, dialog_trigger, popover_trigger}}>
                     </case>
@@ -1942,7 +1942,7 @@ mod tests {
                   },
                 }
 
-                fn Main(event: Event) -> Fragment {
+                fn Main(event: Event) -> Html {
                   <match {event}>
                     <case {Event::Button {
                       type,
@@ -1964,14 +1964,14 @@ mod tests {
         check(
             indoc! {r#"
                 enum Foo { Bar{} }
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "#},
             expect![[r#"
                 enum Foo {
                   Bar,
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <></>
                 }
             "#]],
@@ -2033,10 +2033,10 @@ mod tests {
     fn function_declaration_with_text_child() {
         check(
             indoc! {"
-                fn Main() -> Fragment {hello}
+                fn Main() -> Html {hello}
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   hello
                 }
             "#]],
@@ -2048,7 +2048,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Character { name: String }
-                fn Main(character: Character) -> Fragment {
+                fn Main(character: Character) -> Html {
                   <h1 class="text-2xl font-bold">{character.name}</h1>
                 }
             "#},
@@ -2057,7 +2057,7 @@ mod tests {
                   name: String,
                 }
 
-                fn Main(character: Character) -> Fragment {
+                fn Main(character: Character) -> Html {
                   <h1 class="text-2xl font-bold">
                     {character.name}
                   </h1>
@@ -2070,12 +2070,12 @@ mod tests {
     fn html_with_single_class_expression() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div class={"p-2"}></div>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div class={"p-2"}>
                   </div>
                 }
@@ -2087,7 +2087,7 @@ mod tests {
     fn if_with_equality_condition() {
         check(
             indoc! {"
-                fn Main(a: String, b: String) -> Fragment {
+                fn Main(a: String, b: String) -> Html {
                   <if {a == b}>
                     <div>equal</div>
                   </if>
@@ -2097,7 +2097,7 @@ mod tests {
                 fn Main(
                   a: String,
                   b: String,
-                ) -> Fragment {
+                ) -> Html {
                   <if {a == b}>
                     <div>
                       equal
@@ -2112,7 +2112,7 @@ mod tests {
     fn if_with_logical_and_condition() {
         check(
             indoc! {"
-                fn Main(a: Bool, b: Bool) -> Fragment {
+                fn Main(a: Bool, b: Bool) -> Html {
                   <if {a && b}>
                     <div>both true</div>
                   </if>
@@ -2122,7 +2122,7 @@ mod tests {
                 fn Main(
                   a: Bool,
                   b: Bool,
-                ) -> Fragment {
+                ) -> Html {
                   <if {a && b}>
                     <div>
                       both true
@@ -2137,7 +2137,7 @@ mod tests {
     fn if_with_nested_logical_operators() {
         check(
             indoc! {"
-                fn Main(a: Bool, b: Bool, c: Bool) -> Fragment {
+                fn Main(a: Bool, b: Bool, c: Bool) -> Html {
                   <if {a && b || c}>
                     <div>complex</div>
                   </if>
@@ -2148,7 +2148,7 @@ mod tests {
                   a: Bool,
                   b: Bool,
                   c: Bool,
-                ) -> Fragment {
+                ) -> Html {
                   <if {a && b || c}>
                     <div>
                       complex
@@ -2163,14 +2163,14 @@ mod tests {
     fn if_with_negation() {
         check(
             indoc! {"
-                fn Main(a: Bool) -> Fragment {
+                fn Main(a: Bool) -> Html {
                   <if {!a}>
                     <div>not a</div>
                   </if>
                 }
             "},
             expect![[r#"
-                fn Main(a: Bool) -> Fragment {
+                fn Main(a: Bool) -> Html {
                   <if {!a}>
                     <div>
                       not a
@@ -2185,7 +2185,7 @@ mod tests {
     fn if_with_negated_equality() {
         check(
             indoc! {"
-                fn Main(a: String, b: String) -> Fragment {
+                fn Main(a: String, b: String) -> Html {
                   <if {!(a == b)}>
                     <div>not equal</div>
                   </if>
@@ -2195,7 +2195,7 @@ mod tests {
                 fn Main(
                   a: String,
                   b: String,
-                ) -> Fragment {
+                ) -> Html {
                   <if {!(a == b)}>
                     <div>
                       not equal
@@ -2210,7 +2210,7 @@ mod tests {
     fn whitespace_removal_multiline_text() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     hello
                     world
@@ -2218,7 +2218,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     hello
                     world
@@ -2232,14 +2232,14 @@ mod tests {
     fn whitespace_removal_nested_html() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     content
                   </div>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     content
                   </div>
@@ -2252,14 +2252,14 @@ mod tests {
     fn splits_two_text_expressions_onto_their_own_lines() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {hello = "Hello", world = "World"}>
                     {hello} {world}
                   </let>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {hello = "Hello", world = "World"}>
                     {hello}
                     {" "}
@@ -2274,14 +2274,14 @@ mod tests {
     fn adds_a_space_between_a_text_expression_and_a_tag_on_the_same_line() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {hello = "Hello", world = "World"}>
                     {hello} <b>{world}</b>
                   </let>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {hello = "Hello", world = "World"}>
                     {hello}
                     {" "}
@@ -2298,12 +2298,12 @@ mod tests {
     fn adds_a_space_between_two_tags_on_same_line() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <><i>i</i> <b>b</b></>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     <i>
                       i
@@ -2322,12 +2322,12 @@ mod tests {
     fn adds_a_space_expression_between_text_and_tag_on_single_line() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>hello <b>world</b></>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     hello
                     {" "}
@@ -2344,12 +2344,12 @@ mod tests {
     fn keeps_a_run_of_spaces_beside_a_tag() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>a  <b>x</b></>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     a
                     {"  "}
@@ -2366,12 +2366,12 @@ mod tests {
     fn keeps_whitespace_on_the_side_that_has_no_linebreak() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <><b>x</b>  a {"y"}</>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     <b>
                       x
@@ -2390,7 +2390,7 @@ mod tests {
     fn whitespace_removal_empty_lines() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
 
                     hello
@@ -2399,7 +2399,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     hello
                   </>
@@ -2412,14 +2412,14 @@ mod tests {
     fn script_content_is_not_reindented() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <script>
                     let x = 1;
                   </script>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <script>
                     let x = 1;
                   </script>
@@ -2432,14 +2432,14 @@ mod tests {
     fn style_content_is_not_reindented() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <style>
                     .a { color: red; }
                   </style>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <style>
                     .a { color: red; }
                   </style>
@@ -2452,7 +2452,7 @@ mod tests {
     fn nested_functions_with_record_attributes() {
         check(
             indoc! {r#"
-                fn IconsPage() -> Fragment {
+                fn IconsPage() -> Html {
                   <div class="flex">
                     <div class="border-r max-w-80 h-screen">
                       <Sidebar />
@@ -2464,7 +2464,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn IconsPage() -> Fragment {
+                fn IconsPage() -> Html {
                   <div class="flex">
                     <div class="border-r max-w-80 h-screen">
                       <Sidebar/>
@@ -2489,7 +2489,7 @@ mod tests {
             indoc! {r#"
                 import hop::ui::lucide::ChevronDown
 
-                fn NativeSelect() -> Fragment {
+                fn NativeSelect() -> Html {
                   <ChevronDown
                     class={"text-muted-foreground"}
                   />
@@ -2498,7 +2498,7 @@ mod tests {
             expect![[r#"
                 import hop::ui::lucide::ChevronDown
 
-                fn NativeSelect() -> Fragment {
+                fn NativeSelect() -> Html {
                   <ChevronDown class={"text-muted-foreground"}/>
                 }
             "#]],
@@ -2510,7 +2510,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Product { id: String }
-                fn IconShowPage(product: Product) -> Fragment {
+                fn IconShowPage(product: Product) -> Html {
                   <Button href={"/download/" + product.id}>
                     hello
                   </Button>
@@ -2521,7 +2521,7 @@ mod tests {
                   id: String,
                 }
 
-                fn IconShowPage(product: Product) -> Fragment {
+                fn IconShowPage(product: Product) -> Html {
                   <Button href={"/download/" + product.id}>
                     hello
                   </Button>
@@ -2534,12 +2534,12 @@ mod tests {
     fn function_with_default_string_parameter() {
         check(
             indoc! {r#"
-                fn Greeting(name: String = "World") -> Fragment {
+                fn Greeting(name: String = "World") -> Html {
                   <>Hello, {name}!</>
                 }
             "#},
             expect![[r#"
-                fn Greeting(name: String = "World") -> Fragment {
+                fn Greeting(name: String = "World") -> Html {
                   <>
                     Hello,
                     {" "}
@@ -2555,14 +2555,14 @@ mod tests {
     fn function_with_default_int_parameter() {
         check(
             indoc! {"
-                fn Counter(count: Int = 0) -> Fragment {
+                fn Counter(count: Int = 0) -> Html {
                   <>
                     {count}
                   </>
                 }
             "},
             expect![[r#"
-                fn Counter(count: Int = 0) -> Fragment {
+                fn Counter(count: Int = 0) -> Html {
                   <>
                     {count}
                   </>
@@ -2575,10 +2575,10 @@ mod tests {
     fn function_with_default_bool_parameter() {
         check(
             indoc! {"
-                fn Toggle(enabled: Bool = true) -> Fragment {<></>}
+                fn Toggle(enabled: Bool = true) -> Html {<></>}
             "},
             expect![[r#"
-                fn Toggle(enabled: Bool = true) -> Fragment {
+                fn Toggle(enabled: Bool = true) -> Html {
                   <></>
                 }
             "#]],
@@ -2589,7 +2589,7 @@ mod tests {
     fn function_with_mixed_required_and_default_parameters() {
         check(
             indoc! {r#"
-                fn UserCard(name: String, role: String = "user", active: Bool = true) -> Fragment {
+                fn UserCard(name: String, role: String = "user", active: Bool = true) -> Html {
                   <>
                     {name}
                   </>
@@ -2600,7 +2600,7 @@ mod tests {
                   name: String,
                   role: String = "user",
                   active: Bool = true,
-                ) -> Fragment {
+                ) -> Html {
                   <>
                     {name}
                   </>
@@ -2613,12 +2613,10 @@ mod tests {
     fn function_with_default_array_parameter() {
         check(
             indoc! {r#"
-                fn ItemList(items: Array[String] = ["one", "two"]) -> Fragment {<></>}
+                fn ItemList(items: Array[String] = ["one", "two"]) -> Html {<></>}
             "#},
             expect![[r#"
-                fn ItemList(
-                  items: Array[String] = ["one", "two"],
-                ) -> Fragment {
+                fn ItemList(items: Array[String] = ["one", "two"]) -> Html {
                   <></>
                 }
             "#]],
@@ -2629,10 +2627,10 @@ mod tests {
     fn function_with_default_empty_array_parameter() {
         check(
             indoc! {"
-                fn ItemList(items: Array[String] = []) -> Fragment {<></>}
+                fn ItemList(items: Array[String] = []) -> Html {<></>}
             "},
             expect![[r#"
-                fn ItemList(items: Array[String] = []) -> Fragment {
+                fn ItemList(items: Array[String] = []) -> Html {
                   <></>
                 }
             "#]],
@@ -2643,10 +2641,10 @@ mod tests {
     fn function_with_default_empty_fragment_parameter() {
         check(
             indoc! {"
-                fn Card(children: Fragment = <></>) -> Fragment {<></>}
+                fn Card(children: Html = <></>) -> Html {<></>}
             "},
             expect![[r#"
-                fn Card(children: Fragment = <></>) -> Fragment {
+                fn Card(children: Html = <></>) -> Html {
                   <></>
                 }
             "#]],
@@ -2658,7 +2656,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Config { debug: Bool, timeout: Int }
-                fn Settings(config: Config = Config {debug: false, timeout: 30}) -> Fragment {<></>}
+                fn Settings(config: Config = Config {debug: false, timeout: 30}) -> Html {<></>}
             "#},
             expect![[r#"
                 record Config {
@@ -2668,7 +2666,7 @@ mod tests {
 
                 fn Settings(
                   config: Config = Config {debug: false, timeout: 30},
-                ) -> Fragment {
+                ) -> Html {
                   <></>
                 }
             "#]],
@@ -2680,7 +2678,7 @@ mod tests {
         check(
             indoc! {"
                 enum Status { Active, Inactive, Pending }
-                fn Badge(status: Status = Status::Active) -> Fragment {<></>}
+                fn Badge(status: Status = Status::Active) -> Html {<></>}
             "},
             expect![[r#"
                 enum Status {
@@ -2689,7 +2687,7 @@ mod tests {
                   Pending,
                 }
 
-                fn Badge(status: Status = Status::Active) -> Fragment {
+                fn Badge(status: Status = Status::Active) -> Html {
                   <></>
                 }
             "#]],
@@ -2701,7 +2699,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {user: User = User {name: "Alice", age: 30}}>
                     {user.name}
                   </let>
@@ -2713,7 +2711,7 @@ mod tests {
                   age: Int,
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {user: User = User {name: "Alice", age: 30}}>
                     {user.name}
                   </let>
@@ -2727,7 +2725,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
-                fn Main(base: User) -> Fragment {
+                fn Main(base: User) -> Html {
                   <let {user: User = User {...base, name: "Alice"}}>
                     {user.name}
                   </let>
@@ -2739,7 +2737,7 @@ mod tests {
                   age: Int,
                 }
 
-                fn Main(base: User) -> Fragment {
+                fn Main(base: User) -> Html {
                   <let {user: User = User {...base, name: "Alice"}}>
                     {user.name}
                   </let>
@@ -2753,7 +2751,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
-                fn Main(base: User) -> Fragment {
+                fn Main(base: User) -> Html {
                   <let {user: User = User {name: "Alice", ...base}}>
                     {user.name}
                   </let>
@@ -2765,7 +2763,7 @@ mod tests {
                   age: Int,
                 }
 
-                fn Main(base: User) -> Fragment {
+                fn Main(base: User) -> Html {
                   <let {user: User = User {...base, name: "Alice"}}>
                     {user.name}
                   </let>
@@ -2779,7 +2777,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
-                fn Main(base: User) -> Fragment {
+                fn Main(base: User) -> Html {
                   <let {user: User = User {...base}}>
                     {user.name}
                   </let>
@@ -2791,7 +2789,7 @@ mod tests {
                   age: Int,
                 }
 
-                fn Main(base: User) -> Fragment {
+                fn Main(base: User) -> Html {
                   <let {user: User = User {...base}}>
                     {user.name}
                   </let>
@@ -2805,7 +2803,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int, email: String }
-                fn Main(base: User) -> Fragment {
+                fn Main(base: User) -> Html {
                   <let {user: User = User {...base, name: "Alexandra", email: "alexandra@example.com"}}>
                     {user.name}
                   </let>
@@ -2818,7 +2816,7 @@ mod tests {
                   email: String,
                 }
 
-                fn Main(base: User) -> Fragment {
+                fn Main(base: User) -> Html {
                   <let {
                     user: User = User {
                       ...base,
@@ -2837,14 +2835,14 @@ mod tests {
     fn inferred_let_binding_is_preserved() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name = "World"}>
                     {name}
                   </let>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name = "World"}>
                     {name}
                   </let>
@@ -2858,7 +2856,7 @@ mod tests {
         check(
             indoc! {"
                 record Empty {}
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {e: Empty = Empty {}}>
                   </let>
                 }
@@ -2866,7 +2864,7 @@ mod tests {
             expect![[r#"
                 record Empty {}
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {e: Empty = Empty {}}>
                   </let>
                 }
@@ -2879,7 +2877,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Empty {}
-                fn Main(e: Empty) -> Fragment {
+                fn Main(e: Empty) -> Html {
                   <div class={match e { Empty {} => "yes" }}>
                   </div>
                 }
@@ -2887,7 +2885,7 @@ mod tests {
             expect![[r#"
                 record Empty {}
 
-                fn Main(e: Empty) -> Fragment {
+                fn Main(e: Empty) -> Html {
                   <div class={match e {Empty {} => "yes"}}>
                   </div>
                 }
@@ -2900,7 +2898,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Point {x: Int, y: Int}
-                fn Main(p: Point) -> Fragment {
+                fn Main(p: Point) -> Html {
                   <div class={match p { Point {} => "any" }}>
                   </div>
                 }
@@ -2911,7 +2909,7 @@ mod tests {
                   y: Int,
                 }
 
-                fn Main(p: Point) -> Fragment {
+                fn Main(p: Point) -> Html {
                   <div class={match p {Point {} => "any"}}>
                   </div>
                 }
@@ -2924,7 +2922,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {s: Shape = Shape::Circle {radius: 5.0}}>
                   </let>
                 }
@@ -2940,7 +2938,7 @@ mod tests {
                   },
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {s: Shape = Shape::Circle {radius: 5.0}}>
                   </let>
                 }
@@ -2953,7 +2951,7 @@ mod tests {
         check(
             indoc! {"
                 enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {s: Shape = Shape::Rect {w: 3.0, h: 4.0}}>
                   </let>
                 }
@@ -2969,7 +2967,7 @@ mod tests {
                   },
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {s: Shape = Shape::Rect {w: 3.0, h: 4.0}}>
                   </let>
                 }
@@ -2982,7 +2980,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum PopoverMenuItemElement { Link {href: String}, Button {href: String, name: String, value: String} }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {el: PopoverMenuItemElement = PopoverMenuItemElement::Button {href: "/path/to/some/page", name: "button_name", value: "button_value"}}>
                   </let>
                 }
@@ -2999,7 +2997,7 @@ mod tests {
                   },
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {
                     el: PopoverMenuItemElement = PopoverMenuItemElement::Button {
                       href: "/path/to/some/page",
@@ -3018,7 +3016,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Button { href: String, name: String, value: String, dialog_trigger: String }
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {btn: Button = Button {href: "/path/to/some/page", name: "button_name", value: "button_value", dialog_trigger: "dialog_trigger_value"}}>
                   </let>
                 }
@@ -3031,7 +3029,7 @@ mod tests {
                   dialog_trigger: String,
                 }
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {
                     btn: Button = Button {
                       href: "/path/to/some/page",
@@ -3050,12 +3048,12 @@ mod tests {
     fn some_literal_stays_on_one_line_when_short() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: Option[String] = Some("short")}></let>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: Option[String] = Some("short")}>
                   </let>
                 }
@@ -3067,14 +3065,14 @@ mod tests {
     fn some_literal_inserts_soft_lines_when_long() {
         check(
             indoc! {r#"
-                fn Main(x: Option[String] = Some("this is a very long string that causes a line break because Some uses soft lines")) -> Fragment {<></>}
+                fn Main(x: Option[String] = Some("this is a very long string that causes a line break because Some uses soft lines")) -> Html {<></>}
             "#},
             expect![[r#"
                 fn Main(
                   x: Option[String] = Some(
                     "this is a very long string that causes a line break because Some uses soft lines"
                   ),
-                ) -> Fragment {
+                ) -> Html {
                   <></>
                 }
             "#]],
@@ -3086,7 +3084,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Product { img_src: String }
-                fn ProductImage(product: Product) -> Fragment {
+                fn ProductImage(product: Product) -> Html {
                   <img class="rounded-lg" src={product.img_src}>
                 }
             "#},
@@ -3095,7 +3093,7 @@ mod tests {
                   img_src: String,
                 }
 
-                fn ProductImage(product: Product) -> Fragment {
+                fn ProductImage(product: Product) -> Html {
                   <img class="rounded-lg" src={product.img_src}>
                 }
             "#]],
@@ -3112,7 +3110,7 @@ mod tests {
                   Blue,
                 }
 
-                fn Main(c: Option[String]) -> Fragment {
+                fn Main(c: Option[String]) -> Html {
                   <match {c}>
                     <case {Some(x)}>
                       {x}
@@ -3130,7 +3128,7 @@ mod tests {
                   Blue,
                 }
 
-                fn Main(c: Option[String]) -> Fragment {
+                fn Main(c: Option[String]) -> Html {
                   <match {c}>
                     <case {Some(x)}>
                       {x}
@@ -3148,12 +3146,12 @@ mod tests {
     fn join_macro_expands_spaces_in_string_literals() {
         check(
             indoc! {r#"
-                fn Card() -> Fragment {
+                fn Card() -> Html {
                   <div class={join!("foo bar")}></div>
                 }
             "#},
             expect![[r#"
-                fn Card() -> Fragment {
+                fn Card() -> Html {
                   <div class={
                     join!(
                       "foo",
@@ -3170,7 +3168,7 @@ mod tests {
     fn join_macro_expands_mixed_variables_and_literals() {
         check(
             indoc! {r#"
-                fn Card(a: String, b: String) -> Fragment {
+                fn Card(a: String, b: String) -> Html {
                   <div class={join!(a, "foo bar", b)}></div>
                 }
             "#},
@@ -3178,7 +3176,7 @@ mod tests {
                 fn Card(
                   a: String,
                   b: String,
-                ) -> Fragment {
+                ) -> Html {
                   <div class={
                     join!(
                       a,
@@ -3197,12 +3195,12 @@ mod tests {
     fn asset_macro_formats_inline() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <img src={asset!("/logo.svg")} />
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <img src={asset!("/logo.svg")}>
                 }
             "#]],
@@ -3213,7 +3211,7 @@ mod tests {
     fn should_format_deeply_nested_elements() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <p><p><p><p><p><p><p><p><p><p>
                   <p><p><p><p><p><p><p><p><p><p>
                   <p><p><p><p><p><p><p><p><p><p>
@@ -3228,7 +3226,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <p>
                     <p>
                       <p>
@@ -3339,14 +3337,14 @@ mod tests {
     fn let_with_single_string_binding() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = "World"}>
                     Hello, {name}!
                   </let>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = "World"}>
                     Hello,
                     {" "}
@@ -3362,14 +3360,14 @@ mod tests {
     fn let_with_single_int_binding() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {count: Int = 42}>
                     <span>{count}</span>
                   </let>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {count: Int = 42}>
                     <span>
                       {count}
@@ -3384,14 +3382,14 @@ mod tests {
     fn let_with_trailing_comma() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = "World",}>
                     {name}
                   </let>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {name: String = "World"}>
                     {name}
                   </let>
@@ -3404,14 +3402,14 @@ mod tests {
     fn let_with_multiple_bindings() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {first: String = "Hello", second: String = "World"}>
                     {first} {second}
                   </let>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {first: String = "Hello", second: String = "World"}>
                     {first}
                     {" "}
@@ -3426,14 +3424,14 @@ mod tests {
     fn let_with_three_bindings() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>{a} + {b} + {c}</div>
                   </let>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>
                       {a}
@@ -3456,7 +3454,7 @@ mod tests {
     fn let_with_expression_value() {
         check(
             indoc! {"
-                fn Main(x: Int, y: Int) -> Fragment {
+                fn Main(x: Int, y: Int) -> Html {
                   <let {sum: Int = x + y}>
                     <span>{sum}</span>
                   </let>
@@ -3466,7 +3464,7 @@ mod tests {
                 fn Main(
                   x: Int,
                   y: Int,
-                ) -> Fragment {
+                ) -> Html {
                   <let {sum: Int = x + y}>
                     <span>
                       {sum}
@@ -3482,7 +3480,7 @@ mod tests {
         check(
             indoc! {"
                 record User { name: String }
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                   <let {name: String = user.name}>
                     <div>{name}</div>
                   </let>
@@ -3493,7 +3491,7 @@ mod tests {
                   name: String,
                 }
 
-                fn Main(user: User) -> Fragment {
+                fn Main(user: User) -> Html {
                   <let {name: String = user.name}>
                     <div>
                       {name}
@@ -3508,7 +3506,7 @@ mod tests {
     fn nested_let_tags() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {a: String = "outer"}>
                     <let {b: String = "inner"}>
                       {a} {b}
@@ -3517,7 +3515,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {a: String = "outer"}>
                     <let {b: String = "inner"}>
                       {a}
@@ -3534,7 +3532,7 @@ mod tests {
     fn let_inside_if() {
         check(
             indoc! {r#"
-                fn Main(show: Bool) -> Fragment {
+                fn Main(show: Bool) -> Html {
                   <if {show}>
                     <let {msg: String = "visible"}>
                       {msg}
@@ -3543,7 +3541,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Main(show: Bool) -> Fragment {
+                fn Main(show: Bool) -> Html {
                   <if {show}>
                     <let {msg: String = "visible"}>
                       {msg}
@@ -3558,7 +3556,7 @@ mod tests {
     fn let_inside_for() {
         check(
             indoc! {"
-                fn Main(items: Array[Int]) -> Fragment {
+                fn Main(items: Array[Int]) -> Html {
                   <for {item in items}>
                     <let {doubled: Int = item * 2}>
                       <span>{doubled}</span>
@@ -3567,7 +3565,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                fn Main(items: Array[Int]) -> Fragment {
+                fn Main(items: Array[Int]) -> Html {
                   <for {item in items}>
                     <let {doubled: Int = item * 2}>
                       <span>
@@ -3584,7 +3582,7 @@ mod tests {
     fn multiple_sibling_let_tags() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     <let {a: String = "first"}>
                       {a}
@@ -3596,7 +3594,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     <let {a: String = "first"}>
                       {a}
@@ -3614,12 +3612,12 @@ mod tests {
     fn let_with_empty_children() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: String = "unused"}></let>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: String = "unused"}>
                   </let>
                 }
@@ -3631,7 +3629,7 @@ mod tests {
     fn let_with_long_bindings_breaks_to_multiple_lines() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {
                     // a
                     first_name: String = "Hello",
@@ -3644,7 +3642,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {
                     // a
                     first_name: String = "Hello",
@@ -3667,13 +3665,13 @@ mod tests {
             indoc! {"
                 // External function
                 import functions::Button
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "},
             expect![[r#"
                 // External function
                 import functions::Button
 
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <></>
                 }
             "#]],
@@ -3741,7 +3739,7 @@ mod tests {
         check(
             indoc! {"
                 // Main function
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     hello
                   </>
@@ -3749,7 +3747,7 @@ mod tests {
             "},
             expect![[r#"
                 // Main function
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <>
                     hello
                   </>
@@ -3764,10 +3762,10 @@ mod tests {
             indoc! {"
                 page Index() {
                   // the head
-                  fn head() -> Fragment {
+                  fn head() -> Html {
                     <title>Hi</title>
                   }
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>Hello</div>
                   }
                 }
@@ -3775,12 +3773,12 @@ mod tests {
             expect![[r#"
                 page Index {
                   // the head
-                  fn head() -> Fragment {
+                  fn head() -> Html {
                     <title>
                       Hi
                     </title>
                   }
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       Hello
                     </div>
@@ -3795,24 +3793,24 @@ mod tests {
         check(
             indoc! {"
                 page Index() {
-                  fn head() -> Fragment {
+                  fn head() -> Html {
                     <title>Hi</title>
                   }
                   // now the body
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>Hello</div>
                   }
                 }
             "},
             expect![[r#"
                 page Index {
-                  fn head() -> Fragment {
+                  fn head() -> Html {
                     <title>
                       Hi
                     </title>
                   }
                   // now the body
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       Hello
                     </div>
@@ -3827,7 +3825,7 @@ mod tests {
         check(
             indoc! {"
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>Hello</div>
                     // done
                   }
@@ -3835,7 +3833,7 @@ mod tests {
             "},
             expect![[r#"
                 page Index {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       Hello
                     </div>
@@ -3851,7 +3849,7 @@ mod tests {
         check(
             indoc! {"
                 page Index() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>Hello</div>
                   }
                   // that is all
@@ -3859,7 +3857,7 @@ mod tests {
             "},
             expect![[r#"
                 page Index {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       Hello
                     </div>
@@ -3881,7 +3879,7 @@ mod tests {
                 enum Status { Active, Inactive }
 
                 // Main function
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "},
             expect![[r#"
                 // User record
@@ -3896,7 +3894,7 @@ mod tests {
                 }
 
                 // Main function
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <></>
                 }
             "#]],
@@ -3993,7 +3991,7 @@ mod tests {
                 // d
                 }
                 // e
-                fn Main() -> Fragment {<></>}
+                fn Main() -> Html {<></>}
             "},
             expect![[r#"
                 // a
@@ -4006,7 +4004,7 @@ mod tests {
                 }
 
                 // e
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <></>
                 }
             "#]],
@@ -4050,7 +4048,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Orientation { Horizontal, Vertical }
-                fn Main(orientation: Orientation) -> Fragment {
+                fn Main(orientation: Orientation) -> Html {
                   <div class={match orientation {
                     // a
                     Orientation::Horizontal => "horizontal",
@@ -4066,7 +4064,7 @@ mod tests {
                   Vertical,
                 }
 
-                fn Main(orientation: Orientation) -> Fragment {
+                fn Main(orientation: Orientation) -> Html {
                   <div class={
                     match orientation {
                       // a
@@ -4086,7 +4084,7 @@ mod tests {
     fn comment_before_macro_arg() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div class={join!(
                     // base styles
                     "flex",
@@ -4097,7 +4095,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div class={
                     join!(
                       // base styles
@@ -4117,7 +4115,7 @@ mod tests {
     fn comment_before_macro_arg_with_string_expansion() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div class={join!(
                     // base styles
                     "flex items-center",
@@ -4128,7 +4126,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div class={
                     join!(
                       // base styles
@@ -4156,7 +4154,7 @@ mod tests {
                     // Whether the button is disabled
                     disabled: Bool = false,
                     // More params to come
-                ) -> Fragment {
+                ) -> Html {
                   <>{label}</>
                 }
             "#},
@@ -4166,7 +4164,7 @@ mod tests {
                   label: String,
                   // Whether the button is disabled
                   disabled: Bool = false,
-                ) -> Fragment {
+                ) -> Html {
                   // More params to come
                   <>
                     {label}
@@ -4183,12 +4181,12 @@ mod tests {
                 fn X(
                   x: String,
                   // ?
-                ) -> Fragment {
+                ) -> Html {
                   <>{x}</>
                 }
             "#},
             expect![[r#"
-                fn X(x: String) -> Fragment {
+                fn X(x: String) -> Html {
                   // ?
                   <>
                     {x}
@@ -4202,12 +4200,12 @@ mod tests {
     fn join_macro_with_multiple_string_literals() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <h1 class={join!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Hello</h1>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <h1 class={
                     join!(
                       "text-4xl",
@@ -4227,12 +4225,12 @@ mod tests {
     fn function_invocation_with_single_long_attribute() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Button class={join!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Click me</Button>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <Button class={
                     join!(
                       "text-4xl",
@@ -4252,12 +4250,12 @@ mod tests {
     fn simple_method_call() {
         check(
             indoc! {"
-                fn Main(x: String) -> Fragment {
+                fn Main(x: String) -> Html {
                   <div>{x.foo()}</div>
                 }
             "},
             expect![[r#"
-                fn Main(x: String) -> Fragment {
+                fn Main(x: String) -> Html {
                   <div>
                     {x.foo()}
                   </div>
@@ -4270,12 +4268,12 @@ mod tests {
     fn chained_method_calls() {
         check(
             indoc! {"
-                fn Main(x: String) -> Fragment {
+                fn Main(x: String) -> Html {
                   <div>{x.foo().bar().baz()}</div>
                 }
             "},
             expect![[r#"
-                fn Main(x: String) -> Fragment {
+                fn Main(x: String) -> Html {
                   <div>
                     {x.foo().bar().baz()}
                   </div>
@@ -4288,12 +4286,12 @@ mod tests {
     fn mixed_field_access_and_method_call() {
         check(
             indoc! {"
-                fn Main(x: String) -> Fragment {
+                fn Main(x: String) -> Html {
                   <div>{x.field.method()}</div>
                 }
             "},
             expect![[r#"
-                fn Main(x: String) -> Fragment {
+                fn Main(x: String) -> Html {
                   <div>
                     {x.field.method()}
                   </div>
@@ -4306,12 +4304,12 @@ mod tests {
     fn method_call_then_field_access() {
         check(
             indoc! {"
-                fn Main(x: String) -> Fragment {
+                fn Main(x: String) -> Html {
                   <div>{x.method().field}</div>
                 }
             "},
             expect![[r#"
-                fn Main(x: String) -> Fragment {
+                fn Main(x: String) -> Html {
                   <div>
                     {x.method().field}
                   </div>
@@ -4324,14 +4322,14 @@ mod tests {
     fn float_literal() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: Float = 5.0}>
                     {x}
                   </let>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {x: Float = 5.0}>
                     {x}
                   </let>
@@ -4344,14 +4342,14 @@ mod tests {
     fn float_literals_small_values() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {a: Float = 0.000, b: Float = 0.001, c: Float = 0.002}>
                     {a}
                   </let>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <let {
                     a: Float = 0.000,
                     b: Float = 0.001,
@@ -4368,14 +4366,14 @@ mod tests {
     fn inline_text_with_nested_element() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     foo<p>bar</p>
                   </div>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     foo
                     <p>
@@ -4391,12 +4389,12 @@ mod tests {
     fn nested_elements_inline() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div><p>x</p></div>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     <p>
                       x
@@ -4411,12 +4409,12 @@ mod tests {
     fn text_around_inline_element() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>hello <b>world</b>!</div>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     hello
                     {" "}
@@ -4434,12 +4432,12 @@ mod tests {
     fn text_with_multiple_inline_links() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <p>By clicking continue, you agree to our <a href="/tos">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.</p>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <p>
                     By clicking continue, you agree to our
                     {" "}
@@ -4463,7 +4461,7 @@ mod tests {
     fn empty_lines_between_text_collapsed() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
 
                   foo
@@ -4474,7 +4472,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     foo
                     bar
@@ -4488,12 +4486,12 @@ mod tests {
     fn text_around_void_element() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <div>hello <br> world</div>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     hello
                     {" "}
@@ -4510,7 +4508,7 @@ mod tests {
     fn void_element_on_separate_line() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <div>
                         hello
                         <br>
@@ -4519,7 +4517,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     hello
                     <br>
@@ -4534,12 +4532,12 @@ mod tests {
     fn text_around_input_element() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <label>Name: <input type="text"> (required)</label>
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <label>
                     Name:
                     {" "}
@@ -4556,7 +4554,7 @@ mod tests {
     fn input_element_on_separate_line() {
         check(
             indoc! {r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                     <label>
                         Name:
                         <input type="text">
@@ -4565,7 +4563,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <label>
                     Name:
                     <input type="text">
@@ -4580,7 +4578,7 @@ mod tests {
     fn text_with_multiple_expressions() {
         check(
             indoc! {"
-                fn Main(rating: String, num_reviews: String) -> Fragment {
+                fn Main(rating: String, num_reviews: String) -> Html {
                   <span>{rating} ({num_reviews} reviews)</span>
                 }
             "},
@@ -4588,7 +4586,7 @@ mod tests {
                 fn Main(
                   rating: String,
                   num_reviews: String,
-                ) -> Fragment {
+                ) -> Html {
                   <span>
                     {rating}
                     {" "}
@@ -4606,12 +4604,12 @@ mod tests {
     fn method_call_on_negated_int_preserves_parens() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>{(-42).to_string()}</div>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     {(-42).to_string()}
                   </div>
@@ -4624,12 +4622,12 @@ mod tests {
     fn method_call_on_negated_float_preserves_parens() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>{(-3.14).to_string()}</div>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     {(-3.14).to_string()}
                   </div>
@@ -4642,12 +4640,12 @@ mod tests {
     fn method_call_on_binary_expr_preserves_parens() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>{(1 + 2).to_string()}</div>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     {(1 + 2).to_string()}
                   </div>
@@ -4660,12 +4658,12 @@ mod tests {
     fn field_access_on_negated_int_preserves_parens() {
         check(
             indoc! {"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>{(-42).foo}</div>
                 }
             "},
             expect![[r#"
-                fn Main() -> Fragment {
+                fn Main() -> Html {
                   <div>
                     {(-42).foo}
                   </div>
@@ -4678,12 +4676,12 @@ mod tests {
     fn binary_expr_with_parens_preserves_precedence() {
         check(
             indoc! {"
-                fn Main(x: Int) -> Fragment {
+                fn Main(x: Int) -> Html {
                   <div>{(1 + 2) * 3}</div>
                 }
             "},
             expect![[r#"
-                fn Main(x: Int) -> Fragment {
+                fn Main(x: Int) -> Html {
                   <div>
                     {(1 + 2) * 3}
                   </div>
@@ -4696,7 +4694,7 @@ mod tests {
     fn binary_expr_keeps_parens_around_right_operand_of_same_precedence() {
         check(
             indoc! {"
-                fn Main(a: Bool, b: Bool, c: Bool) -> Fragment {
+                fn Main(a: Bool, b: Bool, c: Bool) -> Html {
                   <div>{1 - (1 - 1)}{1 - (2 + 3)}{2 * (3 * 4)}{a == (b == c)}{a || (b || c)}</div>
                 }
             "},
@@ -4705,7 +4703,7 @@ mod tests {
                   a: Bool,
                   b: Bool,
                   c: Bool,
-                ) -> Fragment {
+                ) -> Html {
                   <div>
                     {1 - (1 - 1)}
                     {1 - (2 + 3)}
@@ -4722,7 +4720,7 @@ mod tests {
     fn binary_expr_drops_redundant_parens_around_left_operand_of_same_precedence() {
         check(
             indoc! {"
-                fn Main(a: Bool, b: Bool, c: Bool) -> Fragment {
+                fn Main(a: Bool, b: Bool, c: Bool) -> Html {
                   <div>{(1 - 1) - 1}{(1 + 2) - 3}{1 - 2 * 3}{(a == b) == c}</div>
                 }
             "},
@@ -4731,7 +4729,7 @@ mod tests {
                   a: Bool,
                   b: Bool,
                   c: Bool,
-                ) -> Fragment {
+                ) -> Html {
                   <div>
                     {1 - 1 - 1}
                     {1 + 2 - 3}
@@ -4750,7 +4748,7 @@ mod tests {
                 record LoginLogo { url: String, name: String }
 
                 page LoginFormEntry(x: String, logo: LoginLogo) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       <div class="flex w-full max-w-sm flex-col gap-6">
                         <a
@@ -4777,7 +4775,7 @@ mod tests {
                   x: String,
                   logo: LoginLogo,
                 ) {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       <div class="flex w-full max-w-sm flex-col gap-6">
                         <a
@@ -4802,7 +4800,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       hello
                       world
@@ -4812,7 +4810,7 @@ mod tests {
             "},
             expect![[r#"
                 page Test {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       hello
                       world
@@ -4828,7 +4826,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <!-- This is a comment -->
                       <div>hello</div>
@@ -4838,7 +4836,7 @@ mod tests {
             "},
             expect![[r#"
                 page Test {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <!-- This is a comment -->
                       <div>
@@ -4856,7 +4854,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <div>hello</div>
                       <!-- separator -->
@@ -4867,7 +4865,7 @@ mod tests {
             "},
             expect![[r#"
                 page Test {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <>
                       <div>
                         hello
@@ -4888,7 +4886,7 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       <!-- inner comment -->
                       <span>text</span>
@@ -4898,7 +4896,7 @@ mod tests {
             "},
             expect![[r#"
                 page Test {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       <!-- inner comment -->
                       <span>
@@ -4916,14 +4914,14 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <!-- just a comment -->
                   }
                 }
             "},
             expect![[r#"
                 page Test {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <!-- just a comment -->
                   }
                 }
@@ -4935,12 +4933,12 @@ mod tests {
     fn spread_attribute_on_html_element_formats_correctly() {
         check(
             indoc! {"
-                fn Foo(...rest) -> Fragment {
+                fn Foo(...rest) -> Html {
                   <button ...rest></button>
                 }
             "},
             expect![[r#"
-                fn Foo(...rest) -> Fragment {
+                fn Foo(...rest) -> Html {
                   <button ...rest>
                   </button>
                 }
@@ -4952,12 +4950,12 @@ mod tests {
     fn spread_attribute_on_function_invocation_formats_correctly() {
         check(
             indoc! {"
-                fn Bar(...rest) -> Fragment {
+                fn Bar(...rest) -> Html {
                   <Foo ...rest></Foo>
                 }
             "},
             expect![[r#"
-                fn Bar(...rest) -> Fragment {
+                fn Bar(...rest) -> Html {
                   <Foo ...rest>
                   </Foo>
                 }
@@ -4969,7 +4967,7 @@ mod tests {
     fn formats_rest_param_and_spread() {
         check(
             indoc! {"
-                fn Foo(class: String, ...rest) -> Fragment {
+                fn Foo(class: String, ...rest) -> Html {
                   <button ...rest></button>
                 }
             "},
@@ -4977,7 +4975,7 @@ mod tests {
                 fn Foo(
                   class: String,
                   ...rest,
-                ) -> Fragment {
+                ) -> Html {
                   <button ...rest>
                   </button>
                 }
@@ -4989,12 +4987,12 @@ mod tests {
     fn formats_only_rest_param() {
         check(
             indoc! {"
-                fn Foo(...rest) -> Fragment {
+                fn Foo(...rest) -> Html {
                   <button ...rest></button>
                 }
             "},
             expect![[r#"
-                fn Foo(...rest) -> Fragment {
+                fn Foo(...rest) -> Html {
                   <button ...rest>
                   </button>
                 }
@@ -5094,12 +5092,12 @@ mod tests {
     fn markup_as_a_function_body() {
         check(
             indoc! {"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   <div>hello</div>
                 }
             "},
             expect![[r#"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   <div>
                     hello
                   </div>
@@ -5113,14 +5111,14 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>{<span>hello</span>}</div>
                   }
                 }
             "},
             expect![[r#"
                 page Test {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <div>
                       {<span>
                         hello
@@ -5136,12 +5134,12 @@ mod tests {
     fn markup_as_a_call_argument() {
         check(
             indoc! {"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   wrap(<span>a<b>c</b></span>)
                 }
             "},
             expect![[r#"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   wrap(<span>a<b>c</b></span>)
                 }
             "#]],
@@ -5153,14 +5151,14 @@ mod tests {
         check(
             indoc! {"
                 page Test() {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card slot={<span>a<b>c</b></span>}/>
                   }
                 }
             "},
             expect![[r#"
                 page Test {
-                  fn body() -> Fragment {
+                  fn body() -> Html {
                     <Card slot={<span>a<b>c</b></span>}/>
                   }
                 }
@@ -5172,12 +5170,12 @@ mod tests {
     fn significant_whitespace_in_flat_markup() {
         check(
             indoc! {"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   wrap(<span>a <b>c</b> d</span>)
                 }
             "},
             expect![[r#"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   wrap(<span>a{" "}<b>c</b>{" "}d</span>)
                 }
             "#]],
@@ -5188,12 +5186,12 @@ mod tests {
     fn markup_in_an_interpolation_short() {
         check(
             indoc! {"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   wrap(<span>a{<b>c</b>}d</span>)
                 }
             "},
             expect![[r#"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   wrap(<span>a{<b>c</b>}d</span>)
                 }
             "#]],
@@ -5204,12 +5202,12 @@ mod tests {
     fn markup_in_match_arms() {
         check(
             indoc! {"
-                fn badge(on: Bool) -> Fragment {
+                fn badge(on: Bool) -> Html {
                   match on {true => <b>yes</b>, false => <i>no</i>}
                 }
             "},
             expect![[r#"
-                fn badge(on: Bool) -> Fragment {
+                fn badge(on: Bool) -> Html {
                   match on {true => <b>yes</b>, false => <i>no</i>}
                 }
             "#]],
@@ -5220,12 +5218,12 @@ mod tests {
     fn markup_in_match_arms_long() {
         check(
             indoc! {r#"
-                fn badge(on: Bool) -> Fragment {
+                fn badge(on: Bool) -> Html {
                   match on {true => <span class="a-fairly-long-class">yes <b>indeed</b></span>, false => <i>no</i>}
                 }
             "#},
             expect![[r#"
-                fn badge(on: Bool) -> Fragment {
+                fn badge(on: Bool) -> Html {
                   match on {
                     true => (
                       <span class="a-fairly-long-class">
@@ -5251,12 +5249,12 @@ mod tests {
     fn markup_as_multiple_call_arguments() {
         check(
             indoc! {"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   pair(<b>a</b>, <i>c</i>)
                 }
             "},
             expect![[r#"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   pair(<b>a</b>, <i>c</i>)
                 }
             "#]],
@@ -5267,12 +5265,12 @@ mod tests {
     fn markup_as_multiple_call_arguments_long() {
         check(
             indoc! {r#"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   pair(<span class="a-fairly-long-class">first <b>one</b></span>, <span class="another-long-one">second one</span>)
                 }
             "#},
             expect![[r#"
-                fn card() -> Fragment {
+                fn card() -> Html {
                   pair(
                     <span class="a-fairly-long-class">
                       first

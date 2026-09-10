@@ -152,7 +152,7 @@ impl PureModuleBodiesBuilder {
     where
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
-        let (parameters, body) = self.declaration(params, Type::Fragment, body_fn);
+        let (parameters, body) = self.declaration(params, Type::Html, body_fn);
         self.pages.push(PurePageDeclaration {
             name: TypeName::new(name).expect("Test page name should be valid"),
             parameters,
@@ -1001,7 +1001,7 @@ impl PureBuilder {
 
     /// A trusted, already-escaped HTML atom.
     pub fn raw(&self, content: &str) -> PureExpr {
-        PureExpr::FragmentRaw {
+        PureExpr::HtmlRaw {
             content: content.to_string(),
             id: self.next_expr_id(),
         }
@@ -1011,10 +1011,10 @@ impl PureBuilder {
         assert_eq!(
             expr.typ(),
             Type::String,
-            "FragmentEscape expects String operand, got: {}",
+            "HtmlEscape expects String operand, got: {}",
             expr
         );
-        PureExpr::FragmentEscape {
+        PureExpr::HtmlEscape {
             expr: Box::new(expr),
             id: self.next_expr_id(),
         }
@@ -1024,18 +1024,18 @@ impl PureBuilder {
         for part in &parts {
             assert_eq!(
                 part.typ(),
-                Type::Fragment,
-                "FragmentConcat expects Fragment parts, got: {}",
+                Type::Html,
+                "HtmlConcat expects Html parts, got: {}",
                 part
             );
         }
-        PureExpr::FragmentConcat {
+        PureExpr::HtmlConcat {
             parts,
             id: self.next_expr_id(),
         }
     }
 
-    pub fn fragment_for<F>(&self, var: Option<&str>, array: PureExpr, body_fn: F) -> PureExpr
+    pub fn html_for<F>(&self, var: Option<&str>, array: PureExpr, body_fn: F) -> PureExpr
     where
         F: FnOnce(&Self) -> PureExpr,
     {
@@ -1054,12 +1054,12 @@ impl PureBuilder {
         let body = body_fn(&self.scoped(bindings));
         assert_eq!(
             body.typ(),
-            Type::Fragment,
-            "FragmentFor expects a Fragment body, got: {}",
+            Type::Html,
+            "HtmlFor expects an Html body, got: {}",
             body
         );
 
-        PureExpr::FragmentFor {
+        PureExpr::HtmlFor {
             var,
             source: Box::new(PureForSource::Array(array)),
             body: Box::new(body),
@@ -1067,7 +1067,7 @@ impl PureBuilder {
         }
     }
 
-    pub fn fragment_for_range<F>(
+    pub fn html_for_range<F>(
         &self,
         var: Option<&str>,
         start: PureExpr,
@@ -1100,12 +1100,12 @@ impl PureBuilder {
         let body = body_fn(&self.scoped(bindings));
         assert_eq!(
             body.typ(),
-            Type::Fragment,
-            "FragmentFor expects a Fragment body, got: {}",
+            Type::Html,
+            "HtmlFor expects an Html body, got: {}",
             body
         );
 
-        PureExpr::FragmentFor {
+        PureExpr::HtmlFor {
             var,
             source: Box::new(PureForSource::RangeInclusive { start, end }),
             body: Box::new(body),

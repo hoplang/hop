@@ -194,7 +194,7 @@ fn is_trivial(expr: &PureExpr) -> bool {
             | PureExpr::IntLiteral { .. }
             | PureExpr::FloatLiteral { .. }
             | PureExpr::BooleanLiteral { .. }
-            | PureExpr::FragmentRaw { .. }
+            | PureExpr::HtmlRaw { .. }
     )
 }
 
@@ -263,7 +263,7 @@ fn binders_mut(expr: &mut PureExpr) -> Vec<&mut IrVar> {
                 .collect(),
             Match::Bool { .. } => Vec::new(),
         },
-        PureExpr::FragmentFor { var, .. } => var.iter_mut().collect(),
+        PureExpr::HtmlFor { var, .. } => var.iter_mut().collect(),
         _ => Vec::new(),
     }
 }
@@ -316,7 +316,7 @@ fn count_reads(expr: &PureExpr, depth: usize, out: &mut HashMap<VarId, (usize, u
         // A read in the body runs once per iteration, so an argument
         // substituted there would be evaluated more than once. The source is
         // evaluated once, and stays at this depth.
-        PureExpr::FragmentFor { source, body, .. } => {
+        PureExpr::HtmlFor { source, body, .. } => {
             match &**source {
                 PureForSource::Array(array) => count_reads(array, depth, out),
                 PureForSource::RangeInclusive { start, end } => {
@@ -390,7 +390,7 @@ mod tests {
                         .collect(),
                     Match::Bool { .. } => Vec::new(),
                 },
-                PureExpr::FragmentFor { var, .. } => var.iter().copied().collect(),
+                PureExpr::HtmlFor { var, .. } => var.iter().copied().collect(),
                 _ => Vec::new(),
             }
         }
@@ -461,7 +461,7 @@ mod tests {
     fn should_inline_a_call_and_substitute_its_argument() {
         check(
             PureModuleBuilder::new()
-                .function("Badge", [("label", "String")], "Fragment", |t| {
+                .function("Badge", [("label", "String")], "Html", |t| {
                     t.concat(vec![t.raw("<b>"), t.escape(t.var("label")), t.raw("</b>")])
                 })
                 .page("Main", [("title", "String")], |t| {
@@ -470,7 +470,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn Badge@f0(label@v0: String) -> Fragment {
+                fn Badge@f0(label@v0: String) -> Html {
                   concat(raw("<b>"), escape(v0), raw("</b>"))
                 }
                 page Main(title@v1: String) {
@@ -478,7 +478,7 @@ mod tests {
                 }
 
                 -- after --
-                fn Badge@f0(label@v0: String) -> Fragment {
+                fn Badge@f0(label@v0: String) -> Html {
                   concat(raw("<b>"), escape(v0), raw("</b>"))
                 }
                 page Main(title@v1: String) {
@@ -492,7 +492,7 @@ mod tests {
     fn should_bind_an_argument_read_more_than_once() {
         check(
             PureModuleBuilder::new()
-                .function("Twice", [("body", "Fragment")], "Fragment", |t| {
+                .function("Twice", [("body", "Html")], "Html", |t| {
                     t.concat(vec![t.var("body"), t.var("body")])
                 })
                 .page("Main", [("name", "String")], |t| {
@@ -501,7 +501,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn Twice@f0(body@v0: Fragment) -> Fragment {
+                fn Twice@f0(body@v0: Html) -> Html {
                   concat(v0, v0)
                 }
                 page Main(name@v1: String) {
@@ -509,7 +509,7 @@ mod tests {
                 }
 
                 -- after --
-                fn Twice@f0(body@v0: Fragment) -> Fragment {
+                fn Twice@f0(body@v0: Html) -> Html {
                   concat(v0, v0)
                 }
                 page Main(name@v1: String) {
@@ -523,8 +523,8 @@ mod tests {
     fn should_bind_an_argument_read_inside_a_loop() {
         check(
             PureModuleBuilder::new()
-                .function("Repeat", [("body", "Fragment")], "Fragment", |t| {
-                    t.fragment_for(None, t.array(vec![t.str("a"), t.str("b")]), |t| {
+                .function("Repeat", [("body", "Html")], "Html", |t| {
+                    t.html_for(None, t.array(vec![t.str("a"), t.str("b")]), |t| {
                         t.var("body")
                     })
                 })
@@ -534,7 +534,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn Repeat@f0(body@v0: Fragment) -> Fragment {
+                fn Repeat@f0(body@v0: Html) -> Html {
                   for _ in ["a", "b"] { v0 }
                 }
                 page Main(name@v1: String) {
@@ -542,7 +542,7 @@ mod tests {
                 }
 
                 -- after --
-                fn Repeat@f0(body@v0: Fragment) -> Fragment {
+                fn Repeat@f0(body@v0: Html) -> Html {
                   for _ in ["a", "b"] { v0 }
                 }
                 page Main(name@v1: String) {
@@ -556,10 +556,10 @@ mod tests {
     fn should_inline_callees_before_their_callers() {
         check(
             PureModuleBuilder::new()
-                .function("Inner", [("x", "String")], "Fragment", |t| {
+                .function("Inner", [("x", "String")], "Html", |t| {
                     t.concat(vec![t.raw("["), t.escape(t.var("x")), t.raw("]")])
                 })
-                .function("Outer", [("x", "String")], "Fragment", |t| {
+                .function("Outer", [("x", "String")], "Html", |t| {
                     t.concat(vec![
                         t.raw("<i>"),
                         t.call("Inner", vec![("x", t.var("x"))]),
@@ -572,10 +572,10 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn Inner@f0(x@v0: String) -> Fragment {
+                fn Inner@f0(x@v0: String) -> Html {
                   concat(raw("["), escape(v0), raw("]"))
                 }
-                fn Outer@f1(x@v1: String) -> Fragment {
+                fn Outer@f1(x@v1: String) -> Html {
                   concat(raw("<i>"), call Inner@f0(x = v1), raw("</i>"))
                 }
                 page Main(name@v2: String) {
@@ -583,10 +583,10 @@ mod tests {
                 }
 
                 -- after --
-                fn Inner@f0(x@v0: String) -> Fragment {
+                fn Inner@f0(x@v0: String) -> Html {
                   concat(raw("["), escape(v0), raw("]"))
                 }
-                fn Outer@f1(x@v1: String) -> Fragment {
+                fn Outer@f1(x@v1: String) -> Html {
                   concat(
                     raw("<i>"),
                     concat(raw("["), escape(v1), raw("]")),
@@ -625,9 +625,9 @@ mod tests {
             .unwrap_or_else(|| panic!("{caller} is declared"));
         let param = decl.parameters[0].clone();
         let name = param.name.clone();
-        decl.body = PureExpr::FragmentConcat {
+        decl.body = PureExpr::HtmlConcat {
             parts: vec![
-                PureExpr::FragmentRaw {
+                PureExpr::HtmlRaw {
                     content: marker.to_string(),
                     id: expr_ids.next(),
                 },
@@ -641,7 +641,7 @@ mod tests {
                             id: expr_ids.next(),
                         },
                     }],
-                    typ: Type::Fragment,
+                    typ: Type::Html,
                     id: expr_ids.next(),
                 },
             ],
@@ -653,7 +653,7 @@ mod tests {
     #[test]
     fn should_leave_a_self_recursive_function_alone() {
         let mut module = PureModuleBuilder::new()
-            .function("Loop", [("n", "Int")], "Fragment", |t| t.raw("placeholder"))
+            .function("Loop", [("n", "Int")], "Html", |t| t.raw("placeholder"))
             .page_no_params("Main", |t| t.call("Loop", vec![("n", t.int(3))]))
             .build();
         patch_to_call(&mut module, "Loop", "Loop", "<li>");
@@ -661,7 +661,7 @@ mod tests {
             module,
             expect![[r#"
                 -- before --
-                fn Loop@f0(n@v0: Int) -> Fragment {
+                fn Loop@f0(n@v0: Int) -> Html {
                   concat(raw("<li>"), call Loop@f0(n = v0))
                 }
                 page Main() {
@@ -669,7 +669,7 @@ mod tests {
                 }
 
                 -- after --
-                fn Loop@f0(n@v0: Int) -> Fragment {
+                fn Loop@f0(n@v0: Int) -> Html {
                   concat(raw("<li>"), call Loop@f0(n = v0))
                 }
                 page Main() {
@@ -682,8 +682,8 @@ mod tests {
     #[test]
     fn should_leave_mutually_recursive_functions_alone() {
         let mut module = PureModuleBuilder::new()
-            .function("Ping", [("n", "Int")], "Fragment", |t| t.raw("placeholder"))
-            .function("Pong", [("n", "Int")], "Fragment", |t| {
+            .function("Ping", [("n", "Int")], "Html", |t| t.raw("placeholder"))
+            .function("Pong", [("n", "Int")], "Html", |t| {
                 t.call("Ping", vec![("n", t.var("n"))])
             })
             .page_no_params("Main", |t| t.call("Pong", vec![("n", t.int(3))]))
@@ -693,10 +693,10 @@ mod tests {
             module,
             expect![[r#"
                 -- before --
-                fn Ping@f0(n@v0: Int) -> Fragment {
+                fn Ping@f0(n@v0: Int) -> Html {
                   concat(raw("<ping>"), call Pong@f1(n = v0))
                 }
-                fn Pong@f1(n@v1: Int) -> Fragment {
+                fn Pong@f1(n@v1: Int) -> Html {
                   call Ping@f0(n = v1)
                 }
                 page Main() {
@@ -704,10 +704,10 @@ mod tests {
                 }
 
                 -- after --
-                fn Ping@f0(n@v0: Int) -> Fragment {
+                fn Ping@f0(n@v0: Int) -> Html {
                   concat(raw("<ping>"), call Pong@f1(n = v0))
                 }
-                fn Pong@f1(n@v1: Int) -> Fragment {
+                fn Pong@f1(n@v1: Int) -> Html {
                   call Ping@f0(n = v1)
                 }
                 page Main() {

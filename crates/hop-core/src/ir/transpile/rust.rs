@@ -33,8 +33,8 @@ fn function_ident(function: &IrFunction) -> String {
 pub struct RustTranspiler {
     /// Tracks whether escape_html function is used during transpilation
     needs_escape_html: bool,
-    /// Tracks whether Fragment type is used during transpilation
-    needs_fragment: bool,
+    /// Tracks whether Html type is used during transpilation
+    needs_html: bool,
     /// Field positions carrying `Box` indirection.
     /// We box in both directions for mutually recursive types.
     boxed_edges: HashSet<(TypeName, TypeName)>,
@@ -57,7 +57,7 @@ impl RustTranspiler {
     pub fn new() -> Self {
         Self {
             needs_escape_html: false,
-            needs_fragment: false,
+            needs_html: false,
             boxed_edges: HashSet::new(),
             registry: TypeRegistry::default(),
         }
@@ -155,7 +155,7 @@ impl RustTranspiler {
             // Every other variant constructs a fresh value, so it is already
             // owned.
             WriterExpr::StringLiteral { .. }
-            | WriterExpr::FragmentLiteral { .. }
+            | WriterExpr::HtmlLiteral { .. }
             | WriterExpr::FunctionCall { .. }
             | WriterExpr::BooleanLiteral { .. }
             | WriterExpr::FloatLiteral { .. }
@@ -350,8 +350,8 @@ impl RustTranspiler {
     fn passed_by_ref(t: &Type) -> bool {
         match t {
             Type::Bool | Type::Int | Type::Float | Type::Option(_) => false,
-            Type::String | Type::Fragment | Type::Array(_) | Type::Named { .. } => true,
-            Type::Attrs => unreachable!("Attrs is erased to Fragment before the IR"),
+            Type::String | Type::Html | Type::Array(_) | Type::Named { .. } => true,
+            Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
         }
     }
 
@@ -362,11 +362,11 @@ impl RustTranspiler {
             Type::String => arena.text("&str"),
             Type::Float => arena.text("f64"),
             Type::Int => arena.text("i32"),
-            Type::Fragment => {
-                self.needs_fragment = true;
-                arena.text("&Fragment")
+            Type::Html => {
+                self.needs_html = true;
+                arena.text("&Html")
             }
-            Type::Attrs => unreachable!("Attrs is erased to Fragment before the IR"),
+            Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
             Type::Array(elem) => arena
                 .text("&[")
                 .append(self.transpile_type(arena, elem))
@@ -427,7 +427,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_module(&mut self, module: &WriterModule, registry: &TypeRegistry) -> String {
         // Reset tracking flags for this module
         self.needs_escape_html = false;
-        self.needs_fragment = false;
+        self.needs_html = false;
         self.boxed_edges = Self::compute_boxed_edges(registry);
         self.registry = registry.clone();
 
@@ -566,13 +566,13 @@ impl Transpiler for RustTranspiler {
             result = escape_fn.append(result);
         }
 
-        // Prepend Fragment type definition if needed (after transpilation determined it's used)
-        if self.needs_fragment {
+        // Prepend Html type definition if needed (after transpilation determined it's used)
+        if self.needs_html {
             let fragment = arena
                 .nil()
                 .append(arena.text("#[derive(Clone, Debug)]"))
                 .append(arena.line())
-                .append(arena.text("pub struct Fragment(pub String);"))
+                .append(arena.text("pub struct Html(pub String);"))
                 .append(arena.line())
                 .append(arena.line());
             result = fragment.append(result);
@@ -829,7 +829,7 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(", output);"))
     }
 
-    fn transpile_write_fragment_statement<'a>(
+    fn transpile_write_html_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         expr: &'a WriterExpr,
@@ -1128,9 +1128,9 @@ impl Transpiler for RustTranspiler {
         arena.text("i32")
     }
 
-    fn transpile_fragment_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        self.needs_fragment = true;
-        arena.text("Fragment")
+    fn transpile_html_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        self.needs_html = true;
+        arena.text("Html")
     }
 
     fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &Type) -> Doc<'a> {
@@ -1174,7 +1174,7 @@ impl Transpiler for RustTranspiler {
             WriterExpr::VariableReference { .. }
             | WriterExpr::FieldAccess { .. }
             | WriterExpr::StringLiteral { .. }
-            | WriterExpr::FragmentLiteral { .. }
+            | WriterExpr::HtmlLiteral { .. }
             | WriterExpr::FunctionCall { .. }
             | WriterExpr::BooleanLiteral { .. }
             | WriterExpr::FloatLiteral { .. }
@@ -1229,12 +1229,12 @@ impl Transpiler for RustTranspiler {
 
     /// The fragment body renders into its own `output` buffer, so it is
     /// emitted as a block expression that shadows `output`.
-    fn transpile_fragment<'a>(
+    fn transpile_html<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         body: &'a [WriterStatement],
     ) -> Doc<'a> {
-        self.needs_fragment = true;
+        self.needs_html = true;
         arena
             .text("{")
             .append(
@@ -1247,7 +1247,7 @@ impl Transpiler for RustTranspiler {
                     .append(arena.hardline())
                     .append(self.transpile_statements(arena, body))
                     .append(arena.hardline())
-                    .append(arena.text("Fragment(buf)"))
+                    .append(arena.text("Html(buf)"))
                     .nest(4),
             )
             .append(arena.hardline())
@@ -2072,7 +2072,7 @@ mod tests {
     fn for_loop_with_range() {
         check(
             PureModuleBuilder::new().page_no_params("Test", |t| {
-                t.fragment_for_range(Some("i"), t.int(1), t.int(3), |t| {
+                t.html_for_range(Some("i"), t.int(1), t.int(3), |t| {
                     t.escape(t.int_to_string(t.var("i")))
                 })
             }),
@@ -2596,7 +2596,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Green", "Blue"])
-                .function("Badge", [("color", "Color")], "Fragment", |t| {
+                .function("Badge", [("color", "Color")], "Html", |t| {
                     t.enum_match_expr(t.var("color"), |m| {
                         m.arm("Red", |t| t.raw("red"));
                         m.arm("Green", |t| t.raw("green"));
@@ -2608,7 +2608,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Badge@f0(color@v0: test::Color) -> Fragment {
+                fn Badge@f0(color@v0: test::Color) -> Html {
                   match v0 {
                     Color::Red => {
                       write("red")
@@ -2685,7 +2685,7 @@ mod tests {
                   let v0 = {
                     write("<b>hi</b>")
                   } in {
-                    write_fragment(v0)
+                    write_html(v0)
                   }
                 }
 
@@ -2700,7 +2700,7 @@ mod tests {
                 }
 
                 #[derive(Clone, Debug)]
-                pub struct Fragment(pub String);
+                pub struct Html(pub String);
 
                 pub struct Test {}
 
@@ -2716,7 +2716,7 @@ mod tests {
                             let mut buf = String::new();
                             let mut output = &mut buf;
                             output.push_str("<b>hi</b>");
-                            Fragment(buf)
+                            Html(buf)
                         };
                         output.push_str(&v_0.0);
                     }
@@ -2729,20 +2729,20 @@ mod tests {
     fn fragment_returning_function_called_in_value_position() {
         check(
             PureModuleBuilder::new()
-                .function("Frag", [], "Fragment", |t| t.raw("<b>hi</b>"))
+                .function("Frag", [], "Html", |t| t.raw("<b>hi</b>"))
                 .page_no_params("Test", |t| {
                     t.let_expr("x", t.call("Frag", vec![]), |t| t.var("x"))
                 }),
             expect![[r#"
                 -- before --
-                fn Frag@f0() -> Fragment {
+                fn Frag@f0() -> Html {
                   write("<b>hi</b>")
                 }
                 page Test() {
                   let v0 = {
                     call Frag@f0()
                   } in {
-                    write_fragment(v0)
+                    write_html(v0)
                   }
                 }
 
@@ -2757,7 +2757,7 @@ mod tests {
                 }
 
                 #[derive(Clone, Debug)]
-                pub struct Fragment(pub String);
+                pub struct Html(pub String);
 
                 pub struct Test {}
 
@@ -2777,7 +2777,7 @@ mod tests {
                             let mut buf = String::new();
                             let mut output = &mut buf;
                             render_frag_0(output);
-                            Fragment(buf)
+                            Html(buf)
                         };
                         output.push_str(&v_0.0);
                     }
@@ -2859,7 +2859,7 @@ mod tests {
                 .page_no_params("Test", |t| {
                     t.concat(vec![
                         t.raw("<div>"),
-                        t.fragment_for_range(
+                        t.html_for_range(
                             Some("x"),
                             t.int(0),
                             t.call("foo", vec![("x", t.int(-7))]),

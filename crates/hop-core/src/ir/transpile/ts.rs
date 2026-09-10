@@ -50,8 +50,8 @@ pub struct TsTranspiler {
     needs_escape_html: bool,
     /// Tracks whether the floatToInt helper is used during transpilation
     needs_float_to_int: bool,
-    /// Tracks whether Fragment type is used during transpilation
-    needs_fragment: bool,
+    /// Tracks whether Html type is used during transpilation
+    needs_html: bool,
     /// Registry of the module currently being transpiled
     registry: TypeRegistry,
     /// Continues the module's variable numbering, so that names the transpiler
@@ -65,7 +65,7 @@ impl TsTranspiler {
             needs_option: false,
             needs_escape_html: false,
             needs_float_to_int: false,
-            needs_fragment: false,
+            needs_html: false,
             registry: TypeRegistry::default(),
             var_ids: VarIdCounter::new(),
         }
@@ -259,7 +259,7 @@ impl Transpiler for TsTranspiler {
         self.needs_option = false;
         self.needs_escape_html = false;
         self.needs_float_to_int = false;
-        self.needs_fragment = false;
+        self.needs_html = false;
         self.registry = registry.clone();
         self.var_ids = module.var_ids;
 
@@ -554,23 +554,23 @@ impl Transpiler for TsTranspiler {
             result = option_ns.append(result);
         }
 
-        // Prepend Fragment type if needed (after transpilation determined it's used)
-        if self.needs_fragment {
+        // Prepend Html type if needed (after transpilation determined it's used)
+        if self.needs_html {
             let fragment = arena
                 .nil()
                 .append(arena.text(
-                    "type Fragment = string & { readonly __brand: unique symbol };",
+                    "type Html = string & { readonly __brand: unique symbol };",
                 ))
                 .append(arena.line())
                 .append(arena.line())
                 .append(arena.text("/** Marks a string as trusted HTML, bypassing escaping. Only use with sanitized or trusted content. Calling this function with untrusted content causes XSS vulnerabilities. */"))
                 .append(arena.line())
-                .append(arena.text("export function trustHtml(str: string): Fragment {"))
+                .append(arena.text("export function trustHtml(str: string): Html {"))
                 .append(
                     arena
                         .nil()
                         .append(arena.line())
-                        .append(arena.text("return str as Fragment;"))
+                        .append(arena.text("return str as Html;"))
                         .append(arena.line())
                         .nest(4),
                 )
@@ -759,7 +759,7 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(");"))
     }
 
-    fn transpile_write_fragment_statement<'a>(
+    fn transpile_write_html_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         expr: &'a WriterExpr,
@@ -1084,12 +1084,12 @@ impl Transpiler for TsTranspiler {
 
     /// The fragment body gets its own `output` buffer, so it is built by an
     /// immediately invoked arrow function rather than inline.
-    fn transpile_fragment<'a>(
+    fn transpile_html<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         body: &'a [WriterStatement],
     ) -> Doc<'a> {
-        self.needs_fragment = true;
+        self.needs_html = true;
         arena
             .text("(() => {")
             .append(
@@ -1100,7 +1100,7 @@ impl Transpiler for TsTranspiler {
                     .append(arena.line())
                     .append(self.transpile_statements(arena, body))
                     .append(arena.line())
-                    .append(arena.text("return output as Fragment;"))
+                    .append(arena.text("return output as Html;"))
                     .append(arena.line())
                     .nest(4),
             )
@@ -1758,9 +1758,9 @@ impl Transpiler for TsTranspiler {
         arena.text("string")
     }
 
-    fn transpile_fragment_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        self.needs_fragment = true;
-        arena.text("Fragment")
+    fn transpile_html_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        self.needs_html = true;
+        arena.text("Html")
     }
 
     fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
@@ -1970,7 +1970,7 @@ mod tests {
             PureModuleBuilder::new().page("ListItems", [("items", "Array[String]")], |t| {
                 t.concat(vec![
                     t.raw("<ul>\n"),
-                    t.fragment_for(Some("item"), t.var("items"), |t| {
+                    t.html_for(Some("item"), t.var("items"), |t| {
                         t.concat(vec![
                             t.raw("<li>"),
                             t.escape(t.var("item")),
@@ -2024,7 +2024,7 @@ mod tests {
     fn for_loop_with_range() {
         check(
             PureModuleBuilder::new().page_no_params("Counter", |t| {
-                t.fragment_for_range(Some("i"), t.int(1), t.int(3), |t| {
+                t.html_for_range(Some("i"), t.int(1), t.int(3), |t| {
                     t.concat(vec![t.escape(t.int_to_string(t.var("i"))), t.raw(" ")])
                 })
             }),
@@ -2174,7 +2174,7 @@ mod tests {
         check(
             PureModuleBuilder::new().page(
                 "RenderHtml",
-                [("safe_content", "Fragment"), ("user_input", "String")],
+                [("safe_content", "Html"), ("user_input", "String")],
                 |t| {
                     t.concat(vec![
                         t.raw("<div>"),
@@ -2188,11 +2188,11 @@ mod tests {
             expect![[r#"
                 -- before --
                 page RenderHtml(
-                  safe_content@v0: Fragment,
+                  safe_content@v0: Html,
                   user_input@v1: String,
                 ) {
                   write("<div>")
-                  write_fragment(v0)
+                  write_html(v0)
                   write("</div><div>")
                   write_string(v1)
                   write("</div>")
@@ -2201,11 +2201,11 @@ mod tests {
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
 
-                type Fragment = string & { readonly __brand: unique symbol };
+                type Html = string & { readonly __brand: unique symbol };
 
                 /** Marks a string as trusted HTML, bypassing escaping. Only use with sanitized or trusted content. Calling this function with untrusted content causes XSS vulnerabilities. */
-                export function trustHtml(str: string): Fragment {
-                    return str as Fragment;
+                export function trustHtml(str: string): Html {
+                    return str as Html;
                 }
 
                 function escapeHtml(str: string): string {
@@ -2221,7 +2221,7 @@ mod tests {
                     safe_content: v_0,
                     user_input: v_1
                 }: {
-                    safe_content: Fragment,
+                    safe_content: Html,
                     user_input: string
                 }): string {
                     let output: string = "";
@@ -3362,26 +3362,26 @@ mod tests {
                   let v0 = {
                     write("<b>hi</b>")
                   } in {
-                    write_fragment(v0)
+                    write_html(v0)
                   }
                 }
 
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
 
-                type Fragment = string & { readonly __brand: unique symbol };
+                type Html = string & { readonly __brand: unique symbol };
 
                 /** Marks a string as trusted HTML, bypassing escaping. Only use with sanitized or trusted content. Calling this function with untrusted content causes XSS vulnerabilities. */
-                export function trustHtml(str: string): Fragment {
-                    return str as Fragment;
+                export function trustHtml(str: string): Html {
+                    return str as Html;
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0: Fragment = (() => {
+                    const v_0: Html = (() => {
                         let output: string = "";
                         output += "<b>hi</b>";
-                        return output as Fragment;
+                        return output as Html;
                     })();
                     output += v_0;
                     return output;
@@ -3394,31 +3394,31 @@ mod tests {
     fn fragment_returning_function_called_in_value_position() {
         check(
             PureModuleBuilder::new()
-                .function("Frag", [], "Fragment", |t| t.raw("<b>hi</b>"))
+                .function("Frag", [], "Html", |t| t.raw("<b>hi</b>"))
                 .page_no_params("Test", |t| {
                     t.let_expr("x", t.call("Frag", vec![]), |t| t.var("x"))
                 }),
             expect![[r#"
                 -- before --
-                fn Frag@f0() -> Fragment {
+                fn Frag@f0() -> Html {
                   write("<b>hi</b>")
                 }
                 page Test() {
                   let v0 = {
                     call Frag@f0()
                   } in {
-                    write_fragment(v0)
+                    write_html(v0)
                   }
                 }
 
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
 
-                type Fragment = string & { readonly __brand: unique symbol };
+                type Html = string & { readonly __brand: unique symbol };
 
                 /** Marks a string as trusted HTML, bypassing escaping. Only use with sanitized or trusted content. Calling this function with untrusted content causes XSS vulnerabilities. */
-                export function trustHtml(str: string): Fragment {
-                    return str as Fragment;
+                export function trustHtml(str: string): Html {
+                    return str as Html;
                 }
 
                 function renderFrag_0(): string {
@@ -3429,10 +3429,10 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0: Fragment = (() => {
+                    const v_0: Html = (() => {
                         let output: string = "";
                         output += renderFrag_0();
-                        return output as Fragment;
+                        return output as Html;
                     })();
                     output += v_0;
                     return output;
@@ -3495,7 +3495,7 @@ mod tests {
                 .page_no_params("Test", |t| {
                     t.concat(vec![
                         t.raw("<div>"),
-                        t.fragment_for_range(
+                        t.html_for_range(
                             Some("x"),
                             t.int(0),
                             t.call("foo", vec![("x", t.int(-7))]),

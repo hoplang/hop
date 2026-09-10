@@ -186,7 +186,7 @@ fn typecheck_arm_bodies(
                 asset_references,
                 errors,
             ),
-            MatchArms::Cases(cases) => Some(TypedExpr::FragmentConcat {
+            MatchArms::Cases(cases) => Some(TypedExpr::HtmlConcat {
                 nodes: cases[index]
                     .children
                     .iter()

@@ -60,7 +60,7 @@ impl AssembledPageDeclaration {
             .append(BoxDoc::text(") {"))
             .append(
                 BoxDoc::line()
-                    .append(BoxDoc::text("fn body() -> Fragment {"))
+                    .append(BoxDoc::text("fn body() -> Html {"))
                     .append(
                         BoxDoc::line()
                             .append(self.body.to_doc())
@@ -105,7 +105,7 @@ pub fn assemble_page(
         head.push(create_script_element(src));
     }
 
-    let doctype = TypedExpr::FragmentRaw {
+    let doctype = TypedExpr::HtmlRaw {
         value: CheapString::new("<!doctype html>".to_string()),
     };
     let html = create_html_element(
@@ -119,7 +119,7 @@ pub fn assemble_page(
     AssembledPageDeclaration {
         name,
         params,
-        body: TypedExpr::FragmentConcat {
+        body: TypedExpr::HtmlConcat {
             nodes: vec![doctype, html],
         },
     }
@@ -127,18 +127,18 @@ pub fn assemble_page(
 
 fn fragment_nodes(expr: TypedExpr) -> Vec<TypedExpr> {
     match expr {
-        TypedExpr::FragmentConcat { nodes } => nodes,
+        TypedExpr::HtmlConcat { nodes } => nodes,
         other => vec![other],
     }
 }
 
 fn create_html_element(element: HtmlElementKind, children: Vec<TypedExpr>) -> TypedExpr {
-    TypedExpr::FragmentHtml {
+    TypedExpr::HtmlElement {
         element,
         attrs: Box::new(TypedExpr::AttrsLiteral {
             attributes: Vec::new(),
         }),
-        children: Box::new(TypedExpr::FragmentConcat { nodes: children }),
+        children: Box::new(TypedExpr::HtmlConcat { nodes: children }),
     }
 }
 
@@ -153,14 +153,14 @@ fn create_attribute(name: &str, value: &str) -> TypedAttribute {
 
 fn create_meta_elements() -> Vec<TypedExpr> {
     vec![
-        TypedExpr::FragmentHtml {
+        TypedExpr::HtmlElement {
             element: HtmlElementKind::Meta,
             attrs: Box::new(TypedExpr::AttrsLiteral {
                 attributes: vec![create_attribute("charset", "utf-8")],
             }),
-            children: Box::new(TypedExpr::FragmentConcat { nodes: vec![] }),
+            children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
         },
-        TypedExpr::FragmentHtml {
+        TypedExpr::HtmlElement {
             element: HtmlElementKind::Meta,
             attrs: Box::new(TypedExpr::AttrsLiteral {
                 attributes: vec![
@@ -168,29 +168,29 @@ fn create_meta_elements() -> Vec<TypedExpr> {
                     create_attribute("name", "viewport"),
                 ],
             }),
-            children: Box::new(TypedExpr::FragmentConcat { nodes: vec![] }),
+            children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
         },
     ]
 }
 
 fn create_style_element(css_content: &str) -> TypedExpr {
-    let css_text = TypedExpr::FragmentRaw {
+    let css_text = TypedExpr::HtmlRaw {
         value: CheapString::new(css_content.to_string()),
     };
 
-    TypedExpr::FragmentHtml {
+    TypedExpr::HtmlElement {
         element: HtmlElementKind::Style,
         attrs: Box::new(TypedExpr::AttrsLiteral {
             attributes: Vec::new(),
         }),
-        children: Box::new(TypedExpr::FragmentConcat {
+        children: Box::new(TypedExpr::HtmlConcat {
             nodes: vec![css_text],
         }),
     }
 }
 
 fn create_link_element(href: &str) -> TypedExpr {
-    TypedExpr::FragmentHtml {
+    TypedExpr::HtmlElement {
         element: HtmlElementKind::Link,
         attrs: Box::new(TypedExpr::AttrsLiteral {
             attributes: vec![
@@ -198,7 +198,7 @@ fn create_link_element(href: &str) -> TypedExpr {
                 create_attribute("href", href),
             ],
         }),
-        children: Box::new(TypedExpr::FragmentConcat { nodes: vec![] }),
+        children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
     }
 }
 
@@ -210,7 +210,7 @@ fn create_tailwind_element(injection: TailwindInjection<'_>) -> TypedExpr {
 }
 
 fn create_script_element(src: &str) -> TypedExpr {
-    TypedExpr::FragmentHtml {
+    TypedExpr::HtmlElement {
         element: HtmlElementKind::Script,
         attrs: Box::new(TypedExpr::AttrsLiteral {
             attributes: vec![
@@ -218,7 +218,7 @@ fn create_script_element(src: &str) -> TypedExpr {
                 create_attribute("src", src),
             ],
         }),
-        children: Box::new(TypedExpr::FragmentConcat { nodes: vec![] }),
+        children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
     }
 }
 
@@ -228,33 +228,33 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn text(value: &str) -> TypedExpr {
-        TypedExpr::FragmentRaw {
+        TypedExpr::HtmlRaw {
             value: CheapString::new(value.to_string()),
         }
     }
 
     fn element(tag_name: &str, children: Vec<TypedExpr>) -> TypedExpr {
-        TypedExpr::FragmentHtml {
+        TypedExpr::HtmlElement {
             element: HtmlElementKind::parse(tag_name).expect("unrecognized tag name"),
             attrs: Box::new(TypedExpr::AttrsLiteral {
                 attributes: Vec::new(),
             }),
-            children: Box::new(TypedExpr::FragmentConcat { nodes: children }),
+            children: Box::new(TypedExpr::HtmlConcat { nodes: children }),
         }
     }
 
     fn page(page_name: &str, head: Vec<TypedExpr>, body: Vec<TypedExpr>) -> TypedPageDeclaration {
         TypedPageDeclaration {
             name: TypeName::new(page_name).unwrap(),
-            head: TypedExpr::FragmentConcat { nodes: head },
-            body: TypedExpr::FragmentConcat { nodes: body },
+            head: TypedExpr::HtmlConcat { nodes: head },
+            body: TypedExpr::HtmlConcat { nodes: body },
             params: Vec::new(),
         }
     }
 
     fn format_children(page: &AssembledPageDeclaration) -> String {
-        let TypedExpr::FragmentConcat { nodes } = &page.body else {
-            panic!("an assembled page body is a Fragment literal");
+        let TypedExpr::HtmlConcat { nodes } = &page.body else {
+            panic!("an assembled page body is a HtmlConcat expr");
         };
         nodes
             .iter()

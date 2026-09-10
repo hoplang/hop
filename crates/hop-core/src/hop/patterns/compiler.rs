@@ -439,7 +439,7 @@ fn compile_rows(
         ResolvedType::String
         | ResolvedType::Int
         | ResolvedType::Float
-        | ResolvedType::Fragment
+        | ResolvedType::Html
         | ResolvedType::Array(_) => {
             panic!("pattern matching not supported for this type")
         }
