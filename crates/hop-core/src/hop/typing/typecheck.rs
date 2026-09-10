@@ -1,24 +1,24 @@
 use super::{FunctionSignature, ParamEntry, Tail, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
-use crate::document::DocumentRange;
+use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
-    ImportedName, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
-    ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
+    ParsedEnumDeclaration, ParsedFunctionDeclaration, ParsedImportDeclaration,
+    ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
 use crate::hop::parsing::parsed_expr::{Constructor, ParsedExpr, ParsedMatchPattern};
 use crate::hop::parsing::parsed_node::ParsedNode;
+use crate::hop::typing::export::Export;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::rest_spread::{
     RestSpreadTarget, collect_spreads, pair_rest_spread, resolve_rest_targets,
 };
 use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
-use crate::hop::typing::type_export::{FunctionExport, TypeExport};
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::typed_ast::{
@@ -33,8 +33,7 @@ use std::collections::{HashMap, HashSet};
 
 pub fn typecheck(
     modules: &[&ParsedAst],
-    exports: &mut HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
-    function_exports: &mut HashMap<DocumentId, HashMap<VarName, FunctionExport>>,
+    exports: &mut HashMap<DocumentId, HashMap<CheapString, Export>>,
     registry: &mut TypeRegistry,
     typed_asts: &mut HashMap<DocumentId, TypedAst>,
     errors: &mut HashMap<DocumentId, Vec<TypeError>>,
@@ -61,7 +60,6 @@ pub fn typecheck(
         let typed_ast = typecheck_module(
             module,
             exports,
-            function_exports,
             registry,
             module_errors,
             module_annotations,
@@ -89,31 +87,26 @@ pub fn typecheck(
 
 fn typecheck_module(
     parsed_ast: &ParsedAst,
-    exports: &mut HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
-    function_exports: &mut HashMap<DocumentId, HashMap<VarName, FunctionExport>>,
+    exports: &mut HashMap<DocumentId, HashMap<CheapString, Export>>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedAst {
-    let mut module_exports: HashMap<TypeName, TypeExport> = HashMap::new();
-    let mut module_function_exports: HashMap<VarName, FunctionExport> = HashMap::new();
+    let mut module_exports: HashMap<CheapString, Export> = HashMap::new();
 
     let mut typed_pages = Vec::new();
 
     // Phase 1
     //
-    // Register all names in document order. Duplicates are reported at the
-    // second occurrence.
-    let mut names: HashMap<TypeName, Name> = HashMap::new();
-    let mut imported_components: HashMap<TypeName, FunctionSignature> = HashMap::new();
-    let mut function_names: HashSet<VarName> = HashSet::new();
-    let mut imported_functions: HashMap<VarName, (FunctionSignature, DocumentRange)> =
-        HashMap::new();
-    let mut function_imports: HashMap<VarName, DocumentRange> = HashMap::new();
+    // Register all names in document order. A module has one namespace, so
+    // a type, a page and a function cannot share a name. Duplicates are
+    // reported at the second occurrence.
+    let mut names: HashMap<CheapString, Name> = HashMap::new();
+    let mut imported_functions: HashMap<CheapString, FunctionSignature> = HashMap::new();
     for decl in parsed_ast.declarations() {
-        match decl {
+        let (name, name_range, kind, export) = match decl {
             ParsedDeclaration::Import(import) => {
                 let ParsedImportDeclaration {
                     module_name: imported_module,
@@ -122,124 +115,69 @@ fn typecheck_module(
                     path_range: import_path_range,
                     import_range,
                 } = import;
-                match imported_name {
-                    ImportedName::Type(imported_name) => {
-                        let Some(imported_module_exports) =
-                            exports.get(&imported_module.to_document_id())
-                        else {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::ModuleNotFound {
-                                    module: imported_module.clone(),
-                                },
-                                import_path_range.clone(),
-                            ));
-                            continue;
-                        };
-                        let Some(export) = imported_module_exports.get(imported_name) else {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::UndeclaredType {
-                                    module: imported_module.clone(),
-                                    type_name: imported_name.clone(),
-                                },
-                                imported_name_range.clone(),
-                            ));
-                            continue;
-                        };
-                        if !export.is_pub() {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::NotPublic {
-                                    module: imported_module.clone(),
-                                    type_name: imported_name.clone(),
-                                },
-                                imported_name_range.clone(),
-                            ));
-                            continue;
-                        }
-                        definition_links.push(DefinitionLink {
-                            use_range: imported_name_range.clone(),
-                            definition_range: export.definition_range().clone(),
-                        });
-                        if names.contains_key(imported_name) {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::TypeNameIsAlreadyDefined {
-                                    name: imported_name.clone(),
-                                },
-                                imported_name_range.clone(),
-                            ));
-                            continue;
-                        }
-                        let kind = match export {
-                            TypeExport::Type { .. } => NameKind::Type(Type::Named {
-                                module: imported_module.to_document_id(),
-                                name: imported_name.clone(),
-                            }),
-                            TypeExport::Component { signature, .. } => {
-                                imported_components
-                                    .insert(imported_name.clone(), signature.clone());
-                                NameKind::Component
-                            }
-                        };
-                        names.insert(
-                            imported_name.clone(),
-                            Name {
-                                kind,
-                                definition_range: export.definition_range().clone(),
-                                import_range: Some(import_range.clone()),
-                            },
-                        );
-                    }
-                    ImportedName::Function(imported_name) => {
-                        let Some(imported_module_exports) =
-                            function_exports.get(&imported_module.to_document_id())
-                        else {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::ModuleNotFound {
-                                    module: imported_module.clone(),
-                                },
-                                import_path_range.clone(),
-                            ));
-                            continue;
-                        };
-                        let Some(export) = imported_module_exports.get(imported_name) else {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::UndeclaredFunction {
-                                    module: imported_module.clone(),
-                                    name: imported_name.clone(),
-                                },
-                                imported_name_range.clone(),
-                            ));
-                            continue;
-                        };
-                        if !export.is_pub {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::FunctionNotPublic {
-                                    module: imported_module.clone(),
-                                    name: imported_name.clone(),
-                                },
-                                imported_name_range.clone(),
-                            ));
-                            continue;
-                        }
-                        definition_links.push(DefinitionLink {
-                            use_range: imported_name_range.clone(),
-                            definition_range: export.definition_range.clone(),
-                        });
-                        if !function_names.insert(imported_name.clone()) {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::FunctionNameIsAlreadyDefined {
-                                    name: imported_name.clone(),
-                                },
-                                imported_name_range.clone(),
-                            ));
-                            continue;
-                        }
-                        imported_functions.insert(
-                            imported_name.clone(),
-                            (export.signature.clone(), export.definition_range.clone()),
-                        );
-                        function_imports.insert(imported_name.clone(), import_range.clone());
-                    }
+                let Some(imported_module_exports) = exports.get(&imported_module.to_document_id())
+                else {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::ModuleNotFound {
+                            module: imported_module.clone(),
+                        },
+                        import_path_range.clone(),
+                    ));
+                    continue;
+                };
+                let Some(export) = imported_module_exports.get(imported_name) else {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UndeclaredName {
+                            module: imported_module.clone(),
+                            name: imported_name.clone(),
+                        },
+                        imported_name_range.clone(),
+                    ));
+                    continue;
+                };
+                if !export.is_pub() {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::NotPublic {
+                            module: imported_module.clone(),
+                            name: imported_name.clone(),
+                        },
+                        imported_name_range.clone(),
+                    ));
+                    continue;
                 }
+                definition_links.push(DefinitionLink {
+                    use_range: imported_name_range.clone(),
+                    definition_range: export.definition_range().clone(),
+                });
+                if names.contains_key(imported_name) {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::NameIsAlreadyDefined {
+                            name: imported_name.clone(),
+                        },
+                        imported_name_range.clone(),
+                    ));
+                    continue;
+                }
+                let kind = match export {
+                    Export::Type { .. } => NameKind::Type(Type::Named {
+                        module: imported_module.to_document_id(),
+                        name: TypeName::from_cheap_string(imported_name.clone())
+                            .expect("an exported type has a valid type name"),
+                    }),
+                    Export::Function { signature, .. } => {
+                        imported_functions.insert(imported_name.clone(), signature.clone());
+                        NameKind::Function
+                    }
+                };
+                names.insert(
+                    imported_name.clone(),
+                    Name {
+                        kind,
+                        definition_range: export.definition_range().clone(),
+                        import_range: Some(import_range.clone()),
+                    },
+                );
+                continue;
             }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
                 name,
@@ -252,82 +190,50 @@ fn typecheck_module(
                 name_range,
                 pub_range,
                 ..
-            }) => {
-                if names.contains_key(name) {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::TypeNameIsAlreadyDefined { name: name.clone() },
-                        name_range.clone(),
-                    ));
-                    continue;
-                }
-                names.insert(
-                    name.clone(),
-                    Name {
-                        kind: NameKind::Type(Type::Named {
-                            module: parsed_ast.document_id.clone(),
-                            name: name.clone(),
-                        }),
-                        definition_range: name_range.clone(),
-                        import_range: None,
-                    },
-                );
-                module_exports.insert(
-                    name.clone(),
-                    TypeExport::Type {
-                        definition_range: name_range.clone(),
-                        is_pub: pub_range.is_some(),
-                    },
-                );
-            }
-            ParsedDeclaration::Component(c) => {
-                if names.contains_key(&c.component_name) {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::TypeNameIsAlreadyDefined {
-                            name: c.component_name.clone(),
-                        },
-                        c.name_range.clone(),
-                    ));
-                    continue;
-                }
-                names.insert(
-                    c.component_name.clone(),
-                    Name {
-                        kind: NameKind::Component,
-                        definition_range: c.name_range.clone(),
-                        import_range: None,
-                    },
-                );
-            }
-            ParsedDeclaration::Page(v) => {
-                if names.contains_key(&v.name) {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::TypeNameIsAlreadyDefined {
-                            name: v.name.clone(),
-                        },
-                        v.name_range.clone(),
-                    ));
-                    continue;
-                }
-                names.insert(
-                    v.name.clone(),
-                    Name {
-                        kind: NameKind::Page,
-                        definition_range: v.name_range.clone(),
-                        import_range: None,
-                    },
-                );
-            }
-            ParsedDeclaration::Function(f) => {
-                if !function_names.insert(f.name.clone()) {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::FunctionNameIsAlreadyDefined {
-                            name: f.name.clone(),
-                        },
-                        f.name_range.clone(),
-                    ));
-                }
-            }
+            }) => (
+                name.to_cheap_string(),
+                name_range,
+                NameKind::Type(Type::Named {
+                    module: parsed_ast.document_id.clone(),
+                    name: name.clone(),
+                }),
+                Some(Export::Type {
+                    definition_range: name_range.clone(),
+                    is_pub: pub_range.is_some(),
+                }),
+            ),
+            ParsedDeclaration::Page(page) => (
+                page.name.to_cheap_string(),
+                &page.name_range,
+                NameKind::Page,
+                None,
+            ),
+            // Functions are exported once their signatures have settled.
+            ParsedDeclaration::Function(function) => (
+                function.name.to_cheap_string(),
+                &function.name_range,
+                NameKind::Function,
+                None,
+            ),
+        };
+        if names.contains_key(&name) {
+            errors.push(TypeError::new(
+                TypeErrorKind::NameIsAlreadyDefined { name },
+                name_range.clone(),
+            ));
+            continue;
         }
+        if let Some(export) = export {
+            module_exports.insert(name.clone(), export);
+        }
+        names.insert(
+            name,
+            Name {
+                kind,
+                definition_range: name_range.clone(),
+                import_range: None,
+            },
+        );
     }
 
     // Phase 2
@@ -357,42 +263,10 @@ fn typecheck_module(
     // Phase 3
     //
     // Register signatures and resolve rest spreads.
-    let mut functions: HashMap<VarName, (FunctionSignature, DocumentRange)> = imported_functions;
     let mut pending_functions = Vec::new();
     for function in parsed_ast.function_declarations() {
-        let Some(pending) = create_function_signature(
+        pending_functions.extend(create_function_signature(
             function,
-            &names,
-            registry,
-            errors,
-            annotations,
-            definition_links,
-            asset_references,
-        ) else {
-            continue;
-        };
-        if functions.contains_key(&function.name) {
-            continue;
-        }
-        functions.insert(
-            function.name.clone(),
-            (pending.signature.clone(), function.name_range.clone()),
-        );
-        module_function_exports.insert(
-            function.name.clone(),
-            FunctionExport {
-                signature: pending.signature.clone(),
-                definition_range: function.name_range.clone(),
-                is_pub: function.pub_range.is_some(),
-            },
-        );
-        pending_functions.push(pending);
-    }
-
-    let mut pending_components = Vec::new();
-    for component in parsed_ast.component_declarations() {
-        pending_components.push(create_component_signature(
-            component,
             &names,
             registry,
             errors,
@@ -402,39 +276,34 @@ fn typecheck_module(
         ));
     }
 
-    let mut declared = imported_components;
-    for pending in &pending_components {
-        let name = &pending.component.component_name;
+    let mut declared = imported_functions;
+    for pending in &pending_functions {
+        let function = pending.function;
         // The first declaration owns the name, Phase 1 reported the rest.
-        if names[name].definition_range == pending.component.name_range {
-            declared.insert(name.clone(), pending.signature.clone());
+        if names[function.name.as_str()].definition_range == function.name_range {
+            declared.insert(function.name.to_cheap_string(), pending.signature.clone());
         }
     }
-    // Pair each component's rest parameter with the spread that forwards it.
+    // Pair each function's rest parameter with the spread that forwards it.
     // This is purely syntactic, so it runs before any signature is settled.
-    let mut rest_targets: HashMap<TypeName, Option<RestSpreadTarget>> = HashMap::new();
-    for component in parsed_ast.component_declarations() {
-        let mut spreads = Vec::new();
-        collect_spreads(&component.body, &mut spreads);
-        let rest_target = pair_rest_spread(
-            component
-                .rest_param
-                .as_ref()
-                .map(|rest| (&component.component_name, rest)),
-            spreads,
-            errors,
-        );
-        if names[&component.component_name].definition_range == component.name_range {
-            rest_targets.insert(component.component_name.clone(), rest_target);
-        }
-    }
-    // Functions and pages cannot declare a rest, so every spread in their
-    // bodies fail to name one.
+    let mut rest_targets: HashMap<CheapString, Option<RestSpreadTarget>> = HashMap::new();
     for function in parsed_ast.function_declarations() {
         let mut spreads = Vec::new();
         collect_spreads(&function.body, &mut spreads);
-        pair_rest_spread(None, spreads, errors);
+        let rest_target = pair_rest_spread(
+            function
+                .rest_param
+                .as_ref()
+                .map(|rest| (&function.name, rest)),
+            spreads,
+            errors,
+        );
+        if names[function.name.as_str()].definition_range == function.name_range {
+            rest_targets.insert(function.name.to_cheap_string(), rest_target);
+        }
     }
+    // Pages cannot declare a rest, so every spread in their bodies fails to
+    // name one.
     for page in parsed_ast.page_declarations() {
         let mut spreads = Vec::new();
         if let Some(head) = &page.head {
@@ -445,20 +314,19 @@ fn typecheck_module(
     }
     let type_env = TypeEnv {
         names,
-        components: resolve_rest_targets(&rest_targets, &declared, errors),
-        functions,
+        functions: resolve_rest_targets(&rest_targets, &declared, errors),
     };
-    for component in parsed_ast.component_declarations() {
-        let name = &component.component_name;
-        if type_env.names[name].definition_range != component.name_range {
+    for function in parsed_ast.function_declarations() {
+        let name = function.name.as_str();
+        if type_env.names[name].definition_range != function.name_range {
             continue;
         }
         module_exports.insert(
-            name.clone(),
-            TypeExport::Component {
-                signature: type_env.components[name].clone(),
-                definition_range: component.name_range.clone(),
-                is_pub: component.pub_range.is_some(),
+            function.name.to_cheap_string(),
+            Export::Function {
+                signature: type_env.functions[name].clone(),
+                definition_range: function.name_range.clone(),
+                is_pub: function.pub_range.is_some(),
             },
         );
     }
@@ -467,17 +335,6 @@ fn typecheck_module(
     //
     // Typecheck bodies.
     let mut typed_function_declarations = Vec::new();
-    for pending in pending_components {
-        typed_function_declarations.push(typecheck_component_body(
-            pending,
-            registry,
-            errors,
-            &type_env,
-            annotations,
-            definition_links,
-            asset_references,
-        ));
-    }
     for pending in pending_functions {
         typed_function_declarations.extend(typecheck_function_body(
             pending,
@@ -506,12 +363,12 @@ fn typecheck_module(
     //
     // Check for unused imports. A name counts as used wherever it is written,
     // whether or not it resolved.
-    let (referenced_types, referenced_functions) = referenced_names(parsed_ast);
+    let referenced = referenced_names(parsed_ast);
     for (name, entry) in &type_env.names {
         let Some(import_range) = &entry.import_range else {
             continue;
         };
-        if referenced_types.contains(name) {
+        if referenced.contains(name) {
             continue;
         }
         errors.push(TypeError::new(
@@ -521,20 +378,8 @@ fn typecheck_module(
             import_range.clone(),
         ));
     }
-    for (name, import_range) in &function_imports {
-        if referenced_functions.contains(name) {
-            continue;
-        }
-        errors.push(TypeError::new(
-            TypeErrorKind::UnusedFunctionImport {
-                import_name: name.clone(),
-            },
-            import_range.clone(),
-        ));
-    }
 
     exports.insert(parsed_ast.document_id.clone(), module_exports);
-    function_exports.insert(parsed_ast.document_id.clone(), module_function_exports);
 
     TypedAst::new(typed_pages, typed_function_declarations)
 }
@@ -542,7 +387,7 @@ fn typecheck_module(
 fn typecheck_record_declaration(
     record: &ParsedRecordDeclaration,
     document_id: &DocumentId,
-    names: &HashMap<TypeName, Name>,
+    names: &HashMap<CheapString, Name>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -586,7 +431,7 @@ fn typecheck_record_declaration(
 fn typecheck_enum_declaration(
     enum_decl: &ParsedEnumDeclaration,
     document_id: &DocumentId,
-    names: &HashMap<TypeName, Name>,
+    names: &HashMap<CheapString, Name>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -640,13 +485,6 @@ fn typecheck_enum_declaration(
     });
 }
 
-struct PendingComponent<'a> {
-    component: &'a ParsedComponentDeclaration,
-    resolved_params: Vec<(&'a ParsedParameter, Type)>,
-    signature: FunctionSignature,
-    typed_params: Vec<TypedParameter>,
-}
-
 fn typecheck_default_value(
     param: &ParsedParameter,
     param_type: &Type,
@@ -692,183 +530,6 @@ fn typecheck_default_value(
         return None;
     }
     Some(typed_default)
-}
-
-fn create_component_signature<'a>(
-    component: &'a ParsedComponentDeclaration,
-    names: &HashMap<TypeName, Name>,
-    registry: &TypeRegistry,
-    errors: &mut Vec<TypeError>,
-    annotations: &mut Vec<HoverAnnotation>,
-    definition_links: &mut Vec<DefinitionLink>,
-    asset_references: &mut Vec<AssetReference>,
-) -> PendingComponent<'a> {
-    let ParsedComponentDeclaration { params, .. } = component;
-
-    let mut resolved_params = Vec::new();
-    let mut declared_params: Vec<ParamEntry> = Vec::new();
-    let mut typed_params = Vec::new();
-    let mut seen_param_names: HashSet<VarName> = HashSet::new();
-
-    let type_env = TypeEnv {
-        names: names.clone(),
-        components: HashMap::new(),
-        functions: HashMap::new(),
-    };
-
-    for param in params {
-        if !seen_param_names.insert(param.var_name.clone()) {
-            errors.push(TypeError::new(
-                TypeErrorKind::DuplicateParameter {
-                    name: param.var_name.clone(),
-                },
-                param.var_name_range.clone(),
-            ));
-            continue;
-        }
-
-        let Some(param_type) = resolve_type(&param.var_type, names, definition_links, errors)
-        else {
-            continue;
-        };
-
-        let typed_default_value = typecheck_default_value(
-            param,
-            &param_type,
-            &type_env,
-            registry,
-            errors,
-            annotations,
-            definition_links,
-            asset_references,
-        );
-
-        annotations.push(HoverAnnotation::TypeForVarName {
-            range: param.var_name_range.clone(),
-            typ: param_type.clone(),
-            var_name: param.var_name.clone(),
-        });
-
-        resolved_params.push((param, param_type.clone()));
-        declared_params.push(ParamEntry {
-            name: param.var_name.clone(),
-            typ: param_type.clone(),
-            default: typed_default_value,
-        });
-        typed_params.push(TypedParameter {
-            var_name: param.var_name.clone(),
-            var_type: param_type,
-            examples: None,
-        });
-    }
-
-    PendingComponent {
-        component,
-        resolved_params,
-        signature: FunctionSignature {
-            params: declared_params,
-            return_type: Type::Fragment,
-            tail: Tail::Closed,
-            rest_param: component.rest_param.as_ref().map(|(name, _)| name.clone()),
-        },
-        typed_params,
-    }
-}
-
-fn typecheck_component_body(
-    pending: PendingComponent<'_>,
-    registry: &TypeRegistry,
-    errors: &mut Vec<TypeError>,
-    type_env: &TypeEnv,
-    annotations: &mut Vec<HoverAnnotation>,
-    definition_links: &mut Vec<DefinitionLink>,
-    asset_references: &mut Vec<AssetReference>,
-) -> TypedFunctionDeclaration {
-    let PendingComponent {
-        component,
-        resolved_params,
-        signature,
-        typed_params,
-    } = pending;
-
-    let ParsedComponentDeclaration {
-        body,
-        component_name,
-        name_range,
-        rest_param,
-        ..
-    } = component;
-
-    let mut var_env = VariableScope::new();
-    for (param, param_type) in &resolved_params {
-        let _ = var_env.push(
-            param.var_name.clone(),
-            param_type.clone(),
-            param.var_name_range.clone(),
-        );
-    }
-
-    // The settled signature is the declared parameters followed by the
-    // forwarded ones. A component that lost its name to an earlier declaration
-    // has no settled signature of its own.
-    let forwarded: &[ParamEntry] = match type_env.components.get(component_name) {
-        Some(settled) if type_env.names[component_name].definition_range == *name_range => {
-            &settled.params[signature.params.len()..]
-        }
-        _ => &[],
-    };
-    let forwarded_names: Vec<VarName> = forwarded.iter().map(|p| p.name.clone()).collect();
-
-    let typed_body = typecheck_expr(
-        body,
-        None,
-        &forwarded_names,
-        &mut var_env,
-        type_env,
-        registry,
-        annotations,
-        definition_links,
-        asset_references,
-        errors,
-    );
-
-    for _ in 0..resolved_params.len() {
-        let (name, entry) = var_env.pop();
-        if !entry.accessed {
-            errors.push(TypeError::new(
-                TypeErrorKind::UnusedVariable { var_name: name },
-                entry.range,
-            ));
-        }
-    }
-
-    definition_links.push(DefinitionLink {
-        use_range: name_range.clone(),
-        definition_range: name_range.clone(),
-    });
-
-    let mut typed_params = typed_params;
-    typed_params.extend(forwarded.iter().map(|param| TypedParameter {
-        var_name: param.name.clone(),
-        var_type: param.typ.clone(),
-        examples: None,
-    }));
-
-    // The rest is an ordinary parameter holding pre-rendered attribute text.
-    if let Some((rest, _)) = rest_param {
-        typed_params.push(TypedParameter {
-            var_name: rest.clone(),
-            var_type: Type::Attrs,
-            examples: None,
-        });
-    }
-
-    TypedFunctionDeclaration {
-        name: component_name.clone().into(),
-        params: typed_params,
-        return_type: Type::Fragment,
-        body: check_declaration_body(typed_body, body.range(), errors),
-    }
 }
 
 /// A declaration body is what the declaration renders, so it has to be a
@@ -1012,7 +673,7 @@ struct PendingFunction<'a> {
 
 fn create_function_signature<'a>(
     function: &'a ParsedFunctionDeclaration,
-    names: &HashMap<TypeName, Name>,
+    names: &HashMap<CheapString, Name>,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<HoverAnnotation>,
@@ -1026,7 +687,6 @@ fn create_function_signature<'a>(
 
     let type_env = TypeEnv {
         names: names.clone(),
-        components: HashMap::new(),
         functions: HashMap::new(),
     };
 
@@ -1086,7 +746,7 @@ fn create_function_signature<'a>(
             params: declared_params,
             return_type,
             tail: Tail::Closed,
-            rest_param: None,
+            rest_param: function.rest_param.as_ref().map(|(name, _)| name.clone()),
         },
     })
 }
@@ -1106,6 +766,13 @@ fn typecheck_function_body(
         typed_params,
         signature,
     } = pending;
+    let ParsedFunctionDeclaration {
+        name,
+        name_range,
+        rest_param,
+        body,
+        ..
+    } = function;
     let return_type = signature.return_type;
 
     let mut var_env = VariableScope::new();
@@ -1117,10 +784,21 @@ fn typecheck_function_body(
         );
     }
 
+    // The settled signature is the declared parameters followed by the
+    // forwarded ones. A function that lost its name to an earlier declaration
+    // has no settled signature of its own.
+    let forwarded: &[ParamEntry] = match type_env.functions.get(name.as_str()) {
+        Some(settled) if type_env.names[name.as_str()].definition_range == *name_range => {
+            &settled.params[signature.params.len()..]
+        }
+        _ => &[],
+    };
+    let forwarded_names: Vec<VarName> = forwarded.iter().map(|p| p.name.clone()).collect();
+
     let typed_body = typecheck_expr(
-        &function.body,
+        body,
         Some(&return_type),
-        &[],
+        &forwarded_names,
         &mut var_env,
         type_env,
         registry,
@@ -1141,9 +819,25 @@ fn typecheck_function_body(
     }
 
     definition_links.push(DefinitionLink {
-        use_range: function.name_range.clone(),
-        definition_range: function.name_range.clone(),
+        use_range: name_range.clone(),
+        definition_range: name_range.clone(),
     });
+
+    let mut typed_params = typed_params;
+    typed_params.extend(forwarded.iter().map(|param| TypedParameter {
+        var_name: param.name.clone(),
+        var_type: param.typ.clone(),
+        examples: None,
+    }));
+
+    // The rest is an ordinary parameter holding pre-rendered attribute text.
+    if let Some((rest, _)) = rest_param {
+        typed_params.push(TypedParameter {
+            var_name: rest.clone(),
+            var_type: Type::Attrs,
+            examples: None,
+        });
+    }
 
     let typed_body = typed_body?;
     let body_type = typed_body.typ();
@@ -1153,12 +847,12 @@ fn typecheck_function_body(
                 expected: return_type.clone(),
                 found: body_type,
             },
-            function.body.range().clone(),
+            body.range().clone(),
         ));
     }
 
     Some(TypedFunctionDeclaration {
-        name: function.name.clone().into(),
+        name: name.clone(),
         params: typed_params,
         return_type,
         body: typed_body,
@@ -1235,67 +929,56 @@ fn validate_examples_annotation(
     }
 }
 
-/// Every type name written in the module, whether or not it resolves: in
-/// type positions, record and enum literals, patterns, and component
-/// invocations.
-fn referenced_names(parsed_ast: &ParsedAst) -> (HashSet<TypeName>, HashSet<VarName>) {
+/// Every name written in the module, whether or not it resolves: in type
+/// positions, record and enum literals, patterns, calls and tag invocations.
+fn referenced_names(parsed_ast: &ParsedAst) -> HashSet<CheapString> {
     let mut names = HashSet::new();
-    let mut functions = HashSet::new();
     for decl in parsed_ast.declarations() {
         match decl {
             ParsedDeclaration::Import(_) => {}
             ParsedDeclaration::Record(record) => {
                 for field in &record.fields {
-                    collect_type_names_in_type(&field.field_type, &mut names);
+                    collect_names_in_type(&field.field_type, &mut names);
                 }
             }
             ParsedDeclaration::Enum(enum_decl) => {
                 for variant in &enum_decl.variants {
                     for field in &variant.fields {
-                        collect_type_names_in_type(&field.field_type, &mut names);
+                        collect_names_in_type(&field.field_type, &mut names);
                     }
                 }
-            }
-            ParsedDeclaration::Component(component) => {
-                for param in &component.params {
-                    collect_type_names_in_type(&param.var_type, &mut names);
-                    if let Some(default) = &param.default_value {
-                        collect_names_in_expr(default, &mut names, &mut functions);
-                    }
-                }
-                collect_names_in_expr(&component.body, &mut names, &mut functions);
             }
             ParsedDeclaration::Page(page) => {
                 for param in &page.params {
-                    collect_type_names_in_type(&param.var_type, &mut names);
+                    collect_names_in_type(&param.var_type, &mut names);
                 }
                 if let Some(head) = &page.head {
-                    collect_names_in_expr(head, &mut names, &mut functions);
+                    collect_names_in_expr(head, &mut names);
                 }
-                collect_names_in_expr(&page.body, &mut names, &mut functions);
+                collect_names_in_expr(&page.body, &mut names);
             }
             ParsedDeclaration::Function(function) => {
                 for param in &function.params {
-                    collect_type_names_in_type(&param.var_type, &mut names);
+                    collect_names_in_type(&param.var_type, &mut names);
                     if let Some(default) = &param.default_value {
-                        collect_names_in_expr(default, &mut names, &mut functions);
+                        collect_names_in_expr(default, &mut names);
                     }
                 }
-                collect_type_names_in_type(&function.return_type, &mut names);
-                collect_names_in_expr(&function.body, &mut names, &mut functions);
+                collect_names_in_type(&function.return_type, &mut names);
+                collect_names_in_expr(&function.body, &mut names);
             }
         }
     }
-    (names, functions)
+    names
 }
 
-fn collect_type_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<TypeName>) {
+fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString>) {
     match parsed_type {
         ParsedType::Named { name, .. } => {
-            out.insert(name.clone());
+            out.insert(name.to_cheap_string());
         }
         ParsedType::Option { element, .. } | ParsedType::Array { element, .. } => {
-            collect_type_names_in_type(element, out);
+            collect_names_in_type(element, out);
         }
         ParsedType::String { .. }
         | ParsedType::Bool { .. }
@@ -1305,64 +988,56 @@ fn collect_type_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<TypeNa
     }
 }
 
-fn collect_names_in_expr(
-    expr: &ParsedExpr,
-    out: &mut HashSet<TypeName>,
-    functions_out: &mut HashSet<VarName>,
-) {
+fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
     match expr {
         ParsedExpr::RecordLiteral { record_name, .. } => {
-            out.insert(record_name.clone());
+            out.insert(record_name.to_cheap_string());
         }
         ParsedExpr::EnumLiteral { enum_name, .. } => {
-            out.insert(enum_name.clone());
+            out.insert(enum_name.to_cheap_string());
         }
         ParsedExpr::Match { arms, .. } => {
             for arm in arms {
-                collect_type_names_in_pattern(&arm.pattern, out);
+                collect_names_in_pattern(&arm.pattern, out);
             }
         }
         ParsedExpr::FunctionCall { name, .. } => {
-            functions_out.insert(name.clone());
+            out.insert(name.to_cheap_string());
         }
-        ParsedExpr::Markup { node } => collect_names_in_node(node, out, functions_out),
+        ParsedExpr::Markup { node } => collect_names_in_node(node, out),
         _ => {}
     }
-    expr.for_each_child(&mut |child| collect_names_in_expr(child, out, functions_out));
+    expr.for_each_child(&mut |child| collect_names_in_expr(child, out));
 }
 
-fn collect_names_in_node(
-    node: &ParsedNode,
-    out: &mut HashSet<TypeName>,
-    functions_out: &mut HashSet<VarName>,
-) {
+fn collect_names_in_node(node: &ParsedNode, out: &mut HashSet<CheapString>) {
     match node {
-        ParsedNode::ComponentInvocation { component_name, .. } => {
-            out.insert(component_name.clone());
+        ParsedNode::FunctionInvocation { function_name, .. } => {
+            out.insert(function_name.to_cheap_string());
         }
         ParsedNode::Let { bindings, .. } => {
             for binding in bindings {
                 if let Some(parsed_type) = &binding.var_type {
-                    collect_type_names_in_type(parsed_type, out);
+                    collect_names_in_type(parsed_type, out);
                 }
             }
         }
         ParsedNode::Match { cases, .. } => {
             for case in cases {
-                collect_type_names_in_pattern(&case.pattern, out);
+                collect_names_in_pattern(&case.pattern, out);
             }
         }
         _ => {}
     }
     for expr in node.expressions() {
-        collect_names_in_expr(expr, out, functions_out);
+        collect_names_in_expr(expr, out);
     }
     for child in node.children() {
-        collect_names_in_node(child, out, functions_out);
+        collect_names_in_node(child, out);
     }
 }
 
-fn collect_type_names_in_pattern(pattern: &ParsedMatchPattern, out: &mut HashSet<TypeName>) {
+fn collect_names_in_pattern(pattern: &ParsedMatchPattern, out: &mut HashSet<CheapString>) {
     let ParsedMatchPattern::Constructor {
         constructor,
         args,
@@ -1377,7 +1052,7 @@ fn collect_type_names_in_pattern(pattern: &ParsedMatchPattern, out: &mut HashSet
             enum_name: name, ..
         }
         | Constructor::Record { type_name: name } => {
-            out.insert(name.clone());
+            out.insert(name.to_cheap_string());
         }
         Constructor::BooleanTrue
         | Constructor::BooleanFalse
@@ -1385,10 +1060,10 @@ fn collect_type_names_in_pattern(pattern: &ParsedMatchPattern, out: &mut HashSet
         | Constructor::OptionNone => {}
     }
     for arg in args {
-        collect_type_names_in_pattern(arg, out);
+        collect_names_in_pattern(arg, out);
     }
     for (_, _, field_pattern) in fields {
-        collect_type_names_in_pattern(field_pattern, out);
+        collect_names_in_pattern(field_pattern, out);
     }
 }
 
@@ -1417,7 +1092,6 @@ mod tests {
             .with_location();
 
         let mut state = HashMap::new();
-        let mut function_state = HashMap::new();
         let mut registry = TypeRegistry::default();
         let mut type_errors = HashMap::new();
         let mut type_annotations = HashMap::new();
@@ -1450,7 +1124,6 @@ mod tests {
             typecheck(
                 &[&ast],
                 &mut state,
-                &mut function_state,
                 &mut registry,
                 &mut typed_asts,
                 &mut type_errors,
@@ -1514,11 +1187,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_component_with_duplicate_parameter_names() {
+    fn rejects_function_with_duplicate_parameter_names() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(x: Int, x: Int) {
+                fn Foo(x: Int, x: Int) -> Fragment {
                   <>
                     {x.to_string()}
                   </>
@@ -1526,19 +1199,19 @@ mod tests {
             "#},
             expect![[r#"
                 error: Duplicate parameter 'x'
-                  --> main.hop (line 1, col 23)
-                1 | component Foo(x: Int, x: Int) {
-                  |                       ^
+                  --> main.hop (line 1, col 16)
+                1 | fn Foo(x: Int, x: Int) -> Fragment {
+                  |                ^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_component_with_duplicate_parameter_names_with_different_types() {
+    fn rejects_function_with_duplicate_parameter_names_with_different_types() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(x: Int, x: String) {
+                fn Foo(x: Int, x: String) -> Fragment {
                   <>
                     {x.to_string()}
                   </>
@@ -1546,9 +1219,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Duplicate parameter 'x'
-                  --> main.hop (line 1, col 23)
-                1 | component Foo(x: Int, x: String) {
-                  |                       ^
+                  --> main.hop (line 1, col 16)
+                1 | fn Foo(x: Int, x: String) -> Fragment {
+                  |                ^
             "#]],
         );
     }
@@ -1604,33 +1277,33 @@ mod tests {
     }
 
     #[test]
-    fn rejects_component_used_as_param_type() {
+    fn rejects_function_used_as_param_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component B {
+                fn B() -> Fragment {
                   <div></div>
                 }
-                component Inner(child: B) {
+                fn Inner(child: B) -> Fragment {
                   <div></div>
                 }
             "#},
             expect![[r#"
-                error: `B` is a component and cannot be used as a type
-                  --> main.hop (line 4, col 24)
+                error: `B` is a function and cannot be used as a type
+                  --> main.hop (line 4, col 17)
                 3 | }
-                4 | component Inner(child: B) {
-                  |                        ^
+                4 | fn Inner(child: B) -> Fragment {
+                  |                 ^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_component_used_as_field_type() {
+    fn rejects_function_used_as_field_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component B {
+                fn B() -> Fragment {
                   <div></div>
                 }
                 record R {
@@ -1638,7 +1311,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `B` is a component and cannot be used as a type
+                error: `B` is a function and cannot be used as a type
                   --> main.hop (line 5, col 10)
                 4 | record R {
                 5 |   field: B,
@@ -1648,11 +1321,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_children_in_component() {
+    fn accepts_children_in_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                     <div>
                         {children}
                     </div>
@@ -1672,7 +1345,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card {
+                fn Card() -> Fragment {
                     <div>
                         <><b>x</b><i>y</i></>
                     </div>
@@ -1701,11 +1374,11 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                     <div>{children}</div>
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                     <Card></Card>
                 }
             "#},
@@ -1723,22 +1396,22 @@ mod tests {
     }
 
     #[test]
-    fn rejects_component_invoked_without_children() {
+    fn rejects_function_invoked_without_children() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                     <div>{children}</div>
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                     <Card />
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: children
+                error: Function Card requires arguments: children
                   --> main.hop (line 6, col 6)
-                5 | component Main {
+                5 | fn Main() -> Fragment {
                 6 |     <Card />
                   |      ^^^^
             "#]],
@@ -1750,11 +1423,11 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                     <div>{children}</div>
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                     <Card></Card>
                 }
             "#},
@@ -1776,11 +1449,11 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                     <div>{children}</div>
                 }
 
-                component Main(children: Fragment) {
+                fn Main(children: Fragment) -> Fragment {
                     <Card children={children} />
                 }
             "#},
@@ -1819,11 +1492,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_recursive_component_with_children() {
+    fn accepts_recursive_function_with_children() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Tree(children: Fragment) {
+                fn Tree(children: Fragment) -> Fragment {
                 	<div>
                 		<Tree>{children}</Tree>
                 	</div>
@@ -1847,14 +1520,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                     <div class={children}></div>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Fragment`
+                error: Mismatched type for attribute: expected `String` got `Fragment`
                   --> main.hop (line 2, col 17)
-                1 | component Card(children: Fragment) {
+                1 | fn Card(children: Fragment) -> Fragment {
                 2 |     <div class={children}></div>
                   |                 ^^^^^^^^
             "#]],
@@ -1866,7 +1539,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                     <let {content: Fragment = children}>
                         <div></div>
                     </let>
@@ -1875,7 +1548,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable content
                   --> main.hop (line 2, col 11)
-                1 | component Card(children: Fragment) {
+                1 | fn Card(children: Fragment) -> Fragment {
                 2 |     <let {content: Fragment = children}>
                   |           ^^^^^^^
             "#]],
@@ -1887,18 +1560,18 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                     <div>{children}</div>
                 }
 
-                component Main(children: Fragment) {
+                fn Main(children: Fragment) -> Fragment {
                     <Card children={children}>children</Card>
                 }
             "#},
             expect![[r#"
                 error: Content provided both as an explicit `children` argument and as element children
                   --> main.hop (line 6, col 6)
-                5 | component Main(children: Fragment) {
+                5 | fn Main(children: Fragment) -> Fragment {
                 6 |     <Card children={children}>children</Card>
                   |      ^^^^
             "#]],
@@ -1906,11 +1579,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_declaration_without_parameters() {
+    fn accepts_function_declaration_without_parameters() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -1922,11 +1595,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_an_undefined_component_is_invoked() {
+    fn rejects_when_an_undefined_function_is_invoked() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                 	<h1>Hello,
                         <Bar>
                             <div></div>
@@ -1935,7 +1608,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component Bar is not defined
+                error: Function Bar is not defined
                   --> main.hop (line 3, col 10)
                 2 |     <h1>Hello,
                 3 |         <Bar>
@@ -1945,11 +1618,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_when_a_component_invokes_itself() {
+    fn accepts_when_a_function_invokes_itself() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                 	<h1>Hello, <Main/>!</h1>
                 }
             "#},
@@ -1969,7 +1642,7 @@ mod tests {
                 -- main.hop --
                 import other::Foo
 
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: Module other was not found
@@ -1981,18 +1654,18 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_an_import_references_a_component_that_does_not_exist() {
+    fn rejects_when_an_import_references_a_function_that_does_not_exist() {
         reject(
             indoc! {r#"
                 -- other.hop --
-                component Bar {<></>}
+                fn Bar() -> Fragment {<></>}
                 -- main.hop --
                 import other::Foo
 
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
-                error: Module other does not declare a type Foo
+                error: Module other does not declare Foo
                   --> main.hop (line 1, col 15)
                 1 | import other::Foo
                   |               ^^^
@@ -2001,17 +1674,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_an_import_references_a_component_from_an_empty_module() {
+    fn rejects_when_an_import_references_a_function_from_an_empty_module() {
         reject(
             indoc! {r#"
                 -- other.hop --
                 -- main.hop --
                 import other::Foo
 
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
-                error: Module other does not declare a type Foo
+                error: Module other does not declare Foo
                   --> main.hop (line 1, col 15)
                 1 | import other::Foo
                   |               ^^^
@@ -2020,27 +1693,27 @@ mod tests {
     }
 
     #[test]
-    fn rejects_import_of_non_pub_component() {
+    fn rejects_import_of_non_pub_function() {
         reject(
             indoc! {r#"
                 -- other.hop --
-                component Foo {<></>}
+                fn Foo() -> Fragment {<></>}
                 -- main.hop --
                 import other::Foo
 
-                component Main {
+                fn Main() -> Fragment {
                   <Foo/>
                 }
             "#},
             expect![[r#"
-                error: Type Foo from module other is not public
+                error: Foo from module other is not public
                   --> main.hop (line 1, col 15)
                 1 | import other::Foo
                   |               ^^^
 
-                error: Component Foo is not defined
+                error: Function Foo is not defined
                   --> main.hop (line 4, col 4)
-                3 | component Main {
+                3 | fn Main() -> Fragment {
                 4 |   <Foo/>
                   |    ^^^
             "#]],
@@ -2058,25 +1731,25 @@ mod tests {
                 -- main.hop --
                 import other::Foo
 
-                component Main(foo: Foo) {
+                fn Main(foo: Foo) -> Fragment {
                   <div>{foo.name}</div>
                 }
             "#},
             expect![[r#"
-                error: Type Foo from module other is not public
+                error: Foo from module other is not public
                   --> main.hop (line 1, col 15)
                 1 | import other::Foo
                   |               ^^^
 
                 error: Type 'Foo' is not defined
-                  --> main.hop (line 3, col 21)
+                  --> main.hop (line 3, col 14)
                 2 | 
-                3 | component Main(foo: Foo) {
-                  |                     ^^^
+                3 | fn Main(foo: Foo) -> Fragment {
+                  |              ^^^
 
                 error: Undefined variable: foo
                   --> main.hop (line 4, col 9)
-                3 | component Main(foo: Foo) {
+                3 | fn Main(foo: Foo) -> Fragment {
                 4 |   <div>{foo.name}</div>
                   |         ^^^
             "#]],
@@ -2095,7 +1768,7 @@ mod tests {
                 -- main.hop --
                 import other::Color
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                   <div>{match color {
                     Color::Red => "red",
                     Color::Green => "green",
@@ -2103,20 +1776,20 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Type Color from module other is not public
+                error: Color from module other is not public
                   --> main.hop (line 1, col 15)
                 1 | import other::Color
                   |               ^^^^^
 
                 error: Type 'Color' is not defined
-                  --> main.hop (line 3, col 23)
+                  --> main.hop (line 3, col 16)
                 2 | 
-                3 | component Main(color: Color) {
-                  |                       ^^^^^
+                3 | fn Main(color: Color) -> Fragment {
+                  |                ^^^^^
 
                 error: Undefined variable: color
                   --> main.hop (line 4, col 15)
-                3 | component Main(color: Color) {
+                3 | fn Main(color: Color) -> Fragment {
                 4 |   <div>{match color {
                   |               ^^^^^
             "#]],
@@ -2124,17 +1797,17 @@ mod tests {
     }
 
     #[test]
-    fn accepts_import_of_pub_component() {
+    fn accepts_import_of_pub_function() {
         accept(
             indoc! {r#"
                 -- other.hop --
-                pub component Foo {
+                pub fn Foo() -> Fragment {
                   <span>hi</span>
                 }
                 -- main.hop --
                 import other::Foo
 
-                component Main {
+                fn Main() -> Fragment {
                   <Foo/>
                 }
             "#},
@@ -2153,146 +1826,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_import_of_pub_function() {
-        accept(
-            indoc! {r#"
-                -- other.hop --
-                pub fn greeting() -> String {
-                  "hi"
-                }
-                -- main.hop --
-                import other::greeting
-
-                component Main {
-                  <div>{greeting()}</div>
-                }
-            "#},
-            expect![[r#"
-                -- other.hop --
-                fn greeting() -> String {
-                  "hi"
-                }
-
-                -- main.hop --
-                fn Main() -> Fragment {
-                  html(tag: "div", attrs: [], children: concat(escape(greeting())))
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_import_of_non_pub_function() {
-        reject(
-            indoc! {r#"
-                -- other.hop --
-                fn greeting() -> String {
-                  "hi"
-                }
-                -- main.hop --
-                import other::greeting
-
-                component Main {
-                  <div>{greeting()}</div>
-                }
-            "#},
-            expect![[r#"
-                error: Function greeting from module other is not public
-                  --> main.hop (line 1, col 15)
-                1 | import other::greeting
-                  |               ^^^^^^^^
-
-                error: Undefined function: greeting
-                  --> main.hop (line 4, col 9)
-                3 | component Main {
-                4 |   <div>{greeting()}</div>
-                  |         ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_an_import_references_a_function_that_does_not_exist() {
-        reject(
-            indoc! {r#"
-                -- other.hop --
-                pub fn greeting() -> String {
-                  "hi"
-                }
-                -- main.hop --
-                import other::farewell
-
-                component Main {
-                  <div>{farewell()}</div>
-                }
-            "#},
-            expect![[r#"
-                error: Module other does not declare a function farewell
-                  --> main.hop (line 1, col 15)
-                1 | import other::farewell
-                  |               ^^^^^^^^
-
-                error: Undefined function: farewell
-                  --> main.hop (line 4, col 9)
-                3 | component Main {
-                4 |   <div>{farewell()}</div>
-                  |         ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_a_function_is_imported_without_being_used() {
-        reject(
-            indoc! {r#"
-                -- other.hop --
-                pub fn greeting() -> String {
-                  "hi"
-                }
-                -- main.hop --
-                import other::greeting
-
-                component Main {<></>}
-            "#},
-            expect![[r#"
-                warning: Unused import 'greeting'
-                  --> main.hop (line 1, col 1)
-                1 | import other::greeting
-                  | ^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_a_function_is_defined_with_the_same_name_as_an_import() {
-        reject(
-            indoc! {r#"
-                -- other.hop --
-                pub fn greeting() -> String {
-                  "hi"
-                }
-                -- main.hop --
-                import other::greeting
-
-                fn greeting() -> String {
-                  "hello"
-                }
-
-                component Main {
-                  <div>{greeting()}</div>
-                }
-            "#},
-            expect![[r#"
-                error: Function greeting is already defined
-                  --> main.hop (line 3, col 4)
-                2 | 
-                3 | fn greeting() -> String {
-                  |    ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn accepts_import_of_pub_record() {
         accept(
             indoc! {r#"
@@ -2303,7 +1836,7 @@ mod tests {
                 -- main.hop --
                 import other::Foo
 
-                component Main(foo: Foo) {
+                fn Main(foo: Foo) -> Fragment {
                   <div>{foo.name}</div>
                 }
             "#},
@@ -2335,7 +1868,7 @@ mod tests {
                 -- main.hop --
                 import other::Color
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                   <div>{match color {
                     Color::Red => "red",
                     Color::Green => "green",
@@ -2366,16 +1899,16 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_a_component_is_imported_without_being_used() {
+    fn rejects_when_a_function_is_imported_without_being_used() {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub component Foo {<></>}
+                pub fn Foo() -> Fragment {<></>}
 
                 -- main.hop --
                 import other::Foo
 
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 warning: Unused import 'Foo'
@@ -2387,26 +1920,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_duplicate_component_and_checks_calls_against_the_first() {
+    fn rejects_duplicate_function_and_checks_calls_against_the_first() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(a: Int) {
+                fn Foo(a: Int) -> Fragment {
                   <>{a.to_string()}</>
                 }
-                component Foo(b: String) {
+                fn Foo(b: String) -> Fragment {
                   <>{b}</>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Foo a={1}/>
                 }
             "#},
             expect![[r#"
                 error: Foo is already defined
-                  --> main.hop (line 4, col 11)
+                  --> main.hop (line 4, col 4)
                 3 | }
-                4 | component Foo(b: String) {
-                  |           ^^^
+                4 | fn Foo(b: String) -> Fragment {
+                  |    ^^^
             "#]],
         );
     }
@@ -2421,7 +1954,7 @@ mod tests {
                 -- main.hop --
                 import other::Account
                 import other::User
-                component Main(account: Account) {
+                fn Main(account: Account) -> Fragment {
                   <match {account.user}>
                     <case {User {name: n}}>{n}</case>
                   </match>
@@ -2457,28 +1990,28 @@ mod tests {
                 pub record User {name: String}
                 -- main.hop --
                 import other::User
-                component Main {
+                fn Main() -> Fragment {
                   <>{missing(User {name: "x"})}</>
                 }
             "#},
             expect![[r#"
-                error: Undefined function: missing
+                error: Function missing is not defined
                   --> main.hop (line 3, col 6)
-                2 | component Main {
+                2 | fn Main() -> Fragment {
                 3 |   <>{missing(User {name: "x"})}</>
                   |      ^^^^^^^
             "#]],
         );
     }
     #[test]
-    fn accepts_components_in_different_modules_to_have_same_name() {
+    fn accepts_functions_in_different_modules_to_have_same_name() {
         accept(
             indoc! {r#"
                 -- other.hop --
-                component Foo {<></>}
+                fn Foo() -> Fragment {<></>}
 
                 -- main.hop --
-                component Foo {<></>}
+                fn Foo() -> Fragment {<></>}
             "#},
             expect![[r#"
                 -- other.hop --
@@ -2495,24 +2028,24 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_children_are_passed_to_component_that_does_not_accept_them() {
+    fn rejects_when_children_are_passed_to_function_that_does_not_accept_them() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                     <strong>No children parameter here</strong>
                 }
 
-                component Bar {
+                fn Bar() -> Fragment {
                     <Main>
-                        This component has no children parameter
+                        This function has no children parameter
                     </Main>
                 }
             "#},
             expect![[r#"
-                error: Component Main does not accept content (missing `children: Fragment` parameter)
+                error: Function Main does not accept content (missing `children: Fragment` parameter)
                   --> main.hop (line 6, col 6)
-                5 | component Bar {
+                5 | fn Bar() -> Fragment {
                 6 |     <Main>
                   |      ^^^^
             "#]],
@@ -2520,26 +2053,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_children_are_passed_to_an_imported_component_that_does_not_accept_them() {
+    fn rejects_when_children_are_passed_to_an_imported_function_that_does_not_accept_them() {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub component Foo {
+                pub fn Foo() -> Fragment {
                     <strong>No children parameter here</strong>
                 }
                 -- main.hop --
                 import other::Foo
 
-                component Bar {
+                fn Bar() -> Fragment {
                     <Foo>
-                        This component has no children parameter
+                        This function has no children parameter
                     </Foo>
                 }
             "#},
             expect![[r#"
-                error: Component Foo does not accept content (missing `children: Fragment` parameter)
+                error: Function Foo does not accept content (missing `children: Fragment` parameter)
                   --> main.hop (line 4, col 6)
-                3 | component Bar {
+                3 | fn Bar() -> Fragment {
                 4 |     <Foo>
                   |      ^^^
             "#]],
@@ -2555,7 +2088,7 @@ mod tests {
                   foo: Array[String],
                 }
 
-                component Main(items: Items) {
+                fn Main(items: Items) -> Fragment {
                   <for {items in items.foo}>
                   </for>
                 }
@@ -2563,7 +2096,7 @@ mod tests {
             expect![[r#"
                 error: Variable items is already defined
                   --> main.hop (line 6, col 9)
-                5 | component Main(items: Items) {
+                5 | fn Main(items: Items) -> Fragment {
                 6 |   <for {items in items.foo}>
                   |         ^^^^^
             "#]],
@@ -2580,7 +2113,7 @@ mod tests {
                   b: Array[String],
                 }
 
-                component Main(items: Items) {
+                fn Main(items: Items) -> Fragment {
                   <for {item in items.a}>
                     <for {item in items.b}>
                       <div>{item}</div>
@@ -2607,7 +2140,7 @@ mod tests {
                   active: Bool,
                 }
 
-                component Main(params: Array[Item]) {
+                fn Main(params: Array[Item]) -> Fragment {
                   <>
                   	<for {item in params}>
                   	  <if {item.active}>
@@ -2633,7 +2166,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                   <for {item in items}>
                   </for>
                 }
@@ -2641,7 +2174,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable item
                   --> main.hop (line 2, col 9)
-                1 | component Main(items: Array[String]) {
+                1 | fn Main(items: Array[String]) -> Fragment {
                 2 |   <for {item in items}>
                   |         ^^^^
             "#]],
@@ -2649,7 +2182,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                   <>
                     <for {item in items}>
                         <div>{item}</div>
@@ -2670,7 +2203,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                   <>
                     <for {item in items}>
                     </for>
@@ -2691,26 +2224,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_a_component_parameter_is_unused() {
+    fn rejects_when_a_function_parameter_is_unused() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Bar(p: String) {
+                fn Bar(p: String) -> Fragment {
                   <div>
                   </div>
                 }
             "#},
             expect![[r#"
                 warning: Unused variable p
-                  --> main.hop (line 1, col 15)
-                1 | component Bar(p: String) {
-                  |               ^
+                  --> main.hop (line 1, col 8)
+                1 | fn Bar(p: String) -> Fragment {
+                  |        ^
             "#]],
         );
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Bar(p: String, s: String) {
+                fn Bar(p: String, s: String) -> Fragment {
                   <div>
                   	{s}
                   </div>
@@ -2718,24 +2251,24 @@ mod tests {
             "#},
             expect![[r#"
                 warning: Unused variable p
-                  --> main.hop (line 1, col 15)
-                1 | component Bar(p: String, s: String) {
-                  |               ^
+                  --> main.hop (line 1, col 8)
+                1 | fn Bar(p: String, s: String) -> Fragment {
+                  |        ^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_component_arguments_to_be_passed_in_any_order() {
+    fn accepts_function_arguments_to_be_passed_in_any_order() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(a: Bool, b: String) {
+                fn Main(a: Bool, b: String) -> Fragment {
                   <if {a}>
                     <div>{b}</div>
                   </if>
                 }
-                component Foo {
+                fn Foo() -> Fragment {
                   <Main b="foo" a={true}/>
                 }
             "#},
@@ -2756,23 +2289,23 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_a_component_is_missing_an_argument() {
+    fn rejects_when_a_function_is_missing_an_argument() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(a: Bool, b: String) {
+                fn Main(a: Bool, b: String) -> Fragment {
                   <if {a}>
                     <div>{b}</div>
                   </if>
                 }
-                component Foo {
+                fn Foo() -> Fragment {
                   <Main b="foo"/>
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: a
+                error: Function Main requires arguments: a
                   --> main.hop (line 7, col 4)
-                6 | component Foo {
+                6 | fn Foo() -> Fragment {
                 7 |   <Main b="foo"/>
                   |    ^^^^
             "#]],
@@ -2780,23 +2313,23 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_a_component_is_passed_an_extra_argument() {
+    fn rejects_when_a_function_is_passed_an_extra_argument() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(a: String) {
+                fn Main(a: String) -> Fragment {
                   <>
                     {a}
                   </>
                 }
-                component Foo {
+                fn Foo() -> Fragment {
                     <Main a="" b={1}/>
                 }
             "#},
             expect![[r#"
-                error: Component `Main` does not accept attribute `b`
+                error: Function Main does not accept attribute `b`
                   --> main.hop (line 7, col 16)
-                6 | component Foo {
+                6 | fn Foo() -> Fragment {
                 7 |     <Main a="" b={1}/>
                   |                ^
             "#]],
@@ -2804,23 +2337,23 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_no_arguments_are_passed_to_component_that_requires_them() {
+    fn rejects_when_no_arguments_are_passed_to_function_that_requires_them() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(a: Bool, b: String) {
+                fn Main(a: Bool, b: String) -> Fragment {
                   <if {a}>
                     <div>{b}</div>
                   </if>
                 }
-                component Foo {
+                fn Foo() -> Fragment {
                   <Main />
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: a, b
+                error: Function Main requires arguments: a, b
                   --> main.hop (line 7, col 4)
-                6 | component Foo {
+                6 | fn Foo() -> Fragment {
                 7 |   <Main />
                   |    ^^^^
             "#]],
@@ -2828,23 +2361,23 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_arguments_are_passed_to_component_that_does_not_accept_them() {
+    fn rejects_when_arguments_are_passed_to_function_that_does_not_accept_them() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     hello world
                   </>
                 }
-                component Foo {
+                fn Foo() -> Fragment {
                   <Main a="foo" />
                 }
             "#},
             expect![[r#"
-                error: Component `Main` does not accept attribute `a`
+                error: Function Main does not accept attribute `a`
                   --> main.hop (line 7, col 9)
-                6 | component Foo {
+                6 | fn Foo() -> Fragment {
                 7 |   <Main a="foo" />
                   |         ^
             "#]],
@@ -2859,7 +2392,7 @@ mod tests {
                 record Item {
                   k: Bool
                 }
-                component Main(params: Array[Item]) {
+                fn Main(params: Array[Item]) -> Fragment {
                   <>
                   	<for {item in params}>
                   		<if {item.k}>
@@ -2885,11 +2418,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_declaration_with_string_parameter() {
+    fn accepts_function_declaration_with_string_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(params: String) {
+                fn Main(params: String) -> Fragment {
                 	<div>{params}</div>
                 }
             "#},
@@ -2903,11 +2436,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_declaration_with_bool_parameter() {
+    fn accepts_function_declaration_with_bool_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component ToggleComp(enabled: Bool) {
+                fn ToggleComp(enabled: Bool) -> Fragment {
                 	<if {enabled}>
                 		<div>Enabled</div>
                 	</if>
@@ -2928,11 +2461,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_declaration_with_float_parameter() {
+    fn accepts_function_declaration_with_float_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component CounterComp(count: Float) {
+                fn CounterComp(count: Float) -> Fragment {
                 	<if {count == 0.0}>
                 		<div>Zero</div>
                 	</if>
@@ -2951,7 +2484,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_declaration_with_record_parameter() {
+    fn accepts_function_declaration_with_record_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -2963,7 +2496,7 @@ mod tests {
                   items: Array[Item],
                 }
 
-                component Main(params: Params) {
+                fn Main(params: Params) -> Fragment {
                 	<for {item in params.items}>
                 		<if {item.active}>
                 		</if>
@@ -2997,11 +2530,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_declaration_with_array_parameter() {
+    fn accepts_function_declaration_with_array_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component ListComp(items: Array[String]) {
+                fn ListComp(items: Array[String]) -> Fragment {
                 	<for {item in items}>
                 		<div>{item}</div>
                 	</for>
@@ -3028,7 +2561,7 @@ mod tests {
                   y: String,
                 }
 
-                component Main(params: Params) {
+                fn Main(params: Params) -> Fragment {
                   <if {params.x == params.y}>
                     <div>Values are equal</div>
                   </if>
@@ -3064,7 +2597,7 @@ mod tests {
                   b: Bool,
                 }
 
-                component Main(params: Array[Item]) {
+                fn Main(params: Array[Item]) -> Fragment {
                   <>
                   	<for {j in params}>
                   		<if {j.a}>
@@ -3104,7 +2637,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(i: Array[Bool]) {
+                fn Main(i: Array[Bool]) -> Fragment {
                 	<for {j in i}>
                 		<if {j}>
                 		</if>
@@ -3127,7 +2660,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(i: Array[Array[Bool]]) {
+                fn Main(i: Array[Array[Bool]]) -> Fragment {
                 	<for {j in i}>
                 		<for {k in j}>
                 			<if {k}>
@@ -3153,7 +2686,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_components_to_call_each_other_in_a_chain() {
+    fn accepts_functions_to_call_each_other_in_a_chain() {
         accept(
             indoc! {r#"
                 -- a/bar.hop --
@@ -3162,7 +2695,7 @@ mod tests {
                   title: String,
                 }
 
-                pub component WidgetComp(config: Config) {
+                pub fn WidgetComp(config: Config) -> Fragment {
                   <if {config.enabled}>
                     <div>{config.title}</div>
                   </if>
@@ -3176,7 +2709,7 @@ mod tests {
                   items: Array[Config],
                 }
 
-                pub component PanelComp(data: Data) {
+                pub fn PanelComp(data: Data) -> Fragment {
                   <for {item in data.items}>
                     <WidgetComp config={item}/>
                   </for>
@@ -3193,7 +2726,7 @@ mod tests {
                   dashboard: Data,
                 }
 
-                component Main(settings: Settings) {
+                fn Main(settings: Settings) -> Fragment {
                   <PanelComp data={settings.dashboard}/>
                 }
             "#},
@@ -3250,7 +2783,7 @@ mod tests {
                     name: String,
                 }
 
-                pub component FooComp(user: User) {
+                pub fn FooComp(user: User) -> Fragment {
                     <div>{user.name}</div>
                 }
 
@@ -3259,7 +2792,7 @@ mod tests {
                     email: String,
                 }
 
-                pub component BarComp(user: User) {
+                pub fn BarComp(user: User) -> Fragment {
                     <div>{user.email}</div>
                 }
 
@@ -3268,7 +2801,7 @@ mod tests {
                 import bar::BarComp
                 import foo::User
 
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   <>
                       <FooComp user={user}/>
                       <BarComp user={user}/>
@@ -3276,7 +2809,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `bar::User` got `foo::User`
+                error: Mismatched type for argument 'user' of function 'BarComp': expected `bar::User` got `foo::User`
                   --> main.hop (line 8, col 22)
                  7 |       <FooComp user={user}/>
                  8 |       <BarComp user={user}/>
@@ -3295,7 +2828,7 @@ mod tests {
                     age: Int,
                 }
 
-                pub component FooComp(user: User) {
+                pub fn FooComp(user: User) -> Fragment {
                     <div>{user.name}</div>
                 }
 
@@ -3305,7 +2838,7 @@ mod tests {
                     age: Int,
                 }
 
-                pub component BarComp(user: User) {
+                pub fn BarComp(user: User) -> Fragment {
                     <div>{user.name}</div>
                 }
 
@@ -3314,7 +2847,7 @@ mod tests {
                 import bar::BarComp
                 import foo::User
 
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   <>
                       <FooComp user={user}/>
                       <BarComp user={user}/>
@@ -3322,7 +2855,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `bar::User` got `foo::User`
+                error: Mismatched type for argument 'user' of function 'BarComp': expected `bar::User` got `foo::User`
                   --> main.hop (line 8, col 22)
                  7 |       <FooComp user={user}/>
                  8 |       <BarComp user={user}/>
@@ -3337,7 +2870,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {url: String, theme: String}
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   <a href={user.url} class={user.theme}>Link</a>
                 }
             "#},
@@ -3361,17 +2894,17 @@ mod tests {
     }
 
     #[test]
-    fn accepts_children_to_be_passed_to_component() {
+    fn accepts_children_to_be_passed_to_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(children: Fragment) {
+                fn Main(children: Fragment) -> Fragment {
                     <strong>
                         {children}
                     </strong>
                 }
 
-                component Bar {
+                fn Bar() -> Fragment {
                     <Main>
                         Here's the content for the children
                     </Main>
@@ -3395,7 +2928,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(params: Array[String]) {
+                fn Main(params: Array[String]) -> Fragment {
                   <>
                   	<for {x in params}>
                   		{x}
@@ -3422,7 +2955,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {is_active: Bool}
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   <if {user.is_active}>
                     <div>User is active</div>
                   </if>
@@ -3455,7 +2988,7 @@ mod tests {
                 record Params {
                   foo: String,
                 }
-                component Main(p1: Params, p2: Params) {
+                fn Main(p1: Params, p2: Params) -> Fragment {
                   <if {p1 == p2}>
                     eq 2
                   </if>
@@ -3464,7 +2997,7 @@ mod tests {
             expect![[r#"
                 error: Type main::Params is not comparable
                   --> main.hop (line 5, col 8)
-                4 | component Main(p1: Params, p2: Params) {
+                4 | fn Main(p1: Params, p2: Params) -> Fragment {
                 5 |   <if {p1 == p2}>
                   |        ^^
             "#]],
@@ -3472,21 +3005,21 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_an_int_is_passed_to_component_that_accepts_string() {
+    fn rejects_when_an_int_is_passed_to_function_that_accepts_string() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component StringComp(message: String) {
+                fn StringComp(message: String) -> Fragment {
                 	<div>{message}</div>
                 }
-                component Main {
+                fn Main() -> Fragment {
                 	<StringComp message={42}/>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Int`
+                error: Mismatched type for argument 'message' of function 'StringComp': expected `String` got `Int`
                   --> main.hop (line 5, col 23)
-                4 | component Main {
+                4 | fn Main() -> Fragment {
                 5 |     <StringComp message={42}/>
                   |                          ^^
             "#]],
@@ -3494,23 +3027,23 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_an_empty_string_is_passed_to_component_that_accepts_bool() {
+    fn rejects_when_an_empty_string_is_passed_to_function_that_accepts_bool() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component ToggleComp(enabled: Bool) {
+                fn ToggleComp(enabled: Bool) -> Fragment {
                 	<if {enabled}>
                 		<div>Enabled</div>
                 	</if>
                 }
-                component Main {
+                fn Main() -> Fragment {
                 	<ToggleComp enabled=""/>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `Bool` got `String`
+                error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected `Bool` got `String`
                   --> main.hop (line 7, col 22)
-                6 | component Main {
+                6 | fn Main() -> Fragment {
                 7 |     <ToggleComp enabled=""/>
                   |                         ^^
             "#]],
@@ -3518,23 +3051,23 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_a_string_is_passed_to_component_that_accepts_bool() {
+    fn rejects_when_a_string_is_passed_to_function_that_accepts_bool() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component ToggleComp(enabled: Bool) {
+                fn ToggleComp(enabled: Bool) -> Fragment {
                 	<if {enabled}>
                 		<div>Enabled</div>
                 	</if>
                 }
-                component Main {
+                fn Main() -> Fragment {
                 	<ToggleComp enabled="not a boolean"/>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `Bool` got `String`
+                error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected `Bool` got `String`
                   --> main.hop (line 7, col 22)
-                6 | component Main {
+                6 | fn Main() -> Fragment {
                 7 |     <ToggleComp enabled="not a boolean"/>
                   |                         ^^^^^^^^^^^^^^^
             "#]],
@@ -3546,7 +3079,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                     <if {"str"}>
                       is str?
                     </if>
@@ -3555,7 +3088,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type for condition: expected `Bool` got `String`
                   --> main.hop (line 2, col 10)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <if {"str"}>
                   |          ^^^^^
             "#]],
@@ -3567,25 +3100,25 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(a: String, b: String) {
+                fn Main(a: String, b: String) -> Fragment {
                   <>
                     {a} {b}
                   </>
                 }
-                component Foo {
+                fn Foo() -> Fragment {
                     <Main a={1 == ""} b={1 == ""}/>
                 }
             "#},
             expect![[r#"
                 error: Cannot compare Int to String
                   --> main.hop (line 7, col 14)
-                6 | component Foo {
+                6 | fn Foo() -> Fragment {
                 7 |     <Main a={1 == ""} b={1 == ""}/>
                   |              ^^^^^^^
 
                 error: Cannot compare Int to String
                   --> main.hop (line 7, col 26)
-                6 | component Foo {
+                6 | fn Foo() -> Fragment {
                 7 |     <Main a={1 == ""} b={1 == ""}/>
                   |                          ^^^^^^^
             "#]],
@@ -3597,7 +3130,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                     <for {x in []}>
                       not ok
                     </for>
@@ -3606,7 +3139,7 @@ mod tests {
             expect![[r#"
                 error: Cannot infer type of empty array
                   --> main.hop (line 2, col 16)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <for {x in []}>
                   |                ^^
             "#]],
@@ -3614,16 +3147,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_empty_array_with_type_inferred_from_component_argument() {
+    fn accepts_empty_array_with_type_inferred_from_function_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component ListItems(items: Array[String]) {
+                fn ListItems(items: Array[String]) -> Fragment {
                     <for {item in items}>
                         <li>{item}</li>
                     </for>
                 }
-                component Main {
+                fn Main() -> Fragment {
                     <ListItems items={[]}/>
                 }
             "#},
@@ -3647,7 +3180,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <>
                       {false}
                   </>
@@ -3668,15 +3201,15 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Type 'User' is not defined
-                  --> main.hop (line 1, col 22)
-                1 | component Main(user: User) {
-                  |                      ^^^^
+                  --> main.hop (line 1, col 15)
+                1 | fn Main(user: User) -> Fragment {
+                  |               ^^^^
             "#]],
         );
     }
@@ -3686,15 +3219,15 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(users: Array[User]) {
+                fn Main(users: Array[User]) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Type 'User' is not defined
-                  --> main.hop (line 1, col 29)
-                1 | component Main(users: Array[User]) {
-                  |                             ^^^^
+                  --> main.hop (line 1, col 22)
+                1 | fn Main(users: Array[User]) -> Fragment {
+                  |                      ^^^^
             "#]],
         );
     }
@@ -3709,7 +3242,7 @@ mod tests {
                   friend: User,
                 }
 
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -3738,7 +3271,7 @@ mod tests {
                   city: String,
                 }
 
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -3764,7 +3297,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {name: String}
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <div>{user.name}</div>
                 }
             "#},
@@ -3789,7 +3322,7 @@ mod tests {
                 -- main.hop --
                 record Address {city: String}
                 record User {name: String, address: Address}
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <div>{user.address.city}</div>
                 }
             "#},
@@ -3826,7 +3359,7 @@ mod tests {
                 record Database {connection: Connection}
                 record App {ui: UI, api: API, database: Database}
                 record Params {app: App}
-                component Main(params: Params) {
+                fn Main(params: Params) -> Fragment {
                   <>
                   	<if {params.app.ui.theme.dark}>
                         ok!
@@ -3907,14 +3440,14 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {name: String}
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <div>{user.email}</div>
                 }
             "#},
             expect![[r#"
                 error: Field 'email' not found in record 'User'
                   --> main.hop (line 3, col 11)
-                2 | component Main(user: User) {
+                2 | fn Main(user: User) -> Fragment {
                 3 |     <div>{user.email}</div>
                   |           ^^^^^^^^^^
             "#]],
@@ -3927,18 +3460,18 @@ mod tests {
             indoc! {r#"
                 -- foo.hop --
                 pub record User {name: String}
-                component Foo {<></>}
+                fn Foo() -> Fragment {<></>}
 
                 -- bar.hop --
                 import foo::User
-                component Bar {<></>}
+                fn Bar() -> Fragment {<></>}
 
                 -- baz.hop --
                 import bar::User
-                component Baz {<></>}
+                fn Baz() -> Fragment {<></>}
             "#},
             expect![[r#"
-                error: Module bar does not declare a type User
+                error: Module bar does not declare User
                   --> baz.hop (line 1, col 13)
                 1 | import bar::User
                   |             ^^^^
@@ -3960,7 +3493,7 @@ mod tests {
                   city: String,
                 }
 
-                component Foo {<></>}
+                fn Foo() -> Fragment {<></>}
                 -- bar.hop --
                 import foo::Address
 
@@ -3969,14 +3502,14 @@ mod tests {
                   address: Address,
                 }
 
-                pub component Bar(user: User) {
+                pub fn Bar(user: User) -> Fragment {
                     <div>{user.address.city}</div>
                 }
                 -- baz.hop --
                 import bar::Bar
                 import bar::User
                 import foo::Address
-                component Baz {
+                fn Baz() -> Fragment {
                     <Bar user={User{name: "Alice", address: Address{city: "NYC"}}} />
                 }
             "#},
@@ -4020,7 +3553,7 @@ mod tests {
                     Blue,
                 }
 
-                pub component ColorDisplay(color: Color) {
+                pub fn ColorDisplay(color: Color) -> Fragment {
                     <div>{match color {
                         Color::Red => "red",
                         Color::Green => "green",
@@ -4032,7 +3565,7 @@ mod tests {
                 import colors::Color
                 import colors::ColorDisplay
 
-                component Main {
+                fn Main() -> Fragment {
                     <ColorDisplay color={Color::Red}/>
                 }
             "#},
@@ -4077,7 +3610,7 @@ mod tests {
                     good: String,
                 }
 
-                component Main(b: Broken) {
+                fn Main(b: Broken) -> Fragment {
                     <div>{b.good}</div>
                 }
             "#},
@@ -4101,7 +3634,7 @@ mod tests {
                     Good{label: String},
                 }
 
-                component Main(s: Status) {
+                fn Main(s: Status) -> Fragment {
                     <match {s}>
                         <case {Status::Bad{}}>bad</case>
                         <case {Status::Good{label}}>{label}</case>
@@ -4123,9 +3656,9 @@ mod tests {
         reject(
             indoc! {r#"
                 -- hop/button.hop --
-                pub component Button {<></>}
+                pub fn Button() -> Fragment {<></>}
                 -- hop/input.hop --
-                pub component Input {<></>}
+                pub fn Input() -> Fragment {<></>}
                 -- main.hop --
                 import hop::button::Button
                 import hop::input::Input
@@ -4156,13 +3689,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_component_declaration_with_enum_equality() {
+    fn rejects_function_declaration_with_enum_equality() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 enum Color {Red, Green, Blue}
 
-                component Main(a: Color, b: Color) {
+                fn Main(a: Color, b: Color) -> Fragment {
                     <if {a == b}>
                     </if>
                 }
@@ -4170,7 +3703,7 @@ mod tests {
             expect![[r#"
                 error: Type main::Color is not comparable
                   --> main.hop (line 4, col 10)
-                3 | component Main(a: Color, b: Color) {
+                3 | fn Main(a: Color, b: Color) -> Fragment {
                 4 |     <if {a == b}>
                   |          ^
             "#]],
@@ -4188,7 +3721,7 @@ mod tests {
                     Blue,
                 }
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                     <div>{match color {
                         Color::Red => "red",
                         Color::Green => "green",
@@ -4227,14 +3760,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(name: String) {
+                fn Main(name: String) -> Fragment {
                     <div>{match name {Color::Red => "red"}}</div>
                 }
             "#},
             expect![[r#"
                 error: Match is not implemented for type String
                   --> main.hop (line 2, col 17)
-                1 | component Main(name: String) {
+                1 | fn Main(name: String) -> Fragment {
                 2 |     <div>{match name {Color::Red => "red"}}</div>
                   |                 ^^^^
             "#]],
@@ -4251,7 +3784,7 @@ mod tests {
                     Green,
                 }
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                     <div>{match color {
                         Color::Red => "red",
                         Color::Green => 42,
@@ -4279,7 +3812,7 @@ mod tests {
                     Blue,
                 }
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                     <div>{match color {
                         Color::Red => "red",
                         Color::Green => "green",
@@ -4289,7 +3822,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Color::Blue
                   --> main.hop (line 8, col 17)
-                 7 | component Main(color: Color) {
+                 7 | fn Main(color: Color) -> Fragment {
                  8 |     <div>{match color {
                    |                 ^^^^^
             "#]],
@@ -4311,7 +3844,7 @@ mod tests {
                     Large,
                 }
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                     <div>{match color {
                         Color::Red => "red",
                         Size::Small => "small",
@@ -4339,7 +3872,7 @@ mod tests {
                     Blue,
                 }
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                     <if {color == Color::Red}>
                         <div>{match color {
                             Color::Red => "red",
@@ -4352,7 +3885,7 @@ mod tests {
             expect![[r#"
                 error: Type main::Color is not comparable
                   --> main.hop (line 8, col 10)
-                 7 | component Main(color: Color) {
+                 7 | fn Main(color: Color) -> Fragment {
                  8 |     <if {color == Color::Red}>
                    |          ^^^^^
             "#]],
@@ -4374,7 +3907,7 @@ mod tests {
                     status: Status,
                 }
 
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <div>{match user.status {
                         Status::Active => "active",
                         Status::Inactive => "inactive",
@@ -4423,7 +3956,7 @@ mod tests {
                     value: String,
                 }
 
-                component Main(o: Outer) {
+                fn Main(o: Outer) -> Fragment {
                     <div>{o.inner.value}</div>
                 }
             "#},
@@ -4460,7 +3993,7 @@ mod tests {
                     backups: Array[Folder],
                 }
 
-                component Main(root: Folder) {
+                fn Main(root: Folder) -> Fragment {
                     <div>{root.name}</div>
                 }
             "#},
@@ -4498,7 +4031,7 @@ mod tests {
                     root: Node,
                 }
 
-                component Main(t: Tree) {
+                fn Main(t: Tree) -> Fragment {
                     <match {t.root}>
                         <case {Node::Leaf{label}}>{label}</case>
                         <case {Node::Branch{children}}>
@@ -4549,7 +4082,7 @@ mod tests {
                     role: Role,
                 }
 
-                component Main(person: Person) {
+                fn Main(person: Person) -> Fragment {
                     <if {person.role == Role::Admin}>
                         <div>Welcome, admin!</div>
                     </if>
@@ -4558,7 +4091,7 @@ mod tests {
             expect![[r#"
                 error: Type main::Role is not comparable
                   --> main.hop (line 13, col 10)
-                12 | component Main(person: Person) {
+                12 | fn Main(person: Person) -> Fragment {
                 13 |     <if {person.role == Role::Admin}>
                    |          ^^^^^^^^^^^
             "#]],
@@ -4566,16 +4099,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_with_default_parameter_when_argument_omitted() {
+    fn accepts_function_with_default_parameter_when_argument_omitted() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: String = "World") {
+                fn Greeting(name: String = "World") -> Fragment {
                   <>
                     Hello, {name}!
                   </>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Greeting />
                 }
             "#},
@@ -4593,16 +4126,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_with_default_parameter_when_argument_provided() {
+    fn accepts_function_with_default_parameter_when_argument_provided() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: String = "World") {
+                fn Greeting(name: String = "World") -> Fragment {
                   <>
                     Hello, {name}!
                   </>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Greeting name="Claude" />
                 }
             "#},
@@ -4620,16 +4153,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_with_mixed_required_and_default_parameters() {
+    fn accepts_function_with_mixed_required_and_default_parameters() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component UserCard(name: String, role: String = "user") {
+                fn UserCard(name: String, role: String = "user") -> Fragment {
                   <>
                     {name} ({role})
                   </>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <UserCard name="Alice" />
                 }
             "#},
@@ -4651,19 +4184,19 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component UserCard(name: String, role: String = "user") {
+                fn UserCard(name: String, role: String = "user") -> Fragment {
                   <>
                     {name} ({role})
                   </>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <UserCard role="admin" />
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: name
+                error: Function UserCard requires arguments: name
                   --> main.hop (line 7, col 4)
-                6 | component Main {
+                6 | fn Main() -> Fragment {
                 7 |   <UserCard role="admin" />
                   |    ^^^^^^^^
             "#]],
@@ -4675,24 +4208,24 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: String = 42) {
+                fn Greeting(name: String = 42) -> Fragment {
                   <>
                     Hello, {name}!
                   </>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Greeting />
                 }
             "#},
             expect![[r#"
                 error: Mismatched type: expected `String` got `Int`
-                  --> main.hop (line 1, col 35)
-                1 | component Greeting(name: String = 42) {
-                  |                                   ^^
+                  --> main.hop (line 1, col 28)
+                1 | fn Greeting(name: String = 42) -> Fragment {
+                  |                            ^^
 
-                error: Component requires arguments: name
+                error: Function Greeting requires arguments: name
                   --> main.hop (line 7, col 4)
-                6 | component Main {
+                6 | fn Main() -> Fragment {
                 7 |   <Greeting />
                   |    ^^^^^^^^
             "#]],
@@ -4707,22 +4240,22 @@ mod tests {
                 fn greeting() -> String {
                     "hi"
                 }
-                component Main(msg: String = greeting()) {
+                fn Main(msg: String = greeting()) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 4, col 30)
+                  --> main.hop (line 4, col 23)
                 3 | }
-                4 | component Main(msg: String = greeting()) {
-                  |                              ^^^^^^^^^^
+                4 | fn Main(msg: String = greeting()) -> Fragment {
+                  |                       ^^^^^^^^^^
 
                 warning: Unused variable msg
-                  --> main.hop (line 4, col 16)
+                  --> main.hop (line 4, col 9)
                 3 | }
-                4 | component Main(msg: String = greeting()) {
-                  |                ^^^
+                4 | fn Main(msg: String = greeting()) -> Fragment {
+                  |         ^^^
             "#]],
         );
     }
@@ -4732,20 +4265,20 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(msg: String = other) {
+                fn Main(msg: String = other) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 1, col 30)
-                1 | component Main(msg: String = other) {
-                  |                              ^^^^^
+                  --> main.hop (line 1, col 23)
+                1 | fn Main(msg: String = other) -> Fragment {
+                  |                       ^^^^^
 
                 warning: Unused variable msg
-                  --> main.hop (line 1, col 16)
-                1 | component Main(msg: String = other) {
-                  |                ^^^
+                  --> main.hop (line 1, col 9)
+                1 | fn Main(msg: String = other) -> Fragment {
+                  |         ^^^
             "#]],
         );
     }
@@ -4755,25 +4288,25 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(a: String, b: String = a) {
+                fn Main(a: String, b: String = a) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 1, col 39)
-                1 | component Main(a: String, b: String = a) {
-                  |                                       ^
+                  --> main.hop (line 1, col 32)
+                1 | fn Main(a: String, b: String = a) -> Fragment {
+                  |                                ^
 
                 warning: Unused variable a
-                  --> main.hop (line 1, col 16)
-                1 | component Main(a: String, b: String = a) {
-                  |                ^
+                  --> main.hop (line 1, col 9)
+                1 | fn Main(a: String, b: String = a) -> Fragment {
+                  |         ^
 
                 warning: Unused variable b
-                  --> main.hop (line 1, col 27)
-                1 | component Main(a: String, b: String = a) {
-                  |                           ^
+                  --> main.hop (line 1, col 20)
+                1 | fn Main(a: String, b: String = a) -> Fragment {
+                  |                    ^
             "#]],
         );
     }
@@ -4783,20 +4316,20 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(msg: String = "hi".to_uppercase()) {
+                fn Main(msg: String = "hi".to_uppercase()) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 1, col 30)
-                1 | component Main(msg: String = "hi".to_uppercase()) {
-                  |                              ^^^^^^^^^^^^^^^^^^^
+                  --> main.hop (line 1, col 23)
+                1 | fn Main(msg: String = "hi".to_uppercase()) -> Fragment {
+                  |                       ^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable msg
-                  --> main.hop (line 1, col 16)
-                1 | component Main(msg: String = "hi".to_uppercase()) {
-                  |                ^^^
+                  --> main.hop (line 1, col 9)
+                1 | fn Main(msg: String = "hi".to_uppercase()) -> Fragment {
+                  |         ^^^
             "#]],
         );
     }
@@ -4806,20 +4339,20 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(count: Int = (1 + 2)) {
+                fn Main(count: Int = (1 + 2)) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 1, col 30)
-                1 | component Main(count: Int = (1 + 2)) {
-                  |                              ^^^^^
+                  --> main.hop (line 1, col 23)
+                1 | fn Main(count: Int = (1 + 2)) -> Fragment {
+                  |                       ^^^^^
 
                 warning: Unused variable count
-                  --> main.hop (line 1, col 16)
-                1 | component Main(count: Int = (1 + 2)) {
-                  |                ^^^^^
+                  --> main.hop (line 1, col 9)
+                1 | fn Main(count: Int = (1 + 2)) -> Fragment {
+                  |         ^^^^^
             "#]],
         );
     }
@@ -4829,20 +4362,20 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(src: String = asset!("/logo.png")) {
+                fn Main(src: String = asset!("/logo.png")) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 1, col 30)
-                1 | component Main(src: String = asset!("/logo.png")) {
-                  |                              ^^^^^^^^^^^^^^^^^^^
+                  --> main.hop (line 1, col 23)
+                1 | fn Main(src: String = asset!("/logo.png")) -> Fragment {
+                  |                       ^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable src
-                  --> main.hop (line 1, col 16)
-                1 | component Main(src: String = asset!("/logo.png")) {
-                  |                ^^^
+                  --> main.hop (line 1, col 9)
+                1 | fn Main(src: String = asset!("/logo.png")) -> Fragment {
+                  |         ^^^
             "#]],
         );
     }
@@ -4852,20 +4385,20 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(msg: String = match true { true => "y", false => "n" }) {
+                fn Main(msg: String = match true { true => "y", false => "n" }) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 1, col 30)
-                1 | component Main(msg: String = match true { true => "y", false => "n" }) {
-                  |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  --> main.hop (line 1, col 23)
+                1 | fn Main(msg: String = match true { true => "y", false => "n" }) -> Fragment {
+                  |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable msg
-                  --> main.hop (line 1, col 16)
-                1 | component Main(msg: String = match true { true => "y", false => "n" }) {
-                  |                ^^^
+                  --> main.hop (line 1, col 9)
+                1 | fn Main(msg: String = match true { true => "y", false => "n" }) -> Fragment {
+                  |         ^^^
             "#]],
         );
     }
@@ -4876,22 +4409,22 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record Config { name: String }
-                component Main(config: Config = Config{...base, name: "x"}) {
+                fn Main(config: Config = Config{...base, name: "x"}) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 2, col 33)
+                  --> main.hop (line 2, col 26)
                 1 | record Config { name: String }
-                2 | component Main(config: Config = Config{...base, name: "x"}) {
-                  |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                2 | fn Main(config: Config = Config{...base, name: "x"}) -> Fragment {
+                  |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable config
-                  --> main.hop (line 2, col 16)
+                  --> main.hop (line 2, col 9)
                 1 | record Config { name: String }
-                2 | component Main(config: Config = Config{...base, name: "x"}) {
-                  |                ^^^^^^
+                2 | fn Main(config: Config = Config{...base, name: "x"}) -> Fragment {
+                  |         ^^^^^^
             "#]],
         );
     }
@@ -4901,20 +4434,20 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(names: Array[String] = ["a", other]) {
+                fn Main(names: Array[String] = ["a", other]) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 1, col 39)
-                1 | component Main(names: Array[String] = ["a", other]) {
-                  |                                       ^^^^^^^^^^^^
+                  --> main.hop (line 1, col 32)
+                1 | fn Main(names: Array[String] = ["a", other]) -> Fragment {
+                  |                                ^^^^^^^^^^^^
 
                 warning: Unused variable names
-                  --> main.hop (line 1, col 16)
-                1 | component Main(names: Array[String] = ["a", other]) {
-                  |                ^^^^^
+                  --> main.hop (line 1, col 9)
+                1 | fn Main(names: Array[String] = ["a", other]) -> Fragment {
+                  |         ^^^^^
             "#]],
         );
     }
@@ -4924,21 +4457,21 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Config(debug: Bool = false, timeout: Int = 30) {<></>}
-                component Main {
+                fn Config(debug: Bool = false, timeout: Int = 30) -> Fragment {<></>}
+                fn Main() -> Fragment {
                   <Config />
                 }
             "#},
             expect![[r#"
                 warning: Unused variable debug
-                  --> main.hop (line 1, col 18)
-                1 | component Config(debug: Bool = false, timeout: Int = 30) {<></>}
-                  |                  ^^^^^
+                  --> main.hop (line 1, col 11)
+                1 | fn Config(debug: Bool = false, timeout: Int = 30) -> Fragment {<></>}
+                  |           ^^^^^
 
                 warning: Unused variable timeout
-                  --> main.hop (line 1, col 39)
-                1 | component Config(debug: Bool = false, timeout: Int = 30) {<></>}
-                  |                                       ^^^^^^^
+                  --> main.hop (line 1, col 32)
+                1 | fn Config(debug: Bool = false, timeout: Int = 30) -> Fragment {<></>}
+                  |                                ^^^^^^^
             "#]],
         );
     }
@@ -4948,12 +4481,12 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component ItemList(items: Array[String] = []) {
+                fn ItemList(items: Array[String] = []) -> Fragment {
                   <for {item in items}>
                     {item}
                   </for>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <ItemList />
                 }
             "#},
@@ -4977,12 +4510,12 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment = <></>) {
+                fn Card(children: Fragment = <></>) -> Fragment {
                   <div>
                     {children}
                   </div>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Card />
                 }
             "#},
@@ -5004,7 +4537,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(children: Fragment = <div></div>) {
+                fn Card(children: Fragment = <div></div>) -> Fragment {
                   <div>
                     {children}
                   </div>
@@ -5012,9 +4545,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Default values must be constant
-                  --> main.hop (line 1, col 37)
-                1 | component Card(children: Fragment = <div></div>) {
-                  |                                     ^^^^^^^^^^^
+                  --> main.hop (line 1, col 30)
+                1 | fn Card(children: Fragment = <div></div>) -> Fragment {
+                  |                              ^^^^^^^^^^^
             "#]],
         );
     }
@@ -5025,12 +4558,12 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record Config { name: String, enabled: Bool }
-                component Settings(config: Config = Config{name: "default", enabled: true}) {
+                fn Settings(config: Config = Config{name: "default", enabled: true}) -> Fragment {
                   <>
                     {config.name}
                   </>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Settings />
                 }
             "#},
@@ -5059,7 +4592,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Status { Active{since: Int}, Inactive, Pending }
-                component Badge(status: Status = Status::Active{since: 2000}) {
+                fn Badge(status: Status = Status::Active{since: 2000}) -> Fragment {
                   <>
                     {match status {
                       Status::Active{since: _} => "active",
@@ -5067,7 +4600,7 @@ mod tests {
                     }}
                   </>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Badge />
                 }
             "#},
@@ -5102,10 +4635,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: Option[String]) {
+                fn Greeting(name: Option[String]) -> Fragment {
                   <if {name.is_none()}></if>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Greeting name={Some("World")} />
                 }
             "#},
@@ -5127,10 +4660,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: Option[String]) {
+                fn Greeting(name: Option[String]) -> Fragment {
                   <if {name.is_none()}></if>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Greeting name={None} />
                 }
             "#},
@@ -5152,10 +4685,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: Option[String] = None) {
+                fn Greeting(name: Option[String] = None) -> Fragment {
                   <if {name.is_none()}></if>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Greeting />
                 }
             "#},
@@ -5177,10 +4710,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: Option[String] = Some("World")) {
+                fn Greeting(name: Option[String] = Some("World")) -> Fragment {
                   <if {name.is_none()}></if>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Greeting />
                 }
             "#},
@@ -5202,17 +4735,17 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: Option[String]) {
+                fn Greeting(name: Option[String]) -> Fragment {
                   <if {name.is_none()}></if>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Greeting name="World" />
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `Option[String]` got `String`
+                error: Mismatched type for argument 'name' of function 'Greeting': expected `Option[String]` got `String`
                   --> main.hop (line 5, col 18)
-                4 | component Main {
+                4 | fn Main() -> Fragment {
                 5 |   <Greeting name="World" />
                   |                  ^^^^^^^
             "#]],
@@ -5224,7 +4757,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <match {x}>
                         <case {Some(y)}>
                             found {y}
@@ -5253,7 +4786,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
-                component Main(c: Color) {
+                fn Main(c: Color) -> Fragment {
                     <match {c}>
                         <case {Color::Red}>red</case>
                         <case {Color::Green}>green</case>
@@ -5287,7 +4820,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Status { Active{name: String}, Inactive }
-                component Main {
+                fn Main() -> Fragment {
                     <match {Status::Active{name: "test"}}>
                         <case {Status::Active{name: n}}>
                             {n}
@@ -5321,7 +4854,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(flag: Bool) {
+                fn Main(flag: Bool) -> Fragment {
                     <match {flag}>
                         <case {true}>yes</case>
                         <case {false}>no</case>
@@ -5342,7 +4875,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(flag: Bool) {
+                fn Main(flag: Bool) -> Fragment {
                     <match {flag}>
                         <case {Some(x)}>yes</case>
                     </match>
@@ -5363,7 +4896,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <match {x}>
                         <case {Some(name)}>
                             <div class={name}></div>
@@ -5393,7 +4926,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(name: String) {
+                fn Main(name: String) -> Fragment {
                     <match {name}>
                         <case {Some(x)}>yes</case>
                     </match>
@@ -5402,7 +4935,7 @@ mod tests {
             expect![[r#"
                 error: Match is not implemented for type String
                   --> main.hop (line 2, col 13)
-                1 | component Main(name: String) {
+                1 | fn Main(name: String) -> Fragment {
                 2 |     <match {name}>
                   |             ^^^^
             "#]],
@@ -5415,7 +4948,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
-                component Main(c: Color) {
+                fn Main(c: Color) -> Fragment {
                     <match {c}>
                         <case {Color::Red}>red</case>
                     </match>
@@ -5424,7 +4957,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Color::Blue, Color::Green
                   --> main.hop (line 3, col 13)
-                2 | component Main(c: Color) {
+                2 | fn Main(c: Color) -> Fragment {
                 3 |     <match {c}>
                   |             ^
             "#]],
@@ -5436,7 +4969,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <match {x}>
                         <case {Some(y)}>{y}</case>
                     </match>
@@ -5445,7 +4978,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: None
                   --> main.hop (line 2, col 13)
-                1 | component Main(x: Option[String]) {
+                1 | fn Main(x: Option[String]) -> Fragment {
                 2 |     <match {x}>
                   |             ^
             "#]],
@@ -5457,7 +4990,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(flag: Bool) {
+                fn Main(flag: Bool) -> Fragment {
                     <match {flag}>
                         <case {true}>yes</case>
                     </match>
@@ -5466,7 +4999,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: false
                   --> main.hop (line 2, col 13)
-                1 | component Main(flag: Bool) {
+                1 | fn Main(flag: Bool) -> Fragment {
                 2 |     <match {flag}>
                   |             ^^^^
             "#]],
@@ -5480,7 +5013,7 @@ mod tests {
                 -- main.hop --
                 enum Color { Red, Green }
                 enum Size { Small, Large }
-                component Main(c: Color) {
+                fn Main(c: Color) -> Fragment {
                     <match {c}>
                         <case {Color::Red}>red</case>
                         <case {Size::Small}>small</case>
@@ -5502,7 +5035,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <match {x}>
                         <case {Some(unused)}>
                             found something
@@ -5528,7 +5061,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <match {x}>
                         <case {Some(x)}>
                             {x}
@@ -5561,7 +5094,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Event { Comment {author: String} }
-                component Main(author: String, event: Event) {
+                fn Main(author: String, event: Event) -> Fragment {
                     <match {event}>
                         <case {Event::Comment {author}}>
                             {author}
@@ -5585,7 +5118,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
-                component Main(c: Color) {
+                fn Main(c: Color) -> Fragment {
                     <match {c}>
                         <case {_}>any color</case>
                     </match>
@@ -5594,7 +5127,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                   --> main.hop (line 3, col 13)
-                2 | component Main(c: Color) {
+                2 | fn Main(c: Color) -> Fragment {
                 3 |     <match {c}>
                   |             ^
             "#]],
@@ -5608,7 +5141,7 @@ mod tests {
                 -- main.hop --
                 record Role { title: String, salary: Int }
                 record User { role: Role, created_at: Int }
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <match {user}>
                         <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
                         <case {_}>fallback</case>
@@ -5632,7 +5165,7 @@ mod tests {
                 -- main.hop --
                 record Role { title: String, salary: Int }
                 record User { role: Role, created_at: Int }
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <match {user}>
                         <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
                     </match>
@@ -5641,7 +5174,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                   --> main.hop (line 4, col 13)
-                3 | component Main(user: User) {
+                3 | fn Main(user: User) -> Fragment {
                 4 |     <match {user}>
                   |             ^^^^
             "#]],
@@ -5653,7 +5186,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(x: Option[Option[String]]) {
+                fn Main(x: Option[Option[String]]) -> Fragment {
                     <match {x}>
                         <case {Some(inner)}>
                             <match {inner}>
@@ -5689,7 +5222,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(items: Array[Option[String]]) {
+                fn Main(items: Array[Option[String]]) -> Fragment {
                     <for {item in items}>
                         <match {item}>
                             <case {Some(s)}>{s}</case>
@@ -5719,7 +5252,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <match {x}>
                         <case {Some(_)}>
                             found something
@@ -5747,7 +5280,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(r1: Option[String], r2: Option[Bool]) {
+                fn Main(r1: Option[String], r2: Option[Bool]) -> Fragment {
                     <match {r1}>
                         <case {Some(bound)}>{bound}</case>
                         <case {None}>
@@ -5784,7 +5317,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User { name: Option[String] }
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <match {user.name}>
                         <case {Some(n)}>{n}</case>
                         <case {None}>anonymous</case>
@@ -5813,7 +5346,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(count: Int) {
+                fn Main(count: Int) -> Fragment {
                     <match {count}>
                         <case {Some(x)}>{x}</case>
                     </match>
@@ -5822,7 +5355,7 @@ mod tests {
             expect![[r#"
                 error: Match is not implemented for type Int
                   --> main.hop (line 2, col 13)
-                1 | component Main(count: Int) {
+                1 | fn Main(count: Int) -> Fragment {
                 2 |     <match {count}>
                   |             ^^^^^
             "#]],
@@ -5834,7 +5367,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(show: Bool, x: Option[String]) {
+                fn Main(show: Bool, x: Option[String]) -> Fragment {
                     <if {show}>
                         <match {x}>
                             <case {Some(v)}>{v}</case>
@@ -5865,7 +5398,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <div>
                         <match {x}>
                             <case {Some(v)}><span>{v}</span></case>
@@ -5901,7 +5434,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(c: Option[String]) {
+                fn Main(c: Option[String]) -> Fragment {
                   <match {c}>
                     <case {Some(x)}>
                       {match Some("foo") {
@@ -5929,14 +5462,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(is_required: Bool) {
+                fn Main(is_required: Bool) -> Fragment {
                   <input required={is_required}>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Bool`
+                error: Mismatched type for attribute: expected `String` got `Bool`
                   --> main.hop (line 2, col 20)
-                1 | component Main(is_required: Bool) {
+                1 | fn Main(is_required: Bool) -> Fragment {
                 2 |   <input required={is_required}>
                   |                    ^^^^^^^^^^^
             "#]],
@@ -5948,14 +5481,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <input required={true}>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Bool`
+                error: Mismatched type for attribute: expected `String` got `Bool`
                   --> main.hop (line 2, col 20)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <input required={true}>
                   |                    ^^^^
             "#]],
@@ -5967,14 +5500,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(maybe: Option[String]) {
+                fn Main(maybe: Option[String]) -> Fragment {
                   <div data-x={maybe}></div>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Option[String]`
+                error: Mismatched type for attribute: expected `String` got `Option[String]`
                   --> main.hop (line 2, col 16)
-                1 | component Main(maybe: Option[String]) {
+                1 | fn Main(maybe: Option[String]) -> Fragment {
                 2 |   <div data-x={maybe}></div>
                   |                ^^^^^
             "#]],
@@ -5986,14 +5519,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <div data-x={Some("hello")}></div>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Option[String]`
+                error: Mismatched type for attribute: expected `String` got `Option[String]`
                   --> main.hop (line 2, col 16)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div data-x={Some("hello")}></div>
                   |                ^^^^^^^^^^^^^
             "#]],
@@ -6005,14 +5538,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(maybe: Option[Int]) {
+                fn Main(maybe: Option[Int]) -> Fragment {
                   <div data-x={maybe}></div>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Option[Int]`
+                error: Mismatched type for attribute: expected `String` got `Option[Int]`
                   --> main.hop (line 2, col 16)
-                1 | component Main(maybe: Option[Int]) {
+                1 | fn Main(maybe: Option[Int]) -> Fragment {
                 2 |   <div data-x={maybe}></div>
                   |                ^^^^^
             "#]],
@@ -6024,14 +5557,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(maybe: Option[Bool]) {
+                fn Main(maybe: Option[Bool]) -> Fragment {
                   <div data-x={maybe}></div>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Option[Bool]`
+                error: Mismatched type for attribute: expected `String` got `Option[Bool]`
                   --> main.hop (line 2, col 16)
-                1 | component Main(maybe: Option[Bool]) {
+                1 | fn Main(maybe: Option[Bool]) -> Fragment {
                 2 |   <div data-x={maybe}></div>
                   |                ^^^^^
             "#]],
@@ -6043,14 +5576,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(maybe: Option[Option[String]]) {
+                fn Main(maybe: Option[Option[String]]) -> Fragment {
                   <div data-x={maybe}></div>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Option[Option[String]]`
+                error: Mismatched type for attribute: expected `String` got `Option[Option[String]]`
                   --> main.hop (line 2, col 16)
-                1 | component Main(maybe: Option[Option[String]]) {
+                1 | fn Main(maybe: Option[Option[String]]) -> Fragment {
                 2 |   <div data-x={maybe}></div>
                   |                ^^^^^
             "#]],
@@ -6062,14 +5595,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(count: Int) {
+                fn Main(count: Int) -> Fragment {
                   <div data-count={count}></div>
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `String` got `Int`
+                error: Mismatched type for attribute: expected `String` got `Int`
                   --> main.hop (line 2, col 20)
-                1 | component Main(count: Int) {
+                1 | fn Main(count: Int) -> Fragment {
                 2 |   <div data-count={count}></div>
                   |                    ^^^^^
             "#]],
@@ -6081,14 +5614,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <button onclick="alert(1)">Click</button>
                 }
             "#},
             expect![[r#"
                 error: `<button>` does not accept attribute `onclick`
                   --> main.hop (line 2, col 11)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <button onclick="alert(1)">Click</button>
                   |           ^^^^^^^
             "#]],
@@ -6100,7 +5633,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     <button onClick="alert(1)">Click</button>
                     <button ONCLICK="alert(1)">Click</button>
@@ -6128,14 +5661,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <div flooble="x"></div>
                 }
             "#},
             expect![[r#"
                 error: `<div>` does not accept attribute `flooble`
                   --> main.hop (line 2, col 8)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div flooble="x"></div>
                   |        ^^^^^^^
             "#]],
@@ -6147,7 +5680,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <my-widget foo="x"></my-widget>
                 }
             "#},
@@ -6165,14 +5698,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <button href="/"></button>
                 }
             "#},
             expect![[r#"
                 error: `<button>` does not accept attribute `href`
                   --> main.hop (line 2, col 11)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <button href="/"></button>
                   |           ^^^^
             "#]],
@@ -6184,7 +5717,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <a href="/">link</a>
                 }
             "#},
@@ -6198,22 +5731,22 @@ mod tests {
     }
 
     #[test]
-    fn rejects_forwarded_attribute_invalid_on_component_root_element() {
+    fn rejects_forwarded_attribute_invalid_on_function_root_element() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Btn(children: Fragment, ...rest) {
+                fn Btn(children: Fragment, ...rest) -> Fragment {
                   <button ...rest>{children}</button>
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <Btn href="/">click</Btn>
                 }
             "#},
             expect![[r#"
-                error: Component `Btn` does not accept attribute `href`
+                error: Function Btn does not accept attribute `href`
                   --> main.hop (line 6, col 8)
-                5 | component Main {
+                5 | fn Main() -> Fragment {
                 6 |   <Btn href="/">click</Btn>
                   |        ^^^^
             "#]],
@@ -6221,15 +5754,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_forwarded_attribute_valid_on_component_root_element() {
+    fn accepts_forwarded_attribute_valid_on_function_root_element() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Btn(children: Fragment, ...rest) {
+                fn Btn(children: Fragment, ...rest) -> Fragment {
                   <button ...rest>{children}</button>
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <Btn disabled>click</Btn>
                 }
             "#},
@@ -6251,7 +5784,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <div data-x="1" aria-label="hello"></div>
                 }
             "#},
@@ -6273,7 +5806,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <svg viewBox="0 0 10 10"><path d="M0 0 L10 10"></path></svg>
                 }
             "#},
@@ -6297,18 +5830,18 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Separator(children: Option[Fragment] = None) {
+                fn Separator(children: Option[Fragment] = None) -> Fragment {
                   <li>separator</li>
                 }
-                component Main {
+                fn Main() -> Fragment {
                   <Separator />
                 }
             "#},
             expect![[r#"
                 warning: Unused variable children
-                  --> main.hop (line 1, col 21)
-                1 | component Separator(children: Option[Fragment] = None) {
-                  |                     ^^^^^^^^
+                  --> main.hop (line 1, col 14)
+                1 | fn Separator(children: Option[Fragment] = None) -> Fragment {
+                  |              ^^^^^^^^
             "#]],
         );
     }
@@ -6318,7 +5851,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = "World"}>
                     <div>Hello {name}</div>
                   </let>
@@ -6340,7 +5873,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {name = "World"}>
                     <div>{name}</div>
                   </let>
@@ -6362,7 +5895,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {count = 42}>
                     <div>{count.to_string()}</div>
                   </let>
@@ -6384,7 +5917,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {price = 2.5}>
                     <div>{price.to_int().to_string()}</div>
                   </let>
@@ -6410,7 +5943,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {items = [1, 2, 3]}>
                     <div>{items.len().to_string()}</div>
                   </let>
@@ -6437,7 +5970,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User { name: String, age: Int }
-                component Main {
+                fn Main() -> Fragment {
                   <let {user = User {name: "Alice", age: 30}}>
                     <div>{user.name}</div>
                   </let>
@@ -6466,7 +5999,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User { name: String, age: Int }
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   <let {updated = User {...user, name: "Jane"}}>
                     <div>{updated.name}</div>
                   </let>
@@ -6496,7 +6029,7 @@ mod tests {
                 -- main.hop --
                 record State { query: String, num: Int }
                 record App { state: State }
-                component Main(app: App) {
+                fn Main(app: App) -> Fragment {
                   <let {next = State {...app.state, num: 1}}>
                     <div>{next.query}</div>
                   </let>
@@ -6530,7 +6063,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User { name: String, age: Int }
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   <let {updated = User {...user, name: "Jane", age: 30}}>
                     <div>{updated.name}</div>
                   </let>
@@ -6560,7 +6093,7 @@ mod tests {
                 -- main.hop --
                 record User { name: String }
                 record Admin { name: String }
-                component Main(admin: Admin) {
+                fn Main(admin: Admin) -> Fragment {
                   <let {user = User {...admin}}>
                     <div>{user.name}</div>
                   </let>
@@ -6569,7 +6102,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type for spread: expected `main::User` got `main::Admin`
                   --> main.hop (line 4, col 25)
-                3 | component Main(admin: Admin) {
+                3 | fn Main(admin: Admin) -> Fragment {
                 4 |   <let {user = User {...admin}}>
                   |                         ^^^^^
 
@@ -6587,7 +6120,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {first: String = "Hello", second = "World"}>
                     <div>{first}{second}</div>
                   </let>
@@ -6613,7 +6146,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {greeting = "Hello", shout = greeting}>
                     <div>{shout}</div>
                   </let>
@@ -6635,7 +6168,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {name = "World"}>
                     <div>x</div>
                   </let>
@@ -6644,7 +6177,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable name
                   --> main.hop (line 2, col 9)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {name = "World"}>
                   |         ^^^^
             "#]],
@@ -6656,7 +6189,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {items = []}>
                     <div>x</div>
                   </let>
@@ -6665,7 +6198,7 @@ mod tests {
             expect![[r#"
                 error: Cannot infer type of empty array
                   --> main.hop (line 2, col 17)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {items = []}>
                   |                 ^^
             "#]],
@@ -6677,7 +6210,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {maybe = None}>
                     <div>x</div>
                   </let>
@@ -6686,7 +6219,7 @@ mod tests {
             expect![[r#"
                 error: Cannot infer type of None without context
                   --> main.hop (line 2, col 17)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {maybe = None}>
                   |                 ^^^^
             "#]],
@@ -6698,7 +6231,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = "World"}>
                     <div>Hello</div>
                   </let>
@@ -6707,7 +6240,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable name
                   --> main.hop (line 2, col 9)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {name: String = "World"}>
                   |         ^^^^
             "#]],
@@ -6719,7 +6252,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main(name: String) {
+                fn Main(name: String) -> Fragment {
                   <let {name: String = "Shadow"}>
                     <div>{name}</div>
                   </let>
@@ -6728,7 +6261,7 @@ mod tests {
             expect![[r#"
                 error: Variable name is already defined
                   --> main.hop (line 2, col 9)
-                1 | component Main(name: String) {
+                1 | fn Main(name: String) -> Fragment {
                 2 |   <let {name: String = "Shadow"}>
                   |         ^^^^
             "#]],
@@ -6740,7 +6273,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = "First"}>
                     <let {name: String = "Second"}>
                       <div>{name}</div>
@@ -6763,7 +6296,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     <let {name: String = "First"}>
                       <div>{name}</div>
@@ -6795,7 +6328,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = 42}>
                     <div>{name}</div>
                   </let>
@@ -6804,7 +6337,7 @@ mod tests {
             expect![[r#"
                 error: Mismatched type: expected `String` got `Int`
                   --> main.hop (line 2, col 24)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {name: String = 42}>
                   |                        ^^
             "#]],
@@ -6816,7 +6349,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {first: String = "Hello", second: String = "World"}>
                     <div>{first} {second}</div>
                   </let>
@@ -6842,7 +6375,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = "Hello", name: String = "World"}>
                     <div>{name}</div>
                   </let>
@@ -6851,7 +6384,7 @@ mod tests {
             expect![[r#"
                 error: Variable name is already defined
                   --> main.hop (line 2, col 33)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {name: String = "Hello", name: String = "World"}>
                   |                                 ^^^^
             "#]],
@@ -6863,7 +6396,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = "Hello", count: Int = 42}>
                     <div>{name}</div>
                   </let>
@@ -6872,7 +6405,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable count
                   --> main.hop (line 2, col 33)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {name: String = "Hello", count: Int = 42}>
                   |                                 ^^^^^
             "#]],
@@ -6884,7 +6417,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {greeting: String = "Hello", message: String = greeting}>
                     <div>{message}</div>
                   </let>
@@ -6906,7 +6439,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: Int = 0, y: Int = x + 1, z: Int = y + 2}>
                     <if {z == 3}>
                       <div>correct</div>
@@ -6935,7 +6468,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: Int = y + 1, y: Int = 0}>
                     <if {x == 1}>
                       <div>correct</div>
@@ -6946,13 +6479,13 @@ mod tests {
             expect![[r#"
                 error: Undefined variable: y
                   --> main.hop (line 2, col 18)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {x: Int = y + 1, y: Int = 0}>
                   |                  ^
 
                 warning: Unused variable y
                   --> main.hop (line 2, col 25)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {x: Int = y + 1, y: Int = 0}>
                   |                         ^
             "#]],
@@ -6964,7 +6497,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: Int = x}>
                     <div>{x.to_string()}</div>
                   </let>
@@ -6973,7 +6506,7 @@ mod tests {
             expect![[r#"
                 error: Undefined variable: x
                   --> main.hop (line 2, col 18)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {x: Int = x}>
                   |                  ^
             "#]],
@@ -6985,7 +6518,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {x = x}>
                     <div>{x.to_string()}</div>
                   </let>
@@ -6994,7 +6527,7 @@ mod tests {
             expect![[r#"
                 error: Undefined variable: x
                   --> main.hop (line 2, col 13)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {x = x}>
                   |             ^
 
@@ -7012,7 +6545,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: Int = missing, y: Int = x + 1}>
                     <div>{y.to_string()}</div>
                   </let>
@@ -7021,7 +6554,7 @@ mod tests {
             expect![[r#"
                 error: Undefined variable: missing
                   --> main.hop (line 2, col 18)
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <let {x: Int = missing, y: Int = x + 1}>
                   |                  ^^^^^^^
             "#]],
@@ -7159,11 +6692,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_invoking_component() {
+    fn accepts_view_invoking_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: String) {
+                fn Greeting(name: String) -> Fragment {
                   <div>Hello, {name}!</div>
                 }
 
@@ -7191,7 +6724,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_view_with_undefined_component() {
+    fn rejects_view_with_undefined_function() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -7200,7 +6733,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component UndefinedComponent is not defined
+                error: Function UndefinedComponent is not defined
                   --> main.hop (line 2, col 4)
                 1 | view Main() {
                 2 |   <UndefinedComponent />
@@ -7255,7 +6788,7 @@ mod tests {
                   children: Array[TreeNode],
                 }
 
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -7282,7 +6815,7 @@ mod tests {
                   Neg{inner: Expr},
                 }
 
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -7308,7 +6841,7 @@ mod tests {
                   #[examples(min = 1, max = 100)]
                   price: Int,
                 }
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -7333,7 +6866,7 @@ mod tests {
                   #[examples(min = 1, max = 100)]
                   name: String,
                 }
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min = ..., max = ...)] is only valid on Int fields, found String
@@ -7354,7 +6887,7 @@ mod tests {
                   #[examples(min = 100, max = 1)]
                   price: Int,
                 }
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min = 100)] must be less than or equal to max = 1
@@ -7375,7 +6908,7 @@ mod tests {
                   #[examples(min_len = 2, max_len = 5)]
                   tags: Array[String],
                 }
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -7400,7 +6933,7 @@ mod tests {
                   #[examples(min_len = 1, max_len = 5)]
                   name: String,
                 }
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min_len = ..., max_len = ...)] is only valid on Array fields, found String
@@ -7421,7 +6954,7 @@ mod tests {
                   #[examples(min_len = -1, max_len = 5)]
                   tags: Array[String],
                 }
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min_len = ..., max_len = ...)] must be non-negative, found -1
@@ -7442,7 +6975,7 @@ mod tests {
                   #[examples(min_len = 5, max_len = 2)]
                   tags: Array[String],
                 }
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min_len = 5)] must be less than or equal to max_len = 2
@@ -7455,11 +6988,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_rest_on_recursive_component() {
+    fn accepts_rest_on_recursive_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                     <div ...rest><Foo/></div>
                 }
             "#},
@@ -7477,7 +7010,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(class: String) {
+                fn Foo(class: String) -> Fragment {
                     <div class={class}></div>
                 }
                 view Main {
@@ -7485,7 +7018,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component `Foo` does not accept attribute `data-x`
+                error: Function Foo does not accept attribute `data-x`
                   --> main.hop (line 5, col 20)
                 4 | view Main {
                 5 |     <Foo class="a" data-x="y"/>
@@ -7499,15 +7032,15 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                   <div></div>
                 }
             "#},
             expect![[r#"
-                error: Component Foo declares rest parameter 'rest' but never spreads it
-                  --> main.hop (line 1, col 15)
-                1 | component Foo(...rest) {
-                  |               ^^^^^^^
+                error: Function Foo declares rest parameter 'rest' but never spreads it
+                  --> main.hop (line 1, col 8)
+                1 | fn Foo(...rest) -> Fragment {
+                  |        ^^^^^^^
             "#]],
         );
     }
@@ -7517,14 +7050,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo() {
+                fn Foo() -> Fragment {
                   <div ...rest></div>
                 }
             "#},
             expect![[r#"
                 error: Spread '...rest' does not refer to a declared rest parameter
                   --> main.hop (line 2, col 8)
-                1 | component Foo() {
+                1 | fn Foo() -> Fragment {
                 2 |   <div ...rest></div>
                   |        ^^^^^^^
             "#]],
@@ -7536,14 +7069,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                   <div ...rest><span ...rest></span></div>
                 }
             "#},
             expect![[r#"
                 error: Rest parameter 'rest' is spread more than once
                   --> main.hop (line 2, col 22)
-                1 | component Foo(...rest) {
+                1 | fn Foo(...rest) -> Fragment {
                 2 |   <div ...rest><span ...rest></span></div>
                   |                      ^^^^^^^
             "#]],
@@ -7596,7 +7129,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(show: Bool) {
+                fn Foo(show: Bool) -> Fragment {
                   <match {show}>
                     <case {true}>
                       <div ...rest></div>
@@ -7620,7 +7153,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Button(class: String, children: Fragment, ...rest) {
+                fn Button(class: String, children: Fragment, ...rest) -> Fragment {
                     <button class={class} ...rest>{children}</button>
                 }
                 view Main {
@@ -7655,7 +7188,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Button(children: Fragment, ...rest) {
+                fn Button(children: Fragment, ...rest) -> Fragment {
                     <button class="builtin" ...rest>{children}</button>
                 }
                 view Main {
@@ -7686,7 +7219,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Button(children: Fragment, ...rest) {
+                fn Button(children: Fragment, ...rest) -> Fragment {
                     <button class="builtin" ...rest>{children}</button>
                 }
                 view Main {
@@ -7694,7 +7227,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component `Button` does not accept attribute `class`
+                error: Function Button does not accept attribute `class`
                   --> main.hop (line 5, col 13)
                 4 | view Main {
                 5 |     <Button class="forwarded">Hi</Button>
@@ -7708,7 +7241,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Button(class: String, ...rest) {
+                fn Button(class: String, ...rest) -> Fragment {
                     <button class={class} ...rest></button>
                 }
                 view Main {
@@ -7716,7 +7249,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component `Button` does not accept attribute `qwerty`
+                error: Function Button does not accept attribute `qwerty`
                   --> main.hop (line 5, col 25)
                 4 | view Main {
                 5 |     <Button class="p-2" qwerty="z"/>
@@ -7730,7 +7263,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Svg(...rest) {
+                fn Svg(...rest) -> Fragment {
                     <svg ...rest/>
                 }
                 view Main {
@@ -7757,10 +7290,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                     <div>{title}</div>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Card ...rest/>
                 }
                 view Main {
@@ -7791,10 +7324,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                     <div>{title}</div>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Card title="explicit" ...rest/>
                 }
                 view Main {
@@ -7825,10 +7358,10 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                     <div>{title}</div>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Card ...rest/>
                 }
                 view Main {
@@ -7836,7 +7369,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: title
+                error: Function Wrapper requires arguments: title
                   --> main.hop (line 8, col 6)
                 7 | view Main {
                 8 |     <Wrapper/>
@@ -7850,12 +7383,12 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(count: Int) {
+                fn Card(count: Int) -> Fragment {
                     <if {count > 0}>
                         <div>positive</div>
                     </if>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Card ...rest/>
                 }
                 view Main {
@@ -7863,7 +7396,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `Int` got `String`
+                error: Mismatched type for argument 'count' of function 'Wrapper': expected `Int` got `String`
                   --> main.hop (line 10, col 20)
                  9 | view Main {
                 10 |     <Wrapper count="hi"/>
@@ -7877,10 +7410,10 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Inner(class: String, ...rest) {
+                fn Inner(class: String, ...rest) -> Fragment {
                     <span class={class} ...rest></span>
                 }
-                component Outer(class: String, ...rest) {
+                fn Outer(class: String, ...rest) -> Fragment {
                     <div class={class}>
                         <Inner ...rest/>
                     </div>
@@ -7890,7 +7423,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: class
+                error: Function Inner requires arguments: class
                   --> main.hop (line 6, col 10)
                  5 |     <div class={class}>
                  6 |         <Inner ...rest/>
@@ -7900,16 +7433,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_rest_forwarded_into_recursive_component() {
+    fn accepts_rest_forwarded_into_recursive_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Tree(x: Int) {
+                fn Tree(x: Int) -> Fragment {
                     <div>
                         <Tree x={x}/>
                     </div>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Tree ...rest/>
                 }
                 view Main {
@@ -7943,13 +7476,13 @@ mod tests {
                 record User {
                     name: String,
                 }
-                component Card(user: User) {
+                fn Card(user: User) -> Fragment {
                     <div>{user.name}</div>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Card ...rest/>
                 }
-                component Page(user: User) {
+                fn Page(user: User) -> Fragment {
                     <Wrapper user={user}/>
                 }
             "#},
@@ -7980,16 +7513,16 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                     <div>{title}</div>
                 }
-                component Bar(name: String, ...rest) {
+                fn Bar(name: String, ...rest) -> Fragment {
                     <div>
                         {name}
                         <Card ...rest/>
                     </div>
                 }
-                component Baz(...rest) {
+                fn Baz(...rest) -> Fragment {
                     <Bar ...rest/>
                 }
                 view Main {
@@ -8028,16 +7561,16 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                     <div>{title}</div>
                 }
-                component Bar(name: String, ...rest) {
+                fn Bar(name: String, ...rest) -> Fragment {
                     <div>
                         {name}
                         <Card ...rest/>
                     </div>
                 }
-                component Baz(...rest) {
+                fn Baz(...rest) -> Fragment {
                     <Bar ...rest/>
                 }
                 view Main {
@@ -8045,7 +7578,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: name, title
+                error: Function Baz requires arguments: name, title
                   --> main.hop (line 14, col 6)
                 13 | view Main {
                 14 |     <Baz/>
@@ -8059,10 +7592,10 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component A(id: String, ...rest) {
+                fn A(id: String, ...rest) -> Fragment {
                     <div id={id} ...rest></div>
                 }
-                component B(...rest) {
+                fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
                 view Main {
@@ -8070,7 +7603,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: id
+                error: Function B requires arguments: id
                   --> main.hop (line 8, col 6)
                 7 | view Main {
                 8 |     <B/>
@@ -8084,12 +7617,12 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(count: Int) {
+                fn Card(count: Int) -> Fragment {
                     <if {count > 0}>
                         <div>positive</div>
                     </if>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Card ...rest/>
                 }
                 view Main {
@@ -8125,14 +7658,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component A(count: Int, ...rest) {
+                fn A(count: Int, ...rest) -> Fragment {
                     <div ...rest>
                         <if {count > 0}>
                             positive
                         </if>
                     </div>
                 }
-                component B(...rest) {
+                fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
                 view Main {
@@ -8169,13 +7702,13 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(class: String) {
+                fn Foo(class: String) -> Fragment {
                     <div class={class}></div>
                 }
-                component Bar(...rest) {
+                fn Bar(...rest) -> Fragment {
                     <Foo ...rest/>
                 }
-                component Baz(...rest) {
+                fn Baz(...rest) -> Fragment {
                     <Bar ...rest/>
                 }
                 view Main {
@@ -8183,7 +7716,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component `Baz` does not accept attribute `data-x`
+                error: Function Baz does not accept attribute `data-x`
                   --> main.hop (line 11, col 20)
                 10 | view Main {
                 11 |     <Baz class="a" data-x="y"/>
@@ -8193,14 +7726,14 @@ mod tests {
     }
 
     #[test]
-    fn rejects_attr_not_accepted_by_forwarded_component() {
+    fn rejects_attr_not_accepted_by_forwarded_function() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(class: String) {
+                fn Foo(class: String) -> Fragment {
                     <div class={class}></div>
                 }
-                component Bar(...rest) {
+                fn Bar(...rest) -> Fragment {
                     <Foo ...rest/>
                 }
                 view Main {
@@ -8208,7 +7741,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component `Bar` does not accept attribute `data-x`
+                error: Function Bar does not accept attribute `data-x`
                   --> main.hop (line 8, col 20)
                 7 | view Main {
                 8 |     <Bar class="a" data-x="y"/>
@@ -8222,10 +7755,10 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(children: Fragment) {
+                fn Foo(children: Fragment) -> Fragment {
                     <div>{children}</div>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Foo ...rest/>
                 }
                 view Main {
@@ -8233,7 +7766,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: children
+                error: Function Wrapper requires arguments: children
                   --> main.hop (line 8, col 6)
                 7 | view Main {
                 8 |     <Wrapper/>
@@ -8247,13 +7780,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Foo(children: Fragment) {
+                fn Foo(children: Fragment) -> Fragment {
                     <div>{children}</div>
                 }
-                component Bar(...rest) {
+                fn Bar(...rest) -> Fragment {
                     <Foo ...rest/>
                 }
-                component Baz(...rest) {
+                fn Baz(...rest) -> Fragment {
                     <Bar ...rest/>
                 }
                 view Main {
@@ -8288,10 +7821,10 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(children: Fragment, class: String, ...rest) {
+                fn Foo(children: Fragment, class: String, ...rest) -> Fragment {
                     <div class={class} ...rest>{children}</div>
                 }
-                component Card(...rest) {
+                fn Card(...rest) -> Fragment {
                     <Foo ...rest>inner</Foo>
                 }
                 view Main {
@@ -8299,7 +7832,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component Card does not accept content (missing `children: Fragment` parameter)
+                error: Function Card does not accept content (missing `children: Fragment` parameter)
                   --> main.hop (line 8, col 6)
                 7 | view Main {
                 8 |     <Card class="a">hi</Card>
@@ -8313,10 +7846,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Inner(class: String = "x", ...rest) {
+                fn Inner(class: String = "x", ...rest) -> Fragment {
                     <span class={class} ...rest></span>
                 }
-                component Outer(class: String, ...rest) {
+                fn Outer(class: String, ...rest) -> Fragment {
                     <div class={class}>
                         <Inner ...rest/>
                     </div>
@@ -8357,12 +7890,12 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Foo(children: Fragment, class: String, ...rest) {
+                fn Foo(children: Fragment, class: String, ...rest) -> Fragment {
                     <div class={class} ...rest>
                         {children}
                     </div>
                 }
-                component Button(children: Fragment, class: String = "", ...rest) {
+                fn Button(children: Fragment, class: String = "", ...rest) -> Fragment {
                     <Foo class={class} ...rest>
                         {children}
                     </Foo>
@@ -8399,10 +7932,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Inner(class: String = "x", ...rest) {
+                fn Inner(class: String = "x", ...rest) -> Fragment {
                     <span class={class} ...rest></span>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Inner ...rest/>
                 }
                 view Main {
@@ -8437,10 +7970,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component A(class: String = "", ...rest) {
+                fn A(class: String = "", ...rest) -> Fragment {
                     <div class={class} ...rest/>
                 }
-                component B(class: String = "", ...rest) {
+                fn B(class: String = "", ...rest) -> Fragment {
                     <A class={class} ...rest/>
                 }
                 view Main {
@@ -8475,10 +8008,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component A(class: String = "a", ...rest) {
+                fn A(class: String = "a", ...rest) -> Fragment {
                     <div class={class} ...rest/>
                 }
-                component B(class: String = "b", ...rest) {
+                fn B(class: String = "b", ...rest) -> Fragment {
                     <A class={class} ...rest/>
                 }
                 view Main {
@@ -8513,10 +8046,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component A(label: String = "x", ...rest) {
+                fn A(label: String = "x", ...rest) -> Fragment {
                     <span ...rest>{label}</span>
                 }
-                component B(...rest) {
+                fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
                 view Main {
@@ -8547,13 +8080,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Leaf(label: String = "x", ...rest) {
+                fn Leaf(label: String = "x", ...rest) -> Fragment {
                     <span ...rest>{label}</span>
                 }
-                component Mid(...rest) {
+                fn Mid(...rest) -> Fragment {
                     <Leaf ...rest/>
                 }
-                component Top(...rest) {
+                fn Top(...rest) -> Fragment {
                     <Mid ...rest/>
                 }
                 view Main {
@@ -8588,10 +8121,10 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Inner(...rest) {
+                fn Inner(...rest) -> Fragment {
                     <span ...rest></span>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Inner title="a" ...rest/>
                 }
                 view Main {
@@ -8599,7 +8132,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component `Wrapper` does not accept attribute `title`
+                error: Function Wrapper does not accept attribute `title`
                   --> main.hop (line 8, col 14)
                 7 | view Main {
                 8 |     <Wrapper title="b"/>
@@ -8613,10 +8146,10 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Inner(...rest) {
+                fn Inner(...rest) -> Fragment {
                     <span ...rest></span>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Inner data-foo="a" ...rest/>
                 }
                 view Main {
@@ -8624,7 +8157,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component `Wrapper` does not accept attribute `data-foo`
+                error: Function Wrapper does not accept attribute `data-foo`
                   --> main.hop (line 8, col 14)
                 7 | view Main {
                 8 |     <Wrapper data-foo="b"/>
@@ -8638,10 +8171,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Inner(...rest) {
+                fn Inner(...rest) -> Fragment {
                     <span ...rest></span>
                 }
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                     <Inner title="a" ...rest/>
                 }
                 view Main {
@@ -8672,13 +8205,13 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Inner(...rest) {
+                fn Inner(...rest) -> Fragment {
                     <span ...rest></span>
                 }
-                component Mid(...rest) {
+                fn Mid(...rest) -> Fragment {
                     <Inner title="a" ...rest/>
                 }
-                component Outer(...rest) {
+                fn Outer(...rest) -> Fragment {
                     <Mid ...rest/>
                 }
                 view Main {
@@ -8686,7 +8219,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component `Outer` does not accept attribute `title`
+                error: Function Outer does not accept attribute `title`
                   --> main.hop (line 11, col 12)
                 10 | view Main {
                 11 |     <Outer title="b"/>
@@ -8700,12 +8233,12 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component A(tabindex: Int, ...rest) {
+                fn A(tabindex: Int, ...rest) -> Fragment {
                     <div ...rest>
                         <if {tabindex > 0}>focusable</if>
                     </div>
                 }
-                component B(...rest) {
+                fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
                 view Main {
@@ -8713,7 +8246,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected `Int` got `String`
+                error: Mismatched type for argument 'tabindex' of function 'B': expected `Int` got `String`
                   --> main.hop (line 10, col 17)
                  9 | view Main {
                 10 |     <B tabindex="nope"/>
@@ -8727,12 +8260,12 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component A(tabindex: Int, ...rest) {
+                fn A(tabindex: Int, ...rest) -> Fragment {
                     <div ...rest>
                         <if {tabindex > 0}>focusable</if>
                     </div>
                 }
-                component B(...rest) {
+                fn B(...rest) -> Fragment {
                     <A ...rest/>
                 }
                 view Main {
@@ -8768,17 +8301,17 @@ mod tests {
     }
 
     #[test]
-    fn accepts_mutually_recursive_components() {
+    fn accepts_mutually_recursive_functions() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Ping(n: Int) {
+                fn Ping(n: Int) -> Fragment {
                     <if {n > 0}>
                         <Pong n={n - 1}/>
                     </if>
                 }
 
-                component Pong(n: Int) {
+                fn Pong(n: Int) -> Fragment {
                     <if {n > 0}>
                         <Ping n={n - 1}/>
                     </if>
@@ -8798,19 +8331,19 @@ mod tests {
     }
 
     #[test]
-    fn accepts_three_component_cycle() {
+    fn accepts_three_function_cycle() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component A(n: Int) {
+                fn A(n: Int) -> Fragment {
                     <if {n > 0}><B n={n - 1}/></if>
                 }
 
-                component B(n: Int) {
+                fn B(n: Int) -> Fragment {
                     <if {n > 0}><C n={n - 1}/></if>
                 }
 
-                component C(n: Int) {
+                fn C(n: Int) -> Fragment {
                     <if {n > 0}><A n={n - 1}/></if>
                 }
             "#},
@@ -8832,15 +8365,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_forward_component_invocation() {
+    fn accepts_forward_function_invocation() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                     <Later/>
                 }
 
-                component Later {
+                fn Later() -> Fragment {
                     <div></div>
                 }
             "#},
@@ -8858,7 +8391,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_invoking_later_component() {
+    fn accepts_view_invoking_later_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -8866,7 +8399,7 @@ mod tests {
                     <Later/>
                 }
 
-                component Later {
+                fn Later() -> Fragment {
                     <div></div>
                 }
             "#},
@@ -8886,18 +8419,18 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_invocation_inside_match_case_cycle() {
+    fn accepts_function_invocation_inside_match_case_cycle() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Render(item: Option[Int]) {
+                fn Render(item: Option[Int]) -> Fragment {
                     <match {item}>
                         <case {Some(n)}><Wrap n={n}/></case>
                         <case {None}>done</case>
                     </match>
                 }
 
-                component Wrap(n: Int) {
+                fn Wrap(n: Int) -> Fragment {
                     <Render item={Some(n)}/>
                 }
             "#},
@@ -8918,20 +8451,20 @@ mod tests {
     }
 
     #[test]
-    fn rejects_rest_forwarded_into_the_component_itself() {
+    fn rejects_rest_forwarded_into_the_function_itself() {
         // The self-loop case of forwarding within a cycle: Foo's own
         // signature is the provisional one while its body is checked.
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                     <Foo ...rest/>
                 }
             "#},
             expect![[r#"
                 error: Rest spread of Foo forms a cycle and never reaches an element
                   --> main.hop (line 2, col 10)
-                1 | component Foo(...rest) {
+                1 | fn Foo(...rest) -> Fragment {
                 2 |     <Foo ...rest/>
                   |          ^^^^^^^
             "#]],
@@ -8946,7 +8479,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                     <div ...rest><Foo id="x"/></div>
                 }
             "#},
@@ -8971,13 +8504,13 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Leaf(title: String = "d") {
+                fn Leaf(title: String = "d") -> Fragment {
                     <div>{title}</div>
                 }
-                component First(...rest) {
+                fn First(...rest) -> Fragment {
                     <Second ...rest/>
                 }
-                component Second(...rest) {
+                fn Second(...rest) -> Fragment {
                   <>
                       <Leaf ...rest/>
                       <First/>
@@ -9017,11 +8550,11 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component First(n: Int, ...rest) {
+                fn First(n: Int, ...rest) -> Fragment {
                     <Second n={n} ...rest/>
                 }
 
-                component Second(n: Int) {
+                fn Second(n: Int) -> Fragment {
                     <First n={n}/>
                 }
             "#},
@@ -9039,19 +8572,19 @@ mod tests {
     }
 
     #[test]
-    fn accepts_rest_forwarded_into_mutually_recursive_component() {
+    fn accepts_rest_forwarded_into_mutually_recursive_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Outer(...rest) {
+                fn Outer(...rest) -> Fragment {
                     <First ...rest/>
                 }
 
-                component First(n: Int) {
+                fn First(n: Int) -> Fragment {
                     <Second n={n}/>
                 }
 
-                component Second(n: Int) {
+                fn Second(n: Int) -> Fragment {
                     <First n={n}/>
                 }
             "#},
@@ -9073,7 +8606,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_field_referencing_later_component() {
+    fn rejects_record_field_referencing_later_function() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -9081,12 +8614,12 @@ mod tests {
                     part: Widget,
                 }
 
-                component Widget {
+                fn Widget() -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: `Widget` is a component and cannot be used as a type
+                error: `Widget` is a function and cannot be used as a type
                   --> main.hop (line 2, col 11)
                 1 | record Holder {
                 2 |     part: Widget,
@@ -9100,12 +8633,12 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub component Foo {<></>}
+                pub fn Foo() -> Fragment {<></>}
                 -- main.hop --
                 import other::Foo
                 import other::Foo
 
-                component Main {
+                fn Main() -> Fragment {
                 	<Foo></Foo>
                 }
             "#},
@@ -9116,9 +8649,9 @@ mod tests {
                 2 | import other::Foo
                   |               ^^^
 
-                error: Component Foo does not accept content (missing `children: Fragment` parameter)
+                error: Function Foo does not accept content (missing `children: Fragment` parameter)
                   --> main.hop (line 5, col 3)
-                4 | component Main {
+                4 | fn Main() -> Fragment {
                 5 |     <Foo></Foo>
                   |      ^^^
             "#]],
@@ -9126,52 +8659,52 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_a_component_is_defined_twice() {
+    fn rejects_when_a_function_is_defined_twice() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo {<></>}
+                fn Foo() -> Fragment {<></>}
 
-                component Foo {<></>}
+                fn Foo() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: Foo is already defined
-                  --> main.hop (line 3, col 11)
+                  --> main.hop (line 3, col 4)
                 2 | 
-                3 | component Foo {<></>}
-                  |           ^^^
+                3 | fn Foo() -> Fragment {<></>}
+                  |    ^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_when_a_component_is_defined_with_the_same_name_as_an_import() {
+    fn rejects_when_a_function_is_defined_with_the_same_name_as_an_import() {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub component Foo {<></>
+                pub fn Foo() -> Fragment {<></>
                 }
                 -- main.hop --
                 import other::Foo
 
-                component Foo {<></>}
+                fn Foo() -> Fragment {<></>}
 
-                component Bar {
+                fn Bar() -> Fragment {
                 	<Foo/>
                 }
             "#},
             expect![[r#"
                 error: Foo is already defined
-                  --> main.hop (line 3, col 11)
+                  --> main.hop (line 3, col 4)
                 2 | 
-                3 | component Foo {<></>}
-                  |           ^^^
+                3 | fn Foo() -> Fragment {<></>}
+                  |    ^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_when_a_component_is_defined_with_the_same_name_as_a_record() {
+    fn rejects_when_a_function_is_defined_with_the_same_name_as_a_record() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -9179,14 +8712,14 @@ mod tests {
                   name: String,
                 }
 
-                component User {<></>}
+                fn User() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: User is already defined
-                  --> main.hop (line 5, col 11)
+                  --> main.hop (line 5, col 4)
                 4 | 
-                5 | component User {<></>}
-                  |           ^^^^
+                5 | fn User() -> Fragment {<></>}
+                  |    ^^^^
             "#]],
         );
     }
@@ -9264,20 +8797,20 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_component_is_defined_with_the_same_name_as_an_enum() {
+    fn rejects_when_function_is_defined_with_the_same_name_as_an_enum() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 enum Color {Red, Green, Blue}
 
-                component Color {<></>}
+                fn Color() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: Color is already defined
-                  --> main.hop (line 3, col 11)
+                  --> main.hop (line 3, col 4)
                 2 | 
-                3 | component Color {<></>}
-                  |           ^^^^^
+                3 | fn Color() -> Fragment {<></>}
+                  |    ^^^^^
             "#]],
         );
     }
@@ -9332,11 +8865,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_view_with_same_name_as_component() {
+    fn rejects_view_with_same_name_as_function() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Index {
+                fn Index() -> Fragment {
                     <div>Component</div>
                 }
 
@@ -9427,7 +8960,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_component_defined_with_same_name_as_view() {
+    fn rejects_function_defined_with_same_name_as_view() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -9435,14 +8968,14 @@ mod tests {
                     <div>Hello</div>
                 }
 
-                component Index {<></>}
+                fn Index() -> Fragment {<></>}
             "#},
             expect![[r#"
                 error: Index is already defined
-                  --> main.hop (line 5, col 11)
+                  --> main.hop (line 5, col 4)
                 4 | 
-                5 | component Index {<></>}
-                  |           ^^^^^
+                5 | fn Index() -> Fragment {<></>}
+                  |    ^^^^^
             "#]],
         );
     }
@@ -9479,16 +9012,16 @@ mod tests {
                     <div>Hello</div>
                 }
 
-                component Main(x: Index) {
+                fn Main(x: Index) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: `Index` is a component and cannot be used as a type
-                  --> main.hop (line 5, col 19)
+                error: `Index` is a page and cannot be used as a type
+                  --> main.hop (line 5, col 12)
                 4 | 
-                5 | component Main(x: Index) {
-                  |                   ^^^^^
+                5 | fn Main(x: Index) -> Fragment {
+                  |            ^^^^^
             "#]],
         );
     }
@@ -9824,7 +9357,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_call_in_component_body_and_for_range() {
+    fn accepts_function_call_in_function_body_and_for_range() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -9832,7 +9365,7 @@ mod tests {
                   x + 10
                 }
 
-                component Foo {
+                fn Foo() -> Fragment {
                   <div>
                     <for {x in 0..=add_ten(10)}>
                       {x.to_string()}
@@ -9908,32 +9441,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_mutually_recursive_functions() {
-        accept(
-            indoc! {r#"
-                -- main.hop --
-                fn ping(n: Int) -> Int {
-                  pong(n)
-                }
-
-                fn pong(n: Int) -> Int {
-                  ping(n)
-                }
-            "#},
-            expect![[r#"
-                -- main.hop --
-                fn ping(n: Int) -> Int {
-                  pong(n: n)
-                }
-
-                fn pong(n: Int) -> Int {
-                  ping(n: n)
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_function_call_with_wrong_argument_count() {
         reject(
             indoc! {r#"
@@ -9993,7 +9500,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function foo is already defined
+                error: foo is already defined
                   --> main.hop (line 5, col 4)
                 4 | 
                 5 | fn foo(y: Int) -> Int {
@@ -10003,7 +9510,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_and_component_sharing_a_snake_case_name() {
+    fn accepts_function_and_function_sharing_a_snake_case_name() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -10011,7 +9518,7 @@ mod tests {
                   x
                 }
 
-                component NavBar {
+                fn NavBar() -> Fragment {
                   <div></div>
                 }
             "#},
@@ -10024,42 +9531,6 @@ mod tests {
                 fn nav_bar(x: Int) -> Int {
                   x
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_function_with_duplicate_parameter_names() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn foo(x: Int, x: Int) -> Int {
-                  x
-                }
-            "#},
-            expect![[r#"
-                error: Duplicate parameter 'x'
-                  --> main.hop (line 1, col 16)
-                1 | fn foo(x: Int, x: Int) -> Int {
-                  |                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_function_with_duplicate_parameter_names_with_different_types() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn foo(x: Int, x: String) -> Int {
-                  x
-                }
-            "#},
-            expect![[r#"
-                error: Duplicate parameter 'x'
-                  --> main.hop (line 1, col 16)
-                1 | fn foo(x: Int, x: String) -> Int {
-                  |                ^
             "#]],
         );
     }
@@ -10173,7 +9644,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_an_undefined_component_used_inside_an_interpolation() {
+    fn reports_an_undefined_function_used_inside_an_interpolation() {
         reject(
             indoc! {"
                 -- main.hop --
@@ -10182,7 +9653,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Component Missing is not defined
+                error: Function Missing is not defined
                   --> main.hop (line 2, col 10)
                 1 | pub view Test {
                 2 |   <div>{<Missing/>}</div>
@@ -10196,11 +9667,11 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                pub component Inner(a: String) {
+                pub fn Inner(a: String) -> Fragment {
                   <div>{a}</div>
                 }
 
-                pub component Outer(...rest) {
+                pub fn Outer(...rest) -> Fragment {
                   <div>{<Inner ...rest/>}</div>
                 }
             "},
@@ -10222,15 +9693,15 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                pub component Inner(a: String) {
+                pub fn Inner(a: String) -> Fragment {
                   <div>{a}</div>
                 }
 
-                pub component Slot(slot: Fragment) {
+                pub fn Slot(slot: Fragment) -> Fragment {
                   <div>{slot}</div>
                 }
 
-                pub component Outer(...rest) {
+                pub fn Outer(...rest) -> Fragment {
                   <Slot slot={<Inner ...rest/>}/>
                 }
             "},
@@ -10256,24 +9727,24 @@ mod tests {
         reject(
             indoc! {"
                 -- main.hop --
-                pub component Inner(a: String) {
+                pub fn Inner(a: String) -> Fragment {
                   <div>{a}</div>
                 }
 
-                pub component Outer(...rest) {
+                pub fn Outer(...rest) -> Fragment {
                   <div ...rest>{<Inner ...rest/>}</div>
                 }
             "},
             expect![[r#"
-                error: Component requires arguments: a
+                error: Function Inner requires arguments: a
                   --> main.hop (line 6, col 18)
-                5 | pub component Outer(...rest) {
+                5 | pub fn Outer(...rest) -> Fragment {
                 6 |   <div ...rest>{<Inner ...rest/>}</div>
                   |                  ^^^^^
 
                 error: Rest parameter 'rest' is spread more than once
                   --> main.hop (line 6, col 24)
-                5 | pub component Outer(...rest) {
+                5 | pub fn Outer(...rest) -> Fragment {
                 6 |   <div ...rest>{<Inner ...rest/>}</div>
                   |                        ^^^^^^^
             "#]],
@@ -10285,11 +9756,11 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                pub component Outer() {
+                pub fn Outer() -> Fragment {
                   <div>{<Inner a="x"/>}</div>
                 }
 
-                pub component Inner(a: String) {
+                pub fn Inner(a: String) -> Fragment {
                   <div>{a}</div>
                 }
             "#},
@@ -10311,7 +9782,7 @@ mod tests {
         accept(
             indoc! {"
                 -- main.hop --
-                pub component Outer(flag: Bool, ...rest) {
+                pub fn Outer(flag: Bool, ...rest) -> Fragment {
                   <match {flag}>
                     <case {true}><div ...rest></div></case>
                     <case {false}><span></span></case>
@@ -10333,7 +9804,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_a_call_as_a_component_body() {
+    fn accepts_a_call_as_a_function_body() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -10341,7 +9812,7 @@ mod tests {
                   <div>{label}</div>
                 }
 
-                pub component Outer() {
+                pub fn Outer() -> Fragment {
                   card("hello")
                 }
             "#},
@@ -10359,11 +9830,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_a_parameter_as_a_component_body() {
+    fn accepts_a_parameter_as_a_function_body() {
         accept(
             indoc! {"
                 -- main.hop --
-                pub component Outer(children: Fragment) {
+                pub fn Outer(children: Fragment) -> Fragment {
                   children
                 }
             "},
@@ -10377,18 +9848,18 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_string_as_a_component_body() {
+    fn rejects_a_string_as_a_function_body() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                pub component Outer() {
+                pub fn Outer() -> Fragment {
                   "hello"
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for declaration: expected `Fragment` got `String`
+                error: Mismatched type for function body: expected `Fragment` got `String`
                   --> main.hop (line 2, col 3)
-                1 | pub component Outer() {
+                1 | pub fn Outer() -> Fragment {
                 2 |   "hello"
                   |   ^^^^^^^
             "#]],
@@ -10495,11 +9966,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_component_spread_in_a_function_body() {
+    fn rejects_a_function_spread_in_a_function_body() {
         reject(
             indoc! {"
                 -- main.hop --
-                pub component Inner(a: String) {
+                pub fn Inner(a: String) -> Fragment {
                   <div>{a}</div>
                 }
 
@@ -10512,7 +9983,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Component requires arguments: a
+                error: Function Inner requires arguments: a
                   --> main.hop (line 6, col 4)
                  5 | fn f() -> Fragment {
                  6 |   <Inner ...rest/>

@@ -4,6 +4,7 @@ use std::iter::Peekable;
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -18,7 +19,6 @@ pub const DECLARATION_KEYWORDS: &[LangToken] = &[
     LangToken::Import,
     LangToken::Record,
     LangToken::Enum,
-    LangToken::Component,
     LangToken::View,
     LangToken::Page,
     LangToken::Fn,
@@ -172,6 +172,28 @@ pub fn expect_field_name(
         None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
     })
 }
+pub fn expect_function_name(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<(FunctionName, DocumentRange), ErrorEmitted> {
+    if let Some((name, name_range)) = next_if_map(iter, comments, errors, LangToken::identifier) {
+        return FunctionName::from_cheap_string(name)
+            .map(|function_name| (function_name, name_range.clone()))
+            .map_err(|error| {
+                errors.emit(ParseErrorKind::InvalidFunctionName { error }, name_range)
+            });
+    }
+    Err(match peek(iter) {
+        Some((actual, actual_range)) => errors.emit(
+            ParseErrorKind::ExpectedFunctionNameButGot { actual },
+            actual_range,
+        ),
+        None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
+    })
+}
+
 pub fn expect_type_name(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,

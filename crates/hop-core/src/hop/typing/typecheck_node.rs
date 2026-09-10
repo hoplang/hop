@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use super::{ParamEntry, Tail, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
@@ -10,13 +12,14 @@ use crate::hop::patterns::Match;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::TypeRegistry;
+use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::typecheck_match::{MatchArms, typecheck_match};
 use crate::hop::typing::variable_scope::VariableScope;
 use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
-use crate::symbols::type_name::TypeName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 
@@ -401,10 +404,10 @@ pub fn typecheck_node(
             Some(result)
         }
 
-        ParsedNode::ComponentInvocation {
-            component_name,
-            component_name_opening_range,
-            component_name_closing_range,
+        ParsedNode::FunctionInvocation {
+            function_name,
+            function_name_opening_range,
+            function_name_closing_range,
             attributes,
             children,
             range: _,
@@ -427,41 +430,45 @@ pub fn typecheck_node(
                 })
                 .collect::<Vec<_>>();
 
-            // Look up the component signature from type_env
-            let (callee_rest_param, callee_params, callee_tail, component_def_range) = match (
-                type_env.components.get(component_name),
-                type_env.names.get(component_name),
-            ) {
-                (Some(sig), Some(name)) => (
-                    sig.rest_param.clone(),
-                    sig.params.clone(),
-                    sig.tail.clone(),
-                    name.definition_range.clone(),
-                ),
-                _ => {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::UndefinedComponent {
-                            tag_name: component_name.clone(),
-                        },
-                        component_name_opening_range.clone(),
-                    ));
-                    return None;
-                }
+            let Some(signature) = type_env.functions.get(function_name.as_str()) else {
+                errors.push(TypeError::new(
+                    TypeErrorKind::UndefinedFunction {
+                        name: function_name.clone(),
+                    },
+                    function_name_opening_range.clone(),
+                ));
+                return None;
             };
+            if signature.return_type != Type::Fragment {
+                errors.push(TypeError::new(
+                    TypeErrorKind::FunctionTagReturnTypeMismatch {
+                        name: function_name.clone(),
+                        found: signature.return_type.clone(),
+                    },
+                    function_name_opening_range.clone(),
+                ));
+                return None;
+            }
+            let callee_rest_param = signature.rest_param.clone();
+            let callee_params = signature.params.clone();
+            let callee_tail = signature.tail.clone();
+            let function_def_range = type_env.names[function_name.as_str()]
+                .definition_range
+                .clone();
 
-            let callee_module = component_def_range.document_id().clone();
+            let callee_module = function_def_range.document_id().clone();
 
             // Add definition link for the opening tag
             definition_links.push(DefinitionLink {
-                use_range: component_name_opening_range.clone(),
-                definition_range: component_def_range.clone(),
+                use_range: function_name_opening_range.clone(),
+                definition_range: function_def_range.clone(),
             });
 
             // Add definition link for the closing tag if present
-            if let Some(closing_range) = component_name_closing_range {
+            if let Some(closing_range) = function_name_closing_range {
                 definition_links.push(DefinitionLink {
                     use_range: closing_range.clone(),
-                    definition_range: component_def_range,
+                    definition_range: function_def_range,
                 });
             }
 
@@ -470,8 +477,8 @@ pub fn typecheck_node(
                 &callee_params,
                 &callee_tail,
                 children.is_some().then_some(typed_children),
-                component_name,
-                component_name_opening_range,
+                function_name,
+                function_name_opening_range,
                 forwarded_params,
                 registry,
                 errors,
@@ -480,7 +487,7 @@ pub fn typecheck_node(
                 annotations,
                 definition_links,
                 asset_references,
-            );
+            )?;
 
             let mut args = resolved_args;
 
@@ -496,13 +503,13 @@ pub fn typecheck_node(
                     assert!(
                         extra_attributes.is_empty(),
                         "<{}> declares no rest, but the call site supplies attributes for one",
-                        component_name.as_str()
+                        function_name.as_str()
                     );
                 }
             }
 
             Some(TypedExpr::FunctionCall {
-                function_name: component_name.clone().into(),
+                function_name: function_name.clone(),
                 module: callee_module,
                 args,
                 typ: Type::Fragment,
@@ -664,8 +671,7 @@ fn typecheck_attribute_value(
             )?;
             if typed_expr.typ() != Type::String {
                 errors.push(TypeError::new(
-                    TypeErrorKind::ArgumentTypeMismatch {
-                        expected: Type::String,
+                    TypeErrorKind::AttributeTypeMismatch {
                         found: typed_expr.typ(),
                     },
                     value.range().clone(),
@@ -705,8 +711,8 @@ fn typecheck_arguments(
     callee_params: &[ParamEntry],
     callee_tail: &Tail,
     children: Option<Vec<TypedExpr>>,
-    component_name: &TypeName,
-    component_name_opening_range: &DocumentRange,
+    function_name: &FunctionName,
+    function_name_opening_range: &DocumentRange,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -715,11 +721,11 @@ fn typecheck_arguments(
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> (
+) -> Option<(
     Vec<(VarName, TypedExpr)>,
     Vec<TypedAttribute>,
     Option<VarName>,
-) {
+)> {
     let has_body = children.is_some();
     let children_param = callee_params
         .iter()
@@ -733,10 +739,10 @@ fn typecheck_arguments(
 
     if has_body && children_param.is_none() {
         errors.push(TypeError::new(
-            TypeErrorKind::ComponentDoesNotAcceptChildren {
-                component: component_name.clone(),
+            TypeErrorKind::FunctionDoesNotAcceptChildren {
+                name: function_name.clone(),
             },
-            component_name_opening_range.clone(),
+            function_name_opening_range.clone(),
         ));
     }
 
@@ -746,23 +752,8 @@ fn typecheck_arguments(
         | ParsedAttribute::Expression { .. }
         | ParsedAttribute::String { .. } => None,
     });
-    let mut supplied_args: Vec<VarName> = attributes
-        .iter()
-        .filter_map(|a| {
-            a.name_range()
-                .and_then(|name| VarName::new(name.as_str()).ok())
-        })
-        .collect();
-    if has_body {
-        supplied_args.push(VarName::new("children").unwrap());
-    }
-    let covered_by_rest = |param: &ParamEntry| {
-        rest_spread.is_some()
-            && !supplied_args.contains(&param.name)
-            && forwarded_params.contains(&param.name)
-    };
 
-    let mut typed_args: Vec<(VarName, TypedExpr)> = Vec::new();
+    let mut supplied: Vec<(VarName, Argument<'_>)> = Vec::new();
     let mut extra_attributes: Vec<TypedAttribute> = Vec::new();
     for arg in attributes {
         let Some(arg_name_range) = arg.name_range() else {
@@ -796,8 +787,8 @@ fn typecheck_arguments(
                 });
             } else {
                 errors.push(TypeError::new(
-                    TypeErrorKind::ComponentDoesNotAcceptAttribute {
-                        component: component_name.clone(),
+                    TypeErrorKind::FunctionDoesNotAcceptAttribute {
+                        name: function_name.clone(),
                         attr: arg_name.to_string(),
                     },
                     arg_name_range.clone(),
@@ -805,128 +796,79 @@ fn typecheck_arguments(
             }
             continue;
         };
-        let param_type = &param.typ;
 
-        let arg_expr = match arg {
-            ParsedAttribute::Expression { value, .. } => value.clone(),
+        let value = match arg {
+            ParsedAttribute::Expression { value, .. } => Cow::Borrowed(value),
             ParsedAttribute::String {
                 content,
                 quoted_range,
                 ..
-            } => {
-                let value = content
+            } => Cow::Owned(ParsedExpr::StringLiteral {
+                value: content
                     .as_ref()
                     .map(|r| r.to_cheap_string())
-                    .unwrap_or_else(|| CheapString::new(String::new()));
-                ParsedExpr::StringLiteral {
-                    value,
-                    range: quoted_range.clone(),
-                }
-            }
+                    .unwrap_or_else(|| CheapString::new(String::new())),
+                range: quoted_range.clone(),
+            }),
             ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => {
-                ParsedExpr::BooleanLiteral {
+                Cow::Owned(ParsedExpr::BooleanLiteral {
                     value: true,
                     range: arg_name_range.clone(),
-                }
+                })
             }
         };
-
-        let Some(typed_expr) = typecheck_expr(
-            &arg_expr,
-            Some(param_type),
-            forwarded_params,
-            var_env,
-            type_env,
-            registry,
-            annotations,
-            definition_links,
-            asset_references,
-            errors,
-        ) else {
-            continue;
-        };
-        let arg_type = typed_expr.typ();
-
-        if arg_type != *param_type {
-            errors.push(TypeError::new(
-                TypeErrorKind::ArgumentTypeMismatch {
-                    expected: param_type.clone(),
-                    found: arg_type,
-                },
-                arg_expr.range().clone(),
-            ));
-            continue;
-        }
-
-        typed_args.push((VarName::new(arg_name).unwrap(), typed_expr));
+        supplied.push((param.name.clone(), Argument::Written(value)));
     }
 
     if has_body && has_explicit_children_arg {
         errors.push(TypeError::new(
             TypeErrorKind::ChildContentAmbiguous {},
-            component_name_opening_range.clone(),
+            function_name_opening_range.clone(),
         ));
     }
 
     if synthesize_children_arg {
-        typed_args.push((
+        supplied.push((
             VarName::new("children").unwrap(),
-            TypedExpr::FragmentConcat {
+            Argument::Implied(TypedExpr::FragmentConcat {
                 nodes: children.unwrap_or_default(),
-            },
+            }),
         ));
     }
 
-    let missing_args: Vec<&str> = callee_params
-        .iter()
-        .filter(|p| {
-            if p.default.is_some() {
-                return false;
-            }
-            let supplied = attributes.iter().any(|a| {
-                a.name_range()
-                    .is_some_and(|n| n.as_str() == p.name.as_str())
-            });
-            let is_synthesized_children = synthesize_children_arg && p.name.as_str() == "children";
-            !supplied && !is_synthesized_children && !covered_by_rest(p)
-        })
-        .map(|p| p.name.as_str())
-        .collect();
-    if !missing_args.is_empty() {
-        errors.push(TypeError::new(
-            TypeErrorKind::MissingArguments {
-                args: missing_args.join(", "),
-            },
-            component_name_opening_range.clone(),
-        ));
-    }
-
-    // Resolve the call arguments into parameter-definition order, filling
-    // in default values for any omitted optional parameters.
-    let resolved_args: Vec<(VarName, TypedExpr)> = callee_params
-        .iter()
-        .filter_map(|param| {
-            if covered_by_rest(param) {
-                // Read the value from the enclosing component, whose signature
-                // was extended with this parameter for exactly this purpose.
-                return Some((
+    // A parameter the rest carries is read from the enclosing function, whose
+    // signature was extended with it for exactly this purpose.
+    if rest_spread.is_some() {
+        for param in callee_params {
+            if forwarded_params.contains(&param.name)
+                && !supplied.iter().any(|(name, _)| *name == param.name)
+            {
+                supplied.push((
                     param.name.clone(),
-                    TypedExpr::Var {
+                    Argument::Implied(TypedExpr::Var {
                         value: param.name.clone(),
                         typ: param.typ.clone(),
-                    },
+                    }),
                 ));
             }
-            typed_args
-                .iter()
-                .find(|(name, _)| name.as_str() == param.name.as_str())
-                .map(|(_, value)| value.clone())
-                .or_else(|| param.default.clone())
-                .map(|value| (param.name.clone(), value))
-        })
-        .collect();
+        }
+    }
 
-    (resolved_args, extra_attributes, rest_spread)
+    let args = typecheck_call_arguments(
+        function_name,
+        function_name_opening_range,
+        callee_params,
+        supplied,
+        forwarded_params,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    )?;
+    Some((args, extra_attributes, rest_spread))
 }
 
 fn typecheck_attributes(

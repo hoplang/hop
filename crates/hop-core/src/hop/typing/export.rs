@@ -1,36 +1,29 @@
 use super::type_env::FunctionSignature;
 use crate::document::DocumentRange;
 
+/// A name a module exports. Non-pub declarations are included with is_pub
+/// set to false so that importers can distinguish private names from
+/// undeclared ones.
 #[derive(Debug, Clone)]
-pub struct FunctionExport {
-    pub signature: FunctionSignature,
-    pub definition_range: DocumentRange,
-    pub is_pub: bool,
-}
-
-/// A type or component exported by a module. Non-pub declarations are
-/// included with is_pub set to false so that importers can distinguish
-/// private names from undeclared ones.
-#[derive(Debug, Clone)]
-pub enum TypeExport {
+pub enum Export {
     Type {
         definition_range: DocumentRange,
         is_pub: bool,
     },
-    Component {
+    Function {
         signature: FunctionSignature,
         definition_range: DocumentRange,
         is_pub: bool,
     },
 }
 
-impl TypeExport {
+impl Export {
     pub fn definition_range(&self) -> &DocumentRange {
         match self {
-            TypeExport::Type {
+            Export::Type {
                 definition_range, ..
             }
-            | TypeExport::Component {
+            | Export::Function {
                 definition_range, ..
             } => definition_range,
         }
@@ -38,7 +31,7 @@ impl TypeExport {
 
     pub fn is_pub(&self) -> bool {
         match self {
-            TypeExport::Type { is_pub, .. } | TypeExport::Component { is_pub, .. } => *is_pub,
+            Export::Type { is_pub, .. } | Export::Function { is_pub, .. } => *is_pub,
         }
     }
 }

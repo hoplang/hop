@@ -1,9 +1,10 @@
-use crate::document::DocumentRange;
+use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -25,7 +26,6 @@ pub enum ParsedDeclaration {
     Import(ParsedImportDeclaration),
     Record(ParsedRecordDeclaration),
     Enum(ParsedEnumDeclaration),
-    Component(ParsedComponentDeclaration),
     Page(ParsedPageDeclaration),
     Function(ParsedFunctionDeclaration),
 }
@@ -39,31 +39,11 @@ pub enum ParsedDeclaration {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedFunctionDeclaration {
-    pub name: VarName,
+    pub name: FunctionName,
     pub name_range: DocumentRange,
     pub params: Vec<ParsedParameter>,
-    pub return_type: ParsedType,
-    pub body: ParsedExpr,
-    pub range: DocumentRange,
-    pub pub_range: Option<DocumentRange>,
-}
-
-/// A component declaration.
-///
-/// ```text
-/// component Button(label: String) {
-///   <button class="border p-2">
-///     {label}
-///   </button>
-/// }
-/// ```
-#[derive(Debug, Clone)]
-pub struct ParsedComponentDeclaration {
-    pub component_name: TypeName,
-    pub name_range: DocumentRange,
-    pub params: Vec<ParsedParameter>,
-    pub params_range: Option<DocumentRange>,
     pub rest_param: Option<(VarName, DocumentRange)>,
+    pub return_type: ParsedType,
     pub body: ParsedExpr,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,
@@ -97,21 +77,6 @@ pub struct ParsedPageDeclaration {
     pub is_view: bool,
 }
 
-#[derive(Debug, Clone)]
-pub enum ImportedName {
-    Type(TypeName),
-    Function(VarName),
-}
-
-impl ImportedName {
-    pub fn as_str(&self) -> &str {
-        match self {
-            ImportedName::Type(name) => name.as_str(),
-            ImportedName::Function(name) => name.as_str(),
-        }
-    }
-}
-
 /// An import declaration.
 ///
 /// ```text
@@ -120,7 +85,8 @@ impl ImportedName {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedImportDeclaration {
-    pub name: ImportedName,
+    /// The imported name as written.
+    pub name: CheapString,
     /// The range of the imported name in the source (for error reporting)
     pub name_range: DocumentRange,
     /// The full path range for error reporting (covers module::name)
@@ -237,7 +203,6 @@ impl ParsedDeclaration {
             ParsedDeclaration::Import(import) => import.to_doc(),
             ParsedDeclaration::Record(record) => record.to_doc(),
             ParsedDeclaration::Enum(e) => e.to_doc(),
-            ParsedDeclaration::Component(component) => component.to_doc(),
             ParsedDeclaration::Page(page) => page.to_doc(),
             ParsedDeclaration::Function(function) => function.to_doc(),
         }
@@ -269,14 +234,6 @@ impl ParsedAst {
     /// Finds a record declaration by name.
     pub fn find_record_declaration(&self, name: &str) -> Option<&ParsedRecordDeclaration> {
         self.record_declarations().find(|r| r.name() == name)
-    }
-
-    /// Returns an iterator over all component declarations in the AST.
-    pub fn component_declarations(&self) -> impl Iterator<Item = &ParsedComponentDeclaration> {
-        self.declarations.iter().filter_map(|d| match d {
-            ParsedDeclaration::Component(c) => Some(c),
-            _ => None,
-        })
     }
 
     /// Returns an iterator over all import declarations in the AST.
@@ -459,41 +416,6 @@ impl ParsedEnumDeclaration {
     }
 }
 
-impl ParsedComponentDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let params_doc = if self.params.is_empty() && self.rest_param.is_none() {
-            BoxDoc::nil()
-        } else {
-            let mut parts: Vec<BoxDoc<'_>> = self.params.iter().map(|p| p.to_doc()).collect();
-            if let Some((name, _)) = &self.rest_param {
-                parts.push(BoxDoc::text("...").append(BoxDoc::text(name.as_str())));
-            }
-            BoxDoc::text("(")
-                .append(BoxDoc::intersperse(parts, BoxDoc::text(", ")))
-                .append(BoxDoc::text(")"))
-        };
-        let pub_prefix = if self.pub_range.is_some() {
-            BoxDoc::text("pub").append(BoxDoc::space())
-        } else {
-            BoxDoc::nil()
-        };
-        pub_prefix
-            .append(BoxDoc::text("component"))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.component_name.as_str()))
-            .append(params_doc)
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(
-                BoxDoc::line()
-                    .append(self.body.to_doc())
-                    .nest(2)
-                    .append(BoxDoc::line()),
-            )
-            .append(BoxDoc::text("}"))
-    }
-}
-
 impl ParsedFunctionDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let pub_prefix = if self.pub_range.is_some() {
@@ -501,16 +423,16 @@ impl ParsedFunctionDeclaration {
         } else {
             BoxDoc::nil()
         };
+        let mut params: Vec<BoxDoc<'_>> = self.params.iter().map(|p| p.to_doc()).collect();
+        if let Some((name, _)) = &self.rest_param {
+            params.push(BoxDoc::text("...").append(BoxDoc::text(name.as_str())));
+        }
         pub_prefix
             .append(BoxDoc::text("fn"))
             .append(BoxDoc::space())
             .append(BoxDoc::text(self.name.as_str()))
             .append(BoxDoc::text("("))
-            .append(if self.params.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::intersperse(self.params.iter().map(|p| p.to_doc()), BoxDoc::text(", "))
-            })
+            .append(BoxDoc::intersperse(params, BoxDoc::text(", ")))
             .append(BoxDoc::text(")"))
             .append(BoxDoc::text(" -> "))
             .append(self.return_type.to_doc())

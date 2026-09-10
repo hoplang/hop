@@ -20,7 +20,7 @@ use crate::hop::parsing::token::RawTextToken;
 use crate::hop::parsing::token::TagToken;
 use crate::html::{HtmlElementKind, is_raw_content_tag, is_void_element_tag};
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
-use crate::symbols::type_name::TypeName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
 /// An item in a markup sequence.
@@ -130,8 +130,8 @@ enum TagHeader {
     Case {
         pattern: Slot<ParsedMatchPattern>,
     },
-    Component {
-        name: Result<TypeName, ErrorEmitted>,
+    Function {
+        name: Result<FunctionName, ErrorEmitted>,
         attributes: Vec<ParsedAttribute>,
         expression: Slot<ParsedExpr>,
     },
@@ -460,12 +460,12 @@ fn parse_opening_tag(
             pattern: Slot::empty(),
         },
         name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
-            TagHeader::Component {
+            TagHeader::Function {
                 attributes: Vec::new(),
                 expression: Slot::empty(),
-                name: TypeName::new(name).map_err(|error| {
+                name: FunctionName::new(name).map_err(|error| {
                     errors.emit(
-                        ParseErrorKind::InvalidTypeName { error },
+                        ParseErrorKind::InvalidFunctionName { error },
                         tag_name_range.clone(),
                     )
                 }),
@@ -557,7 +557,7 @@ fn parse_opening_tag(
             TagToken::ExpressionStart { left_brace } => match &mut header {
                 TagHeader::If { cond: slot }
                 | TagHeader::Match { expr: slot }
-                | TagHeader::Component {
+                | TagHeader::Function {
                     expression: slot, ..
                 }
                 | TagHeader::Html {
@@ -648,7 +648,7 @@ fn push_attribute(
     attribute: ParsedAttribute,
     errors: &mut ParseErrors,
 ) {
-    let (TagHeader::Component { attributes, .. } | TagHeader::Html { attributes, .. }) = header
+    let (TagHeader::Function { attributes, .. } | TagHeader::Html { attributes, .. }) = header
     else {
         let (attr_name, range) = match &attribute {
             ParsedAttribute::KeyOnly { name }
@@ -790,7 +790,7 @@ fn close_element(
             })
         }
 
-        TagHeader::Component {
+        TagHeader::Function {
             name,
             attributes,
             expression,
@@ -798,10 +798,10 @@ fn close_element(
             let children = expect_nodes(children, errors);
             let children = closing_tag_name.is_some().then_some(children);
             expression.reject(&tag_name_range, errors)?;
-            Ok(MarkupItem::Node(ParsedNode::ComponentInvocation {
-                component_name: name?,
-                component_name_opening_range: tag_name_range,
-                component_name_closing_range: closing_tag_name,
+            Ok(MarkupItem::Node(ParsedNode::FunctionInvocation {
+                function_name: name?,
+                function_name_opening_range: tag_name_range,
+                function_name_closing_range: closing_tag_name,
                 attributes,
                 range,
                 children,

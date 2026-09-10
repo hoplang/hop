@@ -6,7 +6,7 @@ use crate::css;
 use crate::css_error::CssError;
 use crate::definition_link::DefinitionLink;
 use crate::dependency_graph::DependencyGraph;
-use crate::document::{Document, DocumentRange};
+use crate::document::{CheapString, Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
 use crate::hop::assembly::TailwindInjection;
@@ -15,7 +15,7 @@ use crate::hop::parsing::find_node::find_node_at_position;
 use crate::hop::parsing::parse::parse;
 use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::parsing::parsed_node::ParsedNode;
-use crate::hop::typing::type_export::{FunctionExport, TypeExport};
+use crate::hop::typing::export::Export;
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck::typecheck;
 use crate::hop::typing::typed_ast::TypedAst;
@@ -84,8 +84,7 @@ pub struct Program {
     css_errors: HashMap<DocumentId, Vec<CssError>>,
     parse_errors: HashMap<DocumentId, ParseErrors>,
     parsed_asts: HashMap<DocumentId, ParsedAst>,
-    type_exports: HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
-    function_exports: HashMap<DocumentId, HashMap<VarName, FunctionExport>>,
+    exports: HashMap<DocumentId, HashMap<CheapString, Export>>,
     type_registry: TypeRegistry,
     type_errors: HashMap<DocumentId, Vec<TypeError>>,
     hover_annotations: HashMap<DocumentId, Vec<HoverAnnotation>>,
@@ -135,8 +134,7 @@ impl Program {
                 .collect::<Vec<_>>();
             typecheck(
                 &modules,
-                &mut self.type_exports,
-                &mut self.function_exports,
+                &mut self.exports,
                 &mut self.type_registry,
                 &mut self.typed_asts,
                 &mut self.type_errors,
@@ -159,8 +157,7 @@ impl Program {
         self.documents.remove(document_id);
         self.parse_errors.remove(document_id);
         self.parsed_asts.remove(document_id);
-        self.type_exports.remove(document_id);
-        self.function_exports.remove(document_id);
+        self.exports.remove(document_id);
         self.type_registry.remove_module(document_id);
         self.type_errors.remove(document_id);
         self.hover_annotations.remove(document_id);
@@ -182,8 +179,7 @@ impl Program {
             if !modules.is_empty() {
                 typecheck(
                     &modules,
-                    &mut self.type_exports,
-                    &mut self.function_exports,
+                    &mut self.exports,
                     &mut self.type_registry,
                     &mut self.typed_asts,
                     &mut self.type_errors,
@@ -331,9 +327,9 @@ impl Program {
             }
         }
 
-        for node in ast.component_declarations() {
-            if node.name_range.contains_position(position) {
-                return Some(self.collect_component_rename_locations(&node.name_range));
+        for function in ast.function_declarations() {
+            if function.name_range.contains_position(position) {
+                return Some(self.collect_function_rename_locations(&function.name_range));
             }
         }
 
@@ -346,13 +342,13 @@ impl Program {
         }
 
         match node {
-            ParsedNode::ComponentInvocation { .. } => {
+            ParsedNode::FunctionInvocation { .. } => {
                 let link = self
                     .definition_links
                     .get(document_id)?
                     .iter()
                     .find(|link| link.use_range.contains_position(position))?;
-                Some(self.collect_component_rename_locations(&link.definition_range))
+                Some(self.collect_function_rename_locations(&link.definition_range))
             }
             n @ ParsedNode::HtmlElement { .. } => Some(
                 n.tag_names()
@@ -367,7 +363,7 @@ impl Program {
 
     /// Returns information about a renameable symbol at the given position.
     ///
-    /// Checks if the position is on a component name, record name (reference or definition)
+    /// Checks if the position is on a function name, record name (reference or definition)
     /// and returns the symbol's current name and range if found.
     pub fn get_renameable_symbol(
         &self,
@@ -394,10 +390,10 @@ impl Program {
             }
         }
 
-        for component_node in ast.component_declarations() {
-            if component_node.name_range.contains_position(position) {
+        for function in ast.function_declarations() {
+            if function.name_range.contains_position(position) {
                 return Some(RenameableSymbol {
-                    range: component_node.name_range.clone(),
+                    range: function.name_range.clone(),
                 });
             }
         }
@@ -411,16 +407,17 @@ impl Program {
             })
     }
 
-    /// Collects all locations where a component should be renamed, including:
-    /// - The component definition (opening and closing tags)
-    /// - All invocations of the component (opening and closing tags)
-    /// - All import statements that import the component
-    fn collect_component_rename_locations(
+    /// Collects all locations where a function should be renamed, including:
+    /// - The function definition
+    /// - All calls and tag invocations of the function (opening and closing
+    ///   tags)
+    /// - All import statements that import the function
+    fn collect_function_rename_locations(
         &self,
         definition_range: &DocumentRange,
     ) -> Vec<RenameLocation> {
         // Collect all use_ranges across all modules whose definition_range
-        // matches the component's definition
+        // matches the function's definition
         self.definition_links
             .values()
             .flatten()
@@ -983,44 +980,44 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_find_definition_from_component_invocation_opening_tag() {
+    fn should_find_definition_from_function_invocation_opening_tag() {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                pub component HelloWorld {
+                pub fn HelloWorld() -> Fragment {
                   <h1>Hello World</h1>
                 }
 
                 -- main.hop --
                 import hop::components::HelloWorld
 
-                component Main {
+                fn Main() -> Fragment {
                   <HelloWorld />
                    ^
                 }
             "#},
             expect![[r#"
                 Definition
-                  --> hop/components.hop (line 1, col 15)
-                1 | pub component HelloWorld {
-                  |               ^^^^^^^^^^
+                  --> hop/components.hop (line 1, col 8)
+                1 | pub fn HelloWorld() -> Fragment {
+                  |        ^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn should_find_definition_from_component_invocation_closing_tag() {
+    fn should_find_definition_from_function_invocation_closing_tag() {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                pub component HelloWorld(children: Fragment) {
+                pub fn HelloWorld(children: Fragment) -> Fragment {
                   <h1>Hello World {children}</h1>
                 }
 
                 -- main.hop --
                 import hop::components::HelloWorld
 
-                component Main {
+                fn Main() -> Fragment {
                   <HelloWorld>
                   </HelloWorld>
                      ^
@@ -1028,19 +1025,19 @@ mod tests {
             "#},
             expect![[r#"
                 Definition
-                  --> hop/components.hop (line 1, col 15)
-                1 | pub component HelloWorld(children: Fragment) {
-                  |               ^^^^^^^^^^
+                  --> hop/components.hop (line 1, col 8)
+                1 | pub fn HelloWorld(children: Fragment) -> Fragment {
+                  |        ^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn should_find_definition_from_import_component_name() {
+    fn should_find_definition_from_import_function_name() {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                pub component HelloWorld {
+                pub fn HelloWorld() -> Fragment {
                   <h1>Hello World</h1>
                 }
 
@@ -1048,15 +1045,15 @@ mod tests {
                 import hop::components::HelloWorld
                                         ^
 
-                component Main {
+                fn Main() -> Fragment {
                   <HelloWorld />
                 }
             "#},
             expect![[r#"
                 Definition
-                  --> hop/components.hop (line 1, col 15)
-                1 | pub component HelloWorld {
-                  |               ^^^^^^^^^^
+                  --> hop/components.hop (line 1, col 8)
+                1 | pub fn HelloWorld() -> Fragment {
+                  |        ^^^^^^^^^^
             "#]],
         );
     }
@@ -1071,7 +1068,7 @@ mod tests {
                 import types::User
                               ^
 
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   <div>{user.name}</div>
                 }
             "#},
@@ -1094,7 +1091,7 @@ mod tests {
                 import types::Status
                               ^
 
-                component Main(status: Status) {
+                fn Main(status: Status) -> Fragment {
                   <match {status}>
                     <case {Status::Active}><span>Active</span></case>
                     <case {Status::Inactive}><span>Inactive</span></case>
@@ -1115,16 +1112,16 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                component HelloWorld {
-                            ^
+                fn HelloWorld() -> Fragment {
+                     ^
                   <h1>Hello World</h1>
                 }
             "#},
             expect![[r#"
                 Definition
-                  --> main.hop (line 1, col 11)
-                1 | component HelloWorld {
-                  |           ^^^^^^^^^^
+                  --> main.hop (line 1, col 4)
+                1 | fn HelloWorld() -> Fragment {
+                  |    ^^^^^^^^^^
             "#]],
         );
     }
@@ -1172,38 +1169,38 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_component_invocation_in_same_module_simple() {
+    fn should_find_definition_from_function_invocation_in_same_module_simple() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                component HelloWorld {
+                fn HelloWorld() -> Fragment {
                   <h1>Hello World</h1>
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <HelloWorld />
                    ^
                 }
             "#},
             expect![[r#"
                 Definition
-                  --> main.hop (line 1, col 11)
-                1 | component HelloWorld {
-                  |           ^^^^^^^^^^
+                  --> main.hop (line 1, col 4)
+                1 | fn HelloWorld() -> Fragment {
+                  |    ^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn should_find_definition_from_component_invocation_inside_match() {
+    fn should_find_definition_from_function_invocation_inside_match() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                component HelloWorld {
+                fn HelloWorld() -> Fragment {
                   <h1>Hello World</h1>
                 }
 
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                   <match {x}>
                     <case {Some(_)}>
                       <HelloWorld />
@@ -1215,19 +1212,19 @@ mod tests {
             "#},
             expect![[r#"
                 Definition
-                  --> main.hop (line 1, col 11)
-                 1 | component HelloWorld {
-                   |           ^^^^^^^^^^
+                  --> main.hop (line 1, col 4)
+                 1 | fn HelloWorld() -> Fragment {
+                   |    ^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn should_find_definition_from_component_invocation_inside_view() {
+    fn should_find_definition_from_function_invocation_inside_view() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                component HelloWorld {
+                fn HelloWorld() -> Fragment {
                   <h1>Hello World</h1>
                 }
 
@@ -1238,9 +1235,9 @@ mod tests {
             "#},
             expect![[r#"
                 Definition
-                  --> main.hop (line 1, col 11)
-                1 | component HelloWorld {
-                  |           ^^^^^^^^^^
+                  --> main.hop (line 1, col 4)
+                1 | fn HelloWorld() -> Fragment {
+                  |    ^^^^^^^^^^
             "#]],
         );
     }
@@ -1250,16 +1247,16 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                component Main(name: String) {
+                fn Main(name: String) -> Fragment {
                   <span>{name}</span>
                          ^
                 }
             "#},
             expect![[r#"
                 Definition
-                  --> main.hop (line 1, col 16)
-                1 | component Main(name: String) {
-                  |                ^^^^
+                  --> main.hop (line 1, col 9)
+                1 | fn Main(name: String) -> Fragment {
+                  |         ^^^^
             "#]],
         );
     }
@@ -1269,7 +1266,7 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                   <ul>
                     <for {item in items}>
                       <li>{item}</li>
@@ -1292,7 +1289,7 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <let {greeting: String = "Hello"}>
                     <span>{greeting}</span>
                             ^
@@ -1315,8 +1312,8 @@ mod tests {
                 -- main.hop --
                 record User {name: String}
 
-                component Main(user: User) {
-                                     ^
+                fn Main(user: User) -> Fragment {
+                              ^
                   <span>{user.name}</span>
                 }
             "#},
@@ -1336,8 +1333,8 @@ mod tests {
                 -- main.hop --
                 record Item {name: String}
 
-                component Main(items: Array[Item]) {
-                                            ^
+                fn Main(items: Array[Item]) -> Fragment {
+                                     ^
                   <for {item in items}>
                     <span>{item.name}</span>
                   </for>
@@ -1362,8 +1359,8 @@ mod tests {
                 -- main.hop --
                 import types::User
 
-                component Main(user: User) {
-                                     ^
+                fn Main(user: User) -> Fragment {
+                              ^
                   <span>{user.name}</span>
                 }
             "#},
@@ -1381,27 +1378,27 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_find_rename_locations_from_component_invocation() {
+    fn should_find_rename_locations_from_function_invocation() {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
-                pub component HelloWorld {
+                pub fn HelloWorld() -> Fragment {
                   <h1>Hello World</h1>
                 }
 
                 -- main.hop --
                 import components::HelloWorld
 
-                component Main {
+                fn Main() -> Fragment {
                   <HelloWorld />
                    ^
                 }
             "#},
             expect![[r#"
                 Rename
-                  --> components.hop (line 1, col 15)
-                1 | pub component HelloWorld {
-                  |               ^^^^^^^^^^
+                  --> components.hop (line 1, col 8)
+                1 | pub fn HelloWorld() -> Fragment {
+                  |        ^^^^^^^^^^
 
                 Rename
                   --> main.hop (line 1, col 20)
@@ -1417,24 +1414,24 @@ mod tests {
     }
 
     #[test]
-    fn should_find_rename_locations_from_component_invocation_in_same_module() {
+    fn should_find_rename_locations_from_function_invocation_in_same_module() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                component HelloWorld {
+                fn HelloWorld() -> Fragment {
                   <h1>Hello World</h1>
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <HelloWorld />
                    ^
                 }
             "#},
             expect![[r#"
                 Rename
-                  --> main.hop (line 1, col 11)
-                1 | component HelloWorld {
-                  |           ^^^^^^^^^^
+                  --> main.hop (line 1, col 4)
+                1 | fn HelloWorld() -> Fragment {
+                  |    ^^^^^^^^^^
 
                 Rename
                   --> main.hop (line 6, col 4)
@@ -1449,23 +1446,23 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
-                pub component HelloWorld {
-                               ^
+                pub fn HelloWorld() -> Fragment {
+                        ^
                   <h1>Hello World</h1>
                 }
 
                 -- main.hop --
                 import components::HelloWorld
 
-                component Main {
+                fn Main() -> Fragment {
                   <HelloWorld />
                 }
             "#},
             expect![[r#"
                 Rename
-                  --> components.hop (line 1, col 15)
-                1 | pub component HelloWorld {
-                  |               ^^^^^^^^^^
+                  --> components.hop (line 1, col 8)
+                1 | pub fn HelloWorld() -> Fragment {
+                  |        ^^^^^^^^^^
 
                 Rename
                   --> main.hop (line 1, col 20)
@@ -1480,36 +1477,36 @@ mod tests {
         );
     }
 
-    // Make sure that when we rename a component in a module that has
-    // the same name as a module in some other component, the module in
-    // the other component is left unchanged.
+    // Make sure that when we rename a function in a module that has
+    // the same name as a module in some other function, the module in
+    // the other function is left unchanged.
     #[test]
     fn should_scope_rename_locations_to_component_definition_module() {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
-                component HelloWorld {
+                fn HelloWorld() -> Fragment {
                   <h1>Hello World</h1>
                 }
 
-                component Main {
-                          ^
+                fn Main() -> Fragment {
+                   ^
                   <HelloWorld />
                 }
 
                 -- main.hop --
                 import components::HelloWorld
 
-                component Main {
+                fn Main() -> Fragment {
                   <HelloWorld />
                 }
             "#},
             // The result here should not contain rename locations in main.hop.
             expect![[r#"
                 Rename
-                  --> components.hop (line 5, col 11)
-                5 | component Main {
-                  |           ^^^^
+                  --> components.hop (line 5, col 4)
+                5 | fn Main() -> Fragment {
+                  |    ^^^^
             "#]],
         );
     }
@@ -1519,7 +1516,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                     <div>
                      ^
                         <span>Content</span>
@@ -1545,7 +1542,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     <div>
                      ^
@@ -1573,7 +1570,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                     <div>
                         <span>Content</span>
                     </div>
@@ -1599,7 +1596,7 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                     <br />
                      ^
                 }
@@ -1626,9 +1623,9 @@ mod tests {
                   description: String,
                 }
 
-                component IconItem(
+                fn IconItem(
                   icon: Icon,
-                ) {
+                ) -> Fragment {
                   <a class="flex flex-col gap-2" href={
                     "/icons/" + icon.id,
                   }>
@@ -1642,9 +1639,9 @@ mod tests {
                   </a>
                 }
 
-                component IconsPage(
+                fn IconsPage(
                   icons: Array[Icon],
-                ) {
+                ) -> Fragment {
                   <div class="flex">
                       <for {icon in icons}>
                         <IconItem {
@@ -1654,9 +1651,9 @@ mod tests {
                   </div>
                 }
 
-                component IconShowPage(
+                fn IconShowPage(
                   icon: Icon,
-                ) {
+                ) -> Fragment {
                   <div class="flex">
                     <div class="flex flex-col gap-4 p-8 mx-auto my-8 w-full max-w-4xl">
                       <h1 class="text-xl font-semibold">
@@ -1707,14 +1704,14 @@ mod tests {
                   Inactive,
                 }
 
-                component UserBadge(status: Status) {
+                fn UserBadge(status: Status) -> Fragment {
                   <match {status}>
                     <case {Status::Active}><span>Active</span></case>
                     <case {Status::Inactive}><span>Inactive</span></case>
                   </match>
                 }
 
-                component UsersPage(statuses: Array[Status]) {
+                fn UsersPage(statuses: Array[Status]) -> Fragment {
                   <for {status in statuses}>
                     <UserBadge {status: status} />
                   </for>
@@ -1727,9 +1724,9 @@ mod tests {
                    |      ^^^^^^
 
                 Rename
-                  --> main.hop (line 6, col 29)
-                 6 | component UserBadge(status: Status) {
-                   |                             ^^^^^^
+                  --> main.hop (line 6, col 22)
+                 6 | fn UserBadge(status: Status) -> Fragment {
+                   |                      ^^^^^^
 
                 Rename
                   --> main.hop (line 8, col 12)
@@ -1742,9 +1739,9 @@ mod tests {
                    |            ^^^^^^
 
                 Rename
-                  --> main.hop (line 13, col 37)
-                13 | component UsersPage(statuses: Array[Status]) {
-                   |                                     ^^^^^^
+                  --> main.hop (line 13, col 30)
+                13 | fn UsersPage(statuses: Array[Status]) -> Fragment {
+                   |                              ^^^^^^
             "#]],
         );
     }
@@ -1763,7 +1760,7 @@ mod tests {
                 -- main.hop --
                 import types::Status
 
-                component Main(status: Status) {
+                fn Main(status: Status) -> Fragment {
                   <match {status}>
                     <case {Status::Active}><span>Active</span></case>
                     <case {Status::Inactive}><span>Inactive</span></case>
@@ -1777,9 +1774,9 @@ mod tests {
                   |               ^^^^^^
 
                 Rename
-                  --> main.hop (line 3, col 24)
-                3 | component Main(status: Status) {
-                  |                        ^^^^^^
+                  --> main.hop (line 3, col 17)
+                3 | fn Main(status: Status) -> Fragment {
+                  |                 ^^^^^^
 
                 Rename
                   --> main.hop (line 5, col 12)
@@ -1857,17 +1854,17 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                component Main {
-                           ^
+                fn Main() -> Fragment {
+                    ^
                   <div>
                   <span>
                 }
             "#},
             expect![[r#"
                 Rename
-                  --> main.hop (line 1, col 11)
-                1 | component Main {
-                  |           ^^^^
+                  --> main.hop (line 1, col 4)
+                1 | fn Main() -> Fragment {
+                  |    ^^^^
             "#]],
         );
     }
@@ -1881,16 +1878,16 @@ mod tests {
         check_renameable_symbol(
             indoc! {r#"
                 -- main.hop --
-                component HelloWorld {
-                          ^
+                fn HelloWorld() -> Fragment {
+                   ^
                   <h1>Hello World</h1>
                 }
             "#},
             expect![[r#"
                 HelloWorld
-                  --> main.hop (line 1, col 11)
-                1 | component HelloWorld {
-                  |           ^^^^^^^^^^
+                  --> main.hop (line 1, col 4)
+                1 | fn HelloWorld() -> Fragment {
+                  |    ^^^^^^^^^^
             "#]],
         );
     }
@@ -1902,7 +1899,7 @@ mod tests {
                 -- main.hop --
                 enum Status { Active, Inactive }
                      ^
-                component Main(status: Status) {
+                fn Main(status: Status) -> Fragment {
                   <div>{status}</div>
                 }
             "#},
@@ -1920,7 +1917,7 @@ mod tests {
         check_renameable_symbol(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                     <div>Content</div>
                      ^
                 }
@@ -1944,8 +1941,8 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {name: String}
-                component Main(user: User) {
-                               ^
+                fn Main(user: User) -> Fragment {
+                        ^
                   <h1>Hello {user.name}</h1>
                 }
             "#},
@@ -1953,9 +1950,9 @@ mod tests {
                 ```
                 user : main::User
                 ```
-                  --> main.hop (line 2, col 16)
-                2 | component Main(user: User) {
-                  |                ^^^^
+                  --> main.hop (line 2, col 9)
+                2 | fn Main(user: User) -> Fragment {
+                  |         ^^^^
             "#]],
         );
     }
@@ -1965,7 +1962,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: String) {
+                fn Greeting(name: String) -> Fragment {
                   <div>{name}</div>
                         ^
                 }
@@ -1987,7 +1984,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {name: String}
-                component Main {
+                fn Main() -> Fragment {
                   <let {user: User = User{name: "John"}}>
                                      ^
                     {user.name}
@@ -2011,7 +2008,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
-                component Main {
+                fn Main() -> Fragment {
                   <let {color: Color = Color::Red}>
                                        ^
                     <match {color}>
@@ -2038,7 +2035,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Outcome { Success{value: String}, Failure{message: String} }
-                component Main {
+                fn Main() -> Fragment {
                   <let {result: Outcome = Outcome::Success{value: "ok"}}>
                                           ^
                     <match {result}>
@@ -2064,7 +2061,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                   <if {items.len() == 0}>
                              ^
                     Empty
@@ -2089,7 +2086,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                   <if {items.is_empty()}>
                               ^
                     Empty
@@ -2114,7 +2111,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                component Main(a: String, b: String) {
+                fn Main(a: String, b: String) -> Fragment {
                   <div class={
                     join!(a, b)
                     ^
@@ -2140,7 +2137,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <img src={
                     asset!("/logo.svg")
                     ^
@@ -2169,14 +2166,14 @@ mod tests {
         check_error_diagnostics(
             indoc! {r#"
                 -- components.hop --
-                pub component HelloWorld {
+                pub fn HelloWorld() -> Fragment {
                   <h1>Hello World</h1>
                 }
 
                 -- main.hop --
                 import components::HelloWorld
 
-                component Main {
+                fn Main() -> Fragment {
                   <span>No usage of HelloWorld</span>
                 }
             "#},
@@ -2194,14 +2191,14 @@ mod tests {
     fn should_not_warn_on_used_import() {
         let program = program_from_txtar(indoc! {r#"
             -- components.hop --
-            pub component HelloWorld {
+            pub fn HelloWorld() -> Fragment {
               <h1>Hello World</h1>
             }
 
             -- main.hop --
             import components::HelloWorld
 
-            component Main {
+            fn Main() -> Fragment {
               <HelloWorld />
             }
         "#});
@@ -2227,7 +2224,7 @@ mod tests {
         check_error_diagnostics(
             indoc! {r#"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                   <span>unclosed span
                 }
@@ -2256,19 +2253,19 @@ mod tests {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
             import b::BComp
-            pub component AComp {
+            pub fn AComp() -> Fragment {
               <BComp />
             }
 
             -- b.hop --
             import a::AComp
-            pub component BComp {
+            pub fn BComp() -> Fragment {
               <AComp />
             }
 
             -- c.hop --
             import a::AComp
-            component CComp {
+            fn CComp() -> Fragment {
               <AComp />
             }
         "#});
@@ -2292,7 +2289,7 @@ mod tests {
             Document::new(
                 DocumentId::new("a.hop").unwrap(),
                 indoc! {r#"
-                    pub component AComp {
+                    pub fn AComp() -> Fragment {
                       <></>
                     }
                 "#}
@@ -2308,25 +2305,25 @@ mod tests {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
             import b::BComp
-            pub component AComp {
+            pub fn AComp() -> Fragment {
               <BComp />
             }
 
             -- b.hop --
             import c::CComp
-            pub component BComp {
+            pub fn BComp() -> Fragment {
               <CComp />
             }
 
             -- c.hop --
             import d::DComp
-            pub component CComp {
+            pub fn CComp() -> Fragment {
               <DComp />
             }
 
             -- d.hop --
             import a::AComp
-            pub component DComp {
+            pub fn DComp() -> Fragment {
               <AComp />
             }
         "#});
@@ -2360,7 +2357,7 @@ mod tests {
             Document::new(
                 DocumentId::new("c.hop").unwrap(),
                 indoc! {r#"
-                    pub component CComp {
+                    pub fn CComp() -> Fragment {
                       <></>
                     }
                 "#}
@@ -2376,7 +2373,7 @@ mod tests {
                 DocumentId::new("b.hop").unwrap(),
                 indoc! {r#"
                     import a::AComp
-                    pub component BComp {
+                    pub fn BComp() -> Fragment {
                       <AComp />
                     }
                 "#}
@@ -2403,7 +2400,7 @@ mod tests {
             Document::new(
                 DocumentId::new("b.hop").unwrap(),
                 indoc! {r#"
-                    pub component BComp {
+                    pub fn BComp() -> Fragment {
                       <></>
                     }
                 "#}
@@ -2422,14 +2419,14 @@ mod tests {
     fn should_report_type_error_when_imported_module_is_removed() {
         let mut program = program_from_txtar(indoc! {r#"
             -- components.hop --
-            pub component HelloWorld {
+            pub fn HelloWorld() -> Fragment {
               <h1>Hello World</h1>
             }
 
             -- main.hop --
             import components::HelloWorld
 
-            component Main {
+            fn Main() -> Fragment {
               <HelloWorld />
             }
         "#});
@@ -2449,7 +2446,7 @@ mod tests {
                 1 | import components::HelloWorld
                   |        ^^^^^^^^^^^^^^^^^^^^^^
 
-                Component HelloWorld is not defined
+                Function HelloWorld is not defined
                   --> main.hop (line 4, col 4)
                 4 |   <HelloWorld />
                   |    ^^^^^^^^^^
@@ -2462,7 +2459,7 @@ mod tests {
             Document::new(
                 DocumentId::new("components.hop").unwrap(),
                 indoc! {r#"
-                    component HelloWorld {
+                    fn HelloWorld() -> Fragment {
                       <h1>Hello World</h1>
                     }
                 "#}
@@ -2474,16 +2471,16 @@ mod tests {
         check_type_errors(
             &program,
             expect![[r#"
-            Type HelloWorld from module components is not public
-              --> main.hop (line 1, col 20)
-            1 | import components::HelloWorld
-              |                    ^^^^^^^^^^
+                HelloWorld from module components is not public
+                  --> main.hop (line 1, col 20)
+                1 | import components::HelloWorld
+                  |                    ^^^^^^^^^^
 
-            Component HelloWorld is not defined
-              --> main.hop (line 4, col 4)
-            4 |   <HelloWorld />
-              |    ^^^^^^^^^^
-        "#]],
+                Function HelloWorld is not defined
+                  --> main.hop (line 4, col 4)
+                4 |   <HelloWorld />
+                  |    ^^^^^^^^^^
+            "#]],
         );
     }
 

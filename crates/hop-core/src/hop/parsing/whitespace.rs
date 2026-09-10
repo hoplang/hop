@@ -38,7 +38,7 @@ pub fn normalize_node(node: &mut ParsedNode) {
         | ParsedNode::If { children, .. }
         | ParsedNode::For { children, .. }
         | ParsedNode::Let { children, .. } => normalize(children),
-        ParsedNode::ComponentInvocation { children, .. } => {
+        ParsedNode::FunctionInvocation { children, .. } => {
             if let Some(children) = children {
                 normalize(children);
             }
@@ -517,7 +517,7 @@ mod tests {
     fn drops_a_newline_beside_a_fragment_valued_expression() {
         check(
             indoc! {"
-                component Wrap(children: Fragment) {
+                fn Wrap(children: Fragment) -> Fragment {
                   <div>
                     hello
                     {children}
@@ -536,7 +536,7 @@ mod tests {
     fn keeps_a_space_beside_a_fragment_valued_expression_on_the_same_line() {
         check(
             indoc! {"
-                component Wrap(children: Fragment) {
+                fn Wrap(children: Fragment) -> Fragment {
                   <div>hello {children}</div>
                 }
 
@@ -618,7 +618,7 @@ mod tests {
     fn adds_no_whitespace_to_markup_laid_out_inline() {
         check(
             indoc! {"
-                component Card(slot: Fragment) {
+                fn Card(slot: Fragment) -> Fragment {
                   <div>{slot}</div>
                 }
 
@@ -634,7 +634,7 @@ mod tests {
     fn keeps_significant_whitespace_in_markup_laid_out_inline() {
         check(
             indoc! {"
-                component Card(slot: Fragment) {
+                fn Card(slot: Fragment) -> Fragment {
                   <div>{slot}</div>
                 }
 

@@ -3,7 +3,7 @@ use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parsed_expr::ParsedMatchPattern;
 use crate::html::HtmlElementKind;
-use crate::symbols::type_name::TypeName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 use std::borrow::Cow;
@@ -51,17 +51,17 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// A component invocation node.
+    /// A function invoked as a tag.
     ///
     /// ```text
     /// <Foo x={10} y={20}>
     ///   ...
     /// </Foo>
     /// ```
-    ComponentInvocation {
-        component_name: TypeName,
-        component_name_opening_range: DocumentRange,
-        component_name_closing_range: Option<DocumentRange>,
+    FunctionInvocation {
+        function_name: FunctionName,
+        function_name_opening_range: DocumentRange,
+        function_name_closing_range: Option<DocumentRange>,
         attributes: Vec<ParsedAttribute>,
         children: Option<Vec<ParsedNode>>,
         range: DocumentRange,
@@ -339,7 +339,7 @@ impl ParsedNode {
             ParsedNode::Text { range, .. }
             | ParsedNode::Newline { range }
             | ParsedNode::Interpolation { range, .. }
-            | ParsedNode::ComponentInvocation { range, .. }
+            | ParsedNode::FunctionInvocation { range, .. }
             | ParsedNode::If { range, .. }
             | ParsedNode::For { range, .. }
             | ParsedNode::Let { range, .. }
@@ -353,7 +353,7 @@ impl ParsedNode {
     /// The nodes written inside this node's tags, in source order.
     pub fn children(&self) -> Vec<&Self> {
         match self {
-            ParsedNode::ComponentInvocation { children, .. } => children.iter().flatten().collect(),
+            ParsedNode::FunctionInvocation { children, .. } => children.iter().flatten().collect(),
             ParsedNode::If { children, .. }
             | ParsedNode::For { children, .. }
             | ParsedNode::Let { children, .. }
@@ -374,7 +374,7 @@ impl ParsedNode {
             ParsedNode::Interpolation { expression, .. } => vec![expression],
             ParsedNode::If { condition, .. } => vec![condition],
             ParsedNode::Match { subject, .. } => vec![subject],
-            ParsedNode::ComponentInvocation { attributes, .. }
+            ParsedNode::FunctionInvocation { attributes, .. }
             | ParsedNode::HtmlElement { attributes, .. } => attributes
                 .iter()
                 .filter_map(|attribute| match attribute {
@@ -406,8 +406,8 @@ impl ParsedNode {
     /// ```
     pub fn tag_name(&self) -> Option<&DocumentRange> {
         match self {
-            ParsedNode::ComponentInvocation {
-                component_name_opening_range: tag_name,
+            ParsedNode::FunctionInvocation {
+                function_name_opening_range: tag_name,
                 ..
             } => Some(tag_name),
             ParsedNode::HtmlElement { tag_name, .. } => Some(tag_name),
@@ -423,8 +423,8 @@ impl ParsedNode {
     /// ```
     pub fn closing_tag_name(&self) -> Option<&DocumentRange> {
         match self {
-            ParsedNode::ComponentInvocation {
-                component_name_closing_range: closing_tag_name,
+            ParsedNode::FunctionInvocation {
+                function_name_closing_range: closing_tag_name,
                 ..
             } => closing_tag_name.as_ref(),
             ParsedNode::HtmlElement {
@@ -481,8 +481,8 @@ impl ParsedNode {
                 }
                 call_doc("html", args)
             }
-            ParsedNode::ComponentInvocation {
-                component_name,
+            ParsedNode::FunctionInvocation {
+                function_name,
                 attributes,
                 children,
                 ..
@@ -498,7 +498,7 @@ impl ParsedNode {
                             .append(bracketed_doc(children.iter().map(|c| c.to_doc()).collect())),
                     );
                 }
-                call_doc(component_name.as_str(), args)
+                call_doc(function_name.as_str(), args)
             }
             ParsedNode::If {
                 condition,

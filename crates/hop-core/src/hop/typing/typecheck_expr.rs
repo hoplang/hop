@@ -1,8 +1,10 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use super::r#type::{NumericType, Type};
-use super::type_env::{Name, NameKind, ParamEntry};
+use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
+use super::typecheck_call::{Argument, typecheck_call_arguments};
 use super::typecheck_match::{MatchArms, typecheck_match};
 use super::typecheck_node::typecheck_node;
 use super::variable_scope::VariableScope;
@@ -16,6 +18,7 @@ use crate::hop::typing::TypedExpr;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 
@@ -1023,7 +1026,7 @@ pub fn typecheck_expr(
                 kind: NameKind::Type(record_type),
                 definition_range: def_range,
                 ..
-            }) = type_env.names.get(record_name)
+            }) = type_env.names.get(record_name.as_str())
             else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedRecord {
@@ -1263,7 +1266,7 @@ pub fn typecheck_expr(
                 kind: NameKind::Type(enum_type),
                 definition_range: def_range,
                 ..
-            }) = type_env.names.get(enum_name)
+            }) = type_env.names.get(enum_name.as_str())
             else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedEnum {
@@ -1679,15 +1682,18 @@ pub fn typecheck_expr(
             args,
             range,
         } => {
-            let Some((signature, def_range)) = type_env.functions.get(name) else {
+            let callee = FunctionName::from(name.clone());
+            let Some(signature) = type_env.functions.get(name.as_str()) else {
                 errors.push(TypeError::new(
-                    TypeErrorKind::UndefinedFunction { name: name.clone() },
+                    TypeErrorKind::UndefinedFunction {
+                        name: callee.clone(),
+                    },
                     name_range.clone(),
                 ));
                 return None;
             };
             let signature = signature.clone();
-            let def_range = def_range.clone();
+            let def_range = type_env.names[name.as_str()].definition_range.clone();
 
             let callee_module = def_range.document_id().clone();
 
@@ -1697,8 +1703,7 @@ pub fn typecheck_expr(
             });
 
             let mut failed = false;
-
-            let paired: Vec<(&ParamEntry, Option<&ParsedExpr>)> = match args {
+            let supplied: Vec<(VarName, Argument<'_>)> = match args {
                 ParsedArguments::Positional(values) => {
                     let required = signature
                         .params
@@ -1708,7 +1713,7 @@ pub fn typecheck_expr(
                     if values.len() < required || values.len() > signature.params.len() {
                         errors.push(TypeError::new(
                             TypeErrorKind::FunctionArgumentCountMismatch {
-                                name: name.clone(),
+                                name: callee.clone(),
                                 expected: if required == signature.params.len() {
                                     required.to_string()
                                 } else {
@@ -1723,14 +1728,16 @@ pub fn typecheck_expr(
                     signature
                         .params
                         .iter()
-                        .enumerate()
-                        .map(|(index, param)| (param, values.get(index)))
+                        .zip(values)
+                        .map(|(param, value)| {
+                            (param.name.clone(), Argument::Written(Cow::Borrowed(value)))
+                        })
                         .collect()
                 }
                 ParsedArguments::Named(named) => {
-                    let mut supplied: HashSet<&VarName> = HashSet::new();
+                    let mut supplied = Vec::with_capacity(named.len());
                     for arg in named {
-                        if !supplied.insert(&arg.name) {
+                        if supplied.iter().any(|(name, _)| *name == arg.name) {
                             errors.push(TypeError::new(
                                 TypeErrorKind::DuplicateArgument {
                                     argument: arg.name.clone(),
@@ -1741,87 +1748,45 @@ pub fn typecheck_expr(
                         } else if !signature.params.iter().any(|p| p.name == arg.name) {
                             errors.push(TypeError::new(
                                 TypeErrorKind::FunctionDoesNotAcceptArgument {
-                                    name: name.clone(),
+                                    name: callee.clone(),
                                     argument: arg.name.clone(),
                                 },
                                 arg.name_range.clone(),
                             ));
                             failed = true;
+                        } else {
+                            supplied.push((
+                                arg.name.clone(),
+                                Argument::Written(Cow::Borrowed(&arg.value)),
+                            ));
                         }
                     }
-
-                    let mut paired = Vec::with_capacity(signature.params.len());
-                    let mut missing = Vec::new();
-                    for param in &signature.params {
-                        match named.iter().find(|arg| arg.name == param.name) {
-                            Some(arg) => paired.push((param, Some(&arg.value))),
-                            None if param.default.is_some() => paired.push((param, None)),
-                            None => missing.push(param.name.as_str()),
-                        }
-                    }
-                    if !missing.is_empty() {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::MissingFunctionArguments {
-                                name: name.clone(),
-                                args: missing.join(", "),
-                            },
-                            range.clone(),
-                        ));
-                        failed = true;
-                    }
-                    paired
+                    supplied
                 }
             };
 
-            let mut typed_args = Vec::with_capacity(paired.len());
-            for (param, arg) in &paired {
-                let Some(arg) = arg else {
-                    let Some(default) = &param.default else {
-                        continue;
-                    };
-                    typed_args.push((param.name.clone(), default.clone()));
-                    continue;
-                };
-                let Some(typed_arg) = typecheck_expr(
-                    arg,
-                    Some(&param.typ),
-                    forwarded_params,
-                    var_env,
-                    type_env,
-                    registry,
-                    annotations,
-                    definition_links,
-                    asset_references,
-                    errors,
-                ) else {
-                    failed = true;
-                    continue;
-                };
-                let arg_type = typed_arg.typ();
-                if arg_type != param.typ {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::FunctionArgumentTypeMismatch {
-                            name: name.clone(),
-                            param_name: param.name.clone(),
-                            expected: param.typ.clone(),
-                            found: arg_type,
-                        },
-                        arg.range().clone(),
-                    ));
-                    failed = true;
-                    continue;
-                }
-                typed_args.push((param.name.clone(), typed_arg));
-            }
-
+            let typed_args = typecheck_call_arguments(
+                &callee,
+                range,
+                &signature.params,
+                supplied,
+                forwarded_params,
+                var_env,
+                type_env,
+                registry,
+                annotations,
+                definition_links,
+                asset_references,
+                errors,
+            );
             if failed {
                 return None;
             }
 
             Some(TypedExpr::FunctionCall {
-                function_name: name.clone().into(),
+                function_name: callee,
                 module: callee_module,
-                args: typed_args,
+                args: typed_args?,
                 typ: signature.return_type.clone(),
             })
         }
@@ -5330,7 +5295,7 @@ mod tests {
             &[],
             "foo(10)",
             expect![[r#"
-                error: Undefined function: foo
+                error: Function foo is not defined
                 foo(10)
                 ^^^
             "#]],

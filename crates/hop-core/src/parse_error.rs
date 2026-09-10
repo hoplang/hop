@@ -2,6 +2,7 @@ use crate::annotation::Annotation;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::token::LangToken;
 use crate::symbols::field_name::InvalidFieldNameError;
+use crate::symbols::function_name::InvalidFunctionNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
 use crate::symbols::type_name::InvalidTypeNameError;
 use crate::symbols::var_name::InvalidVarNameError;
@@ -236,6 +237,9 @@ pub(crate) enum ParseErrorKind {
     #[error("Duplicate variant '{name}'")]
     DuplicateVariant { name: CheapString },
 
+    #[error("Expected function name but got '{actual}'")]
+    ExpectedFunctionNameButGot { actual: LangToken },
+
     #[error("Expected type name but got '{actual}'")]
     ExpectedTypeNameButGot { actual: LangToken },
 
@@ -250,6 +254,9 @@ pub(crate) enum ParseErrorKind {
 
     #[error("{error}")]
     InvalidTypeName { error: InvalidTypeNameError },
+
+    #[error("{error}")]
+    InvalidFunctionName { error: InvalidFunctionNameError },
 
     #[error("{error}")]
     InvalidModuleName { error: InvalidModuleNameError },
@@ -272,14 +279,8 @@ pub(crate) enum ParseErrorKind {
     #[error("Rest parameters are not allowed on views")]
     RestParamNotAllowedOnView,
 
-    #[error("Rest parameters are not allowed on functions")]
-    RestParamNotAllowedOnFunction,
-
     #[error("Examples annotations are not allowed on function parameters")]
     ExamplesNotAllowedOnFunction,
-
-    #[error("Examples annotations are not allowed on component parameters")]
-    ExamplesNotAllowedOnComponent,
 
     #[error("Arguments must either all be named or all be positional")]
     MixedNamedAndPositionalArguments,

@@ -326,26 +326,32 @@ impl TestTypes {
 
     pub fn type_env(&self) -> TypeEnv {
         let decl_range = DocumentCursor::new(self.module.clone(), String::new()).range();
+        let types = self.named.iter().map(|(name, typ)| {
+            (
+                name.to_cheap_string(),
+                Name {
+                    kind: NameKind::Type(typ.clone()),
+                    definition_range: decl_range.clone(),
+                    import_range: None,
+                },
+            )
+        });
+        let functions = self.functions.keys().map(|name| {
+            (
+                name.to_cheap_string(),
+                Name {
+                    kind: NameKind::Function,
+                    definition_range: decl_range.clone(),
+                    import_range: None,
+                },
+            )
+        });
         TypeEnv {
-            names: self
-                .named
-                .iter()
-                .map(|(name, typ)| {
-                    (
-                        name.clone(),
-                        Name {
-                            kind: NameKind::Type(typ.clone()),
-                            definition_range: decl_range.clone(),
-                            import_range: None,
-                        },
-                    )
-                })
-                .collect(),
-            components: HashMap::new(),
+            names: types.chain(functions).collect(),
             functions: self
                 .functions
                 .iter()
-                .map(|(name, signature)| (name.clone(), (signature.clone(), decl_range.clone())))
+                .map(|(name, signature)| (name.to_cheap_string(), signature.clone()))
                 .collect(),
         }
     }

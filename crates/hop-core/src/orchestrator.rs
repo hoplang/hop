@@ -73,7 +73,7 @@ pub fn orchestrate_pure(
         .collect();
 
     let pure_module = compile(assembled_pages, &functions, options.asset_rewriter);
-    // Every component and function in the project is compiled, whether or not
+    // Every function in the project is compiled, whether or not
     // the selected pages reach it. Dropping the unreachable ones keeps a
     // page_filter build to what that page actually needs.
     if options.skip_optimization {

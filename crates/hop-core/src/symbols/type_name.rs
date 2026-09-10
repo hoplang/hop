@@ -42,7 +42,7 @@ impl TypeName {
     }
 
     /// Validate a type name string (PascalCase)
-    fn validate(name: &str) -> Result<(), InvalidTypeNameError> {
+    pub(crate) fn validate(name: &str) -> Result<(), InvalidTypeNameError> {
         if name.is_empty() {
             return Err(InvalidTypeNameError::Empty);
         }
@@ -71,6 +71,10 @@ impl TypeName {
 
     pub fn as_str(&self) -> &str {
         self.value.as_str()
+    }
+
+    pub fn to_cheap_string(&self) -> CheapString {
+        self.value.clone()
     }
 }
 

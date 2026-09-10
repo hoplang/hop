@@ -802,10 +802,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Button(
+                fn Button(
                   label: String,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <button class="btn" ...rest>
                     {label}
                   </button>
@@ -864,23 +864,23 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Leaf(title: String = "d") {
+                fn Leaf(title: String = "d") -> Fragment {
                   <div>
                     {title}
                   </div>
                 }
 
-                component First(
+                fn First(
                   n: Int,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <Second n={n} ...rest/>
                 }
 
-                component Second(
+                fn Second(
                   n: Int,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <>
                     <Leaf ...rest/>
                     <if {0 < n}>
@@ -977,19 +977,19 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn rest_chains_through_a_component_to_an_element() {
+    fn rest_chains_through_a_function_to_an_element() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Base(...rest) {
+                fn Base(...rest) -> Fragment {
                   <div ...rest>
                   </div>
                 }
 
-                component Card(
+                fn Card(
                   title: String,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <section>
                     <h1>
                       {title}
@@ -1060,10 +1060,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Wrapper(
+                fn Wrapper(
                   show: Bool,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <if {show}>
                     <div ...rest>
                     </div>
@@ -1125,7 +1125,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Button(...rest) {
+                fn Button(...rest) -> Fragment {
                   <button ...rest>
                   </button>
                 }
@@ -1176,10 +1176,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Wrapper(
+                fn Wrapper(
                   show: Bool,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <match {show}>
                     <case {true}>
                       <div ...rest>
@@ -1245,7 +1245,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Panel(...rest) {
+                fn Panel(...rest) -> Fragment {
                   <div ...rest>
                   </div>
                 }
@@ -1298,7 +1298,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Icon(...rest) {
+                fn Icon(...rest) -> Fragment {
                   <img ...rest>
                 }
 
@@ -1348,7 +1348,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component A(...rest) {
+                fn A(...rest) -> Fragment {
                   <div ...rest>
                   </div>
                 }
@@ -1397,11 +1397,11 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Button(
+                fn Button(
                   class: String,
                   children: Fragment,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <button class={class} ...rest>
                     {children}
                   </button>
@@ -1465,10 +1465,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Button(
+                fn Button(
                   children: Fragment,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <button class="builtin" ...rest>
                     {children}
                   </button>
@@ -1529,7 +1529,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Svg(...rest) {
+                fn Svg(...rest) -> Fragment {
                   <svg ...rest>
                   </svg>
                 }
@@ -1580,13 +1580,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                   <div>
                     {title}
                   </div>
                 }
 
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                   <Card ...rest/>
                 }
 
@@ -1640,13 +1640,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                   <div>
                     {title}
                   </div>
                 }
 
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                   <Card title="explicit" ...rest/>
                 }
 
@@ -1701,13 +1701,13 @@ mod tests {
                   name: String,
                 }
 
-                component Card(user: User) {
+                fn Card(user: User) -> Fragment {
                   <div>
                     {user.name}
                   </div>
                 }
 
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                   <Card ...rest/>
                 }
 
@@ -1832,23 +1832,23 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                   <div>
                     {title}
                   </div>
                 }
 
-                component Bar(
+                fn Bar(
                   name: String,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <div>
                     {name}
                     <Card ...rest/>
                   </div>
                 }
 
-                component Baz(...rest) {
+                fn Baz(...rest) -> Fragment {
                   <Bar ...rest/>
                 }
 
@@ -1916,7 +1916,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(count: Int) {
+                fn Card(count: Int) -> Fragment {
                   <if {count > 0}>
                     <div>
                       positive
@@ -1924,7 +1924,7 @@ mod tests {
                   </if>
                 }
 
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                   <Card ...rest/>
                 }
 
@@ -1984,10 +1984,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component A(
+                fn A(
                   count: Int,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <div ...rest>
                     <if {count > 0}>
                       positive
@@ -1995,7 +1995,7 @@ mod tests {
                   </div>
                 }
 
-                component B(...rest) {
+                fn B(...rest) -> Fragment {
                   <A ...rest/>
                 }
 
@@ -2057,17 +2057,17 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Foo(children: Fragment) {
+                fn Foo(children: Fragment) -> Fragment {
                   <div>
                     {children}
                   </div>
                 }
 
-                component Bar(...rest) {
+                fn Bar(...rest) -> Fragment {
                   <Foo ...rest/>
                 }
 
-                component Baz(...rest) {
+                fn Baz(...rest) -> Fragment {
                   <Bar ...rest/>
                 }
 
@@ -2133,18 +2133,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Inner(
+                fn Inner(
                   class: String = "x",
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <span class={class} ...rest>
                   </span>
                 }
 
-                component Outer(
+                fn Outer(
                   class: String,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <div class={class}>
                     <Inner ...rest/>
                   </div>
@@ -2214,21 +2214,21 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Foo(
+                fn Foo(
                   children: Fragment,
                   class: String,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <div class={class} ...rest>
                     {children}
                   </div>
                 }
 
-                component Button(
+                fn Button(
                   children: Fragment,
                   class: String = "",
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <Foo class={class} ...rest>
                     {children}
                   </Foo>
@@ -2301,15 +2301,15 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Inner(
+                fn Inner(
                   class: String = "x",
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <span class={class} ...rest>
                   </span>
                 }
 
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                   <Inner ...rest/>
                 }
 
@@ -2371,18 +2371,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component A(
+                fn A(
                   class: String = "",
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <div class={class} ...rest>
                   </div>
                 }
 
-                component B(
+                fn B(
                   class: String = "",
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <A class={class} ...rest/>
                 }
 
@@ -2438,18 +2438,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component A(
+                fn A(
                   class: String = "a",
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <div class={class} ...rest>
                   </div>
                 }
 
-                component B(
+                fn B(
                   class: String = "b",
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <A class={class} ...rest/>
                 }
 
@@ -2505,16 +2505,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component A(
+                fn A(
                   label: String = "x",
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <span ...rest>
                     {label}
                   </span>
                 }
 
-                component B(...rest) {
+                fn B(...rest) -> Fragment {
                   <A ...rest/>
                 }
 
@@ -2568,20 +2568,20 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Leaf(
+                fn Leaf(
                   label: String = "x",
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <span ...rest>
                     {label}
                   </span>
                 }
 
-                component Mid(...rest) {
+                fn Mid(...rest) -> Fragment {
                   <Leaf ...rest/>
                 }
 
-                component Top(...rest) {
+                fn Top(...rest) -> Fragment {
                   <Mid ...rest/>
                 }
 
@@ -2643,12 +2643,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Inner(...rest) {
+                fn Inner(...rest) -> Fragment {
                   <span ...rest>
                   </span>
                 }
 
-                component Wrapper(...rest) {
+                fn Wrapper(...rest) -> Fragment {
                   <Inner title="a" ...rest/>
                 }
 
@@ -2704,10 +2704,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component A(
+                fn A(
                   tabindex: Int,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <div ...rest>
                     <if {tabindex > 0}>
                       focusable
@@ -2715,7 +2715,7 @@ mod tests {
                   </div>
                 }
 
-                component B(...rest) {
+                fn B(...rest) -> Fragment {
                   <A ...rest/>
                 }
 
@@ -3084,11 +3084,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_binding_duplicated_by_inlining_at_two_call_sites() {
+    fn function_binding_duplicated_by_inlining_at_two_call_sites() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Tag(text: String) {
+                fn Tag(text: String) -> Fragment {
                   <let {label: String = text}>
                     <div>
                       {label}
@@ -3142,14 +3142,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_arguments_are_bound_simultaneously() {
+    fn function_arguments_are_bound_simultaneously() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Swap(
+                fn Swap(
                   a: String,
                   b: String,
-                ) {
+                ) -> Fragment {
                   <p>
                     {a} {b}
                   </p>
@@ -3209,10 +3209,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Rows(
+                fn Rows(
                   items: Array[String],
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <for {item in items}>
                     <div ...rest>
                       {item}
@@ -5750,7 +5750,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn enum_match_in_component_prop() {
+    fn enum_match_in_function_prop() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -5760,7 +5760,7 @@ mod tests {
                   Blue,
                 }
 
-                component Badge(color: Color) {
+                fn Badge(color: Color) -> Fragment {
                   <match {color}>
                     <case {Color::Red}>
                       red
@@ -8425,11 +8425,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_parameter_named_typescript_reserved_keyword() {
+    fn recursive_function_parameter_named_typescript_reserved_keyword() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Countdown(delete: Int) {
+                fn Countdown(delete: Int) -> Fragment {
                   <>
                     {delete.to_string()}
                     <if {0 < delete}>
@@ -8492,11 +8492,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_parameter_named_rust_keyword() {
+    fn recursive_function_parameter_named_rust_keyword() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Countdown(type: Int) {
+                fn Countdown(type: Int) -> Fragment {
                   <>
                     {type.to_string()}
                     <if {0 < type}>
@@ -10369,11 +10369,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn simple_component_call() {
+    fn simple_function_call() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: String) {
+                fn Greeting(name: String) -> Fragment {
                   <>
                     Hello,
                     {" "}
@@ -10422,14 +10422,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_with_children() {
+    fn function_with_children() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(
+                fn Card(
                   title: String,
                   children: Fragment,
-                ) {
+                ) -> Fragment {
                   <div class="card">
                     <h2>
                       {title}
@@ -10495,17 +10495,17 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_children_forwarded_to_another_component() {
+    fn function_children_forwarded_to_another_function() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Inner(children: Fragment) {
+                fn Inner(children: Fragment) -> Fragment {
                   <div class="inner">
                     {children}
                   </div>
                 }
 
-                component Outer(children: Fragment) {
+                fn Outer(children: Fragment) -> Fragment {
                   <div class="outer">
                     <Inner>
                       {children}
@@ -10573,11 +10573,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_children_with_component_calls() {
+    fn function_children_with_function_calls() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Header(title: String) {
+                fn Header(title: String) -> Fragment {
                   <header>
                     <h1>
                       {title}
@@ -10585,7 +10585,7 @@ mod tests {
                   </header>
                 }
 
-                component Footer {
+                fn Footer() -> Fragment {
                   <footer>
                     <p>
                       Copyright 2024
@@ -10593,7 +10593,7 @@ mod tests {
                   </footer>
                 }
 
-                component Layout(children: Fragment) {
+                fn Layout(children: Fragment) -> Fragment {
                   <div class="layout">
                     {children}
                   </div>
@@ -10678,11 +10678,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_children_used_twice() {
+    fn function_children_used_twice() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Repeat(children: Fragment) {
+                fn Repeat(children: Fragment) -> Fragment {
                   <>
                     <div class="first">
                       {children}
@@ -10756,7 +10756,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_with_non_recursive_sibling() {
+    fn recursive_function_with_non_recursive_sibling() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -10765,13 +10765,13 @@ mod tests {
                   next: Option[Node],
                 }
 
-                component Badge(text: String) {
+                fn Badge(text: String) -> Fragment {
                   <strong>
                     {text}
                   </strong>
                 }
 
-                component NodeView(node: Node) {
+                fn NodeView(node: Node) -> Fragment {
                   <>
                     <Badge text={node.value}/>
                     <match {node.next}>
@@ -10875,7 +10875,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_with_linked_list() {
+    fn recursive_function_with_linked_list() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -10884,7 +10884,7 @@ mod tests {
                   next: Option[Node],
                 }
 
-                component NodeView(node: Node) {
+                fn NodeView(node: Node) -> Fragment {
                   <>
                     <span>
                       {node.value}
@@ -10998,11 +10998,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_with_default_parameter() {
+    fn function_with_default_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String = "New card") {
+                fn Card(title: String = "New card") -> Fragment {
                   <div>
                     {title}
                   </div>
@@ -11048,11 +11048,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_with_default_parameter_overridden() {
+    fn function_with_default_parameter_overridden() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(title: String = "New card") {
+                fn Card(title: String = "New card") -> Fragment {
                   <div>
                     {title}
                   </div>
@@ -11098,14 +11098,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_with_mixed_default_and_required_parameters() {
+    fn function_with_mixed_default_and_required_parameters() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(
+                fn Card(
                   title: String,
                   subtitle: String = "No subtitle",
-                ) {
+                ) -> Fragment {
                   <div>
                     {title}
                     {" "}
@@ -11162,14 +11162,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_with_mixed_default_and_required_parameters_all_provided() {
+    fn function_with_mixed_default_and_required_parameters_all_provided() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(
+                fn Card(
                   title: String,
                   subtitle: String = "No subtitle",
-                ) {
+                ) -> Fragment {
                   <div>
                     {title}
                     {" "}
@@ -11226,15 +11226,15 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_with_multiple_default_parameters() {
+    fn function_with_multiple_default_parameters() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(
+                fn Card(
                   title: String = "Default",
                   subtitle: String = "Sub",
                   footer: String = "End",
-                ) {
+                ) -> Fragment {
                   <div>
                     {title}
                     {" "}
@@ -11300,14 +11300,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_with_optional_children() {
+    fn function_with_optional_children() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(
+                fn Card(
                   title: String,
                   children: Fragment = <></>,
-                ) {
+                ) -> Fragment {
                   <div class="card">
                     <h2>
                       {title}
@@ -11364,14 +11364,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn component_with_optional_children_called_with_and_without_argument() {
+    fn function_with_optional_children_called_with_and_without_argument() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(
+                fn Card(
                   title: String,
                   children: Fragment = <></>,
-                ) {
+                ) -> Fragment {
                   <div class="card">
                     <h2>
                       {title}
@@ -11969,7 +11969,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn enum_bool_field_destructured_in_component() {
+    fn enum_bool_field_destructured_in_function() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -11980,7 +11980,7 @@ mod tests {
                   },
                 }
 
-                component RenderItem(item: Item) {
+                fn RenderItem(item: Item) -> Fragment {
                   <match {item}>
                     <case {Item::Todo {label: l, done: d}}>
                       <if {d}>
@@ -12063,7 +12063,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn enum_int_field_compared_in_component() {
+    fn enum_int_field_compared_in_function() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -12076,7 +12076,7 @@ mod tests {
                   },
                 }
 
-                component Render(time: TimeAgo) {
+                fn Render(time: TimeAgo) -> Fragment {
                   <match {time}>
                     <case {TimeAgo::MinutesAgo {count: c}}>
                       {match c == 1 {
@@ -12161,7 +12161,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn enum_wildcard_field_in_component() {
+    fn enum_wildcard_field_in_function() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -12172,7 +12172,7 @@ mod tests {
                   },
                 }
 
-                component RenderCode(block: CodeBlock) {
+                fn RenderCode(block: CodeBlock) -> Fragment {
                   <match {block}>
                     <case {CodeBlock::Snippet {language: _, code: c}}>
                       <code>
@@ -12230,7 +12230,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn enum_field_named_type_in_component() {
+    fn enum_field_named_type_in_function() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -12244,7 +12244,7 @@ mod tests {
                   },
                 }
 
-                component Render(el: ButtonElement) {
+                fn Render(el: ButtonElement) -> Fragment {
                   <match {el}>
                     <case {ButtonElement::Link {href: h}}>
                       <a href={h}>
@@ -12535,14 +12535,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_with_children_renders() {
+    fn recursive_function_with_children_renders() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Nest(
+                fn Nest(
                   depth: Int,
                   children: Fragment,
-                ) {
+                ) -> Fragment {
                   <match {depth > 0}>
                     <case {true}>
                       <div>
@@ -12645,7 +12645,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Foo(children: Fragment) {
+                fn Foo(children: Fragment) -> Fragment {
                   <let {x = children}>
                     <div>
                       {x}
@@ -12714,13 +12714,13 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Inner(children: Fragment) {
+                fn Inner(children: Fragment) -> Fragment {
                   <em>
                     {children}
                   </em>
                 }
 
-                component Outer(children: Fragment) {
+                fn Outer(children: Fragment) -> Fragment {
                   <section>
                     <Inner>
                       {children}
@@ -12780,14 +12780,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_carries_a_rest() {
+    fn recursive_function_carries_a_rest() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Nest(
+                fn Nest(
                   n: Int,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <div ...rest>
                     <if {0 < n}>
                       <Nest n={n - 1}/>
@@ -12859,11 +12859,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_with_int_param() {
+    fn recursive_function_with_int_param() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Countdown(n: Int) {
+                fn Countdown(n: Int) -> Fragment {
                   <>
                     {n.to_string()}
                     <if {0 < n}>
@@ -12926,14 +12926,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_with_option_param() {
+    fn recursive_function_with_option_param() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Loop(
+                fn Loop(
                   n: Int,
                   label: Option[String],
-                ) {
+                ) -> Fragment {
                   <>
                     <match {label}>
                       <case {Some(text)}>
@@ -13027,11 +13027,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_with_option_arg_used_twice() {
+    fn recursive_function_with_option_arg_used_twice() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component C(x: Option[String]) {
+                fn C(x: Option[String]) -> Fragment {
                   <if {x.is_none()}>
                     <C x={x}/>
                   </if>
@@ -13096,11 +13096,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn mutually_recursive_components() {
+    fn mutually_recursive_functions() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Even(n: Int) {
+                fn Even(n: Int) -> Fragment {
                   <>
                     <if {n == 0}>
                       even
@@ -13111,7 +13111,7 @@ mod tests {
                   </>
                 }
 
-                component Odd(n: Int) {
+                fn Odd(n: Int) -> Fragment {
                   <>
                     <if {n == 0}>
                       odd
@@ -13270,11 +13270,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_with_empty_array_arg() {
+    fn recursive_function_with_empty_array_arg() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component C(p: Array[String]) {
+                fn C(p: Array[String]) -> Fragment {
                   <for {_ in p}>
                     <C p={[]}/>
                   </for>
@@ -13332,7 +13332,7 @@ mod tests {
                   f: Array[String],
                 }
 
-                component C(p: Array[String]) {
+                fn C(p: Array[String]) -> Fragment {
                   <if {R {f: p}.f.is_empty()}>
                     <C p={[]}/>
                   </if>
@@ -13390,11 +13390,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn option_bool_match_in_component() {
+    fn option_bool_match_in_function() {
         check(
             indoc! {r#"
                 -- main.hop --
-                pub component OptBool(checked: Option[Bool]) {
+                pub fn OptBool(checked: Option[Bool]) -> Fragment {
                   <match {checked}>
                     <case {Some(true)}>
                       <span>
@@ -13779,7 +13779,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                pub component Show(label: String) {
+                pub fn Show(label: String) -> Fragment {
                   <span>
                     {label}
                   </span>
@@ -14371,7 +14371,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn record_spread_in_match_arm_passed_as_component_prop() {
+    fn record_spread_in_match_arm_passed_as_function_prop() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -14380,7 +14380,7 @@ mod tests {
                   selected: Bool,
                 }
 
-                component Row(item: Item) {
+                fn Row(item: Item) -> Fragment {
                   <div>
                     {item.label}
                   </div>
@@ -14477,7 +14477,7 @@ mod tests {
                   settings: Settings,
                 }
 
-                component Dark(s: State) {
+                fn Dark(s: State) -> Fragment {
                   <let {t = Settings {...s.settings, theme: "dark"}}>
                     <let {next = State {...s, settings: t}}>
                       {next.query}
@@ -14563,55 +14563,6 @@ mod tests {
                 }
                 -- expected output --
                 bar
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn function_with_default_parameter() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                fn label(prefix: String, count: Int = 1) -> String {
-                  prefix + count.to_string()
-                }
-
-                view Test {
-                  <div>{label(prefix: "a")}{label(prefix: "b", count: 2)}</div>
-                }
-            "#},
-            "<div>a1b2</div>",
-            expect![[r#"
-                -- ir (unoptimized) --
-                fn label@f0(prefix@v0: String, count@v1: Int) -> String {
-                  (v0 + v1.to_string())
-                }
-                page Test() {
-                  write("<div")
-                  write(">")
-                  write_string(call label@f0(prefix = "a", count = 1))
-                  write_string(call label@f0(prefix = "b", count = 2))
-                  write("</div>")
-                }
-                -- ir (optimized) --
-                page Test() {
-                  write("<div>a1b2</div>")
-                }
-                -- expected output --
-                <div>a1b2</div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -14753,7 +14704,7 @@ mod tests {
                   x + 10
                 }
 
-                component Wrapper {
+                fn Wrapper() -> Fragment {
                   <div>
                     <for {x in 0..=foo(-7)}>
                       {x.to_string()}
@@ -14960,11 +14911,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn markup_passed_as_a_component_attribute() {
+    fn markup_passed_as_a_function_attribute() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
+                fn Card(slot: Fragment) -> Fragment {
                   <div>{slot}</div>
                 }
 
@@ -15075,7 +15026,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn a_call_as_a_component_body() {
+    fn a_call_as_a_function_body() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -15083,7 +15034,7 @@ mod tests {
                   <div>{label}</div>
                 }
 
-                component Outer() {
+                fn Outer() -> Fragment {
                   card("hello")
                 }
 
@@ -15363,11 +15314,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn same_named_components_in_different_modules() {
+    fn same_named_functions_in_different_modules() {
         check(
             indoc! {r#"
                 -- main.hop --
-                component Card {
+                fn Card() -> Fragment {
                   <span>A</span>
                 }
 
@@ -15375,7 +15326,7 @@ mod tests {
                   <Card />
                 }
                 -- other.hop --
-                component Card {
+                fn Card() -> Fragment {
                   <span>B</span>
                 }
 
@@ -15431,7 +15382,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn function_and_component_sharing_a_snake_case_name() {
+    fn functions_whose_names_differ_only_by_case() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -15439,7 +15390,7 @@ mod tests {
                   x
                 }
 
-                component NavBar {
+                fn NavBar() -> Fragment {
                   <b>nav</b>
                 }
 

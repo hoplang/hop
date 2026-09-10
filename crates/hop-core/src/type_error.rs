@@ -1,9 +1,10 @@
 use crate::annotation::Annotation;
-use crate::document::DocumentRange;
+use crate::document::{CheapString, DocumentRange};
 use crate::hop::patterns::typed::TypedMatchPattern;
 use crate::hop::typing::r#type::Type;
 use crate::program::Severity;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -62,26 +63,17 @@ impl Annotation for TypeError {
 
 #[derive(Debug, Clone, Error)]
 pub(crate) enum TypeErrorKind {
-    #[error("Component {tag_name} is not defined")]
-    UndefinedComponent { tag_name: TypeName },
-
-    #[error("Module {module} does not declare a type {type_name}")]
-    UndeclaredType {
+    #[error("Module {module} does not declare {name}")]
+    UndeclaredName {
         module: ModuleName,
-        type_name: TypeName,
+        name: CheapString,
     },
 
-    #[error("Type {type_name} from module {module} is not public")]
+    #[error("{name} from module {module} is not public")]
     NotPublic {
         module: ModuleName,
-        type_name: TypeName,
+        name: CheapString,
     },
-
-    #[error("Module {module} does not declare a function {name}")]
-    UndeclaredFunction { module: ModuleName, name: VarName },
-
-    #[error("Function {name} from module {module} is not public")]
-    FunctionNotPublic { module: ModuleName, name: VarName },
 
     #[error("Module {module} was not found")]
     ModuleNotFound { module: ModuleName },
@@ -93,15 +85,15 @@ pub(crate) enum TypeErrorKind {
     HtmlStructureTagNotAllowed { tag: &'static str },
 
     #[error("Unused import '{import_name}'")]
-    UnusedImport { import_name: TypeName },
+    UnusedImport { import_name: CheapString },
 
-    #[error("Unused import '{import_name}'")]
-    UnusedFunctionImport { import_name: VarName },
+    #[error("Function {name} does not accept content (missing `children: Fragment` parameter)")]
+    FunctionDoesNotAcceptChildren { name: FunctionName },
 
     #[error(
-        "Component {component} does not accept content (missing `children: Fragment` parameter)"
+        "Function {name} returns `{found}`; only a function returning `Fragment` can be invoked as a tag"
     )]
-    ComponentDoesNotAcceptChildren { component: TypeName },
+    FunctionTagReturnTypeMismatch { name: FunctionName, found: Type },
 
     #[error("Content provided both as an explicit `children` argument and as element children")]
     ChildContentAmbiguous,
@@ -118,26 +110,29 @@ pub(crate) enum TypeErrorKind {
     #[error("Mismatched type for condition: expected `Bool` got `{found}`")]
     ConditionTypeMismatch { found: Type },
 
-    #[error("Component requires arguments: {args}")]
-    MissingArguments { args: String },
+    #[error("Function {name} requires arguments: {args}")]
+    MissingArguments { name: FunctionName, args: String },
 
-    #[error("Component `{component}` does not accept attribute `{attr}`")]
-    ComponentDoesNotAcceptAttribute { component: TypeName, attr: String },
+    #[error("Function {name} does not accept attribute `{attr}`")]
+    FunctionDoesNotAcceptAttribute { name: FunctionName, attr: String },
 
-    #[error("Rest spread of {component} forms a cycle and never reaches an element")]
-    RestSpreadCycle { component: TypeName },
+    #[error("Mismatched type for attribute: expected `String` got `{found}`")]
+    AttributeTypeMismatch { found: Type },
 
-    #[error("Component {component} declares rest parameter '{name}' but never spreads it")]
-    RestNeverSpread { component: TypeName, name: VarName },
+    #[error("Rest spread of {name} forms a cycle and never reaches an element")]
+    RestSpreadCycle { name: FunctionName },
+
+    #[error("Function {function} declares rest parameter '{name}' but never spreads it")]
+    RestNeverSpread {
+        function: FunctionName,
+        name: VarName,
+    },
 
     #[error("Rest parameter '{name}' is spread more than once")]
     RestSpreadMoreThanOnce { name: VarName },
 
     #[error("Spread '...{name}' does not refer to a declared rest parameter")]
     SpreadNotDeclaredRest { name: VarName },
-
-    #[error("Mismatched type: expected `{expected}` got `{found}`")]
-    ArgumentTypeMismatch { expected: Type, found: Type },
 
     #[error("Default values must be constant")]
     DefaultValueMustBeConstant,
@@ -215,8 +210,11 @@ pub(crate) enum TypeErrorKind {
     #[error("Type '{type_name}' is not defined")]
     UndefinedType { type_name: TypeName },
 
-    #[error("`{name}` is a component and cannot be used as a type")]
-    ComponentUsedAsType { name: TypeName },
+    #[error("`{name}` is a function and cannot be used as a type")]
+    FunctionUsedAsType { name: TypeName },
+
+    #[error("`{name}` is a page and cannot be used as a type")]
+    PageUsedAsType { name: TypeName },
 
     #[error("Record type '{record_name}' is not defined")]
     UndefinedRecord { record_name: TypeName },
@@ -339,7 +337,7 @@ pub(crate) enum TypeErrorKind {
     DuplicateParameter { name: VarName },
 
     #[error("{name} is already defined")]
-    TypeNameIsAlreadyDefined { name: TypeName },
+    NameIsAlreadyDefined { name: CheapString },
 
     #[error("Mismatched type for '{macro_name}': expected `{expected}` got `{found}`")]
     MacroArgumentTypeMismatch {
@@ -383,12 +381,12 @@ pub(crate) enum TypeErrorKind {
     #[error("asset! path must start with '/'")]
     AssetPathMustBeAbsolute,
 
-    #[error("Undefined function: {name}")]
-    UndefinedFunction { name: VarName },
+    #[error("Function {name} is not defined")]
+    UndefinedFunction { name: FunctionName },
 
     #[error("Function '{name}' expects {expected} argument(s), got {found}")]
     FunctionArgumentCountMismatch {
-        name: VarName,
+        name: FunctionName,
         expected: String,
         found: usize,
     },
@@ -397,23 +395,20 @@ pub(crate) enum TypeErrorKind {
         "Mismatched type for argument '{param_name}' of function '{name}': expected `{expected}` got `{found}`"
     )]
     FunctionArgumentTypeMismatch {
-        name: VarName,
+        name: FunctionName,
         param_name: VarName,
         expected: Type,
         found: Type,
     },
 
-    #[error("Function {name} is already defined")]
-    FunctionNameIsAlreadyDefined { name: VarName },
-
     #[error("Function {name} does not accept argument `{argument}`")]
-    FunctionDoesNotAcceptArgument { name: VarName, argument: VarName },
+    FunctionDoesNotAcceptArgument {
+        name: FunctionName,
+        argument: VarName,
+    },
 
     #[error("Argument `{argument}` is supplied more than once")]
     DuplicateArgument { argument: VarName },
-
-    #[error("Function {name} requires arguments: {args}")]
-    MissingFunctionArguments { name: VarName, args: String },
 
     #[error("Mismatched type for function body: expected `{expected}` got `{found}`")]
     FunctionBodyTypeMismatch { expected: Type, found: Type },
@@ -428,7 +423,6 @@ impl TypeErrorKind {
         match self {
             TypeErrorKind::UnusedVariable { .. }
             | TypeErrorKind::UnusedImport { .. }
-            | TypeErrorKind::UnusedFunctionImport { .. }
             | TypeErrorKind::MatchUnusedBinding { .. } => Severity::Warning,
             _ => Severity::Error,
         }

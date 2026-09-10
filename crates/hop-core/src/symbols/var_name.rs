@@ -67,7 +67,7 @@ impl VarName {
     }
 
     /// Validate a variable name string (snake_case only)
-    fn validate(name: &str) -> Result<(), InvalidVarNameError> {
+    pub(crate) fn validate(name: &str) -> Result<(), InvalidVarNameError> {
         if name.is_empty() {
             return Err(InvalidVarNameError::Empty);
         }
@@ -119,6 +119,10 @@ impl VarName {
     }
     pub fn as_str(&self) -> &str {
         self.value.as_str()
+    }
+
+    pub fn to_cheap_string(&self) -> CheapString {
+        self.value.clone()
     }
 }
 

@@ -266,7 +266,7 @@ fn collect_pattern_definition_links(
             args,
             ..
         } => {
-            if let Some(name) = type_env.names.get(enum_name) {
+            if let Some(name) = type_env.names.get(enum_name.as_str()) {
                 definition_links.push(DefinitionLink {
                     use_range: enum_name_range.clone(),
                     definition_range: name.definition_range.clone(),

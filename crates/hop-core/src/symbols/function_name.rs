@@ -1,28 +1,25 @@
 use std::fmt::{self, Display};
 
 use crate::document::CheapString;
-use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
+use crate::symbols::type_name::{InvalidTypeNameError, TypeName};
+use crate::symbols::var_name::{InvalidVarNameError, VarName};
 use thiserror::Error;
 
 /// Error type for invalid function names
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InvalidFunctionNameError {
-    #[error("Function name must start with an ASCII letter")]
-    DoesNotStartWithLetter,
+    #[error("{0}")]
+    PascalCase(InvalidTypeNameError),
 
-    #[error("Function name contains invalid character: '{0}'")]
-    InvalidCharacter(char),
-
-    #[error("Function name cannot be empty")]
-    Empty,
+    #[error("{0}")]
+    SnakeCase(InvalidVarNameError),
 }
 
 /// A FunctionName represents a validated function name.
 ///
-/// Unlike `TypeName` (PascalCase-only) or `VarName` (snake_case-only), a
-/// FunctionName accepts both: it is the IR-level name for both recursive
-/// components (PascalCase) and source-level functions (snake_case).
+/// A function name is either a `TypeName` (PascalCase) or a `VarName`
+/// (snake_case). Only the former can be invoked as a tag, since a lowercase
+/// tag is an HTML element.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct FunctionName {
     value: CheapString,
@@ -37,31 +34,28 @@ impl FunctionName {
         })
     }
 
-    /// Validate a function name string (ASCII letter followed by ASCII
-    /// alphanumerics/underscores)
+    /// Create a new FunctionName from a CheapString, validating it
+    pub fn from_cheap_string(name: CheapString) -> Result<Self, InvalidFunctionNameError> {
+        Self::validate(name.as_str())?;
+        Ok(FunctionName { value: name })
+    }
+
+    /// Validate a function name string: PascalCase when it starts with an
+    /// uppercase letter, snake_case otherwise.
     fn validate(name: &str) -> Result<(), InvalidFunctionNameError> {
-        if name.is_empty() {
-            return Err(InvalidFunctionNameError::Empty);
+        if name.starts_with(|c: char| c.is_ascii_uppercase()) {
+            TypeName::validate(name).map_err(InvalidFunctionNameError::PascalCase)
+        } else {
+            VarName::validate(name).map_err(InvalidFunctionNameError::SnakeCase)
         }
-
-        let mut chars = name.chars();
-        let first_char = chars.next().unwrap();
-
-        if !first_char.is_ascii_alphabetic() {
-            return Err(InvalidFunctionNameError::DoesNotStartWithLetter);
-        }
-
-        for c in chars {
-            if !c.is_ascii_alphanumeric() && c != '_' {
-                return Err(InvalidFunctionNameError::InvalidCharacter(c));
-            }
-        }
-
-        Ok(())
     }
 
     pub fn as_str(&self) -> &str {
         self.value.as_str()
+    }
+
+    pub fn to_cheap_string(&self) -> CheapString {
+        self.value.clone()
     }
 
     /// Convert the function name to snake_case (identity for names that are
@@ -181,34 +175,58 @@ mod tests {
     fn rejects_function_name_starting_with_digit() {
         reject(
             "123format",
-            InvalidFunctionNameError::DoesNotStartWithLetter,
+            InvalidFunctionNameError::SnakeCase(InvalidVarNameError::StartsWithDigit),
         );
     }
 
     #[test]
     fn rejects_function_name_starting_with_underscore() {
-        reject("_format", InvalidFunctionNameError::DoesNotStartWithLetter);
+        reject(
+            "_format",
+            InvalidFunctionNameError::SnakeCase(InvalidVarNameError::StartsWithUnderscore),
+        );
     }
 
     #[test]
     fn rejects_function_name_with_hyphen() {
         reject(
             "format-price",
-            InvalidFunctionNameError::InvalidCharacter('-'),
+            InvalidFunctionNameError::SnakeCase(InvalidVarNameError::InvalidCharacter('-')),
         );
     }
 
     #[test]
-    fn rejects_function_name_with_space() {
+    fn rejects_pascal_case_function_name_with_underscore() {
         reject(
-            "format price",
-            InvalidFunctionNameError::InvalidCharacter(' '),
+            "Format_Price",
+            InvalidFunctionNameError::PascalCase(InvalidTypeNameError::InvalidCharacter('_')),
+        );
+    }
+
+    #[test]
+    fn rejects_mixed_case_snake_case_function_name() {
+        reject(
+            "formatPrice",
+            InvalidFunctionNameError::SnakeCase(InvalidVarNameError::NotSnakeCase('P')),
+        );
+    }
+
+    #[test]
+    fn rejects_reserved_type_name() {
+        reject(
+            "Error",
+            InvalidFunctionNameError::PascalCase(InvalidTypeNameError::Reserved(
+                "Error".to_string(),
+            )),
         );
     }
 
     #[test]
     fn rejects_empty_function_name() {
-        reject("", InvalidFunctionNameError::Empty);
+        reject(
+            "",
+            InvalidFunctionNameError::SnakeCase(InvalidVarNameError::Empty),
+        );
     }
 
     #[test]

@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_params() {
+    fn page_with_params() {
         check(
             build_page("Greeting", [("name", Type::String)], |b| {
                 b.text("Hello, ");

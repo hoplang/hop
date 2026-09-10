@@ -116,7 +116,7 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                component Main(name: String, count: Int) {<div>{name}</div>}
+                fn Main(name: String, count: Int) -> Fragment {<div>{name}</div>}
             "#},
             expect![[r#"
                 -- hop.toml --
@@ -124,10 +124,10 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                component Main(
+                fn Main(
                   name: String,
                   count: Int,
-                ) {
+                ) -> Fragment {
                   <div>
                     {name}
                   </div>
@@ -145,9 +145,9 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                component Main {<div>hello</div>}
+                fn Main() -> Fragment {<div>hello</div>}
                 -- other.hop --
-                component Other {<span>world</span>}
+                fn Other() -> Fragment {<span>world</span>}
             "#},
             expect![[r#"
                 -- hop.toml --
@@ -155,13 +155,13 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     hello
                   </div>
                 }
                 -- other.hop --
-                component Other {
+                fn Other() -> Fragment {
                   <span>
                     world
                   </span>
@@ -179,9 +179,9 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                component Main {<div>hello</div>}
+                fn Main() -> Fragment {<div>hello</div>}
                 -- other.hop --
-                component Other {<span>world</span>}
+                fn Other() -> Fragment {<span>world</span>}
             "#},
             "main.hop",
             expect![[r#"
@@ -190,13 +190,13 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     hello
                   </div>
                 }
                 -- other.hop --
-                component Other {<span>world</span>}
+                fn Other() -> Fragment {<span>world</span>}
             "#]],
         )
     }
@@ -210,34 +210,34 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                component Main {<div>hello</div>}
+                fn Main() -> Fragment {<div>hello</div>}
                 -- broken.hop --
-                component Broken {
+                fn Broken() -> Fragment {
                   <div>
             "#},
             expect![[r#"
                 Formatting failed:
                 error: Unmatched '{'
-                  --> broken.hop (line 1, col 18)
-                1 | component Broken {
-                  |                  ^
+                  --> broken.hop (line 1, col 25)
+                1 | fn Broken() -> Fragment {
+                  |                         ^
 
                 error: Unclosed <div>
                   --> broken.hop (line 2, col 4)
-                1 | component Broken {
+                1 | fn Broken() -> Fragment {
                 2 |   <div>
                   |    ^^^
             "#]],
             expect![[r#"
                 -- broken.hop --
-                component Broken {
+                fn Broken() -> Fragment {
                   <div>
                 -- hop.toml --
                 [compile]
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                component Main {<div>hello</div>}
+                fn Main() -> Fragment {<div>hello</div>}
             "#]],
         )
     }

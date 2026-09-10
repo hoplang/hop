@@ -1,9 +1,9 @@
 use super::parse_expr;
 use super::parse_helpers;
 use super::parsed_ast::{
-    ImportedName, ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
-    ParsedEnumDeclarationVariant, ParsedFieldDeclaration, ParsedFunctionDeclaration,
-    ParsedImportDeclaration, ParsedPageDeclaration, ParsedRecordDeclaration,
+    ParsedAst, ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
+    ParsedFieldDeclaration, ParsedFunctionDeclaration, ParsedImportDeclaration,
+    ParsedPageDeclaration, ParsedRecordDeclaration,
 };
 use super::tokenize_expr;
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
@@ -17,6 +17,7 @@ use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::parsing::token::LangToken;
 use crate::hop::parsing::token::LangTokenPair;
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -68,11 +69,6 @@ pub fn parse(document_id: DocumentId, document: Document, errors: &mut ParseErro
                 pub_range,
             )
             .map(ParsedDeclaration::Enum)
-        } else if let Some(keyword) =
-            parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Component)
-        {
-            parse_component_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
-                .map(ParsedDeclaration::Component)
         } else if let Some(keyword) =
             parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::View)
         {
@@ -172,29 +168,12 @@ fn parse_import_declaration(
     let Some(module_path_range) = module_path else {
         return Err(errors.emit(ParseErrorKind::ImportPathTooShort {}, name_range));
     };
-    let name = match last_token.uppercase_identifier() {
-        Some(type_name) => match TypeName::from_cheap_string(type_name) {
-            Ok(name) => ImportedName::Type(name),
-            Err(error) => {
-                return Err(errors.emit(ParseErrorKind::InvalidTypeName { error }, name_range));
-            }
-        },
-        None => {
-            let function_name = name_range.to_cheap_string();
-            match VarName::from_cheap_string(function_name.clone()) {
-                Ok(name) => ImportedName::Function(name),
-                Err(error) => {
-                    return Err(errors.emit(
-                        ParseErrorKind::InvalidVariableName {
-                            name: function_name,
-                            error,
-                        },
-                        name_range,
-                    ));
-                }
-            }
-        }
-    };
+    let name = last_token
+        .identifier()
+        .expect("import path segments are identifiers");
+    if let Err(error) = FunctionName::from_cheap_string(name.clone()) {
+        return Err(errors.emit(ParseErrorKind::InvalidFunctionName { error }, name_range));
+    }
     let module_name = match ModuleName::new(module_path_range.as_str()) {
         Ok(name) => name,
         Err(e) => {
@@ -341,80 +320,6 @@ fn parse_field_declarations(
     )
 }
 
-fn parse_component_declaration(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    keyword_range: DocumentRange,
-    pub_range: Option<DocumentRange>,
-) -> Result<ParsedComponentDeclaration, ErrorEmitted> {
-    let (name_str, name_range) = match tokenize_expr::next(iter, comments, errors) {
-        Some((LangToken::Identifier(name_str), range)) => (name_str, range),
-        Some((actual, range)) => {
-            return Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGot { actual }, range));
-        }
-        None => {
-            return Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGotEof {}, keyword_range));
-        }
-    };
-    let parsed_params =
-        match parse_helpers::advance_if(iter, comments, errors, LangToken::LeftParen) {
-            Some(left_paren) => Some(parse_parameters(iter, comments, errors, &left_paren)?),
-            None => None,
-        };
-    let mut params = Vec::new();
-    let mut params_range = None;
-    let mut rest_param: Option<(VarName, DocumentRange)> = None;
-    if let Some((items, range)) = parsed_params {
-        params_range = Some(range);
-        let count = items.len();
-        for (index, item) in items.into_iter().enumerate() {
-            match item {
-                ParameterItem::Parameter(parameter) => {
-                    if let Some(examples_range) = &parameter.examples_range {
-                        let _ = errors.emit(
-                            ParseErrorKind::ExamplesNotAllowedOnComponent {},
-                            examples_range.clone(),
-                        );
-                    }
-                    params.push(*parameter);
-                }
-                ParameterItem::Rest { var_name, range } => {
-                    if index + 1 != count {
-                        let _ = errors.emit(ParseErrorKind::RestParamMustBeLast {}, range.clone());
-                    }
-                    match rest_param {
-                        Some(_) => {
-                            let _ = errors.emit(ParseErrorKind::DuplicateRestParam {}, range);
-                        }
-                        None => rest_param = Some((var_name, range)),
-                    }
-                }
-            }
-        }
-    }
-    let (body, body_end) = parse_declaration_body(iter, comments, errors, &name_range)?;
-    let component_name = match TypeName::new(&name_str) {
-        Ok(n) => n,
-        Err(error) => {
-            return Err(errors.emit(ParseErrorKind::InvalidTypeName { error }, name_range));
-        }
-    };
-    Ok(ParsedComponentDeclaration {
-        component_name,
-        name_range,
-        params,
-        params_range,
-        rest_param,
-        range: pub_range
-            .clone()
-            .unwrap_or_else(|| keyword_range.clone())
-            .to(body_end),
-        body,
-        pub_range,
-    })
-}
-
 fn parse_page_or_view_header(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
@@ -559,27 +464,11 @@ fn parse_function_declaration(
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedFunctionDeclaration, ErrorEmitted> {
     let (name, name_range) =
-        parse_helpers::expect_variable_name(iter, comments, errors, eof_range)?;
+        parse_helpers::expect_function_name(iter, comments, errors, eof_range)?;
     let left_paren =
         parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
     let (items, _) = parse_parameters(iter, comments, errors, &left_paren)?;
-    let mut params = Vec::new();
-    for item in items {
-        match item {
-            ParameterItem::Parameter(parameter) => {
-                if let Some(examples_range) = &parameter.examples_range {
-                    let _ = errors.emit(
-                        ParseErrorKind::ExamplesNotAllowedOnFunction {},
-                        examples_range.clone(),
-                    );
-                }
-                params.push(*parameter);
-            }
-            ParameterItem::Rest { range, .. } => {
-                let _ = errors.emit(ParseErrorKind::RestParamNotAllowedOnFunction {}, range);
-            }
-        }
-    }
+    let (params, rest_param) = build_function_parameters(items, errors);
     let return_type = match parse_helpers::advance_if(iter, comments, errors, LangToken::Arrow) {
         Some(_) => parse_type(iter, comments, errors, eof_range),
         None => Err(errors.emit(
@@ -604,6 +493,7 @@ fn parse_function_declaration(
         name,
         name_range,
         params,
+        rest_param,
         return_type: return_type?,
         body,
         range: pub_range
@@ -612,6 +502,40 @@ fn parse_function_declaration(
             .to(braces),
         pub_range,
     })
+}
+
+fn build_function_parameters(
+    items: Vec<ParameterItem>,
+    errors: &mut ParseErrors,
+) -> (Vec<ParsedParameter>, Option<(VarName, DocumentRange)>) {
+    let mut params = Vec::new();
+    let mut rest_param: Option<(VarName, DocumentRange)> = None;
+    let count = items.len();
+    for (index, item) in items.into_iter().enumerate() {
+        match item {
+            ParameterItem::Parameter(parameter) => {
+                if let Some(examples_range) = &parameter.examples_range {
+                    let _ = errors.emit(
+                        ParseErrorKind::ExamplesNotAllowedOnFunction {},
+                        examples_range.clone(),
+                    );
+                }
+                params.push(*parameter);
+            }
+            ParameterItem::Rest { var_name, range } => {
+                if index + 1 != count {
+                    let _ = errors.emit(ParseErrorKind::RestParamMustBeLast {}, range.clone());
+                }
+                match rest_param {
+                    Some(_) => {
+                        let _ = errors.emit(ParseErrorKind::DuplicateRestParam {}, range);
+                    }
+                    None => rest_param = Some((var_name, range)),
+                }
+            }
+        }
+    }
+    (params, rest_param)
 }
 
 /// An item in a parameter list as written. Every declaration's parameter
@@ -970,12 +894,12 @@ mod tests {
     fn accepts_children_round_trip() {
         accept(
             indoc! {"
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                   <div>{children}</div>
                 }
             "},
             expect![[r#"
-                component Card(children: Fragment) {
+                fn Card(children: Fragment) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -987,15 +911,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_pub_on_component() {
+    fn accepts_pub_on_function() {
         accept(
             indoc! {"
-                pub component Button(label: String) {
+                pub fn Button(label: String) -> Fragment {
                   <button>{label}</button>
                 }
             "},
             expect![[r#"
-                pub component Button(label: String) {
+                pub fn Button(label: String) -> Fragment {
                   html(
                     tag: "button",
                     attrs: [],
@@ -1032,7 +956,7 @@ mod tests {
             indoc! {"
                 pub import other::Foo
 
-                component Main {
+                fn Main() -> Fragment {
                   <Foo/>
                 }
             "},
@@ -1044,7 +968,7 @@ mod tests {
                 -- ast --
                 import other::Foo
 
-                component Main {
+                fn Main() -> Fragment {
                   Foo(attrs: [])
                 }
             "#]],
@@ -1066,19 +990,19 @@ mod tests {
     }
 
     #[test]
-    fn accepts_comment_between_components() {
+    fn accepts_comment_between_functions() {
         accept(
             indoc! {"
-                component First {<></>}
+                fn First() -> Fragment {<></>}
                 // This is a comment
-                component Second {<></>}
+                fn Second() -> Fragment {<></>}
             "},
             expect![[r#"
-                component First {
+                fn First() -> Fragment {
                   fragment()
                 }
 
-                component Second {
+                fn Second() -> Fragment {
                   fragment()
                 }
             "#]],
@@ -1125,15 +1049,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_keyword_component_syntax() {
+    fn accepts_keyword_function_syntax() {
         accept(
             indoc! {"
-                component Foo {
+                fn Foo() -> Fragment {
                   <div>hello</div>
                 }
             "},
             expect![[r#"
-                component Foo {
+                fn Foo() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1145,15 +1069,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_keyword_component_with_params() {
+    fn accepts_keyword_function_with_params() {
         accept(
             indoc! {"
-                component Foo(name: String, count: Int) {
+                fn Foo(name: String, count: Int) -> Fragment {
                   <div>{name}</div>
                 }
             "},
             expect![[r#"
-                component Foo(name: String, count: Int) {
+                fn Foo(name: String, count: Int) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1165,21 +1089,21 @@ mod tests {
     }
 
     #[test]
-    fn accepts_keyword_component_with_trailing_comment() {
+    fn accepts_keyword_function_with_trailing_comment() {
         accept(
             indoc! {r#"
-                component Button(
+                fn Button(
                   // The button label
                   label: String,
                   // Whether the button is disabled
                   disabled: Bool = false,
                   // More params to come
-                ) {
+                ) -> Fragment {
                   <>{label}</>
                 }
             "#},
             expect![[r#"
-                component Button(label: String, disabled: Bool = false) {
+                fn Button(label: String, disabled: Bool = false) -> Fragment {
                   fragment(interpolate(label))
                 }
             "#]],
@@ -1196,7 +1120,7 @@ mod tests {
                 record S {
                   s: T,
                 }
-                component Main(i: Array[S]) {
+                fn Main(i: Array[S]) -> Fragment {
                     <>
                         <for {j in i}>
                             <for {k in j.s.t}>
@@ -1222,7 +1146,7 @@ mod tests {
                   s: T,
                 }
 
-                component Main(i: Array[S]) {
+                fn Main(i: Array[S]) -> Fragment {
                   fragment(
                     for j in i {
                       for k in j.s.t { if k {} },
@@ -1242,7 +1166,7 @@ mod tests {
     fn accepts_form_with_inputs() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <form id="form">
                         <input type="text" required>
                         <button type="submit">Send</button>
@@ -1250,7 +1174,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "form",
                     attrs: [id: "form"],
@@ -1275,12 +1199,12 @@ mod tests {
     fn accepts_fragment_with_several_children() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <><p>one</p><p>two</p></>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   fragment(
                     html(
                       tag: "p",
@@ -1302,12 +1226,12 @@ mod tests {
     fn accepts_empty_fragment() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <></>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   fragment()
                 }
             "#]],
@@ -1318,12 +1242,12 @@ mod tests {
     fn accepts_nested_fragments() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <><>one</>two</>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   fragment(
                     fragment(text("one")),
                     text("two"),
@@ -1337,12 +1261,12 @@ mod tests {
     fn accepts_fragment_inside_an_element() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div><>one</></div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1357,12 +1281,12 @@ mod tests {
     fn accepts_whitespace_in_a_closing_fragment_tag() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <>one</ >
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   fragment(text("one"))
                 }
             "#]],
@@ -1373,12 +1297,12 @@ mod tests {
     fn accepts_fragment_in_raw_text_as_text() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <script><></script>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "script",
                     attrs: [],
@@ -1393,7 +1317,7 @@ mod tests {
     fn rejects_when_tags_are_not_closed() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>
                     <p>
                 }
@@ -1401,7 +1325,7 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Unclosed <div>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <div>
                   |      ^^^
 
@@ -1410,7 +1334,7 @@ mod tests {
                 3 |     <p>
                   |      ^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1437,7 +1361,7 @@ mod tests {
                 }
                 enum Color { Red, Green }
                 fn double(x: Int) -> Int { x }
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                   <div>{title}</div>
                 }
                 view Home {
@@ -1464,7 +1388,7 @@ mod tests {
                   x
                 }
 
-                component Card(title: String) {
+                fn Card(title: String) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1483,21 +1407,21 @@ mod tests {
     fn recovers_after_broken_expression_inside_a_body() {
         reject(
             indoc! {"
-                component First {
+                fn First() -> Fragment {
                   <div>{1 +}</div>
                 }
-                component Second {
+                fn Second() -> Fragment {
                   <></>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unexpected token '}'
-                1 | component First {
+                1 | fn First() -> Fragment {
                 2 |   <div>{1 +}</div>
                   |            ^
                 -- ast --
-                component First {
+                fn First() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1505,7 +1429,7 @@ mod tests {
                   )
                 }
 
-                component Second {
+                fn Second() -> Fragment {
                   fragment()
                 }
             "#]],
@@ -1517,18 +1441,18 @@ mod tests {
         reject(
             indoc! {"
                 fn broken(x: Int
-                component Whole {
+                fn Whole() -> Fragment {
                   <></>
                 }
             "},
             expect![[r#"
                 -- errors --
-                error: Expected token ')' but got 'component'
+                error: Expected token ')' but got 'fn'
                 1 | fn broken(x: Int
-                2 | component Whole {
-                  | ^^^^^^^^^
+                2 | fn Whole() -> Fragment {
+                  | ^^
                 -- ast --
-                component Whole {
+                fn Whole() -> Fragment {
                   fragment()
                 }
             "#]],
@@ -1539,18 +1463,18 @@ mod tests {
     fn rejects_when_a_closing_tag_closes_an_outer_tag() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div><span></div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unclosed <span>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <div><span></div>
                   |           ^^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1571,28 +1495,28 @@ mod tests {
     fn rejects_when_a_closing_tag_closes_past_several_open_tags() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div><span><><b></div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unclosed <span>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <div><span><><b></div>
                   |           ^^^^
 
                 error: Unclosed <>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <div><span><><b></div>
                   |                ^^
 
                 error: Unclosed <b>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <div><span><><b></div>
                   |                   ^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1621,23 +1545,23 @@ mod tests {
     fn rejects_closing_tag_for_a_tag_that_was_never_opened() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div></p></></div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unmatched </p>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <div></p></></div>
                   |          ^^^^
 
                 error: Unmatched </>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <div></p></></div>
                   |              ^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1652,14 +1576,14 @@ mod tests {
     fn rejects_closing_tag_once_the_tag_it_names_is_already_closed() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div></div></div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unexpected character: '/'
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <div></div></div>
                   |                 ^
 
@@ -1676,27 +1600,25 @@ mod tests {
     fn rejects_an_empty_body() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                 }
             "},
             expect![[r#"
                 -- errors --
-                error: Expected an expression: use <></> for an empty body
-                1 | component Main {
-                  |                ^
+                error: Unexpected token '}'
+                1 | fn Main() -> Fragment {
+                2 | }
+                  | ^
                 -- ast --
-                component Main {
-                  fragment()
-                }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_several_roots_in_a_component_body() {
+    fn rejects_several_roots_in_a_function_body() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <p>one</p>
                     <p>two</p>
                 }
@@ -1772,12 +1694,12 @@ mod tests {
     fn accepts_text_beside_an_expression_inside_a_fragment() {
         accept(
             indoc! {"
-                component Greeting(name: String) {
+                fn Greeting(name: String) -> Fragment {
                     <>Hello, {name}!</>
                 }
             "},
             expect![[r#"
-                component Greeting(name: String) {
+                fn Greeting(name: String) -> Fragment {
                   fragment(
                     text("Hello, "),
                     interpolate(name),
@@ -1792,18 +1714,18 @@ mod tests {
     fn rejects_when_a_fragment_is_not_closed() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <>one
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unclosed <>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <>one
                   |     ^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   fragment(text("one"))
                 }
             "#]],
@@ -1814,18 +1736,18 @@ mod tests {
     fn rejects_closing_fragment_for_a_fragment_that_was_never_opened() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div></></div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unmatched </>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <div></></div>
                   |          ^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1840,18 +1762,18 @@ mod tests {
     fn rejects_when_a_closing_fragment_closes_an_outer_tag() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <><div></>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unclosed <div>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <><div></>
                   |        ^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   fragment(
                     html(
                       tag: "div",
@@ -1868,14 +1790,14 @@ mod tests {
     fn rejects_left_angle_that_does_not_open_a_fragment() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     < >
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unterminated tag start
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     < >
                   |     ^
                 -- ast --
@@ -1887,18 +1809,18 @@ mod tests {
     fn rejects_fragment_as_a_child_of_match() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <match {x}><>one</></match>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Only <case> tags are allowed inside <match>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <match {x}><>one</></match>
                   |                ^^^^^^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   match x {}
                 }
             "#]],
@@ -1909,23 +1831,23 @@ mod tests {
     fn rejects_case_wrapped_in_a_fragment() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <match {x}><><case {None}>one</case></></match>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Only <case> tags are allowed inside <match>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <match {x}><><case {None}>one</case></></match>
                   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 error: <case> is only allowed inside <match>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <match {x}><><case {None}>one</case></></match>
                   |                   ^^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   match x {}
                 }
             "#]],
@@ -1936,7 +1858,7 @@ mod tests {
     fn rejects_when_void_tag_is_closed_with_closing_tag() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <>
                         <hr></hr>
                         <br></br>
@@ -1961,7 +1883,7 @@ mod tests {
                 5 |         <input></input>
                   |                ^^^^^^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   fragment(
                     html(tag: "hr", attrs: []),
                     html(tag: "br", attrs: []),
@@ -1977,21 +1899,21 @@ mod tests {
         accept(
             indoc! {r#"
                 import bar::Bar
-                component Main {
+                fn Main() -> Fragment {
                     <>
                         <hr/>
                         <br/>
                         <input/>
                     </>
                 }
-                component Foo {
+                fn Foo() -> Fragment {
                     <></>
                 }
             "#},
             expect![[r#"
                 import bar::Bar
 
-                component Main {
+                fn Main() -> Fragment {
                   fragment(
                     html(tag: "hr", attrs: []),
                     html(tag: "br", attrs: []),
@@ -1999,7 +1921,7 @@ mod tests {
                   )
                 }
 
-                component Foo {
+                fn Foo() -> Fragment {
                   fragment()
                 }
             "#]],
@@ -2009,14 +1931,14 @@ mod tests {
     #[test]
     fn rejects_unquoted_attribute_value() {
         reject(
-            "component Main {<div class=foo></div>}",
+            "fn Main() -> Fragment {<div class=foo></div>}",
             expect![[r#"
                 -- errors --
                 error: Expected quoted attribute value or expression
-                1 | component Main {<div class=foo></div>}
-                  |                      ^^^^^^
+                1 | fn Main() -> Fragment {<div class=foo></div>}
+                  |                             ^^^^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [foo],
@@ -2030,14 +1952,14 @@ mod tests {
     #[test]
     fn rejects_single_quoted_attribute_value() {
         reject(
-            "component Main {<input type='number'/>}",
+            "fn Main() -> Fragment {<input type='number'/>}",
             expect![[r#"
                 -- errors --
                 error: Single-quoted attribute values are not supported: use double quotes
-                1 | component Main {<input type='number'/>}
-                  |                             ^^^^^^^^
+                1 | fn Main() -> Fragment {<input type='number'/>}
+                  |                                    ^^^^^^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(tag: "input", attrs: [])
                 }
             "#]],
@@ -2047,12 +1969,12 @@ mod tests {
     #[test]
     fn rejects_invalid_markup_declaration() {
         reject(
-            "component Main {<!foo>}",
+            "fn Main() -> Fragment {<!foo>}",
             expect![[r#"
                 -- errors --
                 error: Invalid markup declaration
-                1 | component Main {<!foo>}
-                  |                 ^^
+                1 | fn Main() -> Fragment {<!foo>}
+                  |                        ^^
                 -- ast --
             "#]],
         );
@@ -2061,12 +1983,12 @@ mod tests {
     #[test]
     fn rejects_unterminated_comment() {
         reject(
-            "component Main {<!--",
+            "fn Main() -> Fragment {<!--",
             expect![[r#"
                 -- errors --
                 error: Unterminated comment
-                1 | component Main {<!--
-                  |                 ^^^^
+                1 | fn Main() -> Fragment {<!--
+                  |                        ^^^^
                 -- ast --
             "#]],
         );
@@ -2075,22 +1997,22 @@ mod tests {
     #[test]
     fn rejects_unterminated_opening_tag() {
         reject(
-            "component Main {<div <div>}",
+            "fn Main() -> Fragment {<div <div>}",
             expect![[r#"
                 -- errors --
                 error: Unterminated opening tag
-                1 | component Main {<div <div>}
-                  |                  ^^^
+                1 | fn Main() -> Fragment {<div <div>}
+                  |                         ^^^
 
                 error: Unclosed <div>
-                1 | component Main {<div <div>}
-                  |                  ^^^
+                1 | fn Main() -> Fragment {<div <div>}
+                  |                         ^^^
 
                 error: Unclosed <div>
-                1 | component Main {<div <div>}
-                  |                       ^^^
+                1 | fn Main() -> Fragment {<div <div>}
+                  |                              ^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -2110,18 +2032,18 @@ mod tests {
     #[test]
     fn rejects_unterminated_closing_tag() {
         reject(
-            "component Main {<div></div }",
+            "fn Main() -> Fragment {<div></div }",
             expect![[r#"
                 -- errors --
                 error: Unclosed <div>
-                1 | component Main {<div></div }
-                  |                  ^^^
+                1 | fn Main() -> Fragment {<div></div }
+                  |                         ^^^
 
                 error: Unterminated closing tag
-                1 | component Main {<div></div }
-                  |                        ^^^
+                1 | fn Main() -> Fragment {<div></div }
+                  |                               ^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -2135,14 +2057,14 @@ mod tests {
     #[test]
     fn rejects_duplicate_attribute() {
         reject(
-            r#"component Main {<div class="foo" class="bar"></div>}"#,
+            r#"fn Main() -> Fragment {<div class="foo" class="bar"></div>}"#,
             expect![[r#"
                 -- errors --
                 error: Duplicate attribute 'class'
-                1 | component Main {<div class="foo" class="bar"></div>}
-                  |                                  ^^^^^
+                1 | fn Main() -> Fragment {<div class="foo" class="bar"></div>}
+                  |                                         ^^^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [class: "foo"],
@@ -2156,14 +2078,14 @@ mod tests {
     #[test]
     fn rejects_spread_without_a_name() {
         reject(
-            "component Main {<div ...>text</div>}",
+            "fn Main() -> Fragment {<div ...>text</div>}",
             expect![[r#"
                 -- errors --
                 error: Missing variable name for spread
-                1 | component Main {<div ...>text</div>}
-                  |                      ^^^
+                1 | fn Main() -> Fragment {<div ...>text</div>}
+                  |                             ^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -2177,22 +2099,22 @@ mod tests {
     #[test]
     fn rejects_unterminated_tag_start() {
         reject(
-            "component Main {< div>}",
+            "fn Main() -> Fragment {< div>}",
             expect![[r#"
                 -- errors --
                 error: Unterminated tag start
-                1 | component Main {< div>}
-                  |                 ^
+                1 | fn Main() -> Fragment {< div>}
+                  |                        ^
                 -- ast --
             "#]],
         );
     }
 
     #[test]
-    fn rejects_doctype_tags_inside_components() {
+    fn rejects_doctype_tags_inside_functions() {
         reject(
             indoc! {"
-                component Main(foo: String) {
+                fn Main(foo: String) -> Fragment {
                     <!DOCTYPE html>
                     <html>
                         <body>
@@ -2204,7 +2126,7 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: <!doctype> declarations are not allowed: one is inserted automatically
-                1 | component Main(foo: String) {
+                1 | fn Main(foo: String) -> Fragment {
                 2 |     <!DOCTYPE html>
                   |     ^^^^^^^^^^^^^^^
                 -- ast --
@@ -2216,7 +2138,7 @@ mod tests {
     fn rejects_when_expression_is_missing_in_if_tag() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <if>
                         <div>Content</div>
                     </if>
@@ -2225,7 +2147,7 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Missing expression in <if> tag
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <if>
                   |     ^^^^
                 -- ast --
@@ -2237,7 +2159,7 @@ mod tests {
     fn rejects_when_expression_is_missing_in_for_tag() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <for>
                         <div>Content</div>
                     </for>
@@ -2246,7 +2168,7 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Missing loop generator expression in <for> tag
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <for>
                   |     ^^^^^
                 -- ast --
@@ -2258,7 +2180,7 @@ mod tests {
     fn rejects_when_for_tag_has_invalid_expression() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <for {foo}>
                         <div>Content</div>
                     </for>
@@ -2267,7 +2189,7 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Expected token 'in' but got '}'
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <for {foo}>
                   |              ^
                 -- ast --
@@ -2279,7 +2201,7 @@ mod tests {
     fn rejects_when_if_tag_has_invalid_expression() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <if {~}>
                         <div>Content</div>
                     </if>
@@ -2288,12 +2210,12 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Unexpected character: '~'
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <if {~}>
                   |          ^
 
                 error: Unexpected token '}'
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <if {~}>
                   |           ^
                 -- ast --
@@ -2302,20 +2224,20 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_component_parameter_has_parse_error_in_type_name() {
+    fn rejects_when_function_parameter_has_parse_error_in_type_name() {
         reject(
             indoc! {"
-                component Main(data: Array[) {
+                fn Main(data: Array[) -> Fragment {
                     <div>{data}</div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Expected type name but got ')'
-                1 | component Main(data: Array[) {
-                  |                            ^
+                1 | fn Main(data: Array[) -> Fragment {
+                  |                     ^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -2334,7 +2256,7 @@ mod tests {
                   url: String,
                   theme: String,
                 }
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <a href={user.url} class={user.theme}>Link</a>
                 }
             "#},
@@ -2344,7 +2266,7 @@ mod tests {
                   theme: String,
                 }
 
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   html(
                     tag: "a",
                     attrs: [
@@ -2385,18 +2307,18 @@ mod tests {
     fn rejects_multiple_expressions_in_attribute() {
         reject(
             indoc! {r#"
-                component Main(style1: String, style2: String, style3: String) {
+                fn Main(style1: String, style2: String, style3: String) -> Fragment {
                     <div class={style1, style2, style3}>Content</div>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Expected token '}' but got ','
-                1 | component Main(style1: String, style2: String, style3: String) {
+                1 | fn Main(style1: String, style2: String, style3: String) -> Fragment {
                 2 |     <div class={style1, style2, style3}>Content</div>
                   |                       ^
                 -- ast --
-                component Main(style1: String, style2: String, style3: String) {
+                fn Main(style1: String, style2: String, style3: String) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -2413,7 +2335,7 @@ mod tests {
             indoc! {r#"
                 import Foo
 
-                component Main {
+                fn Main() -> Fragment {
                 	<Foo/>
                 }
             "#},
@@ -2423,7 +2345,7 @@ mod tests {
                 1 | import Foo
                   |        ^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   Foo(attrs: [])
                 }
             "#]],
@@ -2431,10 +2353,10 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_invocations() {
+    fn accepts_function_invocations() {
         accept(
             indoc! {"
-                component Main(p: String) {
+                fn Main(p: String) -> Fragment {
                     <>
                         <Foo/>
                         <Foo/>
@@ -2442,7 +2364,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main(p: String) {
+                fn Main(p: String) -> Fragment {
                   fragment(
                     Foo(attrs: []),
                     Foo(attrs: []),
@@ -2453,7 +2375,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_invocations_with_params() {
+    fn accepts_function_invocations_with_params() {
         accept(
             indoc! {r#"
                 import foo::Foo
@@ -2461,7 +2383,7 @@ mod tests {
                 record Data {
                   user: String,
                 }
-                component Main(data: Data) {
+                fn Main(data: Data) -> Fragment {
                     <>
                         <Foo a={data}/>
                         <Bar b={data.user}/>
@@ -2476,7 +2398,7 @@ mod tests {
                   user: String,
                 }
 
-                component Main(data: Data) {
+                fn Main(data: Data) -> Fragment {
                   fragment(
                     Foo(attrs: [a: data]),
                     Bar(attrs: [b: data.user]),
@@ -2490,14 +2412,14 @@ mod tests {
     fn accepts_for_loop() {
         accept(
             indoc! {"
-                component Main(item: Array[String]) {
+                fn Main(item: Array[String]) -> Fragment {
                     <for {item in items}>
                         <div>Item content</div>
                     </for>
                 }
             "},
             expect![[r#"
-                component Main(item: Array[String]) {
+                fn Main(item: Array[String]) -> Fragment {
                   for item in items {
                     html(
                       tag: "div",
@@ -2514,14 +2436,14 @@ mod tests {
     fn accepts_for_loop_with_text_expression() {
         accept(
             indoc! {"
-                component Main(foo: Array[String]) {
+                fn Main(foo: Array[String]) -> Fragment {
                     <for {v in foo}>
                         <div>{v}</div>
                     </for>
                 }
             "},
             expect![[r#"
-                component Main(foo: Array[String]) {
+                fn Main(foo: Array[String]) -> Fragment {
                   for v in foo {
                     html(
                       tag: "div",
@@ -2538,14 +2460,14 @@ mod tests {
     fn accepts_for_loop_with_inclusive_range() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <for {i in 0..=5}>
                         {i}
                     </for>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   for i in 0..=5 { interpolate(i) }
                 }
             "#]],
@@ -2556,14 +2478,14 @@ mod tests {
     fn accepts_for_loop_with_variable_range_bounds() {
         accept(
             indoc! {"
-                component Main(start: Int, end: Int) {
+                fn Main(start: Int, end: Int) -> Fragment {
                     <for {x in start..=end}>
                         {x}
                     </for>
                 }
             "},
             expect![[r#"
-                component Main(start: Int, end: Int) {
+                fn Main(start: Int, end: Int) -> Fragment {
                   for x in start..=end {
                     interpolate(x),
                   }
@@ -2576,14 +2498,14 @@ mod tests {
     fn accepts_for_loop_with_expression_range_bounds() {
         accept(
             indoc! {"
-                component Main(count: Int) {
+                fn Main(count: Int) -> Fragment {
                     <for {i in 1..=count + 1}>
                         {i}
                     </for>
                 }
             "},
             expect![[r#"
-                component Main(count: Int) {
+                fn Main(count: Int) -> Fragment {
                   for i in 1..=count + 1 {
                     interpolate(i),
                   }
@@ -2596,14 +2518,14 @@ mod tests {
     fn accepts_for_loop_with_underscore_binding() {
         accept(
             indoc! {"
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                     <for {_ in items}>
                         item
                     </for>
                 }
             "},
             expect![[r#"
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                   for _ in items { text("item") }
                 }
             "#]],
@@ -2614,14 +2536,14 @@ mod tests {
     fn accepts_for_loop_with_underscore_and_range() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <for {_ in 0..=5}>
                         item
                     </for>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   for _ in 0..=5 { text("item") }
                 }
             "#]],
@@ -2632,14 +2554,14 @@ mod tests {
     fn accepts_for_loop_with_underscore_and_variable_range() {
         accept(
             indoc! {"
-                component Main(start: Int, end: Int) {
+                fn Main(start: Int, end: Int) -> Fragment {
                     <for {_ in start..=end}>
                         item
                     </for>
                 }
             "},
             expect![[r#"
-                component Main(start: Int, end: Int) {
+                fn Main(start: Int, end: Int) -> Fragment {
                   for _ in start..=end { text("item") }
                 }
             "#]],
@@ -2650,14 +2572,14 @@ mod tests {
     fn accepts_if_statement() {
         accept(
             indoc! {"
-                component Main(x: Int, y: Int) {
+                fn Main(x: Int, y: Int) -> Fragment {
                     <if {x == y}>
                         <div>Equal</div>
                     </if>
                 }
             "},
             expect![[r#"
-                component Main(x: Int, y: Int) {
+                fn Main(x: Int, y: Int) -> Fragment {
                   if x == y {
                     html(
                       tag: "div",
@@ -2674,7 +2596,7 @@ mod tests {
     fn rejects_if_with_two_expressions() {
         reject(
             indoc! {"
-                component Main(x: Int, y: Int) {
+                fn Main(x: Int, y: Int) -> Fragment {
                     <if {x == 1} {y == 2}>
                         <div>Which</div>
                     </if>
@@ -2683,11 +2605,11 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: <if> already has an expression
-                1 | component Main(x: Int, y: Int) {
+                1 | fn Main(x: Int, y: Int) -> Fragment {
                 2 |     <if {x == 1} {y == 2}>
                   |                  ^^^^^^^^
                 -- ast --
-                component Main(x: Int, y: Int) {
+                fn Main(x: Int, y: Int) -> Fragment {
                   if x == 1 {
                     html(
                       tag: "div",
@@ -2704,7 +2626,7 @@ mod tests {
     fn rejects_for_with_two_expressions() {
         reject(
             indoc! {"
-                component Main(xs: Array[Int], ys: Array[Int]) {
+                fn Main(xs: Array[Int], ys: Array[Int]) -> Fragment {
                     <for {x in xs} {y in ys}>
                         <div>{x}</div>
                     </for>
@@ -2713,11 +2635,11 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: <for> already has an expression
-                1 | component Main(xs: Array[Int], ys: Array[Int]) {
+                1 | fn Main(xs: Array[Int], ys: Array[Int]) -> Fragment {
                 2 |     <for {x in xs} {y in ys}>
                   |                    ^^^^^^^^^
                 -- ast --
-                component Main(xs: Array[Int], ys: Array[Int]) {
+                fn Main(xs: Array[Int], ys: Array[Int]) -> Fragment {
                   for x in xs {
                     html(
                       tag: "div",
@@ -2734,7 +2656,7 @@ mod tests {
     fn accepts_if_statement_with_nested_for_loop() {
         accept(
             indoc! {"
-                component Main(x: Bool, data: Array[String]) {
+                fn Main(x: Bool, data: Array[String]) -> Fragment {
 	                <if {x}>
 		                <for {d in data}>
                           {d}
@@ -2743,7 +2665,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main(x: Bool, data: Array[String]) {
+                fn Main(x: Bool, data: Array[String]) -> Fragment {
                   if x {
                     for d in data { interpolate(d) },
                   }
@@ -2756,14 +2678,14 @@ mod tests {
     fn rejects_unknown_html_element() {
         reject(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <dvi>oops</dvi>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Unknown HTML element <dvi>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <dvi>oops</dvi>
                   |      ^^^
                 -- ast --
@@ -2775,14 +2697,14 @@ mod tests {
     fn rejects_mathml_element() {
         reject(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <math></math>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Unknown HTML element <math>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <math></math>
                   |      ^^^^
                 -- ast --
@@ -2794,12 +2716,12 @@ mod tests {
     fn accepts_custom_hyphenated_element() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <my-widget>hi</my-widget>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "my-widget",
                     attrs: [],
@@ -2814,7 +2736,7 @@ mod tests {
     fn accepts_complex_svg_structure() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <div class="navbar">
                         <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
                             <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
@@ -2830,7 +2752,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [class: "navbar"],
@@ -2904,15 +2826,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_parameter_with_string_type() {
+    fn accepts_function_parameter_with_string_type() {
         accept(
             indoc! {"
-                component Main(data: String) {
+                fn Main(data: String) -> Fragment {
                     <div>{data}</div>
                 }
             "},
             expect![[r#"
-                component Main(data: String) {
+                fn Main(data: String) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -2924,14 +2846,14 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_parameter_with_record_type() {
+    fn accepts_function_parameter_with_record_type() {
         accept(
             indoc! {"
                 record Data {
                   message: String,
                 }
 
-                component Main(data: Data) {
+                fn Main(data: Data) -> Fragment {
                     <>
                         <h1>Hello World</h1>
                         <p>{data.message}</p>
@@ -2943,7 +2865,7 @@ mod tests {
                   message: String,
                 }
 
-                component Main(data: Data) {
+                fn Main(data: Data) -> Fragment {
                   fragment(
                     html(
                       tag: "h1",
@@ -2964,17 +2886,17 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_parameter_with_array_type() {
+    fn accepts_function_parameter_with_array_type() {
         accept(
             indoc! {"
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                     <for {item in items}>
                         <div>{item}</div>
                     </for>
                 }
             "},
             expect![[r#"
-                component Main(items: Array[String]) {
+                fn Main(items: Array[String]) -> Fragment {
                   for item in items {
                     html(
                       tag: "div",
@@ -2988,7 +2910,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_component_parameter_with_array_of_record_type() {
+    fn accepts_function_parameter_with_array_of_record_type() {
         accept(
             indoc! {"
                 record Section {
@@ -2996,7 +2918,7 @@ mod tests {
                   items: Array[String],
                 }
 
-                component Main(data: Array[Section]) {
+                fn Main(data: Array[Section]) -> Fragment {
                     <for {section in data}>
                         <h1>{section.title}</h1>
                         <for {item in section.items}>
@@ -3011,7 +2933,7 @@ mod tests {
                   items: Array[String],
                 }
 
-                component Main(data: Array[Section]) {
+                fn Main(data: Array[Section]) -> Fragment {
                   for section in data {
                     html(
                       tag: "h1",
@@ -3036,9 +2958,9 @@ mod tests {
     #[test]
     fn accepts_text_with_single_expression() {
         accept(
-            "component Main {<h1>Hello {name}!</h1>}",
+            "fn Main() -> Fragment {<h1>Hello {name}!</h1>}",
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "h1",
                     attrs: [],
@@ -3056,9 +2978,9 @@ mod tests {
     #[test]
     fn accepts_text_with_multiple_expressions() {
         accept(
-            "component Main {<p>User {user.name} has {user.count} items</p>}",
+            "fn Main() -> Fragment {<p>User {user.name} has {user.count} items</p>}",
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "p",
                     attrs: [],
@@ -3078,9 +3000,9 @@ mod tests {
     #[test]
     fn accepts_text_with_expression_at_start() {
         accept(
-            "component Main {<span>{greeting} world!</span>}",
+            "fn Main() -> Fragment {<span>{greeting} world!</span>}",
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "span",
                     attrs: [],
@@ -3097,9 +3019,9 @@ mod tests {
     #[test]
     fn accepts_text_with_expression_at_end() {
         accept(
-            "component Main {<div>Price: {price}</div>}",
+            "fn Main() -> Fragment {<div>Price: {price}</div>}",
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3116,9 +3038,9 @@ mod tests {
     #[test]
     fn accepts_text_with_only_expression() {
         accept(
-            "component Main {<h2>{title}</h2>}",
+            "fn Main() -> Fragment {<h2>{title}</h2>}",
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "h2",
                     attrs: [],
@@ -3132,14 +3054,14 @@ mod tests {
     #[test]
     fn rejects_empty_expression_in_text() {
         reject(
-            "component Main {<div>Empty: {}</div>}",
+            "fn Main() -> Fragment {<div>Empty: {}</div>}",
             expect![[r#"
                 -- errors --
                 error: Unexpected token '}'
-                1 | component Main {<div>Empty: {}</div>}
-                  |                              ^
+                1 | fn Main() -> Fragment {<div>Empty: {}</div>}
+                  |                                     ^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3153,9 +3075,9 @@ mod tests {
     #[test]
     fn accepts_complex_expression_in_text() {
         accept(
-            r#"component Main {<p>Status: {user.profile.status == "active"}</p>}"#,
+            r#"fn Main() -> Fragment {<p>Status: {user.profile.status == "active"}</p>}"#,
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "p",
                     attrs: [],
@@ -3174,9 +3096,9 @@ mod tests {
     #[test]
     fn accepts_adjacent_expressions_in_text() {
         accept(
-            "component Main {<span>{first}{second}</span>}",
+            "fn Main() -> Fragment {<span>{first}{second}</span>}",
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "span",
                     attrs: [],
@@ -3193,9 +3115,9 @@ mod tests {
     #[test]
     fn accepts_text_expression_with_string_containing_html() {
         accept(
-            r#"component Main {<div>{"<div></div>"}</div>}"#,
+            r#"fn Main() -> Fragment {<div>{"<div></div>"}</div>}"#,
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3213,34 +3135,31 @@ mod tests {
         reject(
             indoc! {"
                 record
-                component Main {
+                fn Main() -> Fragment {
                 }
             "},
             expect![[r#"
                 -- errors --
-                error: Expected type name but got 'component'
+                error: Expected type name but got 'fn'
                 1 | record
-                2 | component Main {
-                  | ^^^^^^^^^
+                2 | fn Main() -> Fragment {
+                  | ^^
 
-                error: Expected an expression: use <></> for an empty body
-                1 | record
-                2 | component Main {
-                  |                ^
+                error: Unexpected token '}'
+                2 | fn Main() -> Fragment {
+                3 | }
+                  | ^
                 -- ast --
-                component Main {
-                  fragment()
-                }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_unknown_text_before_component() {
+    fn rejects_unknown_text_before_function() {
         reject(
             indoc! {"
                 foo
-                component Main {
+                fn Main() -> Fragment {
                 }
             "},
             expect![[r#"
@@ -3249,14 +3168,11 @@ mod tests {
                 1 | foo
                   | ^^^
 
-                error: Expected an expression: use <></> for an empty body
-                1 | foo
-                2 | component Main {
-                  |                ^
+                error: Unexpected token '}'
+                2 | fn Main() -> Fragment {
+                3 | }
+                  | ^
                 -- ast --
-                component Main {
-                  fragment()
-                }
             "#]],
         );
     }
@@ -3267,7 +3183,7 @@ mod tests {
             indoc! {r#"
                 enum Color {Red, Green, Blue}
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                     <>{match color {Color::Red => "red", Color::Blue => "blue"}}</>
                 }
             "#},
@@ -3278,7 +3194,7 @@ mod tests {
                   Blue,
                 }
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                   fragment(
                     interpolate(
                       match color {
@@ -3298,7 +3214,7 @@ mod tests {
             indoc! {r#"
                 enum Color {Red, Green, Blue}
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                     <div class={match color {Color::Red => "text-red", Color::Blue => "text-blue"}}></div>
                 }
             "#},
@@ -3309,7 +3225,7 @@ mod tests {
                   Blue,
                 }
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [
@@ -3331,7 +3247,7 @@ mod tests {
             indoc! {r#"
                 enum Status {Active, Inactive, Pending}
 
-                component Main(status: Status) {
+                fn Main(status: Status) -> Fragment {
                     <>
                         {match status {
                             Status::Active => "active",
@@ -3348,7 +3264,7 @@ mod tests {
                   Pending,
                 }
 
-                component Main(status: Status) {
+                fn Main(status: Status) -> Fragment {
                   fragment(
                     interpolate(
                       match status {
@@ -3367,12 +3283,12 @@ mod tests {
     fn accepts_parameter_with_default_string_value() {
         accept(
             indoc! {r#"
-                component Main(name: String = "World") {
+                fn Main(name: String = "World") -> Fragment {
                     <div>{name}</div>
                 }
             "#},
             expect![[r#"
-                component Main(name: String = "World") {
+                fn Main(name: String = "World") -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3387,12 +3303,12 @@ mod tests {
     fn accepts_parameter_with_default_int_value() {
         accept(
             indoc! {"
-                component Main(count: Int = 42) {
+                fn Main(count: Int = 42) -> Fragment {
                     <span>{count}</span>
                 }
             "},
             expect![[r#"
-                component Main(count: Int = 42) {
+                fn Main(count: Int = 42) -> Fragment {
                   html(
                     tag: "span",
                     attrs: [],
@@ -3407,12 +3323,12 @@ mod tests {
     fn accepts_parameter_with_default_bool_value() {
         accept(
             indoc! {"
-                component Main(enabled: Bool = true) {
+                fn Main(enabled: Bool = true) -> Fragment {
                     <div></div>
                 }
             "},
             expect![[r#"
-                component Main(enabled: Bool = true) {
+                fn Main(enabled: Bool = true) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3427,12 +3343,12 @@ mod tests {
     fn accepts_mixed_required_and_default_parameters() {
         accept(
             indoc! {r#"
-                component Main(name: String, role: String = "user", active: Bool = true) {
+                fn Main(name: String, role: String = "user", active: Bool = true) -> Fragment {
                     <div>{name}</div>
                 }
             "#},
             expect![[r#"
-                component Main(name: String, role: String = "user", active: Bool = true) {
+                fn Main(name: String, role: String = "user", active: Bool = true) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3447,17 +3363,17 @@ mod tests {
     fn accepts_parameter_with_default_array_value() {
         accept(
             indoc! {r#"
-                component Main(items: Array[String] = ["a", "b"]) {
+                fn Main(items: Array[String] = ["a", "b"]) -> Fragment {
                     <for {item in items}>
                         {item}
                     </for>
                 }
             "#},
             expect![[r#"
-                component Main(items: Array[String] = [
+                fn Main(items: Array[String] = [
                   "a",
                   "b",
-                ]) {
+                ]) -> Fragment {
                   for item in items {
                     interpolate(item),
                   }
@@ -3471,7 +3387,7 @@ mod tests {
         accept(
             indoc! {r#"
                 record Config { debug: Bool, timeout: Int }
-                component Main(config: Config = Config {debug: false, timeout: 30}) {
+                fn Main(config: Config = Config {debug: false, timeout: 30}) -> Fragment {
                     <div></div>
                 }
             "#},
@@ -3481,10 +3397,10 @@ mod tests {
                   timeout: Int,
                 }
 
-                component Main(config: Config = Config {
+                fn Main(config: Config = Config {
                   debug: false,
                   timeout: 30,
-                }) {
+                }) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3500,7 +3416,7 @@ mod tests {
         accept(
             indoc! {"
                 enum Status { Active, Inactive, Pending }
-                component Main(status: Status = Status::Active) {
+                fn Main(status: Status = Status::Active) -> Fragment {
                     <div></div>
                 }
             "},
@@ -3511,7 +3427,7 @@ mod tests {
                   Pending,
                 }
 
-                component Main(status: Status = Status::Active) {
+                fn Main(status: Status = Status::Active) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3526,12 +3442,12 @@ mod tests {
     fn accepts_parameter_with_option_type() {
         accept(
             indoc! {"
-                component Main(name: Option[String]) {
+                fn Main(name: Option[String]) -> Fragment {
                     <div></div>
                 }
             "},
             expect![[r#"
-                component Main(name: Option[String]) {
+                fn Main(name: Option[String]) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3546,12 +3462,12 @@ mod tests {
     fn accepts_parameter_with_default_none_value() {
         accept(
             indoc! {"
-                component Main(name: Option[String] = None) {
+                fn Main(name: Option[String] = None) -> Fragment {
                     <div></div>
                 }
             "},
             expect![[r#"
-                component Main(name: Option[String] = None) {
+                fn Main(name: Option[String] = None) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3566,12 +3482,12 @@ mod tests {
     fn accepts_parameter_with_default_some_value() {
         accept(
             indoc! {r#"
-                component Main(name: Option[String] = Some("default")) {
+                fn Main(name: Option[String] = Some("default")) -> Fragment {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                component Main(name: Option[String] = Some("default")) {
+                fn Main(name: Option[String] = Some("default")) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3586,15 +3502,15 @@ mod tests {
     fn accepts_parameter_with_default_int_array() {
         accept(
             indoc! {"
-                component Main(offsets: Array[Int] = [1, 2]) {
+                fn Main(offsets: Array[Int] = [1, 2]) -> Fragment {
                     <div></div>
                 }
             "},
             expect![[r#"
-                component Main(offsets: Array[Int] = [
+                fn Main(offsets: Array[Int] = [
                   1,
                   2,
-                ]) {
+                ]) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3609,12 +3525,12 @@ mod tests {
     fn accepts_parameter_with_default_empty_fragment() {
         accept(
             indoc! {"
-                component Main(children: Fragment = <></>) {
+                fn Main(children: Fragment = <></>) -> Fragment {
                     <div></div>
                 }
             "},
             expect![[r#"
-                component Main(children: Fragment = fragment()) {
+                fn Main(children: Fragment = fragment()) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3629,17 +3545,17 @@ mod tests {
     fn rejects_parameter_with_malformed_default_value() {
         reject(
             indoc! {"
-                component Main(x: Int = = 1, y: Int) {
+                fn Main(x: Int = = 1, y: Int) -> Fragment {
                     <div></div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unexpected token '='
-                1 | component Main(x: Int = = 1, y: Int) {
-                  |                         ^
+                1 | fn Main(x: Int = = 1, y: Int) -> Fragment {
+                  |                  ^
                 -- ast --
-                component Main(y: Int) {
+                fn Main(y: Int) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3653,9 +3569,9 @@ mod tests {
     #[test]
     fn accepts_self_closing_match_with_no_cases() {
         accept(
-            "component Main(x: Option[String]) {<match {x}/>}\n",
+            "fn Main(x: Option[String]) -> Fragment {<match {x}/>}\n",
             expect![[r#"
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                   match x {}
                 }
             "#]],
@@ -3666,7 +3582,7 @@ mod tests {
     fn accepts_self_closing_case_with_no_children() {
         accept(
             indoc! {r#"
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <match {x}>
                         <case {Some(y)}>found {y}</case>
                         <case {None}/>
@@ -3674,7 +3590,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                   match x {
                     Some(y) => {
                       text("found "),
@@ -3691,7 +3607,7 @@ mod tests {
     fn accepts_match_with_option_cases() {
         accept(
             indoc! {r#"
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <match {x}>
                         <case {Some(y)}>
                             found {y}
@@ -3703,7 +3619,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                   match x {
                     Some(y) => {
                       text("found "),
@@ -3721,7 +3637,7 @@ mod tests {
         accept(
             indoc! {r#"
                 enum Color { Red, Green, Blue }
-                component Main(c: Color) {
+                fn Main(c: Color) -> Fragment {
                     <match {c}>
                         <case {Color::Red}>red</case>
                         <case {Color::Green}>green</case>
@@ -3736,7 +3652,7 @@ mod tests {
                   Blue,
                 }
 
-                component Main(c: Color) {
+                fn Main(c: Color) -> Fragment {
                   match c {
                     Color::Red => { text("red") },
                     Color::Green => { text("green") },
@@ -3752,7 +3668,7 @@ mod tests {
         accept(
             indoc! {r#"
                 enum Outcome { Success {value: Int}, Failure {message: String} }
-                component Main(r: Outcome) {
+                fn Main(r: Outcome) -> Fragment {
                     <match {r}>
                         <case {Outcome::Success{value: v}}>
                             Success: {v}
@@ -3769,7 +3685,7 @@ mod tests {
                   Failure { message: String },
                 }
 
-                component Main(r: Outcome) {
+                fn Main(r: Outcome) -> Fragment {
                   match r {
                     Outcome::Success{value: v} => {
                       text("Success: "),
@@ -3790,7 +3706,7 @@ mod tests {
         accept(
             indoc! {r#"
                 enum Status { Active {name: String}, Inactive }
-                component Main {
+                fn Main() -> Fragment {
                     <match {Status::Active {name: "test"}}>
                         <case {Status::Active{name: n}}>
                             {n}
@@ -3807,7 +3723,7 @@ mod tests {
                   Inactive,
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   match Status::Active {name: "test"} {
                     Status::Active{name: n} => {
                       interpolate(n),
@@ -3825,7 +3741,7 @@ mod tests {
     fn accepts_match_with_boolean_cases() {
         accept(
             indoc! {r#"
-                component Main(flag: Bool) {
+                fn Main(flag: Bool) -> Fragment {
                     <match {flag}>
                         <case {true}>yes</case>
                         <case {false}>no</case>
@@ -3833,7 +3749,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main(flag: Bool) {
+                fn Main(flag: Bool) -> Fragment {
                   match flag {
                     true => { text("yes") },
                     false => { text("no") },
@@ -3847,7 +3763,7 @@ mod tests {
     fn rejects_on_match_without_expression() {
         reject(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <match>
                         <case {true}>yes</case>
                     </match>
@@ -3856,7 +3772,7 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Missing expression in <match> tag
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <match>
                   |     ^^^^^^^
                 -- ast --
@@ -3868,7 +3784,7 @@ mod tests {
     fn rejects_on_case_without_pattern() {
         reject(
             indoc! {r#"
-                component Main(flag: Bool) {
+                fn Main(flag: Bool) -> Fragment {
                     <match {flag}>
                         <case>yes</case>
                     </match>
@@ -3881,7 +3797,7 @@ mod tests {
                 3 |         <case>yes</case>
                   |         ^^^^^^
                 -- ast --
-                component Main(flag: Bool) {
+                fn Main(flag: Bool) -> Fragment {
                   match flag {}
                 }
             "#]],
@@ -3892,7 +3808,7 @@ mod tests {
     fn rejects_on_non_case_children_in_match() {
         reject(
             indoc! {r#"
-                component Main(flag: Bool) {
+                fn Main(flag: Bool) -> Fragment {
                     <match {flag}>
                         <div>not allowed</div>
                     </match>
@@ -3905,7 +3821,7 @@ mod tests {
                 3 |         <div>not allowed</div>
                   |         ^^^^^^^^^^^^^^^^^^^^^^
                 -- ast --
-                component Main(flag: Bool) {
+                fn Main(flag: Bool) -> Fragment {
                   match flag {}
                 }
             "#]],
@@ -3916,14 +3832,14 @@ mod tests {
     fn rejects_case_outside_match() {
         reject(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <case {true}>standalone case</case>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: <case> is only allowed inside <match>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <case {true}>standalone case</case>
                   |      ^^^^
                 -- ast --
@@ -3935,14 +3851,14 @@ mod tests {
     fn accepts_let_with_string_value() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <let {name: String = "World"}>
                         <div>Hello {name}</div>
                     </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   let name: String = "World" in {
                     html(
                       tag: "div",
@@ -3962,14 +3878,14 @@ mod tests {
     fn accepts_let_with_int_value() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <let {count: Int = 42}>
                         <span>{count}</span>
                     </let>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   let count: Int = 42 in {
                     html(
                       tag: "span",
@@ -3987,7 +3903,7 @@ mod tests {
         accept(
             indoc! {r#"
                 record User { name: String }
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <let {greeting: String = user.name}>
                         <div>{greeting}</div>
                     </let>
@@ -3998,7 +3914,7 @@ mod tests {
                   name: String,
                 }
 
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   let greeting: String = user.name in {
                     html(
                       tag: "div",
@@ -4015,7 +3931,7 @@ mod tests {
     fn accepts_nested_let_tags() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <let {a: Int = 1}>
                         <let {b: Int = 2}>
                             <div>{a} + {b}</div>
@@ -4024,7 +3940,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   let a: Int = 1 in {
                     let b: Int = 2 in {
                       html(
@@ -4047,7 +3963,7 @@ mod tests {
     fn rejects_let_without_binding() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <let>
                         <div>Content</div>
                     </let>
@@ -4056,7 +3972,7 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Missing binding in <let> tag
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <let>
                   |     ^^^^^
                 -- ast --
@@ -4068,14 +3984,14 @@ mod tests {
     fn accepts_let_with_omitted_type() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <let {x = 1}>
                         <div>Content</div>
                     </let>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   let x = 1 in {
                     html(
                       tag: "div",
@@ -4092,7 +4008,7 @@ mod tests {
     fn rejects_let_with_no_bindings() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <let {}>
                         <div>Content</div>
                     </let>
@@ -4101,11 +4017,11 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Missing binding in <let> tag
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <let {}>
                   |          ^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   let  in {
                     html(
                       tag: "div",
@@ -4122,7 +4038,7 @@ mod tests {
     fn rejects_let_with_missing_value() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <let {x: String}>
                         <div>Content</div>
                     </let>
@@ -4131,11 +4047,11 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Expected token '=' but got '}'
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <let {x: String}>
                   |                    ^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   let  in {
                     html(
                       tag: "div",
@@ -4152,14 +4068,14 @@ mod tests {
     fn accepts_let_with_multiple_bindings() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <let {first: String = "Hello", second: String = "World"}>
                         <div>{first} {second}</div>
                     </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   let first: String = "Hello", second: String = "World" in {
                     html(
                       tag: "div",
@@ -4180,14 +4096,14 @@ mod tests {
     fn accepts_let_with_three_bindings() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                         <div>{a} + {b} + {c}</div>
                     </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   let a: Int = 1, b: Int = 2, c: Int = 3 in {
                     html(
                       tag: "div",
@@ -4210,14 +4126,14 @@ mod tests {
     fn accepts_let_with_trailing_comma() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <let {name: String = "World",}>
                         <div>Hello {name}</div>
                     </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   let name: String = "World" in {
                     html(
                       tag: "div",
@@ -4237,14 +4153,14 @@ mod tests {
     fn accepts_let_with_multiple_bindings_and_trailing_comma() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <let {first: String = "Hello", second: String = "World",}>
                         <div>{first} {second}</div>
                     </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   let first: String = "Hello", second: String = "World" in {
                     html(
                       tag: "div",
@@ -4266,7 +4182,7 @@ mod tests {
         accept(
             indoc! {r#"
                 record User { name: String }
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                     <let {name: String = user.name}>
                         <div>{name}</div>
                     </let>
@@ -4277,7 +4193,7 @@ mod tests {
                   name: String,
                 }
 
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   let name: String = user.name in {
                     html(
                       tag: "div",
@@ -4294,7 +4210,7 @@ mod tests {
     fn rejects_let_with_missing_comma_between_bindings() {
         reject(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <let {first: String = "a" second: String = "b"}>
                         <div>{first} {second}</div>
                     </let>
@@ -4303,11 +4219,11 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Expected token ',' but got 'second'
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |     <let {first: String = "a" second: String = "b"}>
                   |                               ^^^^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   let first: String = "a" in {
                     html(
                       tag: "div",
@@ -4328,7 +4244,7 @@ mod tests {
     fn accepts_multiple_sibling_let_tags() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <>
                         <let {a: String = "Hello"}>
                             {a}
@@ -4340,7 +4256,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   fragment(
                     let a: String = "Hello" in {
                       interpolate(a),
@@ -4358,7 +4274,7 @@ mod tests {
     fn accepts_let_after_html_element() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <>
                         <div>First</div>
                         <let {name: String = "World"}>
@@ -4368,7 +4284,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   fragment(
                     html(
                       tag: "div",
@@ -4395,7 +4311,7 @@ mod tests {
     fn accepts_let_before_html_element() {
         accept(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <>
                         <let {name: String = "World"}>
                             <div>Hello {name}</div>
@@ -4405,7 +4321,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   fragment(
                     let name: String = "World" in {
                       html(
@@ -4507,10 +4423,10 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_component_invocation() {
+    fn accepts_view_with_function_invocation() {
         accept(
             indoc! {"
-                component Header(title: String) {
+                fn Header(title: String) -> Fragment {
                     <h1>{title}</h1>
                 }
 
@@ -4519,7 +4435,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Header(title: String) {
+                fn Header(title: String) -> Fragment {
                   html(
                     tag: "h1",
                     attrs: [],
@@ -4615,53 +4531,35 @@ mod tests {
     }
 
     #[test]
-    fn rejects_component_with_reserved_name() {
+    fn rejects_function_with_reserved_name() {
         reject(
             indoc! {"
-                component Error() {
+                fn Error() -> Fragment {
                     <div>Hello</div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Type name 'Error' is a reserved word
-                1 | component Error() {
-                  |           ^^^^^
+                1 | fn Error() -> Fragment {
+                  |    ^^^^^
                 -- ast --
             "#]],
         );
     }
 
     #[test]
-    fn rejects_component_with_lowercase_name() {
+    fn rejects_function_invocation_with_invalid_character() {
         reject(
             indoc! {"
-                component card() {
-                    <div>Hello</div>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Type name must start with an uppercase letter
-                1 | component card() {
-                  |           ^^^^
-                -- ast --
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_component_invocation_with_invalid_character() {
-        reject(
-            indoc! {"
-                component Card() {
+                fn Card() -> Fragment {
                     <Foo-Bar />
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Type name contains invalid character: '-'
-                1 | component Card() {
+                1 | fn Card() -> Fragment {
                 2 |     <Foo-Bar />
                   |      ^^^^^^^
                 -- ast --
@@ -5011,14 +4909,14 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_nested_components() {
+    fn accepts_view_with_nested_functions() {
         accept(
             indoc! {"
-                component Header(title: String) {
+                fn Header(title: String) -> Fragment {
                     <h1>{title}</h1>
                 }
 
-                component Footer {
+                fn Footer() -> Fragment {
                     <p>Copyright 2024</p>
                 }
 
@@ -5031,7 +4929,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Header(title: String) {
+                fn Header(title: String) -> Fragment {
                   html(
                     tag: "h1",
                     attrs: [],
@@ -5039,7 +4937,7 @@ mod tests {
                   )
                 }
 
-                component Footer {
+                fn Footer() -> Fragment {
                   html(
                     tag: "p",
                     attrs: [],
@@ -5067,10 +4965,10 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_between_components() {
+    fn accepts_view_between_functions() {
         accept(
             indoc! {"
-                component Header {
+                fn Header() -> Fragment {
                     <h1>Header</h1>
                 }
 
@@ -5078,12 +4976,12 @@ mod tests {
                     <div>Index</div>
                 }
 
-                component Footer {
+                fn Footer() -> Fragment {
                     <p>Footer</p>
                 }
             "},
             expect![[r#"
-                component Header {
+                fn Header() -> Fragment {
                   html(
                     tag: "h1",
                     attrs: [],
@@ -5099,7 +4997,7 @@ mod tests {
                   )
                 }
 
-                component Footer {
+                fn Footer() -> Fragment {
                   html(
                     tag: "p",
                     attrs: [],
@@ -5162,7 +5060,7 @@ mod tests {
     fn accepts_escape_sequences_in_strings() {
         accept(
             indoc! {r#"
-                component Test {
+                fn Test() -> Fragment {
                     <>
                         {"hello\nworld"}
                         {"tab\there"}
@@ -5172,7 +5070,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Test {
+                fn Test() -> Fragment {
                   fragment(
                     interpolate("hello\nworld"),
                     interpolate("tab\there"),
@@ -5205,12 +5103,12 @@ mod tests {
     fn accepts_rest_param() {
         accept(
             indoc! {r#"
-                component Foo(class: String, ...rest) {
+                fn Foo(class: String, ...rest) -> Fragment {
                   <div ...rest></div>
                 }
             "#},
             expect![[r#"
-                component Foo(class: String, ...rest) {
+                fn Foo(class: String, ...rest) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [...rest],
@@ -5225,17 +5123,17 @@ mod tests {
     fn rejects_rest_param_not_last() {
         reject(
             indoc! {r#"
-                component Foo(...rest, a: String, b: String) {
+                fn Foo(...rest, a: String, b: String) -> Fragment {
                   <div ...rest></div>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Rest parameter must be the last parameter
-                1 | component Foo(...rest, a: String, b: String) {
-                  |               ^^^^^^^
+                1 | fn Foo(...rest, a: String, b: String) -> Fragment {
+                  |        ^^^^^^^
                 -- ast --
-                component Foo(a: String, b: String, ...rest) {
+                fn Foo(a: String, b: String, ...rest) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [...rest],
@@ -5250,21 +5148,21 @@ mod tests {
     fn rejects_duplicate_rest_param() {
         reject(
             indoc! {r#"
-                component Foo(...a, ...b) {
+                fn Foo(...a, ...b) -> Fragment {
                   <div ...a></div>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Rest parameter must be the last parameter
-                1 | component Foo(...a, ...b) {
-                  |               ^^^^
+                1 | fn Foo(...a, ...b) -> Fragment {
+                  |        ^^^^
 
                 error: At most one rest parameter is allowed
-                1 | component Foo(...a, ...b) {
-                  |                     ^^^^
+                1 | fn Foo(...a, ...b) -> Fragment {
+                  |              ^^^^
                 -- ast --
-                component Foo(...a) {
+                fn Foo(...a) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [...a],
@@ -5279,12 +5177,12 @@ mod tests {
     fn accepts_spread_attribute_on_element() {
         accept(
             indoc! {r#"
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                   <button ...rest></button>
                 }
             "#},
             expect![[r#"
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                   html(
                     tag: "button",
                     attrs: [...rest],
@@ -5296,15 +5194,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_spread_attribute_on_component() {
+    fn accepts_spread_attribute_on_function() {
         accept(
             indoc! {r#"
-                component Bar(...rest) {
+                fn Bar(...rest) -> Fragment {
                   <Foo ...rest></Foo>
                 }
             "#},
             expect![[r#"
-                component Bar(...rest) {
+                fn Bar(...rest) -> Fragment {
                   Foo(attrs: [...rest], children: [])
                 }
             "#]],
@@ -5315,18 +5213,18 @@ mod tests {
     fn rejects_spread_attribute_with_uppercase_name() {
         reject(
             indoc! {r#"
-                component Foo() {
+                fn Foo() -> Fragment {
                   <button ...Bar></button>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Invalid variable name 'Bar': Variable name must be lowercase (found uppercase: 'B')
-                1 | component Foo() {
+                1 | fn Foo() -> Fragment {
                 2 |   <button ...Bar></button>
                   |              ^^^
                 -- ast --
-                component Foo {
+                fn Foo() -> Fragment {
                   html(
                     tag: "button",
                     attrs: [],
@@ -5341,18 +5239,18 @@ mod tests {
     fn rejects_spread_attribute_with_leading_underscore() {
         reject(
             indoc! {r#"
-                component Foo() {
+                fn Foo() -> Fragment {
                   <button ..._x></button>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Invalid variable name '_x': Variable name cannot start with underscore
-                1 | component Foo() {
+                1 | fn Foo() -> Fragment {
                 2 |   <button ..._x></button>
                   |              ^^
                 -- ast --
-                component Foo {
+                fn Foo() -> Fragment {
                   html(
                     tag: "button",
                     attrs: [],
@@ -5371,7 +5269,7 @@ mod tests {
                   x + 10
                 }
 
-                component Foo {
+                fn Foo() -> Fragment {
                   <div>
                     <for {x in 0..=foo(10)}>
                       {x.to_string()}
@@ -5385,7 +5283,7 @@ mod tests {
                   x + 10
                 }
 
-                component Foo {
+                fn Foo() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -5434,22 +5332,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_pub_on_function() {
-        accept(
-            indoc! {"
-                pub fn foo(x: Int) -> Int {
-                  x
-                }
-            "},
-            expect![[r#"
-                pub fn foo(x: Int) -> Int {
-                  x
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn accepts_import_of_function() {
         accept(
             indoc! {"
@@ -5481,7 +5363,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Invalid variable name 'foo_': Variable name cannot end with underscore
+                error: Variable name cannot end with underscore
                 1 | import other::foo_
                   |               ^^^^
                 -- ast --
@@ -5545,21 +5427,20 @@ mod tests {
     }
 
     #[test]
-    fn rejects_rest_param_on_function() {
-        reject(
+    fn accepts_rest_param_on_function() {
+        accept(
             indoc! {"
-                fn foo(...rest) -> Int {
-                  1
+                fn Foo(class: String, ...rest) -> Fragment {
+                  <div class={class} ...rest></div>
                 }
             "},
             expect![[r#"
-                -- errors --
-                error: Rest parameters are not allowed on functions
-                1 | fn foo(...rest) -> Int {
-                  |        ^^^^^^^
-                -- ast --
-                fn foo() -> Int {
-                  1
+                fn Foo(class: String, ...rest) -> Fragment {
+                  html(
+                    tag: "div",
+                    attrs: [class: class, ...rest],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -5591,31 +5472,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_examples_annotation_on_component() {
-        reject(
-            indoc! {"
-                component Main(#[examples(min = 1)] count: Int) {
-                  <div>{count}</div>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Examples annotations are not allowed on component parameters
-                1 | component Main(#[examples(min = 1)] count: Int) {
-                  |                ^^^^^^^^^^^^^^^^^^^^
-                -- ast --
-                component Main(#[examples(min = 1)] count: Int) {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: [interpolate(count)],
-                  )
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_examples_annotation_on_function() {
         reject(
             indoc! {"
@@ -5640,17 +5496,17 @@ mod tests {
     fn rejects_param_after_rest_param() {
         reject(
             indoc! {r#"
-                component Foo(...rest, class: String) {
+                fn Foo(...rest, class: String) -> Fragment {
                   <div ...rest></div>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Rest parameter must be the last parameter
-                1 | component Foo(...rest, class: String) {
-                  |               ^^^^^^^
+                1 | fn Foo(...rest, class: String) -> Fragment {
+                  |        ^^^^^^^
                 -- ast --
-                component Foo(class: String, ...rest) {
+                fn Foo(class: String, ...rest) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [...rest],
@@ -5855,10 +5711,10 @@ mod tests {
     }
 
     #[test]
-    fn accepts_markup_as_a_component_attribute_value() {
+    fn accepts_markup_as_a_function_attribute_value() {
         accept(
             indoc! {"
-                component Card(slot: Fragment) {
+                fn Card(slot: Fragment) -> Fragment {
                   <div>{slot}</div>
                 }
 
@@ -5867,7 +5723,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Card(slot: Fragment) {
+                fn Card(slot: Fragment) -> Fragment {
                   html(
                     tag: "div",
                     attrs: [],
@@ -6048,7 +5904,7 @@ mod tests {
     fn accepts_newline_between_text_lines() {
         accept(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <p>
                     first line
                     second line
@@ -6056,7 +5912,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "p",
                     attrs: [],
@@ -6222,23 +6078,23 @@ mod tests {
     fn rejects_unterminated_examples_annotation() {
         reject(
             indoc! {"
-                component Main(#[examples(min = 1 count: Int) {
+                fn Main(#[examples(min = 1 count: Int) -> Fragment {
                   <div>{count}</div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Expected token ',' but got 'count'
-                1 | component Main(#[examples(min = 1 count: Int) {
-                  |                                   ^^^^^
+                1 | fn Main(#[examples(min = 1 count: Int) -> Fragment {
+                  |                            ^^^^^
 
-                error: Expected token ']' but got '{'
-                1 | component Main(#[examples(min = 1 count: Int) {
-                  |                                               ^
+                error: Expected token ']' but got '->'
+                1 | fn Main(#[examples(min = 1 count: Int) -> Fragment {
+                  |                                        ^^
 
-                error: Expected token ')' but got '{'
-                1 | component Main(#[examples(min = 1 count: Int) {
-                  |                                               ^
+                error: Expected token ')' but got '->'
+                1 | fn Main(#[examples(min = 1 count: Int) -> Fragment {
+                  |                                        ^^
                 -- ast --
             "#]],
         );
@@ -6248,18 +6104,18 @@ mod tests {
     fn rejects_unexpected_token_inside_opening_tag() {
         reject(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div class="a" @ id="b">hi</div>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Unexpected character: '@'
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div class="a" @ id="b">hi</div>
                   |                  ^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [class: "a", id: "b"],
@@ -6274,18 +6130,18 @@ mod tests {
     fn rejects_slash_inside_opening_tag() {
         reject(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div / class="a">hi</div>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Unexpected character: '/'
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div / class="a">hi</div>
                   |        ^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [class: "a"],
@@ -6300,23 +6156,23 @@ mod tests {
     fn rejects_opening_tag_ended_by_next_tag() {
         reject(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div class="a" <span>hi</span>
                 }
             "#},
             expect![[r#"
                 -- errors --
                 error: Unterminated opening tag
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div class="a" <span>hi</span>
                   |    ^^^
 
                 error: Unclosed <div>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div class="a" <span>hi</span>
                   |    ^^^
                 -- ast --
-                component Main {
+                fn Main() -> Fragment {
                   html(
                     tag: "div",
                     attrs: [class: "a"],
@@ -6337,17 +6193,17 @@ mod tests {
     fn rejects_unclosed_raw_text_element() {
         reject(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <script>alert(1)
             "#},
             expect![[r#"
                 -- errors --
                 error: Unmatched '{'
-                1 | component Main {
-                  |                ^
+                1 | fn Main() -> Fragment {
+                  |                       ^
 
                 error: Unclosed <script>
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <script>alert(1)
                   |    ^^^^^^
                 -- ast --
@@ -6358,20 +6214,20 @@ mod tests {
     #[test]
     fn rejects_unterminated_raw_text_opening_tag() {
         reject(
-            "component Main {<style",
+            "fn Main() -> Fragment {<style",
             expect![[r#"
                 -- errors --
                 error: Unmatched '{'
-                1 | component Main {<style
-                  |                ^
+                1 | fn Main() -> Fragment {<style
+                  |                       ^
 
                 error: Unterminated opening tag
-                1 | component Main {<style
-                  |                  ^^^^^
+                1 | fn Main() -> Fragment {<style
+                  |                         ^^^^^
 
                 error: Unclosed <style>
-                1 | component Main {<style
-                  |                  ^^^^^
+                1 | fn Main() -> Fragment {<style
+                  |                         ^^^^^
                 -- ast --
             "#]],
         );
@@ -6381,14 +6237,14 @@ mod tests {
     fn rejects_expression_on_html_element() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div {x}>hi</div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unexpected expression on <div>: use attribute syntax instead (e.g. attr={value})
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div {x}>hi</div>
                   |        ^^^
                 -- ast --
@@ -6397,17 +6253,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_expression_on_component() {
+    fn rejects_expression_on_function() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <Card {x} title=\"a\"/>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unexpected expression on <Card>: use attribute syntax instead (e.g. attr={value})
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <Card {x} title="a"/>
                   |         ^^^
                 -- ast --
@@ -6419,19 +6275,19 @@ mod tests {
     fn rejects_duplicate_expression_on_html_element() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div {x} {y}>hi</div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unexpected expression on <div>: use attribute syntax instead (e.g. attr={value})
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div {x} {y}>hi</div>
                   |        ^^^
 
                 error: <div> already has an expression
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div {x} {y}>hi</div>
                   |            ^^^
                 -- ast --
@@ -6443,19 +6299,19 @@ mod tests {
     fn rejects_unparseable_expression_on_html_element() {
         reject(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div {x +}>hi</div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unexpected expression on <div>: use attribute syntax instead (e.g. attr={value})
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div {x +}>hi</div>
                   |        ^
 
                 error: Unexpected token '}'
-                1 | component Main {
+                1 | fn Main() -> Fragment {
                 2 |   <div {x +}>hi</div>
                   |            ^
                 -- ast --

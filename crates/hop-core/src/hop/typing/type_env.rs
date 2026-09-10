@@ -4,7 +4,6 @@ use super::r#type::Type;
 use super::typed_expr::TypedExpr;
 use crate::document::{CheapString, DocumentRange};
 use crate::html::HtmlElementKind;
-use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 #[derive(Debug, Clone)]
@@ -31,12 +30,12 @@ pub enum Tail {
     },
 }
 
-/// What a name in the type namespace refers to.
+/// What a declared or imported name refers to.
 #[derive(Debug, Clone)]
 pub enum NameKind {
     /// A local record or enum, or an imported type. Always a `Type::Named`.
     Type(Type),
-    Component,
+    Function,
     Page,
 }
 
@@ -51,8 +50,10 @@ pub struct Name {
 /// The names a module's bodies are checked against.
 #[derive(Debug, Clone, Default)]
 pub struct TypeEnv {
-    pub names: HashMap<TypeName, Name>,
-    /// Settled component signatures, imported and local.
-    pub components: HashMap<TypeName, FunctionSignature>,
-    pub functions: HashMap<VarName, (FunctionSignature, DocumentRange)>,
+    /// Every name declared or imported in the module. A module has one
+    /// namespace: a type, a page and a function cannot share a name.
+    pub names: HashMap<CheapString, Name>,
+    /// Settled signatures for the names of kind `Function`, imported and
+    /// local.
+    pub functions: HashMap<CheapString, FunctionSignature>,
 }

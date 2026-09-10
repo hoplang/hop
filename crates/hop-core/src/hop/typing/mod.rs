@@ -1,12 +1,13 @@
+pub mod export;
 pub mod resolve_type;
 pub mod rest_spread;
 pub mod r#type;
 pub mod type_env;
-pub mod type_export;
 pub mod type_registry;
 #[cfg(test)]
 pub mod type_registry_builder;
 pub mod typecheck;
+pub mod typecheck_call;
 pub mod typecheck_expr;
 pub mod typecheck_match;
 pub mod typecheck_node;

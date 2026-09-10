@@ -2116,7 +2116,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_components_with_let_bindings() {
+    fn nested_functions_with_let_bindings() {
         check(
             PureModuleBuilder::new().view_no_params("TestMainComp", |t| {
                 t.concat(vec![

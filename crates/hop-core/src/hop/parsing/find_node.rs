@@ -23,12 +23,6 @@ use crate::hop::parsing::ParsedExpr;
 /// </div>
 /// ```
 pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Option<&ParsedNode> {
-    for n in ast.component_declarations() {
-        if n.range.contains_position(position) {
-            return find_node_at_position_in_expr(&n.body, position);
-        }
-    }
-
     for n in ast.page_declarations() {
         if n.range.contains_position(position) {
             if let Some(head) = &n.head
@@ -42,7 +36,7 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
 
     for n in ast.function_declarations() {
         if n.range.contains_position(position) {
-            return None;
+            return find_node_at_position_in_expr(&n.body, position);
         }
     }
 
@@ -130,7 +124,7 @@ mod tests {
     fn should_find_text_content() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>Hello World</div>
                              ^
                 }
@@ -147,7 +141,7 @@ mod tests {
     fn should_find_html_element_when_on_tag_name() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>Content</div>
                      ^
                 }
@@ -161,10 +155,10 @@ mod tests {
     }
 
     #[test]
-    fn should_find_component_invocation() {
+    fn should_find_function_invocation() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <FooBar>Content</FooBar>
                         ^
                 }
@@ -181,7 +175,7 @@ mod tests {
     fn should_find_if_node() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <if {true}>
                         ^
                         <div/>
@@ -204,7 +198,7 @@ mod tests {
     fn should_find_nested_text_content() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>
                         <span>Nested text</span>
                                     ^
@@ -223,7 +217,7 @@ mod tests {
     fn should_return_none_when_position_is_outside_content() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>Content</div>
                 }
                 ^
@@ -236,7 +230,7 @@ mod tests {
     fn should_find_expression_in_deeply_nested_structure() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>
                         <if {condition}>
                             <for {item in items}>
@@ -259,7 +253,7 @@ mod tests {
     fn should_find_void_element() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <p>Some text <br> more text</p>
                                   ^
                 }
@@ -276,7 +270,7 @@ mod tests {
     fn should_find_first_element_on_line_with_multiple_nodes() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div><span>Hello</span> <strong>World</strong></div>
                            ^
                 }
@@ -293,7 +287,7 @@ mod tests {
     fn should_find_second_element_on_line_with_multiple_nodes() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div><span>Hello</span> <strong>World</strong></div>
                                                ^
                 }
@@ -310,7 +304,7 @@ mod tests {
     fn should_find_text_between_elements_on_same_line() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div><span>Hello</span> and <strong>World</strong></div>
                                             ^
                 }
@@ -327,7 +321,7 @@ mod tests {
     fn should_find_expression_in_very_deep_nesting() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>
                         <section>
                             <article>
@@ -360,7 +354,7 @@ mod tests {
     fn should_find_parent_element_in_deep_nesting() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>
                         <section>
                             <h1>
@@ -393,7 +387,7 @@ mod tests {
     fn should_find_inline_element_with_expression() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <p>Hello <em>{user.name}</em>, welcome to <strong>{site.title}</strong>!</p>
                                                                   ^
                 }
@@ -407,10 +401,10 @@ mod tests {
     }
 
     #[test]
-    fn should_find_text_inside_component_with_inline_content() {
+    fn should_find_text_inside_function_with_inline_content() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div><UserCard data={user}><span>Content</span></UserCard> more text</div>
                                                       ^
                 }
@@ -427,7 +421,7 @@ mod tests {
     fn should_find_element_in_nested_control_structures() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <if {users}>
                         <for {user in users}>
                             <if {user.active}>
@@ -452,7 +446,7 @@ mod tests {
     fn should_find_self_closing_element_with_attributes() {
         check_find_node_at_position(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <div>
                         <input type="text" placeholder="Enter name" required />
                                ^
@@ -472,7 +466,7 @@ mod tests {
     fn should_find_element_between_closing_and_opening_tags() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <><div>First</div> <div>Second</div></>
                                        ^
                 }
@@ -489,7 +483,7 @@ mod tests {
     fn should_find_element_inside_match_case() {
         check_find_node_at_position(
             indoc! {"
-                component Main(x: Option[String]) {
+                fn Main(x: Option[String]) -> Fragment {
                     <match {x}>
                         <case {Some(s)}>
                             <div>found</div>
@@ -511,7 +505,7 @@ mod tests {
     fn should_find_markup_inside_an_interpolation() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>{<span>text</span>}</div>
                                    ^
                 }
@@ -528,7 +522,7 @@ mod tests {
     fn should_find_markup_inside_an_attribute_value() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <Card slot={<span>text</span>}></Card>
                                          ^
                 }
@@ -545,7 +539,7 @@ mod tests {
     fn should_find_the_outer_node_when_the_position_misses_interpolated_markup() {
         check_find_node_at_position(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>{<span>text</span>}</div>
                      ^
                 }

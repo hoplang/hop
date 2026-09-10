@@ -1,9 +1,9 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parsed_ast::{
-    ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
-    ParsedEnumDeclarationVariant, ParsedFieldDeclaration, ParsedFunctionDeclaration,
-    ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
+    ParsedAst, ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
+    ParsedFieldDeclaration, ParsedFunctionDeclaration, ParsedImportDeclaration,
+    ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
 use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedArguments, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
@@ -131,9 +131,6 @@ fn format_declaration<'a>(
         ParsedDeclaration::Import(import) => format_import_declaration(arena, import, comments),
         ParsedDeclaration::Record(record) => format_record_declaration(arena, record, comments),
         ParsedDeclaration::Enum(e) => format_enum_declaration(arena, e, comments),
-        ParsedDeclaration::Component(component) => {
-            format_component_declaration(arena, component, comments)
-        }
         ParsedDeclaration::Page(page) => format_page_declaration(arena, page, comments),
         ParsedDeclaration::Function(function) => {
             format_function_declaration(arena, function, comments)
@@ -267,109 +264,6 @@ fn format_enum_declaration_variant<'a>(
     }
 }
 
-fn format_component_declaration<'a>(
-    arena: &'a Arena<'a>,
-    component: &'a ParsedComponentDeclaration,
-    comments: &mut VecDeque<&'a DocumentRange>,
-) -> DocBuilder<'a, Arena<'a>> {
-    let leading_comments = drain_comments_before(arena, comments, component.range.start());
-
-    // Format parameters (omit parentheses if no parameters and no rest param)
-    let params_doc = match (&component.params, &component.params_range) {
-        (params, Some(params_range)) if !params.is_empty() => {
-            let mut params_inner = arena.nil();
-            let rest_param_doc = component
-                .rest_param
-                .as_ref()
-                .map(|(name, _)| arena.text("...").append(arena.text(name.as_str())));
-            let total_param_count = params.len() + rest_param_doc.is_some() as usize;
-            let force_multiline = total_param_count >= 2;
-            let line_break = if force_multiline {
-                arena.hardline()
-            } else {
-                arena.line()
-            };
-            for (i, param) in params.iter().enumerate() {
-                if i > 0 {
-                    params_inner = params_inner
-                        .append(arena.text(","))
-                        .append(line_break.clone());
-                }
-                params_inner = params_inner.append(format_parameter(arena, param, comments));
-            }
-            if let Some(rest_doc) = rest_param_doc {
-                params_inner = params_inner
-                    .append(arena.text(","))
-                    .append(line_break)
-                    .append(rest_doc);
-            }
-            let has_trailing_comments = comments
-                .front()
-                .is_some_and(|c| c.start() < params_range.end());
-            let trailing_comments = drain_comments_before(arena, comments, params_range.end());
-            if has_trailing_comments {
-                let body = arena
-                    .hardline()
-                    .append(params_inner)
-                    .append(arena.text(","))
-                    .append(arena.hardline())
-                    .append(trailing_comments)
-                    .nest(2);
-                arena.text("(").append(body).append(arena.text(")"))
-            } else if force_multiline {
-                let body = arena
-                    .hardline()
-                    .append(params_inner)
-                    .append(arena.text(","))
-                    .nest(2)
-                    .append(arena.hardline());
-                arena.text("(").append(body).append(arena.text(")"))
-            } else {
-                let body = arena
-                    .line_()
-                    .append(params_inner)
-                    .append(arena.text(",").flat_alt(arena.nil()))
-                    .nest(2)
-                    .append(arena.line_());
-                arena.text("(").append(body).append(arena.text(")")).group()
-            }
-        }
-        _ => {
-            // No regular params (or empty params list): emit rest param alone if present
-            if let Some((name, _)) = &component.rest_param {
-                arena
-                    .text("(")
-                    .append(arena.text("..."))
-                    .append(arena.text(name.as_str()))
-                    .append(arena.text(")"))
-            } else {
-                arena.nil()
-            }
-        }
-    };
-
-    let pub_prefix = if component.pub_range.is_some() {
-        arena.text("pub ")
-    } else {
-        arena.nil()
-    };
-    leading_comments
-        .append(pub_prefix)
-        .append(arena.text("component"))
-        .append(arena.text(" "))
-        .append(arena.text(component.component_name.as_str()))
-        .append(params_doc)
-        .append(arena.text(" {"))
-        .append(
-            arena
-                .line()
-                .append(format_expr(arena, &component.body, comments))
-                .append(arena.line())
-                .nest(2),
-        )
-        .append(arena.text("}"))
-}
-
 fn format_page_declaration<'a>(
     arena: &'a Arena<'a>,
     page: &'a ParsedPageDeclaration,
@@ -482,11 +376,15 @@ fn format_function_declaration<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, function.name_range.start());
 
-    let params_doc = if function.params.is_empty() {
+    let rest_param_doc = function
+        .rest_param
+        .as_ref()
+        .map(|(name, _)| arena.text("...").append(arena.text(name.as_str())));
+    let params_doc = if function.params.is_empty() && rest_param_doc.is_none() {
         arena.text("()")
     } else {
         let mut params_inner = arena.nil();
-        let force_multiline = function.params.len() >= 2;
+        let force_multiline = function.params.len() + rest_param_doc.is_some() as usize >= 2;
         let line_break = if force_multiline {
             arena.hardline()
         } else {
@@ -499,6 +397,12 @@ fn format_function_declaration<'a>(
                     .append(line_break.clone());
             }
             params_inner = params_inner.append(format_parameter(arena, param, comments));
+        }
+        if let Some(rest_doc) = rest_param_doc {
+            if !function.params.is_empty() {
+                params_inner = params_inner.append(arena.text(",")).append(line_break);
+            }
+            params_inner = params_inner.append(rest_doc);
         }
         if force_multiline {
             let body = arena
@@ -630,20 +534,20 @@ fn format_node<'a>(
             .text("{")
             .append(format_expr(arena, expression, comments))
             .append(arena.text("}")),
-        ParsedNode::ComponentInvocation {
-            component_name,
+        ParsedNode::FunctionInvocation {
+            function_name,
             attributes,
             children,
             ..
         } => {
-            let component_name_str = component_name.as_str();
+            let function_name_str = function_name.as_str();
             let opening_tag_doc = if attributes.is_empty() {
-                arena.text("<").append(arena.text(component_name_str))
+                arena.text("<").append(arena.text(function_name_str))
             } else if attributes.len() == 1 {
                 // Single attribute: keep on same line as tag
                 arena
                     .text("<")
-                    .append(arena.text(component_name_str))
+                    .append(arena.text(function_name_str))
                     .append(arena.text(" "))
                     .append(format_attribute(arena, &attributes[0], comments))
             } else {
@@ -656,7 +560,7 @@ fn format_node<'a>(
                 }
                 arena
                     .text("<")
-                    .append(arena.text(component_name_str))
+                    .append(arena.text(function_name_str))
                     .append(arena.line().append(attrs_doc).nest(2))
                     .append(arena.line_())
                     .group()
@@ -668,7 +572,7 @@ fn format_node<'a>(
                     .append(arena.text(">"))
                     .append(format_children(arena, children, comments))
                     .append(arena.text("</"))
-                    .append(arena.text(component_name_str))
+                    .append(arena.text(function_name_str))
                     .append(arena.text(">")),
             }
         }
@@ -1628,30 +1532,22 @@ mod tests {
     }
 
     #[test]
-    fn pub_component() {
+    fn pub_function() {
         check(
             indoc! {"
-                pub component Button(label: String) {
+                pub fn Button(label: String) -> Fragment {
                   <button>{label}</button>
                 }
+
+                pub fn label(x: Int) -> Int { x + 10 }
             "},
             expect![[r#"
-                pub component Button(label: String) {
+                pub fn Button(label: String) -> Fragment {
                   <button>
                     {label}
                   </button>
                 }
-            "#]],
-        );
-    }
 
-    #[test]
-    fn pub_function() {
-        check(
-            indoc! {"
-                pub fn label(x: Int) -> Int { x + 10 }
-            "},
-            expect![[r#"
                 pub fn label(x: Int) -> Int {
                   x + 10
                 }
@@ -1699,7 +1595,7 @@ mod tests {
             indoc! {"
                 pub record A { x: Int }
                 record B { y: Int }
-                pub component C {<p>hi</p>}
+                pub fn C() -> Fragment {<p>hi</p>}
             "},
             expect![[r#"
                 pub record A {
@@ -1710,7 +1606,7 @@ mod tests {
                   y: Int,
                 }
 
-                pub component C {
+                pub fn C() -> Fragment {
                   <p>
                     hi
                   </p>
@@ -1749,13 +1645,13 @@ mod tests {
             indoc! {"
                 import foo::Bar
                 import baz::Qux
-                import components::Button
+                import functions::Button
                 record User { name: String }
             "},
             expect![[r#"
                 import foo::Bar
                 import baz::Qux
-                import components::Button
+                import functions::Button
 
                 record User {
                   name: String,
@@ -1816,18 +1712,18 @@ mod tests {
     }
 
     #[test]
-    fn component_declaration() {
+    fn function_declaration() {
         check(
             indoc! {"
-                component Main(name: String, count: Int) {
+                fn Main(name: String, count: Int) -> Fragment {
                   <div>{name}</div>
                 }
             "},
             expect![[r#"
-                component Main(
+                fn Main(
                   name: String,
                   count: Int,
-                ) {
+                ) -> Fragment {
                   <div>
                     {name}
                   </div>
@@ -1837,20 +1733,20 @@ mod tests {
     }
 
     #[test]
-    fn component_declaration_with_many_parameters() {
+    fn function_declaration_with_many_parameters() {
         check(
             indoc! {"
-                component Main(first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String) {<></>}
+                fn Main(first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String) -> Fragment {<></>}
             "},
             expect![[r#"
-                component Main(
+                fn Main(
                   first_name: String,
                   last_name: String,
                   email: String,
                   age: Int,
                   active: Bool,
                   role: String,
-                ) {
+                ) -> Fragment {
                   <></>
                 }
             "#]],
@@ -1858,11 +1754,11 @@ mod tests {
     }
 
     #[test]
-    fn component_with_match_expression() {
+    fn function_with_match_expression() {
         check(
             indoc! {r#"
                 enum Color { Red, Green, Blue }
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                   <div class={match color { Color::Red => "red", Color::Green => "green", Color::Blue => "blue" }}></div>
                 }
             "#},
@@ -1873,7 +1769,7 @@ mod tests {
                   Blue,
                 }
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                   <div class={
                     match color {
                       Color::Red => "red",
@@ -1893,7 +1789,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Color { Red }
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                   <div class={match color { Color::Red{} => "red" }}></div>
                 }
             "#},
@@ -1902,7 +1798,7 @@ mod tests {
                   Red,
                 }
 
-                component Main(color: Color) {
+                fn Main(color: Color) -> Fragment {
                   <div class={match color {Color::Red => "red"}}>
                   </div>
                 }
@@ -1915,7 +1811,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Outcome { Success {value: String}, Failure {message: String} }
-                component Main(result: Outcome) {
+                fn Main(result: Outcome) -> Fragment {
                   <match {result}>
                     <case {Outcome::Success {value}}>
                       {value}
@@ -1936,7 +1832,7 @@ mod tests {
                   },
                 }
 
-                component Main(result: Outcome) {
+                fn Main(result: Outcome) -> Fragment {
                   <match {result}>
                     <case {Outcome::Success {value}}>
                       {value}
@@ -1955,7 +1851,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Event { Click {x: Int, y: Int} }
-                component Main(event: Event) {
+                fn Main(event: Event) -> Fragment {
                   <div>{match event { Event::Click {x, y: b} => x + b }}</div>
                 }
             "#},
@@ -1967,7 +1863,7 @@ mod tests {
                   },
                 }
 
-                component Main(event: Event) {
+                fn Main(event: Event) -> Fragment {
                   <div>
                     {match event {Event::Click {x, y: b} => x + b}}
                   </div>
@@ -1981,7 +1877,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Outcome { Success {value: String} }
-                component Main(result: Outcome) {
+                fn Main(result: Outcome) -> Fragment {
                   <match {result}>
                     <case {Outcome::Success {value: value}}>
                       {value}
@@ -1996,7 +1892,7 @@ mod tests {
                   },
                 }
 
-                component Main(result: Outcome) {
+                fn Main(result: Outcome) -> Fragment {
                   <match {result}>
                     <case {Outcome::Success {value}}>
                       {value}
@@ -2020,7 +1916,7 @@ mod tests {
                     popover_trigger: Boolean,
                   }
                 }
-                component Main(event: Event) {
+                fn Main(event: Event) -> Fragment {
                   <match {event}>
                     <case {Event::Button {type, name, value, dialog_trigger, popover_trigger}}>
                     </case>
@@ -2038,7 +1934,7 @@ mod tests {
                   },
                 }
 
-                component Main(event: Event) {
+                fn Main(event: Event) -> Fragment {
                   <match {event}>
                     <case {Event::Button {
                       type,
@@ -2060,14 +1956,14 @@ mod tests {
         check(
             indoc! {r#"
                 enum Foo { Bar{} }
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "#},
             expect![[r#"
                 enum Foo {
                   Bar,
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <></>
                 }
             "#]],
@@ -2126,13 +2022,13 @@ mod tests {
     }
 
     #[test]
-    fn component_declaration_with_text_child() {
+    fn function_declaration_with_text_child() {
         check(
             indoc! {"
-                component Main {hello}
+                fn Main() -> Fragment {hello}
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   hello
                 }
             "#]],
@@ -2144,7 +2040,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Character { name: String }
-                component Main(character: Character) {
+                fn Main(character: Character) -> Fragment {
                   <h1 class="text-2xl font-bold">{character.name}</h1>
                 }
             "#},
@@ -2153,7 +2049,7 @@ mod tests {
                   name: String,
                 }
 
-                component Main(character: Character) {
+                fn Main(character: Character) -> Fragment {
                   <h1 class="text-2xl font-bold">
                     {character.name}
                   </h1>
@@ -2166,12 +2062,12 @@ mod tests {
     fn html_with_single_class_expression() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div class={"p-2"}></div>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div class={"p-2"}>
                   </div>
                 }
@@ -2183,17 +2079,17 @@ mod tests {
     fn if_with_equality_condition() {
         check(
             indoc! {"
-                component Main(a: String, b: String) {
+                fn Main(a: String, b: String) -> Fragment {
                   <if {a == b}>
                     <div>equal</div>
                   </if>
                 }
             "},
             expect![[r#"
-                component Main(
+                fn Main(
                   a: String,
                   b: String,
-                ) {
+                ) -> Fragment {
                   <if {a == b}>
                     <div>
                       equal
@@ -2208,17 +2104,17 @@ mod tests {
     fn if_with_logical_and_condition() {
         check(
             indoc! {"
-                component Main(a: Bool, b: Bool) {
+                fn Main(a: Bool, b: Bool) -> Fragment {
                   <if {a && b}>
                     <div>both true</div>
                   </if>
                 }
             "},
             expect![[r#"
-                component Main(
+                fn Main(
                   a: Bool,
                   b: Bool,
-                ) {
+                ) -> Fragment {
                   <if {a && b}>
                     <div>
                       both true
@@ -2233,18 +2129,18 @@ mod tests {
     fn if_with_nested_logical_operators() {
         check(
             indoc! {"
-                component Main(a: Bool, b: Bool, c: Bool) {
+                fn Main(a: Bool, b: Bool, c: Bool) -> Fragment {
                   <if {a && b || c}>
                     <div>complex</div>
                   </if>
                 }
             "},
             expect![[r#"
-                component Main(
+                fn Main(
                   a: Bool,
                   b: Bool,
                   c: Bool,
-                ) {
+                ) -> Fragment {
                   <if {a && b || c}>
                     <div>
                       complex
@@ -2259,14 +2155,14 @@ mod tests {
     fn if_with_negation() {
         check(
             indoc! {"
-                component Main(a: Bool) {
+                fn Main(a: Bool) -> Fragment {
                   <if {!a}>
                     <div>not a</div>
                   </if>
                 }
             "},
             expect![[r#"
-                component Main(a: Bool) {
+                fn Main(a: Bool) -> Fragment {
                   <if {!a}>
                     <div>
                       not a
@@ -2281,17 +2177,17 @@ mod tests {
     fn if_with_negated_equality() {
         check(
             indoc! {"
-                component Main(a: String, b: String) {
+                fn Main(a: String, b: String) -> Fragment {
                   <if {!(a == b)}>
                     <div>not equal</div>
                   </if>
                 }
             "},
             expect![[r#"
-                component Main(
+                fn Main(
                   a: String,
                   b: String,
-                ) {
+                ) -> Fragment {
                   <if {!(a == b)}>
                     <div>
                       not equal
@@ -2306,7 +2202,7 @@ mod tests {
     fn whitespace_removal_multiline_text() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     hello
                     world
@@ -2314,7 +2210,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     hello
                     world
@@ -2328,14 +2224,14 @@ mod tests {
     fn whitespace_removal_nested_html() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     content
                   </div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     content
                   </div>
@@ -2348,14 +2244,14 @@ mod tests {
     fn splits_two_text_expressions_onto_their_own_lines() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {hello = "Hello", world = "World"}>
                     {hello} {world}
                   </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {hello = "Hello", world = "World"}>
                     {hello}
                     {" "}
@@ -2370,14 +2266,14 @@ mod tests {
     fn adds_a_space_between_a_text_expression_and_a_tag_on_the_same_line() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {hello = "Hello", world = "World"}>
                     {hello} <b>{world}</b>
                   </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {hello = "Hello", world = "World"}>
                     {hello}
                     {" "}
@@ -2394,12 +2290,12 @@ mod tests {
     fn adds_a_space_between_two_tags_on_same_line() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <><i>i</i> <b>b</b></>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     <i>
                       i
@@ -2418,12 +2314,12 @@ mod tests {
     fn adds_a_space_expression_between_text_and_tag_on_single_line() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <>hello <b>world</b></>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     hello
                     {" "}
@@ -2440,12 +2336,12 @@ mod tests {
     fn keeps_a_run_of_spaces_beside_a_tag() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <>a  <b>x</b></>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     a
                     {"  "}
@@ -2462,12 +2358,12 @@ mod tests {
     fn keeps_whitespace_on_the_side_that_has_no_linebreak() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <><b>x</b>  a {"y"}</>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     <b>
                       x
@@ -2486,7 +2382,7 @@ mod tests {
     fn whitespace_removal_empty_lines() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <>
 
                     hello
@@ -2495,7 +2391,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     hello
                   </>
@@ -2508,14 +2404,14 @@ mod tests {
     fn script_content_is_not_reindented() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <script>
                     let x = 1;
                   </script>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <script>
                     let x = 1;
                   </script>
@@ -2528,14 +2424,14 @@ mod tests {
     fn style_content_is_not_reindented() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <style>
                     .a { color: red; }
                   </style>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <style>
                     .a { color: red; }
                   </style>
@@ -2545,10 +2441,10 @@ mod tests {
     }
 
     #[test]
-    fn nested_components_with_record_attributes() {
+    fn nested_functions_with_record_attributes() {
         check(
             indoc! {r#"
-                component IconsPage {
+                fn IconsPage() -> Fragment {
                   <div class="flex">
                     <div class="border-r max-w-80 h-screen">
                       <Sidebar />
@@ -2560,7 +2456,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component IconsPage {
+                fn IconsPage() -> Fragment {
                   <div class="flex">
                     <div class="border-r max-w-80 h-screen">
                       <Sidebar/>
@@ -2580,12 +2476,12 @@ mod tests {
     }
 
     #[test]
-    fn component_with_expression_attribute() {
+    fn function_with_expression_attribute() {
         check(
             indoc! {r#"
                 import hop::ui::lucide::ChevronDown
 
-                component NativeSelect {
+                fn NativeSelect() -> Fragment {
                   <ChevronDown
                     class={"text-muted-foreground"}
                   />
@@ -2594,7 +2490,7 @@ mod tests {
             expect![[r#"
                 import hop::ui::lucide::ChevronDown
 
-                component NativeSelect {
+                fn NativeSelect() -> Fragment {
                   <ChevronDown class={"text-muted-foreground"}/>
                 }
             "#]],
@@ -2602,11 +2498,11 @@ mod tests {
     }
 
     #[test]
-    fn component_with_string_concatenation_attribute() {
+    fn function_with_string_concatenation_attribute() {
         check(
             indoc! {r#"
                 record Product { id: String }
-                component IconShowPage(product: Product) {
+                fn IconShowPage(product: Product) -> Fragment {
                   <Button href={"/download/" + product.id}>
                     hello
                   </Button>
@@ -2617,7 +2513,7 @@ mod tests {
                   id: String,
                 }
 
-                component IconShowPage(product: Product) {
+                fn IconShowPage(product: Product) -> Fragment {
                   <Button href={"/download/" + product.id}>
                     hello
                   </Button>
@@ -2627,15 +2523,15 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_string_parameter() {
+    fn function_with_default_string_parameter() {
         check(
             indoc! {r#"
-                component Greeting(name: String = "World") {
+                fn Greeting(name: String = "World") -> Fragment {
                   <>Hello, {name}!</>
                 }
             "#},
             expect![[r#"
-                component Greeting(name: String = "World") {
+                fn Greeting(name: String = "World") -> Fragment {
                   <>
                     Hello,
                     {" "}
@@ -2648,17 +2544,17 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_int_parameter() {
+    fn function_with_default_int_parameter() {
         check(
             indoc! {"
-                component Counter(count: Int = 0) {
+                fn Counter(count: Int = 0) -> Fragment {
                   <>
                     {count}
                   </>
                 }
             "},
             expect![[r#"
-                component Counter(count: Int = 0) {
+                fn Counter(count: Int = 0) -> Fragment {
                   <>
                     {count}
                   </>
@@ -2668,13 +2564,13 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_bool_parameter() {
+    fn function_with_default_bool_parameter() {
         check(
             indoc! {"
-                component Toggle(enabled: Bool = true) {<></>}
+                fn Toggle(enabled: Bool = true) -> Fragment {<></>}
             "},
             expect![[r#"
-                component Toggle(enabled: Bool = true) {
+                fn Toggle(enabled: Bool = true) -> Fragment {
                   <></>
                 }
             "#]],
@@ -2682,21 +2578,21 @@ mod tests {
     }
 
     #[test]
-    fn component_with_mixed_required_and_default_parameters() {
+    fn function_with_mixed_required_and_default_parameters() {
         check(
             indoc! {r#"
-                component UserCard(name: String, role: String = "user", active: Bool = true) {
+                fn UserCard(name: String, role: String = "user", active: Bool = true) -> Fragment {
                   <>
                     {name}
                   </>
                 }
             "#},
             expect![[r#"
-                component UserCard(
+                fn UserCard(
                   name: String,
                   role: String = "user",
                   active: Bool = true,
-                ) {
+                ) -> Fragment {
                   <>
                     {name}
                   </>
@@ -2706,13 +2602,15 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_array_parameter() {
+    fn function_with_default_array_parameter() {
         check(
             indoc! {r#"
-                component ItemList(items: Array[String] = ["one", "two"]) {<></>}
+                fn ItemList(items: Array[String] = ["one", "two"]) -> Fragment {<></>}
             "#},
             expect![[r#"
-                component ItemList(items: Array[String] = ["one", "two"]) {
+                fn ItemList(
+                  items: Array[String] = ["one", "two"],
+                ) -> Fragment {
                   <></>
                 }
             "#]],
@@ -2720,13 +2618,13 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_empty_array_parameter() {
+    fn function_with_default_empty_array_parameter() {
         check(
             indoc! {"
-                component ItemList(items: Array[String] = []) {<></>}
+                fn ItemList(items: Array[String] = []) -> Fragment {<></>}
             "},
             expect![[r#"
-                component ItemList(items: Array[String] = []) {
+                fn ItemList(items: Array[String] = []) -> Fragment {
                   <></>
                 }
             "#]],
@@ -2734,13 +2632,13 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_empty_fragment_parameter() {
+    fn function_with_default_empty_fragment_parameter() {
         check(
             indoc! {"
-                component Card(children: Fragment = <></>) {<></>}
+                fn Card(children: Fragment = <></>) -> Fragment {<></>}
             "},
             expect![[r#"
-                component Card(children: Fragment = <></>) {
+                fn Card(children: Fragment = <></>) -> Fragment {
                   <></>
                 }
             "#]],
@@ -2748,11 +2646,11 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_record_parameter() {
+    fn function_with_default_record_parameter() {
         check(
             indoc! {r#"
                 record Config { debug: Bool, timeout: Int }
-                component Settings(config: Config = Config {debug: false, timeout: 30}) {<></>}
+                fn Settings(config: Config = Config {debug: false, timeout: 30}) -> Fragment {<></>}
             "#},
             expect![[r#"
                 record Config {
@@ -2760,9 +2658,9 @@ mod tests {
                   timeout: Int,
                 }
 
-                component Settings(
+                fn Settings(
                   config: Config = Config {debug: false, timeout: 30},
-                ) {
+                ) -> Fragment {
                   <></>
                 }
             "#]],
@@ -2770,11 +2668,11 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_enum_parameter() {
+    fn function_with_default_enum_parameter() {
         check(
             indoc! {"
                 enum Status { Active, Inactive, Pending }
-                component Badge(status: Status = Status::Active) {<></>}
+                fn Badge(status: Status = Status::Active) -> Fragment {<></>}
             "},
             expect![[r#"
                 enum Status {
@@ -2783,7 +2681,7 @@ mod tests {
                   Pending,
                 }
 
-                component Badge(status: Status = Status::Active) {
+                fn Badge(status: Status = Status::Active) -> Fragment {
                   <></>
                 }
             "#]],
@@ -2795,7 +2693,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
-                component Main {
+                fn Main() -> Fragment {
                   <let {user: User = User {name: "Alice", age: 30}}>
                     {user.name}
                   </let>
@@ -2807,7 +2705,7 @@ mod tests {
                   age: Int,
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <let {user: User = User {name: "Alice", age: 30}}>
                     {user.name}
                   </let>
@@ -2821,7 +2719,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
-                component Main(base: User) {
+                fn Main(base: User) -> Fragment {
                   <let {user: User = User {...base, name: "Alice"}}>
                     {user.name}
                   </let>
@@ -2833,7 +2731,7 @@ mod tests {
                   age: Int,
                 }
 
-                component Main(base: User) {
+                fn Main(base: User) -> Fragment {
                   <let {user: User = User {...base, name: "Alice"}}>
                     {user.name}
                   </let>
@@ -2847,7 +2745,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
-                component Main(base: User) {
+                fn Main(base: User) -> Fragment {
                   <let {user: User = User {name: "Alice", ...base}}>
                     {user.name}
                   </let>
@@ -2859,7 +2757,7 @@ mod tests {
                   age: Int,
                 }
 
-                component Main(base: User) {
+                fn Main(base: User) -> Fragment {
                   <let {user: User = User {...base, name: "Alice"}}>
                     {user.name}
                   </let>
@@ -2873,7 +2771,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
-                component Main(base: User) {
+                fn Main(base: User) -> Fragment {
                   <let {user: User = User {...base}}>
                     {user.name}
                   </let>
@@ -2885,7 +2783,7 @@ mod tests {
                   age: Int,
                 }
 
-                component Main(base: User) {
+                fn Main(base: User) -> Fragment {
                   <let {user: User = User {...base}}>
                     {user.name}
                   </let>
@@ -2899,7 +2797,7 @@ mod tests {
         check(
             indoc! {r#"
                 record User { name: String, age: Int, email: String }
-                component Main(base: User) {
+                fn Main(base: User) -> Fragment {
                   <let {user: User = User {...base, name: "Alexandra", email: "alexandra@example.com"}}>
                     {user.name}
                   </let>
@@ -2912,7 +2810,7 @@ mod tests {
                   email: String,
                 }
 
-                component Main(base: User) {
+                fn Main(base: User) -> Fragment {
                   <let {
                     user: User = User {
                       ...base,
@@ -2931,14 +2829,14 @@ mod tests {
     fn inferred_let_binding_is_preserved() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {name = "World"}>
                     {name}
                   </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {name = "World"}>
                     {name}
                   </let>
@@ -2952,7 +2850,7 @@ mod tests {
         check(
             indoc! {"
                 record Empty {}
-                component Main {
+                fn Main() -> Fragment {
                   <let {e: Empty = Empty {}}>
                   </let>
                 }
@@ -2960,7 +2858,7 @@ mod tests {
             expect![[r#"
                 record Empty {}
 
-                component Main {
+                fn Main() -> Fragment {
                   <let {e: Empty = Empty {}}>
                   </let>
                 }
@@ -2973,7 +2871,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
-                component Main {
+                fn Main() -> Fragment {
                   <let {s: Shape = Shape::Circle {radius: 5.0}}>
                   </let>
                 }
@@ -2989,7 +2887,7 @@ mod tests {
                   },
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <let {s: Shape = Shape::Circle {radius: 5.0}}>
                   </let>
                 }
@@ -3002,7 +2900,7 @@ mod tests {
         check(
             indoc! {"
                 enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
-                component Main {
+                fn Main() -> Fragment {
                   <let {s: Shape = Shape::Rect {w: 3.0, h: 4.0}}>
                   </let>
                 }
@@ -3018,7 +2916,7 @@ mod tests {
                   },
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <let {s: Shape = Shape::Rect {w: 3.0, h: 4.0}}>
                   </let>
                 }
@@ -3031,7 +2929,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum PopoverMenuItemElement { Link {href: String}, Button {href: String, name: String, value: String} }
-                component Main {
+                fn Main() -> Fragment {
                   <let {el: PopoverMenuItemElement = PopoverMenuItemElement::Button {href: "/path/to/some/page", name: "button_name", value: "button_value"}}>
                   </let>
                 }
@@ -3048,7 +2946,7 @@ mod tests {
                   },
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <let {
                     el: PopoverMenuItemElement = PopoverMenuItemElement::Button {
                       href: "/path/to/some/page",
@@ -3067,7 +2965,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Button { href: String, name: String, value: String, dialog_trigger: String }
-                component Main {
+                fn Main() -> Fragment {
                   <let {btn: Button = Button {href: "/path/to/some/page", name: "button_name", value: "button_value", dialog_trigger: "dialog_trigger_value"}}>
                   </let>
                 }
@@ -3080,7 +2978,7 @@ mod tests {
                   dialog_trigger: String,
                 }
 
-                component Main {
+                fn Main() -> Fragment {
                   <let {
                     btn: Button = Button {
                       href: "/path/to/some/page",
@@ -3099,12 +2997,12 @@ mod tests {
     fn some_literal_stays_on_one_line_when_short() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: Option[String] = Some("short")}></let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: Option[String] = Some("short")}>
                   </let>
                 }
@@ -3116,14 +3014,14 @@ mod tests {
     fn some_literal_inserts_soft_lines_when_long() {
         check(
             indoc! {r#"
-                component Main(x: Option[String] = Some("this is a very long string that causes a line break because Some uses soft lines")) {<></>}
+                fn Main(x: Option[String] = Some("this is a very long string that causes a line break because Some uses soft lines")) -> Fragment {<></>}
             "#},
             expect![[r#"
-                component Main(
+                fn Main(
                   x: Option[String] = Some(
                     "this is a very long string that causes a line break because Some uses soft lines"
                   ),
-                ) {
+                ) -> Fragment {
                   <></>
                 }
             "#]],
@@ -3135,7 +3033,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Product { img_src: String }
-                component ProductImage(product: Product) {
+                fn ProductImage(product: Product) -> Fragment {
                   <img class="rounded-lg" src={product.img_src}>
                 }
             "#},
@@ -3144,7 +3042,7 @@ mod tests {
                   img_src: String,
                 }
 
-                component ProductImage(product: Product) {
+                fn ProductImage(product: Product) -> Fragment {
                   <img class="rounded-lg" src={product.img_src}>
                 }
             "#]],
@@ -3152,7 +3050,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_match_node() {
+    fn function_with_match_node() {
         check(
             indoc! {"
                 enum Color {
@@ -3161,7 +3059,7 @@ mod tests {
                   Blue,
                 }
 
-                component Main(c: Option[String]) {
+                fn Main(c: Option[String]) -> Fragment {
                   <match {c}>
                     <case {Some(x)}>
                       {x}
@@ -3179,7 +3077,7 @@ mod tests {
                   Blue,
                 }
 
-                component Main(c: Option[String]) {
+                fn Main(c: Option[String]) -> Fragment {
                   <match {c}>
                     <case {Some(x)}>
                       {x}
@@ -3197,12 +3095,12 @@ mod tests {
     fn join_macro_expands_spaces_in_string_literals() {
         check(
             indoc! {r#"
-                component Card {
+                fn Card() -> Fragment {
                   <div class={join!("foo bar")}></div>
                 }
             "#},
             expect![[r#"
-                component Card {
+                fn Card() -> Fragment {
                   <div class={
                     join!(
                       "foo",
@@ -3219,15 +3117,15 @@ mod tests {
     fn join_macro_expands_mixed_variables_and_literals() {
         check(
             indoc! {r#"
-                component Card(a: String, b: String) {
+                fn Card(a: String, b: String) -> Fragment {
                   <div class={join!(a, "foo bar", b)}></div>
                 }
             "#},
             expect![[r#"
-                component Card(
+                fn Card(
                   a: String,
                   b: String,
-                ) {
+                ) -> Fragment {
                   <div class={
                     join!(
                       a,
@@ -3246,12 +3144,12 @@ mod tests {
     fn asset_macro_formats_inline() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <img src={asset!("/logo.svg")} />
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <img src={asset!("/logo.svg")}>
                 }
             "#]],
@@ -3262,7 +3160,7 @@ mod tests {
     fn should_format_deeply_nested_elements() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <p><p><p><p><p><p><p><p><p><p>
                   <p><p><p><p><p><p><p><p><p><p>
                   <p><p><p><p><p><p><p><p><p><p>
@@ -3277,7 +3175,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <p>
                     <p>
                       <p>
@@ -3388,14 +3286,14 @@ mod tests {
     fn let_with_single_string_binding() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = "World"}>
                     Hello, {name}!
                   </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = "World"}>
                     Hello,
                     {" "}
@@ -3411,14 +3309,14 @@ mod tests {
     fn let_with_single_int_binding() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <let {count: Int = 42}>
                     <span>{count}</span>
                   </let>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {count: Int = 42}>
                     <span>
                       {count}
@@ -3433,14 +3331,14 @@ mod tests {
     fn let_with_trailing_comma() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = "World",}>
                     {name}
                   </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {name: String = "World"}>
                     {name}
                   </let>
@@ -3453,14 +3351,14 @@ mod tests {
     fn let_with_multiple_bindings() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {first: String = "Hello", second: String = "World"}>
                     {first} {second}
                   </let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {first: String = "Hello", second: String = "World"}>
                     {first}
                     {" "}
@@ -3475,14 +3373,14 @@ mod tests {
     fn let_with_three_bindings() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>{a} + {b} + {c}</div>
                   </let>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>
                       {a}
@@ -3505,17 +3403,17 @@ mod tests {
     fn let_with_expression_value() {
         check(
             indoc! {"
-                component Main(x: Int, y: Int) {
+                fn Main(x: Int, y: Int) -> Fragment {
                   <let {sum: Int = x + y}>
                     <span>{sum}</span>
                   </let>
                 }
             "},
             expect![[r#"
-                component Main(
+                fn Main(
                   x: Int,
                   y: Int,
-                ) {
+                ) -> Fragment {
                   <let {sum: Int = x + y}>
                     <span>
                       {sum}
@@ -3531,7 +3429,7 @@ mod tests {
         check(
             indoc! {"
                 record User { name: String }
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   <let {name: String = user.name}>
                     <div>{name}</div>
                   </let>
@@ -3542,7 +3440,7 @@ mod tests {
                   name: String,
                 }
 
-                component Main(user: User) {
+                fn Main(user: User) -> Fragment {
                   <let {name: String = user.name}>
                     <div>
                       {name}
@@ -3557,7 +3455,7 @@ mod tests {
     fn nested_let_tags() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {a: String = "outer"}>
                     <let {b: String = "inner"}>
                       {a} {b}
@@ -3566,7 +3464,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {a: String = "outer"}>
                     <let {b: String = "inner"}>
                       {a}
@@ -3583,7 +3481,7 @@ mod tests {
     fn let_inside_if() {
         check(
             indoc! {r#"
-                component Main (show: Bool) {
+                fn Main(show: Bool) -> Fragment {
                   <if {show}>
                     <let {msg: String = "visible"}>
                       {msg}
@@ -3592,7 +3490,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main(show: Bool) {
+                fn Main(show: Bool) -> Fragment {
                   <if {show}>
                     <let {msg: String = "visible"}>
                       {msg}
@@ -3607,7 +3505,7 @@ mod tests {
     fn let_inside_for() {
         check(
             indoc! {"
-                component Main(items: Array[Int]) {
+                fn Main(items: Array[Int]) -> Fragment {
                   <for {item in items}>
                     <let {doubled: Int = item * 2}>
                       <span>{doubled}</span>
@@ -3616,7 +3514,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main(items: Array[Int]) {
+                fn Main(items: Array[Int]) -> Fragment {
                   <for {item in items}>
                     <let {doubled: Int = item * 2}>
                       <span>
@@ -3633,7 +3531,7 @@ mod tests {
     fn multiple_sibling_let_tags() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     <let {a: String = "first"}>
                       {a}
@@ -3645,7 +3543,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <>
                     <let {a: String = "first"}>
                       {a}
@@ -3663,12 +3561,12 @@ mod tests {
     fn let_with_empty_children() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: String = "unused"}></let>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: String = "unused"}>
                   </let>
                 }
@@ -3680,7 +3578,7 @@ mod tests {
     fn let_with_long_bindings_breaks_to_multiple_lines() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {
                     // a
                     first_name: String = "Hello",
@@ -3693,7 +3591,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {
                     // a
                     first_name: String = "Hello",
@@ -3714,15 +3612,15 @@ mod tests {
     fn comment_before_import_declaration() {
         check(
             indoc! {"
-                // External component
-                import components::Button
-                component Main {<></>}
+                // External function
+                import functions::Button
+                fn Main() -> Fragment {<></>}
             "},
             expect![[r#"
-                // External component
-                import components::Button
+                // External function
+                import functions::Button
 
-                component Main {
+                fn Main() -> Fragment {
                   <></>
                 }
             "#]],
@@ -3786,19 +3684,19 @@ mod tests {
     }
 
     #[test]
-    fn comment_before_component_declaration() {
+    fn comment_before_function_declaration() {
         check(
             indoc! {"
-                // Main component
-                component Main {
+                // Main function
+                fn Main() -> Fragment {
                   <>
                     hello
                   </>
                 }
             "},
             expect![[r#"
-                // Main component
-                component Main {
+                // Main function
+                fn Main() -> Fragment {
                   <>
                     hello
                   </>
@@ -3817,8 +3715,8 @@ mod tests {
                 // Status enum
                 enum Status { Active, Inactive }
 
-                // Main component
-                component Main {<></>}
+                // Main function
+                fn Main() -> Fragment {<></>}
             "},
             expect![[r#"
                 // User record
@@ -3832,8 +3730,8 @@ mod tests {
                   Inactive,
                 }
 
-                // Main component
-                component Main {
+                // Main function
+                fn Main() -> Fragment {
                   <></>
                 }
             "#]],
@@ -3930,7 +3828,7 @@ mod tests {
                 // d
                 }
                 // e
-                component Main {<></>}
+                fn Main() -> Fragment {<></>}
             "},
             expect![[r#"
                 // a
@@ -3943,7 +3841,7 @@ mod tests {
                 }
 
                 // e
-                component Main {
+                fn Main() -> Fragment {
                   <></>
                 }
             "#]],
@@ -3987,7 +3885,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Orientation { Horizontal, Vertical }
-                component Main(orientation: Orientation) {
+                fn Main(orientation: Orientation) -> Fragment {
                   <div class={match orientation {
                     // a
                     Orientation::Horizontal => "horizontal",
@@ -4003,7 +3901,7 @@ mod tests {
                   Vertical,
                 }
 
-                component Main(orientation: Orientation) {
+                fn Main(orientation: Orientation) -> Fragment {
                   <div class={
                     match orientation {
                       // a
@@ -4023,7 +3921,7 @@ mod tests {
     fn comment_before_macro_arg() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div class={join!(
                     // base styles
                     "flex",
@@ -4034,7 +3932,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div class={
                     join!(
                       // base styles
@@ -4054,7 +3952,7 @@ mod tests {
     fn comment_before_macro_arg_with_string_expansion() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div class={join!(
                     // base styles
                     "flex items-center",
@@ -4065,7 +3963,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div class={
                     join!(
                       // base styles
@@ -4084,27 +3982,27 @@ mod tests {
     }
 
     #[test]
-    fn comment_before_component_parameter() {
+    fn comment_before_function_parameter() {
         check(
             indoc! {r#"
-                component Button(
+                fn Button(
                     // The button label
                     label: String,
                     // Whether the button is disabled
                     disabled: Bool = false,
                     // More params to come
-                ) {
+                ) -> Fragment {
                   <>{label}</>
                 }
             "#},
             expect![[r#"
-                component Button(
+                fn Button(
                   // The button label
                   label: String,
                   // Whether the button is disabled
                   disabled: Bool = false,
+                ) -> Fragment {
                   // More params to come
-                ) {
                   <>
                     {label}
                   </>
@@ -4114,21 +4012,19 @@ mod tests {
     }
 
     #[test]
-    fn trailing_comment_in_component_parameters_single_param() {
+    fn trailing_comment_in_function_parameters_single_param() {
         check(
             indoc! {r#"
-                component X(
+                fn X(
                   x: String,
                   // ?
-                ) {
+                ) -> Fragment {
                   <>{x}</>
                 }
             "#},
             expect![[r#"
-                component X(
-                  x: String,
+                fn X(x: String) -> Fragment {
                   // ?
-                ) {
                   <>
                     {x}
                   </>
@@ -4141,12 +4037,12 @@ mod tests {
     fn join_macro_with_multiple_string_literals() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <h1 class={join!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Hello</h1>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <h1 class={
                     join!(
                       "text-4xl",
@@ -4163,15 +4059,15 @@ mod tests {
     }
 
     #[test]
-    fn component_invocation_with_single_long_attribute() {
+    fn function_invocation_with_single_long_attribute() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <Button class={join!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Click me</Button>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <Button class={
                     join!(
                       "text-4xl",
@@ -4191,12 +4087,12 @@ mod tests {
     fn simple_method_call() {
         check(
             indoc! {"
-                component Main(x: String) {
+                fn Main(x: String) -> Fragment {
                   <div>{x.foo()}</div>
                 }
             "},
             expect![[r#"
-                component Main(x: String) {
+                fn Main(x: String) -> Fragment {
                   <div>
                     {x.foo()}
                   </div>
@@ -4209,12 +4105,12 @@ mod tests {
     fn chained_method_calls() {
         check(
             indoc! {"
-                component Main(x: String) {
+                fn Main(x: String) -> Fragment {
                   <div>{x.foo().bar().baz()}</div>
                 }
             "},
             expect![[r#"
-                component Main(x: String) {
+                fn Main(x: String) -> Fragment {
                   <div>
                     {x.foo().bar().baz()}
                   </div>
@@ -4227,12 +4123,12 @@ mod tests {
     fn mixed_field_access_and_method_call() {
         check(
             indoc! {"
-                component Main(x: String) {
+                fn Main(x: String) -> Fragment {
                   <div>{x.field.method()}</div>
                 }
             "},
             expect![[r#"
-                component Main(x: String) {
+                fn Main(x: String) -> Fragment {
                   <div>
                     {x.field.method()}
                   </div>
@@ -4245,12 +4141,12 @@ mod tests {
     fn method_call_then_field_access() {
         check(
             indoc! {"
-                component Main(x: String) {
+                fn Main(x: String) -> Fragment {
                   <div>{x.method().field}</div>
                 }
             "},
             expect![[r#"
-                component Main(x: String) {
+                fn Main(x: String) -> Fragment {
                   <div>
                     {x.method().field}
                   </div>
@@ -4263,14 +4159,14 @@ mod tests {
     fn float_literal() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: Float = 5.0}>
                     {x}
                   </let>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {x: Float = 5.0}>
                     {x}
                   </let>
@@ -4283,14 +4179,14 @@ mod tests {
     fn float_literals_small_values() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <let {a: Float = 0.000, b: Float = 0.001, c: Float = 0.002}>
                     {a}
                   </let>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <let {
                     a: Float = 0.000,
                     b: Float = 0.001,
@@ -4307,14 +4203,14 @@ mod tests {
     fn inline_text_with_nested_element() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     foo<p>bar</p>
                   </div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     foo
                     <p>
@@ -4330,12 +4226,12 @@ mod tests {
     fn nested_elements_inline() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div><p>x</p></div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     <p>
                       x
@@ -4350,12 +4246,12 @@ mod tests {
     fn text_around_inline_element() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div>hello <b>world</b>!</div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     hello
                     {" "}
@@ -4373,12 +4269,12 @@ mod tests {
     fn text_with_multiple_inline_links() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                   <p>By clicking continue, you agree to our <a href="/tos">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.</p>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <p>
                     By clicking continue, you agree to our
                     {" "}
@@ -4402,7 +4298,7 @@ mod tests {
     fn empty_lines_between_text_collapsed() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
 
                   foo
@@ -4413,7 +4309,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     foo
                     bar
@@ -4427,12 +4323,12 @@ mod tests {
     fn text_around_void_element() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>hello <br> world</div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     hello
                     {" "}
@@ -4449,7 +4345,7 @@ mod tests {
     fn void_element_on_separate_line() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                     <div>
                         hello
                         <br>
@@ -4458,7 +4354,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     hello
                     <br>
@@ -4473,12 +4369,12 @@ mod tests {
     fn text_around_input_element() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <label>Name: <input type="text"> (required)</label>
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <label>
                     Name:
                     {" "}
@@ -4495,7 +4391,7 @@ mod tests {
     fn input_element_on_separate_line() {
         check(
             indoc! {r#"
-                component Main {
+                fn Main() -> Fragment {
                     <label>
                         Name:
                         <input type="text">
@@ -4504,7 +4400,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <label>
                     Name:
                     <input type="text">
@@ -4519,15 +4415,15 @@ mod tests {
     fn text_with_multiple_expressions() {
         check(
             indoc! {"
-                component Main(rating: String, num_reviews: String) {
+                fn Main(rating: String, num_reviews: String) -> Fragment {
                   <span>{rating} ({num_reviews} reviews)</span>
                 }
             "},
             expect![[r#"
-                component Main(
+                fn Main(
                   rating: String,
                   num_reviews: String,
-                ) {
+                ) -> Fragment {
                   <span>
                     {rating}
                     {" "}
@@ -4545,12 +4441,12 @@ mod tests {
     fn method_call_on_negated_int_preserves_parens() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div>{(-42).to_string()}</div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     {(-42).to_string()}
                   </div>
@@ -4563,12 +4459,12 @@ mod tests {
     fn method_call_on_negated_float_preserves_parens() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div>{(-3.14).to_string()}</div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     {(-3.14).to_string()}
                   </div>
@@ -4581,12 +4477,12 @@ mod tests {
     fn method_call_on_binary_expr_preserves_parens() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div>{(1 + 2).to_string()}</div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     {(1 + 2).to_string()}
                   </div>
@@ -4599,12 +4495,12 @@ mod tests {
     fn field_access_on_negated_int_preserves_parens() {
         check(
             indoc! {"
-                component Main {
+                fn Main() -> Fragment {
                   <div>{(-42).foo}</div>
                 }
             "},
             expect![[r#"
-                component Main {
+                fn Main() -> Fragment {
                   <div>
                     {(-42).foo}
                   </div>
@@ -4617,12 +4513,12 @@ mod tests {
     fn binary_expr_with_parens_preserves_precedence() {
         check(
             indoc! {"
-                component Main(x: Int) {
+                fn Main(x: Int) -> Fragment {
                   <div>{(1 + 2) * 3}</div>
                 }
             "},
             expect![[r#"
-                component Main(x: Int) {
+                fn Main(x: Int) -> Fragment {
                   <div>
                     {(1 + 2) * 3}
                   </div>
@@ -4799,12 +4695,12 @@ mod tests {
     fn spread_attribute_on_html_element_formats_correctly() {
         check(
             indoc! {"
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                   <button ...rest></button>
                 }
             "},
             expect![[r#"
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                   <button ...rest>
                   </button>
                 }
@@ -4813,15 +4709,15 @@ mod tests {
     }
 
     #[test]
-    fn spread_attribute_on_component_invocation_formats_correctly() {
+    fn spread_attribute_on_function_invocation_formats_correctly() {
         check(
             indoc! {"
-                component Bar(...rest) {
+                fn Bar(...rest) -> Fragment {
                   <Foo ...rest></Foo>
                 }
             "},
             expect![[r#"
-                component Bar(...rest) {
+                fn Bar(...rest) -> Fragment {
                   <Foo ...rest>
                   </Foo>
                 }
@@ -4833,15 +4729,15 @@ mod tests {
     fn formats_rest_param_and_spread() {
         check(
             indoc! {"
-                component Foo(class: String, ...rest) {
+                fn Foo(class: String, ...rest) -> Fragment {
                   <button ...rest></button>
                 }
             "},
             expect![[r#"
-                component Foo(
+                fn Foo(
                   class: String,
                   ...rest,
-                ) {
+                ) -> Fragment {
                   <button ...rest>
                   </button>
                 }
@@ -4853,28 +4749,14 @@ mod tests {
     fn formats_only_rest_param() {
         check(
             indoc! {"
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                   <button ...rest></button>
                 }
             "},
             expect![[r#"
-                component Foo(...rest) {
+                fn Foo(...rest) -> Fragment {
                   <button ...rest>
                   </button>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn function_declaration() {
-        check(
-            indoc! {"
-                fn foo(x: Int) -> Int { x + 10 }
-            "},
-            expect![[r#"
-                fn foo(x: Int) -> Int {
-                  x + 10
                 }
             "#]],
         );
