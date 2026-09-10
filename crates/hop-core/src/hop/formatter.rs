@@ -904,16 +904,16 @@ fn format_expr<'a>(
     match expr {
         ParsedExpr::VariableReference { value, .. } => arena.text(value.as_str()),
         ParsedExpr::Markup { node } => format_node(arena, node, comments),
-        expr @ ParsedExpr::FieldAccess {
+        ParsedExpr::FieldAccess {
             record: object,
             field,
             ..
-        } => format_expr_with_precedence(arena, object, expr.precedence(), comments)
+        } => format_expr_in_slot(arena, object, ParsedExpr::POSTFIX_BINDING_POWER, comments)
             .append(arena.text("."))
             .append(arena.text(field.as_str())),
-        expr @ ParsedExpr::MethodCall {
+        ParsedExpr::MethodCall {
             receiver, method, ..
-        } => format_expr_with_precedence(arena, receiver, expr.precedence(), comments)
+        } => format_expr_in_slot(arena, receiver, ParsedExpr::POSTFIX_BINDING_POWER, comments)
             .append(arena.text("."))
             .append(arena.text(method.as_str()))
             .append(arena.text("()")),
@@ -973,25 +973,31 @@ fn format_expr<'a>(
                     .append(arena.text("}"))
             }
         }
-        expr @ ParsedExpr::BinaryOp {
+        ParsedExpr::BinaryOp {
             left,
             operator,
             right,
             ..
         } => {
-            let prec = expr.precedence();
-            format_expr_with_precedence(arena, left, prec, comments)
+            let (left_power, right_power) = operator.binding_power();
+            format_expr_in_slot(arena, left, left_power, comments)
                 .append(arena.text(" "))
                 .append(arena.text(operator.as_str()))
                 .append(arena.text(" "))
-                .append(format_expr_with_precedence(arena, right, prec, comments))
+                .append(format_expr_in_slot(arena, right, right_power, comments))
         }
-        expr @ ParsedExpr::BooleanNegation { operand, .. } => arena.text("!").append(
-            format_expr_with_precedence(arena, operand, expr.precedence(), comments),
-        ),
-        expr @ ParsedExpr::NumericNegation { operand, .. } => arena.text("-").append(
-            format_expr_with_precedence(arena, operand, expr.precedence(), comments),
-        ),
+        ParsedExpr::BooleanNegation { operand, .. } => arena.text("!").append(format_expr_in_slot(
+            arena,
+            operand,
+            ParsedExpr::PREFIX_BINDING_POWER,
+            comments,
+        )),
+        ParsedExpr::NumericNegation { operand, .. } => arena.text("-").append(format_expr_in_slot(
+            arena,
+            operand,
+            ParsedExpr::PREFIX_BINDING_POWER,
+            comments,
+        )),
         ParsedExpr::EnumLiteral {
             enum_name,
             variant_name,
@@ -1205,13 +1211,15 @@ fn format_expr<'a>(
     }
 }
 
-fn format_expr_with_precedence<'a>(
+/// Formats an expression placed in an operand slot of the given binding power,
+/// adding parentheses if the expression does not bind tightly enough for it.
+fn format_expr_in_slot<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
-    parent_precedence: u8,
+    slot_binding_power: u8,
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    if expr.precedence() < parent_precedence {
+    if expr.binding_power() < slot_binding_power {
         arena
             .text("(")
             .append(format_expr(arena, expr, comments))
@@ -4678,6 +4686,57 @@ mod tests {
                 fn Main(x: Int) -> Fragment {
                   <div>
                     {(1 + 2) * 3}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn binary_expr_keeps_parens_around_right_operand_of_same_precedence() {
+        check(
+            indoc! {"
+                fn Main(a: Bool, b: Bool, c: Bool) -> Fragment {
+                  <div>{1 - (1 - 1)}{1 - (2 + 3)}{2 * (3 * 4)}{a == (b == c)}{a || (b || c)}</div>
+                }
+            "},
+            expect![[r#"
+                fn Main(
+                  a: Bool,
+                  b: Bool,
+                  c: Bool,
+                ) -> Fragment {
+                  <div>
+                    {1 - (1 - 1)}
+                    {1 - (2 + 3)}
+                    {2 * (3 * 4)}
+                    {a == (b == c)}
+                    {a || (b || c)}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn binary_expr_drops_redundant_parens_around_left_operand_of_same_precedence() {
+        check(
+            indoc! {"
+                fn Main(a: Bool, b: Bool, c: Bool) -> Fragment {
+                  <div>{(1 - 1) - 1}{(1 + 2) - 3}{1 - 2 * 3}{(a == b) == c}</div>
+                }
+            "},
+            expect![[r#"
+                fn Main(
+                  a: Bool,
+                  b: Bool,
+                  c: Bool,
+                ) -> Fragment {
+                  <div>
+                    {1 - 1 - 1}
+                    {1 + 2 - 3}
+                    {1 - 2 * 3}
+                    {a == b == c}
                   </div>
                 }
             "#]],

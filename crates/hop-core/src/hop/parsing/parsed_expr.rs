@@ -157,6 +157,23 @@ pub enum ParsedBinaryOp {
     Multiply,
 }
 
+impl ParsedBinaryOp {
+    pub fn binding_power(&self) -> (u8, u8) {
+        let left = match self {
+            ParsedBinaryOp::LogicalOr => 1,
+            ParsedBinaryOp::LogicalAnd => 3,
+            ParsedBinaryOp::Eq | ParsedBinaryOp::NotEq => 5,
+            ParsedBinaryOp::LessThan
+            | ParsedBinaryOp::GreaterThan
+            | ParsedBinaryOp::LessThanOrEqual
+            | ParsedBinaryOp::GreaterThanOrEqual => 7,
+            ParsedBinaryOp::Plus | ParsedBinaryOp::Minus => 9,
+            ParsedBinaryOp::Multiply => 11,
+        };
+        (left, left + 1)
+    }
+}
+
 /// A single arm in a match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone)]
 pub struct ParsedMatchArm {
@@ -450,30 +467,26 @@ impl ParsedExpr {
         }
     }
 
-    /// Returns the binding strength of this expression (higher = binds tighter).
-    /// Atomic expressions return u8::MAX, meaning they never need parentheses.
-    pub fn precedence(&self) -> u8 {
+    pub const PREFIX_BINDING_POWER: u8 = 13;
+    pub const POSTFIX_BINDING_POWER: u8 = 15;
+
+    pub fn binding_power(&self) -> u8 {
         match self {
-            ParsedExpr::BinaryOp { operator, .. } => match operator {
-                ParsedBinaryOp::LogicalOr => 1,
-                ParsedBinaryOp::LogicalAnd => 2,
-                ParsedBinaryOp::Eq | ParsedBinaryOp::NotEq => 3,
-                ParsedBinaryOp::LessThan
-                | ParsedBinaryOp::GreaterThan
-                | ParsedBinaryOp::LessThanOrEqual
-                | ParsedBinaryOp::GreaterThanOrEqual => 4,
-                ParsedBinaryOp::Plus | ParsedBinaryOp::Minus => 5,
-                ParsedBinaryOp::Multiply => 6,
-            },
-            ParsedExpr::BooleanNegation { .. } | ParsedExpr::NumericNegation { .. } => 7,
-            ParsedExpr::FieldAccess { .. } | ParsedExpr::MethodCall { .. } => 10,
+            ParsedExpr::BinaryOp { operator, .. } => operator.binding_power().0,
+            ParsedExpr::BooleanNegation { .. } | ParsedExpr::NumericNegation { .. } => {
+                Self::PREFIX_BINDING_POWER
+            }
+            ParsedExpr::FieldAccess { .. } | ParsedExpr::MethodCall { .. } => {
+                Self::POSTFIX_BINDING_POWER
+            }
             _ => u8::MAX,
         }
     }
 
-    /// Converts this expression to a doc, adding parentheses if needed based on parent precedence.
-    fn to_doc_with_precedence(&self, parent_precedence: u8) -> BoxDoc<'_> {
-        if self.precedence() < parent_precedence {
+    /// Converts this expression to a doc, adding parentheses if it does not
+    /// bind tightly enough for the operand slot it is placed in.
+    fn to_doc_in_slot(&self, slot_binding_power: u8) -> BoxDoc<'_> {
+        if self.binding_power() < slot_binding_power {
             BoxDoc::text("(")
                 .append(self.to_doc())
                 .append(BoxDoc::text(")"))
@@ -490,13 +503,13 @@ impl ParsedExpr {
                 field,
                 ..
             } => object
-                .to_doc_with_precedence(self.precedence())
+                .to_doc_in_slot(Self::POSTFIX_BINDING_POWER)
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
             ParsedExpr::MethodCall {
                 receiver, method, ..
             } => receiver
-                .to_doc_with_precedence(self.precedence())
+                .to_doc_in_slot(Self::POSTFIX_BINDING_POWER)
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(method.as_str()))
                 .append(BoxDoc::text("()")),
@@ -563,16 +576,16 @@ impl ParsedExpr {
                 right,
                 ..
             } => {
-                let prec = self.precedence();
-                left.to_doc_with_precedence(prec)
+                let (left_power, right_power) = operator.binding_power();
+                left.to_doc_in_slot(left_power)
                     .append(BoxDoc::text(format!(" {} ", operator)))
-                    .append(right.to_doc_with_precedence(prec))
+                    .append(right.to_doc_in_slot(right_power))
             }
             ParsedExpr::BooleanNegation { operand, .. } => {
-                BoxDoc::text("!").append(operand.to_doc_with_precedence(self.precedence()))
+                BoxDoc::text("!").append(operand.to_doc_in_slot(Self::PREFIX_BINDING_POWER))
             }
             ParsedExpr::NumericNegation { operand, .. } => {
-                BoxDoc::text("-").append(operand.to_doc_with_precedence(self.precedence()))
+                BoxDoc::text("-").append(operand.to_doc_in_slot(Self::PREFIX_BINDING_POWER))
             }
             ParsedExpr::EnumLiteral {
                 enum_name,
