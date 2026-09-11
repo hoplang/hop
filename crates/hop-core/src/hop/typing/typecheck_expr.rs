@@ -1677,7 +1677,13 @@ pub fn typecheck_expr(
 
                 Some(TypedExpr::Asset { path })
             }
-            _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
+            _ => {
+                errors.push(TypeError::new(
+                    TypeErrorKind::UnknownMacro { name: name.clone() },
+                    subject_range.clone(),
+                ));
+                None
+            }
         },
         ParsedExpr::MethodCall {
             receiver,
@@ -4981,6 +4987,20 @@ mod tests {
                 error: Mismatched type for 'join': expected String got Int
                 join!(count)
                       ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_macro() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[],
+            "unknown!()",
+            expect![[r#"
+                error: Unknown macro 'unknown'
+                unknown!()
+                ^^^^^^^^
             "#]],
         );
     }

@@ -309,9 +309,6 @@ pub(crate) enum ParseErrorKind {
     #[error("Function '{name}' is missing a return type")]
     FunctionMissingReturnType { name: CheapString },
 
-    #[error("Unknown macro '{name}'")]
-    UnknownMacro { name: CheapString },
-
     #[error("Unknown annotation '{name}'")]
     UnknownAnnotation { name: CheapString },
 

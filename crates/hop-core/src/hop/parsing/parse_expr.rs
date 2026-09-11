@@ -510,13 +510,6 @@ fn parse_macro_invocation(
     macro_name: CheapString,
     subject_range: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let name_str = macro_name.as_str();
-    if name_str != "join" && name_str != "asset" {
-        return Err(errors.emit(
-            ParseErrorKind::UnknownMacro { name: macro_name },
-            subject_range,
-        ));
-    }
     let left_paren = expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
     let (args, parens) = parse_delimited_list(
         iter,
@@ -1403,7 +1396,7 @@ mod tests {
             "x !",
             expect![[r#"
                 -- errors --
-                error: Unknown macro 'x'
+                error: Expected token '(' but got end of file
                 x !
                 ^^^
             "#]],
@@ -2745,14 +2738,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_macro() {
-        reject(
+    fn accepts_unknown_macro() {
+        accept(
             "unknown!(x)",
             expect![[r#"
-                -- errors --
-                error: Unknown macro 'unknown'
                 unknown!(x)
-                ^^^^^^^^
             "#]],
         );
     }

@@ -372,6 +372,9 @@ pub(crate) enum TypeErrorKind {
     #[error("#[examples(min_len = {min_len})] must be less than or equal to max_len = {max_len}")]
     MinLenGreaterThanMaxLen { min_len: i32, max_len: i32 },
 
+    #[error("Unknown macro '{name}'")]
+    UnknownMacro { name: CheapString },
+
     #[error("asset! takes exactly one argument, got {actual}")]
     AssetMacroArity { actual: usize },
 
