@@ -90,9 +90,7 @@ pub(crate) enum TypeErrorKind {
     #[error("Function {name} does not accept content (missing 'children: Html' parameter)")]
     FunctionDoesNotAcceptChildren { name: FunctionName },
 
-    #[error(
-        "Function {name} returns {found}; only a function returning Html can be invoked as a tag"
-    )]
+    #[error("Only a function returning Html can be invoked as a tag")]
     FunctionTagReturnTypeMismatch { name: FunctionName, found: Type },
 
     #[error("Content provided both as an explicit 'children' argument and as element children")]
