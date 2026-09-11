@@ -158,11 +158,7 @@ pub trait Transpiler {
         field: &'a FieldName,
     ) -> Doc<'a>;
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a>;
-    fn transpile_html<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        body: &'a [WriterStatement],
-    ) -> Doc<'a>;
+    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStatement]) -> Doc<'a>;
     fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a>;
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a>;
     fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i32) -> Doc<'a>;

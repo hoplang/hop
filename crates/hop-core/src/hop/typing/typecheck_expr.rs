@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
+use super::resolve_type::resolve_type;
 use super::r#type::{NumericType, Type};
 use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
@@ -1463,6 +1464,100 @@ pub fn typecheck_expr(
                     })
                 }
             }
+        }
+        ParsedExpr::Let { binding, body, .. } => {
+            let declared_type = match &binding.var_type {
+                Some(parsed_type) => Some(resolve_type(
+                    parsed_type,
+                    &type_env.names,
+                    definition_links,
+                    errors,
+                )?),
+                None => None,
+            };
+            let typed_value = typecheck_expr(
+                &binding.value_expr,
+                declared_type.as_ref(),
+                forwarded_params,
+                var_env,
+                type_env,
+                registry,
+                annotations,
+                definition_links,
+                asset_references,
+                errors,
+            );
+            let binding_type = match (&declared_type, &typed_value) {
+                (Some(declared), _) => declared.clone(),
+                (None, Some(typed_value)) => typed_value.typ(),
+                (None, None) => return None,
+            };
+            // On a clash the body is still typechecked, with the name
+            // resolving to the existing binding, so that its errors surface
+            // and the existing binding is not reported unused.
+            let pushed = var_env
+                .push(
+                    binding.var_name.clone(),
+                    binding_type.clone(),
+                    binding.var_name_range.clone(),
+                )
+                .is_ok();
+            if pushed {
+                annotations.push(HoverAnnotation::TypeForVarName {
+                    range: binding.var_name_range.clone(),
+                    typ: binding_type,
+                    var_name: binding.var_name.clone(),
+                });
+            } else {
+                errors.push(TypeError::new(
+                    TypeErrorKind::VariableAlreadyDefined {
+                        name: binding.var_name.clone(),
+                    },
+                    binding.var_name_range.clone(),
+                ));
+            }
+            if let (Some(declared), Some(typed_value)) = (&declared_type, &typed_value) {
+                let value_type = typed_value.typ();
+                if value_type != *declared {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::LetBindingTypeMismatch {
+                            expected: declared.clone(),
+                            found: value_type,
+                        },
+                        binding.value_expr.range().clone(),
+                    ));
+                }
+            }
+            let typed_body = typecheck_expr(
+                body,
+                inferred_type,
+                forwarded_params,
+                var_env,
+                type_env,
+                registry,
+                annotations,
+                definition_links,
+                asset_references,
+                errors,
+            );
+            if !pushed {
+                return None;
+            }
+            let (name, entry) = var_env.pop();
+            if !entry.accessed {
+                errors.push(TypeError::new(
+                    TypeErrorKind::UnusedVariable { var_name: name },
+                    entry.range,
+                ));
+            }
+            let typed_body = typed_body?;
+            let typ = typed_body.typ();
+            Some(TypedExpr::Let {
+                var: binding.var_name.clone(),
+                value: Box::new(typed_value?),
+                body: Box::new(typed_body),
+                typ,
+            })
         }
         ParsedExpr::Match { subject, arms, .. } => typecheck_match(
             subject,

@@ -1229,11 +1229,7 @@ impl Transpiler for RustTranspiler {
 
     /// The fragment body renders into its own `output` buffer, so it is
     /// emitted as a block expression that shadows `output`.
-    fn transpile_html<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        body: &'a [WriterStatement],
-    ) -> Doc<'a> {
+    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStatement]) -> Doc<'a> {
         self.needs_html = true;
         arena
             .text("{")

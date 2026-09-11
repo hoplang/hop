@@ -1983,6 +1983,46 @@ mod tests {
     }
 
     #[test]
+    fn should_show_hover_info_for_let_binding() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                fn Greeting(name: String) -> Html {
+                  let greeting = "Hello " + name;
+                        ^
+                  <div>{greeting}</div>
+                }
+            "#},
+            expect![[r#"
+                ```
+                greeting : String
+                ```
+                  --> main.hop (line 2, col 7)
+                2 |   let greeting = "Hello " + name;
+                  |       ^^^^^^^^
+            "#]],
+        );
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                fn Greeting(name: String) -> Html {
+                  let greeting = "Hello " + name;
+                  <div>{greeting}</div>
+                          ^
+                }
+            "#},
+            expect![[r#"
+                ```
+                greeting : String
+                ```
+                  --> main.hop (line 3, col 9)
+                3 |   <div>{greeting}</div>
+                  |         ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_show_hover_info_for_record_literal_type_name() {
         check_hover_info(
             indoc! {r#"

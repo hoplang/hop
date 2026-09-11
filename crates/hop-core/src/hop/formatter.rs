@@ -408,7 +408,8 @@ fn format_function_declaration<'a>(
 
     let body_leading_comments =
         drain_comments_before(arena, comments, function.body.range().start());
-    let body_content = body_leading_comments.append(format_expr(arena, &function.body, comments));
+    let body_content =
+        body_leading_comments.append(format_block_body(arena, &function.body, comments));
     let has_trailing_comments = comments
         .front()
         .is_some_and(|c| c.start() < function.range.end());
@@ -479,6 +480,12 @@ fn format_attribute<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     match item {
         ParsedAttribute::KeyOnly { name } => arena.text(name.as_str()),
+        ParsedAttribute::Expression { name, value } if matches!(value, ParsedExpr::Let { .. }) => {
+            arena
+                .text(name.as_str())
+                .append(arena.text("="))
+                .append(format_expr(arena, value, comments))
+        }
         ParsedAttribute::Expression { name, value } => arena
             .text(name.as_str())
             .append(arena.text("={"))
@@ -513,10 +520,9 @@ fn format_node<'a>(
         // Newline nodes are handled by format_children (they signal where to break).
         // This case is here for completeness but shouldn't be reached in normal formatting.
         ParsedNode::Newline { .. } => arena.nil(),
-        ParsedNode::Interpolation { expression, .. } => arena
-            .text("{")
-            .append(format_expr(arena, expression, comments))
-            .append(arena.text("}")),
+        ParsedNode::Interpolation { expression, .. } => {
+            format_braced_expr(arena, expression, comments)
+        }
         ParsedNode::FunctionInvocation {
             function_name,
             attributes,
@@ -571,9 +577,9 @@ fn format_node<'a>(
         } => {
             let children_doc = format_children(arena, children, comments);
             arena
-                .text("<if {")
-                .append(format_expr(arena, condition, comments))
-                .append(arena.text("}>"))
+                .text("<if ")
+                .append(format_braced_expr(arena, condition, comments))
+                .append(arena.text(">"))
                 .append(children_doc)
                 .append(arena.text("</if>"))
         }
@@ -663,9 +669,9 @@ fn format_node<'a>(
                 arena.line().append(doc).nest(2).append(arena.line())
             };
             arena
-                .text("<match {")
-                .append(format_expr(arena, subject, comments))
-                .append(arena.text("}>"))
+                .text("<match ")
+                .append(format_braced_expr(arena, subject, comments))
+                .append(arena.text(">"))
                 .append(cases_doc)
                 .append(arena.text("</match>"))
         }
@@ -896,6 +902,45 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
     }
 }
 
+/// Formats an expression that the surrounding syntax wraps in `{` `}`. A
+/// `let` chain brings its own braces and layout, so it is not wrapped again.
+fn format_braced_expr<'a>(
+    arena: &'a Arena<'a>,
+    expr: &'a ParsedExpr,
+    comments: &mut VecDeque<&'a DocumentRange>,
+) -> DocBuilder<'a, Arena<'a>> {
+    if let ParsedExpr::Let { .. } = expr {
+        format_expr(arena, expr, comments)
+    } else {
+        arena
+            .text("{")
+            .append(format_expr(arena, expr, comments))
+            .append(arena.text("}"))
+    }
+}
+
+/// Formats the inside of a block whose braces are supplied by the caller:
+/// one `let` statement per line, then the tail expression.
+fn format_block_body<'a>(
+    arena: &'a Arena<'a>,
+    expr: &'a ParsedExpr,
+    comments: &mut VecDeque<&'a DocumentRange>,
+) -> DocBuilder<'a, Arena<'a>> {
+    let mut doc = arena.nil();
+    let mut expr = expr;
+    while let ParsedExpr::Let { binding, body, .. } = expr {
+        doc = doc
+            .append(drain_comments_before(arena, comments, expr.range().start()))
+            .append(arena.text("let "))
+            .append(format_let_binding(arena, binding, comments))
+            .append(arena.text(";"))
+            .append(arena.hardline());
+        expr = body;
+    }
+    doc.append(drain_comments_before(arena, comments, expr.range().start()))
+        .append(format_expr(arena, expr, comments))
+}
+
 fn format_expr<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
@@ -903,6 +948,16 @@ fn format_expr<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     match expr {
         ParsedExpr::VariableReference { value, .. } => arena.text(value.as_str()),
+        ParsedExpr::Let { .. } => arena
+            .text("{")
+            .append(
+                arena
+                    .hardline()
+                    .append(format_block_body(arena, expr, comments))
+                    .nest(2),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}")),
         ParsedExpr::Markup { node } => format_node(arena, node, comments),
         ParsedExpr::FieldAccess {
             record: object,
@@ -1756,6 +1811,198 @@ mod tests {
                   role: String,
                 ) -> Html {
                   <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_in_function_body() {
+        check(
+            indoc! {r#"
+                fn Greeting(first: String, last: String) -> Html {
+                  let name = first + " " + last; let greeting: String = "Hello " + name;
+                  <h1>{greeting}</h1>
+                }
+            "#},
+            expect![[r#"
+                fn Greeting(
+                  first: String,
+                  last: String,
+                ) -> Html {
+                  let name = first + " " + last;
+                  let greeting: String = "Hello " + name;
+                  <h1>
+                    {greeting}
+                  </h1>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_in_match_arm_and_redundant_braces() {
+        check(
+            indoc! {r#"
+                fn Main(title: Option[String]) -> String {
+                  match title { Some(t) => { let s = t + " "; s }, None => { "" } }
+                }
+            "#},
+            expect![[r#"
+                fn Main(title: Option[String]) -> String {
+                  match title {
+                    Some(t) => {
+                      let s = t + " ";
+                      s
+                    },
+                    None => "",
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_in_interpolation_and_attribute() {
+        check(
+            indoc! {r#"
+                fn Main(a: Int) -> Html {
+                  <div class={ let base = "btn"; base }>{ let b = a + 1; b }</div>
+                }
+            "#},
+            expect![[r#"
+                fn Main(a: Int) -> Html {
+                  <div class={
+                    let base = "btn";
+                    base
+                  }>
+                    {
+                      let b = a + 1;
+                      b
+                    }
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_in_tag_headers() {
+        check(
+            indoc! {r#"
+                fn Main(a: Int) -> Html {
+                  <if { let n = a; n == 1 }>
+                    <match { let m = a; m == 1 }>
+                      <case {true}>one</case>
+                    </match>
+                  </if>
+                }
+            "#},
+            expect![[r#"
+                fn Main(a: Int) -> Html {
+                  <if {
+                    let n = a;
+                    n == 1
+                  }>
+                    <match {
+                      let m = a;
+                      m == 1
+                    }>
+                      <case {true}>
+                        one
+                      </case>
+                    </match>
+                  </if>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_as_operand_and_as_let_value() {
+        check(
+            indoc! {r#"
+                fn Main() -> Int {
+                  let x = { let a = 1; a };
+                  x + { let b = 2; b }
+                }
+            "#},
+            expect![[r#"
+                fn Main() -> Int {
+                  let x = {
+                    let a = 1;
+                    a
+                  };
+                  x + {
+                    let b = 2;
+                    b
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn comments_between_let_statements() {
+        check(
+            indoc! {r#"
+                fn Main() -> Int {
+                  // first
+                  let a = 1;
+                  // second
+                  let b = 2;
+                  // tail
+                  a + b
+                }
+            "#},
+            expect![[r#"
+                fn Main() -> Int {
+                  // first
+                  let a = 1;
+                  // second
+                  let b = 2;
+                  // tail
+                  a + b
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_in_interpolation_with_markup_tail() {
+        check(
+            indoc! {r#"
+                page Test() {
+                  fn body() -> Html {
+                    <ul>
+                      {
+                        let label = "Item";
+                        let count = 2;
+                        <li class={ let base = "row"; base + "-" + "odd" }>{label}: {count.to_string()}</li>
+                      }
+                    </ul>
+                  }
+                }
+            "#},
+            expect![[r#"
+                page Test {
+                  fn body() -> Html {
+                    <ul>
+                      {
+                        let label = "Item";
+                        let count = 2;
+                        <li class={
+                          let base = "row";
+                          base + "-" + "odd"
+                        }>
+                          {label}
+                          :
+                          {" "}
+                          {count.to_string()}
+                        </li>
+                      }
+                    </ul>
+                  }
                 }
             "#]],
         );

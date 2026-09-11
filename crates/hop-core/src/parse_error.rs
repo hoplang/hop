@@ -145,6 +145,12 @@ pub(crate) enum ParseErrorKind {
     #[error("Missing binding in <let> tag")]
     MissingLetBinding,
 
+    #[error("A block must end with an expression")]
+    BlockMissingTailExpression,
+
+    #[error("let is only allowed inside a block: wrap the expression in braces")]
+    LetOutsideBlock,
+
     #[error("Invalid markup declaration")]
     InvalidMarkupDeclaration,
 

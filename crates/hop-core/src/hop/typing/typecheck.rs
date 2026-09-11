@@ -1010,6 +1010,11 @@ fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
             out.insert(name.to_cheap_string());
         }
         ParsedExpr::Markup { node } => collect_names_in_node(node, out),
+        ParsedExpr::Let { binding, .. } => {
+            if let Some(var_type) = &binding.var_type {
+                collect_names_in_type(var_type, out);
+            }
+        }
         _ => {}
     }
     expr.for_each_child(&mut |child| collect_names_in_expr(child, out));
@@ -1325,6 +1330,190 @@ mod tests {
                 4 | record R {
                 5 |   field: B,
                   |          ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_let_in_function_body() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Greeting(first: String, last: String) -> Html {
+                  let name = first + " " + last;
+                  let greeting: String = "Hello " + name;
+                  <h1>{greeting}</h1>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Greeting(first: String, last: String) -> Html {
+                  let name = ((first + " ") + last) in let greeting = ("Hello " + name) in html(
+                    tag: "h1",
+                    attrs: [],
+                    children: concat(escape(greeting)),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_let_in_match_arm_and_block_value() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(title: Option[String]) -> String {
+                  let prefix: Option[String] = { let p = "foo"; Some(p) };
+                  match title {
+                    Some(t) => {
+                      let suffix = t + " ";
+                      suffix
+                    },
+                    None => match prefix { Some(p) => p, None => "" },
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(title: Option[String]) -> String {
+                  let prefix = let p = "foo" in Some(p) in match title {
+                    Some(v__0) => let t = v__0 in let suffix = (t + " ") in suffix,
+                    None => match prefix {Some(v__1) => let p = v__1 in p, None => ""},
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_let_with_mismatched_type_annotation() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Int {
+                  let a: Int = "one";
+                  a
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type: expected Int got String
+                  --> main.hop (line 2, col 16)
+                1 | fn Main() -> Int {
+                2 |   let a: Int = "one";
+                  |                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_let_statement_shadowing_parameter() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(name: String) -> String {
+                  let name = name + "!";
+                  name
+                }
+            "#},
+            expect![[r#"
+                error: Variable name is already defined
+                  --> main.hop (line 2, col 7)
+                1 | fn Main(name: String) -> String {
+                2 |   let name = name + "!";
+                  |       ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_let_shadowing_earlier_let() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Int {
+                  let a = 1;
+                  let a = 2;
+                  a
+                }
+            "#},
+            expect![[r#"
+                error: Variable a is already defined
+                  --> main.hop (line 3, col 7)
+                2 |   let a = 1;
+                3 |   let a = 2;
+                  |       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_let_shadowing_loop_and_let_tag_variables() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(items: Array[Int]) -> Html {
+                  <let {x = 1}>
+                    <for {item in items}>
+                      <div class={ let item = x; item }>{ let x = item; x }</div>
+                    </for>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                error: Variable item is already defined
+                  --> main.hop (line 4, col 24)
+                3 |     <for {item in items}>
+                4 |       <div class={ let item = x; item }>{ let x = item; x }</div>
+                  |                        ^^^^
+
+                error: Variable x is already defined
+                  --> main.hop (line 4, col 47)
+                3 |     <for {item in items}>
+                4 |       <div class={ let item = x; item }>{ let x = item; x }</div>
+                  |                                               ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unused_let() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Int {
+                  let a = 1;
+                  2
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable a
+                  --> main.hop (line 2, col 7)
+                1 | fn Main() -> Int {
+                2 |   let a = 1;
+                  |       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_let_used_outside_its_block() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(flag: Bool) -> Int {
+                  match flag {
+                    true => { let a = 1; a },
+                    false => a,
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: a
+                  --> main.hop (line 4, col 14)
+                3 |     true => { let a = 1; a },
+                4 |     false => a,
+                  |              ^
             "#]],
         );
     }

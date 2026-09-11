@@ -51,11 +51,9 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::Option(_)
-            | Type::Html
-            | Type::Attrs
-            | Type::Array(_)
-            | Type::Named { .. } => None,
+            Type::Option(_) | Type::Html | Type::Attrs | Type::Array(_) | Type::Named { .. } => {
+                None
+            }
         }
     }
 
@@ -77,12 +75,9 @@ impl Type {
     pub fn is_matchable(&self) -> bool {
         match self {
             Type::Bool | Type::Option(_) | Type::Named { .. } => true,
-            Type::String
-            | Type::Int
-            | Type::Float
-            | Type::Html
-            | Type::Attrs
-            | Type::Array(_) => false,
+            Type::String | Type::Int | Type::Float | Type::Html | Type::Attrs | Type::Array(_) => {
+                false
+            }
         }
     }
 }

@@ -11,10 +11,12 @@ use super::parse_helpers::{
     expect_variable_name, next_if_map, parse_delimited, parse_delimited_list,
 };
 use super::parse_nodes;
+use super::parse_type::parse_type;
 use super::parsed_expr::{
     Constructor, ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer,
     ParsedMatchArm, ParsedMatchPattern, ParsedNamedArgument,
 };
+use super::parsed_node::ParsedLetBinding;
 use super::token::LangToken;
 use super::tokenize_expr::{peek, peek2};
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
@@ -228,6 +230,44 @@ fn parse_array_literal(
     Ok(ParsedExpr::ArrayLiteral { elements, range })
 }
 
+/// Parse the inside of a block: any number of `let` statements followed by a
+/// tail expression. Without a leading `let` this is just `parse_expr`, so
+/// sites that always have braces around an expression can call this instead.
+pub fn parse_block_body(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let Some(let_range) = advance_if(iter, comments, errors, LangToken::Let) else {
+        return parse_expr(iter, comments, errors, eof_range);
+    };
+    let (var_name, var_name_range) = expect_variable_name(iter, comments, errors, eof_range)?;
+    let var_type = if advance_if(iter, comments, errors, LangToken::Colon).is_some() {
+        Some(parse_type(iter, comments, errors, eof_range)?)
+    } else {
+        None
+    };
+    expect_token(iter, comments, errors, eof_range, &LangToken::Assign)?;
+    let value_expr = parse_expr(iter, comments, errors, eof_range)?;
+    let semicolon = expect_token(iter, comments, errors, eof_range, &LangToken::Semicolon)?;
+    if let Some((LangToken::RightBrace, _)) = peek(iter) {
+        return Err(errors.emit(ParseErrorKind::BlockMissingTailExpression {}, semicolon));
+    }
+    let body = parse_block_body(iter, comments, errors, eof_range)?;
+    let range = let_range.to(body.range().clone());
+    Ok(ParsedExpr::Let {
+        binding: Box::new(ParsedLetBinding {
+            var_name,
+            var_name_range,
+            var_type,
+            value_expr,
+        }),
+        body: Box::new(body),
+        range,
+    })
+}
+
 pub fn parse_primary(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
@@ -413,10 +453,24 @@ pub fn parse_primary(
             value: None,
             range: none_range,
         }
+    } else if let Some(left_brace) = advance_if(iter, comments, errors, LangToken::LeftBrace) {
+        let (inner, _) = parse_delimited(
+            iter,
+            comments,
+            errors,
+            eof_range,
+            LangTokenPair::Braces,
+            &left_brace,
+            parse_block_body,
+        )?;
+        inner
     } else if let Some(left_angle) = advance_if(iter, comments, errors, LangToken::LessThan) {
         parse_nodes::parse_markup(iter, comments, errors, left_angle)?
     } else {
         return Err(match peek(iter) {
+            Some((LangToken::Let, token_range)) => {
+                errors.emit(ParseErrorKind::LetOutsideBlock {}, token_range)
+            }
             Some((token, token_range)) => {
                 errors.emit(ParseErrorKind::UnexpectedToken { token }, token_range)
             }
@@ -2973,6 +3027,153 @@ mod tests {
             expect![[r#"
                 foo(1, 2, 3)
             "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_let_statements_in_block() {
+        accept(
+            "{ let a = 1; let b = a + 1; a + b }",
+            expect![[r#"
+            {
+              let a = 1;
+              let b = a + 1;
+              a + b
+            }
+        "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_let_with_type_annotation() {
+        accept(
+            "{ let a: Int = 1; a }",
+            expect![[r#"
+            {
+              let a: Int = 1;
+              a
+            }
+        "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_block_in_match_arm() {
+        accept(
+            "match x { Some(t) => { let s = t; s }, None => \"\" }",
+            expect![[r#"
+                match x {
+                  Some(t) => {
+                    let s = t;
+                    s
+                  },
+                  None => "",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_block_as_operand_and_argument() {
+        accept(
+            "1 + { let a = 2; a }",
+            expect![[r#"
+            1 + {
+              let a = 2;
+              a
+            }
+        "#]],
+        );
+        accept(
+            "f({ let a = 2; a })",
+            expect![[r#"
+            f(
+              {
+                let a = 2;
+                a
+              },
+            )
+        "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_block_as_let_value() {
+        accept(
+            "{ let x = { let a = 1; a }; x }",
+            expect![[r#"
+            {
+              let x = {
+                let a = 1;
+                a
+              };
+              x
+            }
+        "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_redundant_braces_around_expression() {
+        accept(
+            "{ a }",
+            expect![[r#"
+            a
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_block_ending_in_let() {
+        reject(
+            "{ let a = 1; }",
+            expect![[r#"
+            -- errors --
+            error: A block must end with an expression
+            { let a = 1; }
+                       ^
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_block_with_semicolon_after_tail() {
+        reject(
+            "{ let a = 1; a; }",
+            expect![[r#"
+            -- errors --
+            error: Expected token '}' but got ';'
+            { let a = 1; a; }
+                          ^
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_let_outside_block() {
+        reject(
+            "match x { Some(t) => let s = t; s, None => \"\" }",
+            expect![[r#"
+                -- errors --
+                error: let is only allowed inside a block: wrap the expression in braces
+                match x { Some(t) => let s = t; s, None => "" }
+                                     ^^^
+                -- ast --
+                match x {None => ""}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_let_without_semicolon() {
+        reject(
+            "{ let a = 1 a }",
+            expect![[r#"
+            -- errors --
+            error: Expected token ';' but got 'a'
+            { let a = 1 a }
+                        ^
+        "#]],
         );
     }
 

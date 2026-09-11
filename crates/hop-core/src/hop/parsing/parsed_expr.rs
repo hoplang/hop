@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use super::parsed_node::ParsedNode;
+use super::parsed_node::{ParsedLetBinding, ParsedNode};
 use crate::document::{CheapString, DocumentRange};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -107,6 +107,12 @@ pub enum ParsedExpr {
         /// The range of the function subject, e.g. `join!`.
         subject_range: DocumentRange,
         args: Vec<Self>,
+        range: DocumentRange,
+    },
+
+    Let {
+        binding: Box<ParsedLetBinding>,
+        body: Box<Self>,
         range: DocumentRange,
     },
 
@@ -385,6 +391,10 @@ impl ParsedExpr {
                     f(value);
                 }
             }
+            ParsedExpr::Let { binding, body, .. } => {
+                f(&binding.value_expr);
+                f(body);
+            }
 
             ParsedExpr::Markup { .. }
             | ParsedExpr::VariableReference { .. }
@@ -413,6 +423,7 @@ impl ParsedExpr {
     /// with nothing left to evaluate.
     pub fn is_constant(&self) -> bool {
         match self {
+            ParsedExpr::Let { .. } => false,
             ParsedExpr::StringLiteral { .. }
             | ParsedExpr::BooleanLiteral { .. }
             | ParsedExpr::IntLiteral { .. }
@@ -462,7 +473,8 @@ impl ParsedExpr {
             | ParsedExpr::Match { range, .. }
             | ParsedExpr::OptionLiteral { range, .. }
             | ParsedExpr::MacroInvocation { range, .. }
-            | ParsedExpr::FunctionCall { range, .. } => range,
+            | ParsedExpr::FunctionCall { range, .. }
+            | ParsedExpr::Let { range, .. } => range,
             ParsedExpr::Markup { node } => node.range(),
         }
     }
@@ -638,6 +650,35 @@ impl ParsedExpr {
                         )
                         .append(BoxDoc::text("}"))
                 }
+            }
+            ParsedExpr::Let { .. } => {
+                let mut statements = Vec::new();
+                let mut expr = self;
+                while let ParsedExpr::Let { binding, body, .. } = expr {
+                    let mut statement =
+                        BoxDoc::text("let ").append(BoxDoc::text(binding.var_name.as_str()));
+                    if let Some(var_type) = &binding.var_type {
+                        statement = statement
+                            .append(BoxDoc::text(": "))
+                            .append(var_type.to_doc());
+                    }
+                    statements.push(
+                        statement
+                            .append(BoxDoc::text(" = "))
+                            .append(binding.value_expr.to_doc())
+                            .append(BoxDoc::text(";")),
+                    );
+                    expr = body;
+                }
+                statements.push(expr.to_doc());
+                BoxDoc::text("{")
+                    .append(
+                        BoxDoc::hardline()
+                            .append(BoxDoc::intersperse(statements, BoxDoc::hardline()))
+                            .nest(2),
+                    )
+                    .append(BoxDoc::hardline())
+                    .append(BoxDoc::text("}"))
             }
             ParsedExpr::OptionLiteral { value, .. } => match value {
                 Some(inner) => BoxDoc::text("Some(")

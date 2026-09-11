@@ -548,7 +548,7 @@ fn parse_function_declaration(
                     name_range.clone(),
                 ));
             }
-            parse_expr::parse_expr(iter, comments, errors, eof_range)
+            parse_expr::parse_block_body(iter, comments, errors, eof_range)
         },
     )?;
     Ok(ParsedFunctionDeclaration {
@@ -938,6 +938,109 @@ mod tests {
                     children: [interpolate(children)],
                   )
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_let_in_function_body() {
+        accept(
+            indoc! {"
+                fn Greeting(first: String, last: String) -> Html {
+                  let name = first + \" \" + last;
+                  <h1>{name}</h1>
+                }
+            "},
+            expect![[r#"
+                fn Greeting(first: String, last: String) -> Html {
+                  {
+                    let name = first + " " + last;
+                    html(
+                      tag: "h1",
+                      attrs: [],
+                      children: [interpolate(name)],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_let_in_interpolation_and_attribute() {
+        accept(
+            indoc! {"
+                fn Main(a: Int) -> Html {
+                  <div class={ let base = \"btn\"; base }>{ let b = a + 1; b }</div>
+                }
+            "},
+            expect![[r#"
+                fn Main(a: Int) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [
+                      class: {
+                        let base = "btn";
+                        base
+                      },
+                    ],
+                    children: [
+                      interpolate(
+                        {
+                          let b = a + 1;
+                          b
+                        },
+                      ),
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_let_in_tag_headers() {
+        accept(
+            indoc! {"
+                fn Main(a: Int) -> Html {
+                  <if { let n = a; n == 1 }>
+                    <match { let m = a; m == 1 }>
+                      <case {true}>one</case>
+                    </match>
+                  </if>
+                }
+            "},
+            expect![[r#"
+                fn Main(a: Int) -> Html {
+                  if {
+                    let n = a;
+                    n == 1
+                  } {
+                    match {
+                      let m = a;
+                      m == 1
+                    } { true => { text("one") } },
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_body_ending_in_let() {
+        reject(
+            indoc! {"
+                fn Main() -> Int {
+                  let a = 1;
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: A block must end with an expression
+                1 | fn Main() -> Int {
+                2 |   let a = 1;
+                  |            ^
+                -- ast --
             "#]],
         );
     }

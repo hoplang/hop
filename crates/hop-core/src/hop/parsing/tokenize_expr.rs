@@ -69,6 +69,7 @@ pub fn next(
                 None => (LangToken::Colon, start),
             },
             ',' => (LangToken::Comma, start),
+            ';' => (LangToken::Semicolon, start),
             '#' => match iter.next_if(|s| s.ch() == '[') {
                 Some(end) => (LangToken::HashBracket, start.to(end)),
                 None => {
@@ -186,6 +187,7 @@ pub fn next(
                     "fn" => LangToken::Fn,
                     "import" => LangToken::Import,
                     "in" => LangToken::In,
+                    "let" => LangToken::Let,
                     "match" => LangToken::Match,
                     "page" => LangToken::Page,
                     "pub" => LangToken::Pub,
@@ -534,6 +536,34 @@ mod tests {
                 token: FloatLiteral(99.99)
                 42 3.14 0 0.0 123 99.99
                                   ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_let_keyword_and_semicolon() {
+        accept(
+            "let letter = 1;",
+            expect![[r#"
+                token: Let
+                let letter = 1;
+                ^^^
+
+                token: Identifier("letter")
+                let letter = 1;
+                    ^^^^^^
+
+                token: Assign
+                let letter = 1;
+                           ^
+
+                token: IntLiteral(1)
+                let letter = 1;
+                             ^
+
+                token: Semicolon
+                let letter = 1;
+                              ^
             "#]],
         );
     }

@@ -1084,11 +1084,7 @@ impl Transpiler for TsTranspiler {
 
     /// The fragment body gets its own `output` buffer, so it is built by an
     /// immediately invoked arrow function rather than inline.
-    fn transpile_html<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        body: &'a [WriterStatement],
-    ) -> Doc<'a> {
+    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStatement]) -> Doc<'a> {
         self.needs_html = true;
         arena
             .text("(() => {")

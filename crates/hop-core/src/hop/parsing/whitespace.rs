@@ -289,10 +289,7 @@ mod tests {
 
     #[test]
     fn trims_text_at_the_end_of_a_body() {
-        check(
-            "page Test() { fn body() -> Html {<>hello </>} }\n",
-            "hello",
-        );
+        check("page Test() { fn body() -> Html {<>hello </>} }\n", "hello");
     }
 
     #[test]

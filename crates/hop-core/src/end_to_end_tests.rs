@@ -505,6 +505,132 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn let_statements_in_body_arm_and_interpolation() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let first = "foo";
+                    let title: Option[String] = Some("bar");
+                    let prefix = match title {
+                      Some(t) => {
+                        let spaced = t + " ";
+                        spaced
+                      },
+                      None => "",
+                    };
+                    <p>{ let name = prefix + first; name }</p>
+                  }
+                }
+            "#},
+            "<p>bar foo</p>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = "foo" in {
+                    let v1 = Option[String]::Some("bar") in {
+                      let v5 = match v1 {
+                        Some(v2) => {
+                          let v3 = v2 in { let v4 = (v3 + " ") in { v4 } }
+                        }
+                        None => { "" }
+                      } in {
+                        write("<p")
+                        write(">")
+                        write_string(let v6 = (v5 + v0) in { v6 })
+                        write("</p>")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<p>bar foo</p>")
+                }
+                -- expected output --
+                <p>bar foo</p>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn let_in_interpolation_with_markup_tail() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    <ul>
+                      {
+                        let label = "Item";
+                        let count = 2;
+                        <li class={ let base = "row"; base + "-" + "odd" }>{label}: {count.to_string()}</li>
+                      }
+                    </ul>
+                  }
+                }
+            "#},
+            "<ul><li class=\"row-odd\">Item: 2</li></ul>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  write("<ul")
+                  write(">")
+                  let v0 = "Item" in {
+                    let v1 = 2 in {
+                      write("<li")
+                      write(" class=\"")
+                      write_string(let v2 = "row" in {
+                        ((v2 + "-") + "odd")
+                      })
+                      write("\"")
+                      write(">")
+                      write_string(v0)
+                      write(": ")
+                      write_string(v1.to_string())
+                      write("</li>")
+                    }
+                  }
+                  write("</ul>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<ul><li class=\"row-odd\">Item: 2</li></ul>")
+                }
+                -- expected output --
+                <ul><li class="row-odd">Item: 2</li></ul>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn int_binding_from_record_pattern_compared_with_literal() {
         check(
             indoc! {r#"

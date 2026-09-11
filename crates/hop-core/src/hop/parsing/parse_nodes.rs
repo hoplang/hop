@@ -342,7 +342,7 @@ fn parse_node(
                     &left_brace,
                     LangTokenPair::Braces,
                     &left_brace,
-                    parse_expr::parse_expr,
+                    parse_expr::parse_block_body,
                 ) {
                     Ok((expression, range)) => {
                         builder.append_node(ParsedNode::Interpolation { expression, range })
@@ -522,7 +522,7 @@ fn parse_opening_tag(
                     &left_brace,
                     LangTokenPair::Braces,
                     &left_brace,
-                    parse_expr::parse_expr,
+                    parse_expr::parse_block_body,
                 ) {
                     push_attribute(
                         &mut header,
@@ -570,7 +570,7 @@ fn parse_opening_tag(
                         &left_brace,
                         LangTokenPair::Braces,
                         &left_brace,
-                        parse_expr::parse_expr,
+                        parse_expr::parse_block_body,
                     );
                     slot.fill(parsed, left_brace, &tag_name_range, errors);
                 }
