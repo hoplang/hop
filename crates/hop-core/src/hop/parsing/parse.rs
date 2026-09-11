@@ -520,7 +520,7 @@ fn parse_function_declaration(
     let (params, rest_param) = build_function_parameters(items, errors);
     let return_type = match tokenize_expr::peek(iter) {
         Some((LangToken::LeftBrace, _)) => Err(errors.emit(
-            ParseErrorKind::FunctionMissingReturnType {
+            ParseErrorKind::FunctionMissingReturnTypeAnnotation {
                 name: CheapString::new(name.as_str().to_string()),
             },
             name_range.clone(),
@@ -5888,7 +5888,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Function 'foo' is missing a return type
+                error: Function 'foo' is missing a return type annotation
                 1 | fn foo(x: Int) {
                   |    ^^^
                 -- ast --

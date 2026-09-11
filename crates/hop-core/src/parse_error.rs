@@ -306,8 +306,8 @@ pub(crate) enum ParseErrorKind {
     #[error("Arguments must either all be named or all be positional")]
     MixedNamedAndPositionalArguments,
 
-    #[error("Function '{name}' is missing a return type")]
-    FunctionMissingReturnType { name: CheapString },
+    #[error("Function '{name}' is missing a return type annotation")]
+    FunctionMissingReturnTypeAnnotation { name: CheapString },
 
     #[error("Unknown annotation '{name}'")]
     UnknownAnnotation { name: CheapString },
