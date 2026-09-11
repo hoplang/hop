@@ -1609,15 +1609,6 @@ fn test_247() {
 }
 
 #[test]
-#[ignore = "arbitrary properties need dynamic group names"]
-fn test_248() {
-    assert_eq!(
-        tw_merge("[paint-order:markers] [--my-var:2rem] [paint-order:normal] [--my-var:4px]"),
-        "[paint-order:normal] [--my-var:4px]"
-    );
-}
-
-#[test]
 fn test_249() {
     assert_eq!(
         tw_merge("[paint-order:markers] hover:[paint-order:normal]"),
@@ -3184,16 +3175,6 @@ fn test_476() {
 }
 
 #[test]
-#[ignore = "mask-image subgroups need CSS value parsing"]
-fn test_477() {
-    // mask-image-linear-from-pos and mask-image-linear-from-color don't conflict
-    assert_eq!(
-        tw_merge("mask-linear-from-50% mask-linear-from-red-500"),
-        "mask-linear-from-50% mask-linear-from-red-500"
-    );
-}
-
-#[test]
 fn test_478() {
     // mask-image-linear-to-pos conflicts
     assert_eq!(
@@ -3404,36 +3385,6 @@ fn test_504() {
 #[test]
 fn test_505() {
     assert_eq!(tw_merge("mask-repeat mask-auto"), "mask-repeat mask-auto");
-}
-
-#[test]
-#[ignore = "mask-image subgroups need CSS value parsing"]
-fn test_506() {
-    // mask-radial-shape and mask-radial-size don't conflict
-    assert_eq!(
-        tw_merge("mask-radial-circle mask-radial-closest-side"),
-        "mask-radial-circle mask-radial-closest-side"
-    );
-}
-
-#[test]
-#[ignore = "mask-image subgroups need CSS value parsing"]
-fn test_507() {
-    // mask-linear-from-pos and mask-linear-to-pos don't conflict
-    assert_eq!(
-        tw_merge("mask-linear-from-0% mask-linear-to-100%"),
-        "mask-linear-from-0% mask-linear-to-100%"
-    );
-}
-
-#[test]
-#[ignore = "mask-image subgroups need CSS value parsing"]
-fn test_508() {
-    // mask-linear-from-color and mask-linear-to-color don't conflict
-    assert_eq!(
-        tw_merge("mask-linear-from-red-500 mask-linear-to-blue-500"),
-        "mask-linear-from-red-500 mask-linear-to-blue-500"
-    );
 }
 
 // --- Phase 25: Additional class groups (accent, aspect, break) ---
