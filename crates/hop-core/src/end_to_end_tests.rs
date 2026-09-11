@@ -1,5 +1,6 @@
 use crate::asset_rewriter::AssetRewriter;
 use crate::document::Document;
+use crate::document_annotator::DocumentAnnotator;
 use crate::document_id::DocumentId;
 use crate::ir::lower_pure;
 use crate::ir::pure_module::PureModule;
@@ -187,9 +188,12 @@ fn check_with_asset_rewriter(
     let has_parse_errors = parse_errors.values().any(|e| !e.is_empty());
     if has_parse_errors {
         for (module, errors) in parse_errors {
-            for error in errors {
-                eprintln!("Parse Error in {:?}: {:?}", module, error);
-            }
+            let rendered = DocumentAnnotator::new()
+                .with_label("error")
+                .with_lines_before(1)
+                .annotate(module, errors.clone())
+                .render();
+            eprintln!("{}", rendered);
         }
         panic!("Parse errors found");
     }
@@ -199,9 +203,12 @@ fn check_with_asset_rewriter(
     let has_type_errors = type_errors.values().any(|e| !e.is_empty());
     if has_type_errors {
         for (module, errors) in type_errors {
-            for error in errors {
-                eprintln!("Type Error in {:?}: {:?}", module, error);
-            }
+            let rendered = DocumentAnnotator::new()
+                .with_label("error")
+                .with_lines_before(1)
+                .annotate(module, errors.clone())
+                .render();
+            eprintln!("{}", rendered);
         }
         panic!("Type errors found");
     }
@@ -7615,25 +7622,17 @@ mod tests {
     #[test]
     #[ignore]
     fn nested_option_wildcard_inner() {
-        // Test Some(Some(_)) pattern - inner value discarded
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {nested: Option[Option[String]] = Some(Some("x"))}>
-                      <match {nested}>
-                        <case {Some(Some(_))}>
-                          some-some
-                        </case>
-                        <case {Some(None)}>
-                          some-none
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let nested = Some(Some("x"));
+                    match nested {
+                      Some(Some(_)) => <>some-some</>,
+                      Some(None) => <>some-none</>,
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -7684,22 +7683,16 @@ mod tests {
     #[test]
     #[ignore]
     fn nested_option_wildcard_outer() {
-        // Test Some(_) pattern on Option[Option[String]] - entire inner option discarded
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {nested: Option[Option[String]] = Some(Some("x"))}>
-                      <match {nested}>
-                        <case {Some(_)}>
-                          some
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let nested = Some(Some("x"));
+                    match nested {
+                      Some(_) => <>some</>,
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -7743,7 +7736,6 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_wildcard_binding_ok() {
-        // Test Outcome::Success(value: _) - wildcard binding for enum field
         check(
             indoc! {r#"
                 -- main.hop --
@@ -7758,18 +7750,11 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      result: Outcome = Outcome::Success {value: "hello"},
-                    }>
-                      <match {result}>
-                        <case {Outcome::Success {value: _}}>
-                          ok
-                        </case>
-                        <case {Outcome::Failure {message: _}}>
-                          err
-                        </case>
-                      </match>
-                    </let>
+                    let result = Outcome::Success {value: "Hello"};
+                    match result {
+                      Outcome::Success {value: _} => <>ok</>,
+                      Outcome::Failure {message: _} => <>err</>,
+                    }
                   }
                 }
             "#},
@@ -7777,7 +7762,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Outcome::Success {value: "hello"} in {
+                  let v0 = Outcome::Success {value: "Hello"} in {
                     match v0 {
                       Outcome::Success => {
                         write("ok")
@@ -7813,7 +7798,6 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_wildcard_binding_err() {
-        // Test Outcome::Failure(message: _) - wildcard binding for enum field
         check(
             indoc! {r#"
                 -- main.hop --
@@ -7828,18 +7812,11 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      result: Outcome = Outcome::Failure {message: "failed"},
-                    }>
-                      <match {result}>
-                        <case {Outcome::Success {value: _}}>
-                          ok
-                        </case>
-                        <case {Outcome::Failure {message: _}}>
-                          err
-                        </case>
-                      </match>
-                    </let>
+                    let result = Outcome::Failure {message: "failed"};
+                    match result {
+                      Outcome::Success {value: _} => <>ok</>,
+                      Outcome::Failure {message: _} => <>err</>,
+                    }
                   }
                 }
             "#},
@@ -7883,7 +7860,6 @@ mod tests {
     #[test]
     #[ignore]
     fn record_wildcard_binding() {
-        // Test record pattern with wildcard binding - Person(name: _, age: a)
         check(
             indoc! {r#"
                 -- main.hop --
@@ -7894,25 +7870,21 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {person: Person = Person {name: "Alice", age: 30}}>
-                      <match {person}>
-                        <case {Person {name: _, age: a}}>
-                          age:
-                          {a.to_string()}
-                        </case>
-                      </match>
-                    </let>
+                    let person = Person {name: "Alice", age: 30};
+                    match person {
+                      Person {name: _, age: a} => <>age: {a.to_string()}</>,
+                    }
                   }
                 }
             "#},
-            "age:30",
+            "age: 30",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Person {name: "Alice", age: 30} in {
                     let v1 = v0.age in {
                       let v2 = v1 in {
-                        write("age:")
+                        write("age: ")
                         write_string(v2.to_string())
                       }
                     }
@@ -7920,10 +7892,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("age:30")
+                  write("age: 30")
                 }
                 -- expected output --
-                age:30
+                age: 30
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -7943,36 +7915,22 @@ mod tests {
     #[test]
     #[ignore]
     fn triple_nested_option_wildcard() {
-        // Test Some(Some(Some(_))) pattern - triple nested with innermost wildcard
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      deep: Option[Option[Option[String]]] = Some(
-                        Some(Some("value"))
-                      ),
-                    }>
-                      <match {deep}>
-                        <case {Some(Some(Some(_)))}>
-                          triple-some
-                        </case>
-                        <case {Some(Some(None))}>
-                          double-some-none
-                        </case>
-                        <case {Some(None)}>
-                          single-some-none
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let deep = Some(Some(Some("value")));
+                    match deep {
+                      Some(Some(Some(_))) => <>sss</>,
+                      Some(Some(None)) => <>ssn</>,
+                      Some(None) => <>sn</>,
+                      None => <>n</>,
+                    }
                   }
                 }
             "#},
-            "triple-some",
+            "sss",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
@@ -7983,30 +7941,30 @@ mod tests {
                           Some(v2) => {
                             match v2 {
                               Some(_) => {
-                                write("triple-some")
+                                write("sss")
                               }
                               None => {
-                                write("double-some-none")
+                                write("ssn")
                               }
                             }
                           }
                           None => {
-                            write("single-some-none")
+                            write("sn")
                           }
                         }
                       }
                       None => {
-                        write("none")
+                        write("n")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("triple-some")
+                  write("sss")
                 }
                 -- expected output --
-                triple-some
+                sss
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -8026,7 +7984,6 @@ mod tests {
     #[test]
     #[ignore]
     fn nested_enum_wildcard() {
-        // Test nested enum matching with wildcard - Outer::Success(value: Inner::Success(value: _))
         check(
             indoc! {r#"
                 -- main.hop --
@@ -8050,27 +8007,14 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      result: Outer = Outer::Success {
-                        value: Inner::Success {value: "deep"},
-                      },
-                    }>
-                      <match {result}>
-                        <case {Outer::Success {
-                          value: Inner::Success {value: _},
-                        }}>
-                          ok-ok
-                        </case>
-                        <case {Outer::Success {
-                          value: Inner::Failure {message: _},
-                        }}>
-                          ok-err
-                        </case>
-                        <case {Outer::Failure {message: _}}>
-                          err
-                        </case>
-                      </match>
-                    </let>
+                    let result = Outer::Success {
+                      value: Inner::Success {value: "deep"},
+                    };
+                    match result {
+                      Outer::Success {value: Inner::Success {value: _}} => <>ok-ok</>,
+                      Outer::Success {value: Inner::Failure {message: _}} => <>ok-err</>,
+                      Outer::Failure {message: _} => <>err</>,
+                    }
                   }
                 }
             "#},
@@ -8121,15 +8065,16 @@ mod tests {
     #[test]
     #[ignore]
     fn bool_match_partial_wildcard_true() {
-        // Test bool match with one explicit case and wildcard - match b {true => "t", _ => "f"}
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {b: Bool = true}>
-                      {match b {true => "t", _ => "f"}}
-                    </let>
+                    let b = true;
+                    match b {
+                      true => <>t</>,
+                      _ => <>f</>,
+                    }
                   }
                 }
             "#},
@@ -8138,10 +8083,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = true in {
-                    write_string(match v0 {
-                      true => { "t" }
-                      false => { "f" }
-                    })
+                    match v0 {
+                      true => {
+                        write("t")
+                      }
+                      false => {
+                        write("f")
+                      }
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -8169,15 +8118,16 @@ mod tests {
     #[test]
     #[ignore]
     fn bool_match_partial_wildcard_false() {
-        // Test bool match with wildcard matching false
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {b: Bool = false}>
-                      {match b {true => "t", _ => "f"}}
-                    </let>
+                    let b = false;
+                    match b {
+                      true => <>t</>,
+                      _ => <>f</>,
+                    }
                   }
                 }
             "#},
@@ -8186,10 +8136,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = false in {
-                    write_string(match v0 {
-                      true => { "t" }
-                      false => { "f" }
-                    })
+                    match v0 {
+                      true => {
+                        write("t")
+                      }
+                      false => {
+                        write("f")
+                      }
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -8222,23 +8176,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <match {Some("outer")}>
-                      <case {Some(x)}>
-                        <match {Some("inner")}>
-                          <case {Some(y)}>
-                            {x}
-                            :
-                            {y}
-                          </case>
-                          <case {None}>
-                            inner-none
-                          </case>
-                        </match>
-                      </case>
-                      <case {None}>
-                        outer-none
-                      </case>
-                    </match>
+                    match Some("outer") {
+                      Some(x) => {
+                        match Some("inner") {
+                          Some(y) => <>{x}:{y}</>,
+                          None => <>inner-none</>,
+                        }
+                      },
+                      None => <>outer-none</>,
+                    }
                   }
                 }
             "#},
@@ -8302,26 +8248,16 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      outer: Option[Option[String]] = Some(Some("hello")),
-                    }>
-                      <match {outer}>
-                        <case {Some(inner)}>
-                          <match {inner}>
-                            <case {Some(value)}>
-                              value:
-                              {value}
-                            </case>
-                            <case {None}>
-                              inner-none
-                            </case>
-                          </match>
-                        </case>
-                        <case {None}>
-                          outer-none
-                        </case>
-                      </match>
-                    </let>
+                    let outer = Some(Some("hello"));
+                    match outer {
+                      Some(inner) => {
+                        match inner {
+                          Some(value) => <>value:{value}</>,
+                          None => <>inner-none</>,
+                        }
+                      },
+                      None => <>outer-none</>,
+                    }
                   }
                 }
             "#},
@@ -8376,7 +8312,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn join_macro_merges_css_classes() {
+    fn join_macro_concatenates_css_classes() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -8428,15 +8364,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn reserved_keyword_as_variable_name_typescript() {
+    fn delete_as_variable_name() {
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {delete: String = "removed"}>
-                      {delete}
-                    </let>
+                    let delete = "removed";
+                    <>{delete}</>
                   }
                 }
             "#},
@@ -8472,16 +8407,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn reserved_keyword_class_as_variable_name() {
+    fn class_as_variable_name() {
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {class: String = "my-class"}>
-                      <div class={class}>
-                      </div>
-                    </let>
+                    let class = "my-class";
+                    <div class={class}></div>
                   }
                 }
             "#},
@@ -8522,17 +8455,16 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn reserved_keyword_switch_as_variable_name() {
+    fn switch_as_variable_name() {
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {switch: String = "on"}>
-                      <span>
-                        {switch}
-                      </span>
-                    </let>
+                    let switch = "on";
+                    <span>
+                      {switch}
+                    </span>
                   }
                 }
             "#},
@@ -8571,15 +8503,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn unreserved_keyword_type_as_variable_name() {
+    fn type_as_variable_name() {
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {type: String = "button"}>
-                      <input type={type}>
-                    </let>
+                    let type = "button";
+                    <input type={type}>
                   }
                 }
             "#},
@@ -8619,7 +8550,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn unreserved_keyword_for_as_attribute_name() {
+    fn for_as_attribute_name() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -8665,7 +8596,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn page_parameter_named_typescript_reserved_keyword() {
+    fn delete_as_page_parameter_name() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -8721,7 +8652,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn page_parameter_named_rust_keyword() {
+    fn type_as_page_parameter_name() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -8777,7 +8708,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_function_parameter_named_typescript_reserved_keyword() {
+    fn delete_as_recursive_function_parameter_name() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -8846,7 +8777,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_function_parameter_named_rust_keyword() {
+    fn type_as_recursive_function_parameter_name() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -8921,13 +8852,9 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <>
-                      {"\""}
-                      {"\\"}
-                      {"foo\nbar"}
-                      {"foo\tbar"}
-                      {"C:\\Users\\name"}
-                    </>
+                    <for {s in ["\"", "\\", "foo\nbar", "foo\tbar", "C:\\Users\\name"]}>
+                      {s}
+                    </for>
                   }
                 }
             "#},
@@ -8935,15 +8862,27 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write_string("\"")
-                  write_string("\\")
-                  write_string("foo\nbar")
-                  write_string("foo\tbar")
-                  write_string("C:\\Users\\name")
+                  for v0 in [
+                    "\"",
+                    "\\",
+                    "foo\nbar",
+                    "foo\tbar",
+                    "C:\\Users\\name",
+                  ] {
+                    write_string(v0)
+                  }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("&quot;\\foo\nbarfoo\tbarC:\\Users\\name")
+                  for v0 in [
+                    "\"",
+                    "\\",
+                    "foo\nbar",
+                    "foo\tbar",
+                    "C:\\Users\\name",
+                  ] {
+                    write_string(v0)
+                  }
                 }
                 -- expected output --
                 &quot;\foo
@@ -8977,20 +8916,15 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      items: Array[Item] = [
-                        Item {name: "a", value: "1"},
-                        Item {name: "b", value: "2"},
-                      ],
-                    }>
-                      <for {item in items}>
-                        <let {n: String = item.name}>
-                          [
-                          {n}
-                          ]
-                        </let>
-                      </for>
-                    </let>
+                    let items = [
+                      Item {name: "a", value: "1"},
+                      Item {name: "b", value: "2"},
+                    ];
+                    <for {item in items}>
+                      <let {n: String = item.name}>
+                        [{n}]
+                      </let>
+                    </for>
                   }
                 }
             "#},
@@ -9059,26 +8993,21 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      people: Array[Person] = [
-                        Person {
-                          name: "alice",
-                          address: Address {city: "paris"},
-                        },
-                        Person {
-                          name: "bob",
-                          address: Address {city: "london"},
-                        },
-                      ],
-                    }>
-                      <for {person in people}>
-                        <let {city: String = person.address.city}>
-                          [
-                          {city}
-                          ]
-                        </let>
-                      </for>
-                    </let>
+                    let people = [
+                      Person {
+                        name: "alice",
+                        address: Address {city: "paris"},
+                      },
+                      Person {
+                        name: "bob",
+                        address: Address {city: "london"},
+                      },
+                    ];
+                    <for {person in people}>
+                      <let {city: String = person.address.city}>
+                        [{city}]
+                      </let>
+                    </for>
                   }
                 }
             "#},
@@ -9153,20 +9082,15 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      sources: Array[Source] = [
+                    let sources = [
                         Source {name: "a", value: "1"},
                         Source {name: "b", value: "2"},
-                      ],
-                    }>
-                      <for {src in sources}>
-                        <let {target: Target = Target {label: src.name}}>
-                          [
-                          {target.label}
-                          ]
-                        </let>
-                      </for>
-                    </let>
+                    ];
+                    <for {src in sources}>
+                      <let {target = Target {label: src.name}}>
+                        [{target.label}]
+                      </let>
+                    </for>
                   }
                 }
             "#},
@@ -9230,27 +9154,22 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      items: Array[Item] = [
+                    let items = [
                         Item {name: "a"},
                         Item {name: "b"},
-                      ],
-                    }>
-                      <for {item in items}>
-                        <let {opt: Option[String] = Some(item.name)}>
-                          <match {opt}>
-                            <case {Some(s)}>
-                              [
-                              {s}
-                              ]
-                            </case>
-                            <case {None}>
-                              [-]
-                            </case>
-                          </match>
-                        </let>
-                      </for>
-                    </let>
+                    ];
+                    <for {item in items}>
+                      <let {opt = Some(item.name)}>
+                        <match {opt}>
+                          <case {Some(s)}>
+                            [{s}]
+                          </case>
+                          <case {None}>
+                            [-]
+                          </case>
+                        </match>
+                      </let>
+                    </for>
                   }
                 }
             "#},
@@ -9322,38 +9241,31 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {a: String = "hello"}>
-                      <let {b: String = "world"}>
-                        <let {c: String = a + " " + b}>
-                          [
-                          {c}
-                          ]
-                        </let>
-                      </let>
-                    </let>
+                    let a = "hello";
+                    let b = "world";
+                    let c = a + " " + b;
+                    <>{c}</>
                   }
                 }
             "#},
-            "[hello world]",
+            "hello world",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "hello" in {
                     let v1 = "world" in {
                       let v2 = ((v0 + " ") + v1) in {
-                        write("[")
                         write_string(v2)
-                        write("]")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("[hello world]")
+                  write("hello world")
                 }
                 -- expected output --
-                [hello world]
+                hello world
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -9382,11 +9294,8 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      g: Greeting = Greeting {message: "hello" + " world"},
-                    }>
-                      {g.message}
-                    </let>
+                    let g = Greeting {message: "hello" + " " + "world"};
+                    <>{g.message}</>
                   }
                 }
             "#},
@@ -9394,7 +9303,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Greeting {message: ("hello" + " world")} in {
+                  let v0 = Greeting {
+                    message: (("hello" + " ") + "world"),
+                  } in {
                     write_string(v0.message)
                   }
                 }
@@ -9428,34 +9339,28 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {n: Int = 42}>
-                      <let {s: String = n.to_string()}>
-                        [
-                        {s}
-                        ]
-                      </let>
-                    </let>
+                    let n = 42;
+                    let s = n.to_string();
+                    <>{s}</>
                   }
                 }
             "#},
-            "[42]",
+            "42",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = 42 in {
                     let v1 = v0.to_string() in {
-                      write("[")
                       write_string(v1)
-                      write("]")
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("[42]")
+                  write("42")
                 }
                 -- expected output --
-                [42]
+                42
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -9484,13 +9389,10 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {c: Container = Container {items: ["a", "b"]}}>
-                      <for {item in c.items}>
-                        [
-                        {item}
-                        ]
-                      </for>
-                    </let>
+                    let c = Container {items: ["a", "b"]};
+                    <for {item in c.items}>
+                      [{item}]
+                    </for>
                   }
                 }
             "#},
@@ -9544,30 +9446,25 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {l: Label = Label {text: 42.to_string()}}>
-                      [
-                      {l.text}
-                      ]
-                    </let>
+                    let l = Label {text: 42.to_string()};
+                    <>{l.text}</>
                   }
                 }
             "#},
-            "[42]",
+            "42",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Label {text: 42.to_string()} in {
-                    write("[")
                     write_string(v0.text)
-                    write("]")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("[42]")
+                  write("42")
                 }
                 -- expected output --
-                [42]
+                42
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -9600,15 +9497,10 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      o: Outer = Outer {inner: Inner {values: ["x", "y"]}},
-                    }>
-                      <for {v in o.inner.values}>
-                        [
-                        {v}
-                        ]
-                      </for>
-                    </let>
+                    let o = Outer {inner: Inner {values: ["x", "y"]}};
+                    <for {v in o.inner.values}>
+                      [{v}]
+                    </for>
                   }
                 }
             "#},
@@ -9662,13 +9554,9 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {x: Foo = Foo {a: "hello"}, y: Foo = Foo {a: x.a}}>
-                      [
-                      {x.a}
-                      ][
-                      {y.a}
-                      ]
-                    </let>
+                    let x = Foo {a: "hello"};
+                    let y = Foo {a: x.a};
+                    <>[{x.a}][{y.a}]</>
                   }
                 }
             "#},
@@ -9720,20 +9608,13 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {x: Foo = Foo {a: "hello"}, b: Bool = true}>
-                      <let {
-                        result: String = match b {
-                          true => x.a,
-                          false => "default",
-                        },
-                      }>
-                        [
-                        {result}
-                        ][
-                        {x.a}
-                        ]
-                      </let>
-                    </let>
+                    let x = Foo {a: "hello"};
+                    let b = true;
+                    let result = match b {
+                      true => x.a,
+                      false => "default",
+                    };
+                    <>[{result}][{x.a}]</>
                   }
                 }
             "#},
@@ -9791,11 +9672,8 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      leaf: TreeNode = TreeNode {value: "leaf", children: []},
-                    }>
-                      {leaf.value}
-                    </let>
+                    let leaf = TreeNode {value: "leaf", children: []};
+                    <>{leaf.value}</>
                   }
                 }
             "#},
@@ -9842,9 +9720,8 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {node: Node = Node {value: "first", next: None}}>
-                      {node.value}
-                    </let>
+                    let node = Node {value: "first", next: None};
+                    <>{node.value}</>
                   }
                 }
             "#},
@@ -9898,16 +9775,11 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {e: Expr = Expr::Literal {value: "42"}}>
-                      <match {e}>
-                        <case {Expr::Literal {value: v}}>
-                          {v}
-                        </case>
-                        <case {Expr::Neg {inner: _}}>
-                          neg
-                        </case>
-                      </match>
-                    </let>
+                    let e = Expr::Literal {value: "42"};
+                    match e {
+                      Expr::Literal {value: v} => <>{v}</>,
+                      Expr::Neg {inner: _} => <>neg</>,
+                    }
                   }
                 }
             "#},
@@ -9967,21 +9839,13 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      e: Expr = Expr::Neg {
-                        inner: Expr::Literal {value: "42"},
-                      },
-                    }>
-                      <match {e}>
-                        <case {Expr::Literal {value: v}}>
-                          lit:
-                          {v}
-                        </case>
-                        <case {Expr::Neg {inner: _}}>
-                          neg
-                        </case>
-                      </match>
-                    </let>
+                    let e = Expr::Neg {
+                      inner: Expr::Literal {value: "42"}
+                    };
+                    match e {
+                      Expr::Literal {value: v} => <>lit:{v}</>,
+                      Expr::Neg {inner: _} => <>neg</>
+                    }
                   }
                 }
             "#},
@@ -10042,9 +9906,8 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {f: Folder = Folder {name: "root", parent: None}}>
-                      {f.name}
-                    </let>
+                    let f = Folder {name: "root", parent: None};
+                    <>{f.name}</>
                   }
                 }
             "#},
@@ -10106,16 +9969,11 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {leaf: Leaf = Leaf {back: None}}>
-                      <match {leaf.back}>
-                        <case {Some(_)}>
-                          some
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let leaf = Leaf {back: None};
+                    match leaf.back {
+                      Some(_) => <>some</>,
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -10171,11 +10029,9 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {tail: Option[Node] = None}>
-                      <let {head: Node = Node {value: "head", next: tail}}>
-                        {head.value}
-                      </let>
-                    </let>
+                    let tail: Option[Node] = None;
+                    let head = Node {value: "head", next: tail};
+                    <>{head.value}</>
                   }
                 }
             "#},
@@ -10224,19 +10080,15 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {leaf: Node = Node {value: "leaf", next: None}}>
-                      <let {
-                        head: Node = Node {
-                          value: "head",
-                          next: match true {
-                            true => Some(leaf),
-                            false => None,
-                          },
-                        },
-                      }>
-                        {head.value}
-                      </let>
-                    </let>
+                    let leaf = Node {value: "leaf", next: None};
+                    let head = Node {
+                      value: "head",
+                      next: match true {
+                        true => Some(leaf),
+                        false => None,
+                      },
+                    };
+                    <>{head.value}</>
                   }
                 }
             "#},
@@ -10296,9 +10148,8 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {n: Node = Node {value: "node", next: None}}>
-                      {n.value}
-                    </let>
+                    let n = Node {value: "node", next: None};
+                    <>{n.value}</>
                   }
                 }
             "#},
@@ -10348,28 +10199,19 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      n: Node = Node {
-                        value: "head",
-                        next: Some(Some(Node {value: "tail", next: None})),
+                    let n = Node {
+                      value: "head",
+                      next: Some(Some(Node {value: "tail", next: None})),
+                    };
+                    match n.next {
+                      Some(inner) => {
+                        match inner {
+                          Some(m) => <>{m.value}</>,
+                          None => <>inner-none</>,
+                        }
                       },
-                    }>
-                      <match {n.next}>
-                        <case {Some(inner)}>
-                          <match {inner}>
-                            <case {Some(m)}>
-                              {m.value}
-                            </case>
-                            <case {None}>
-                              inner-none
-                            </case>
-                          </match>
-                        </case>
-                        <case {None}>
-                          outer-none
-                        </case>
-                      </match>
-                    </let>
+                      None => <>outer-none</>,
+                    }
                   }
                 }
             "#},
@@ -10446,18 +10288,12 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {n: Node = Node {value: "node", next: None}}>
-                      <let {h: Holder = Holder {held: n.next}}>
-                        <match {h.held}>
-                          <case {Some(_)}>
-                            some
-                          </case>
-                          <case {None}>
-                            {n.value}
-                          </case>
-                        </match>
-                      </let>
-                    </let>
+                    let n = Node {value: "node", next: None};
+                    let h = Holder {held: n.next};
+                    match h.held {
+                      Some(_) => <>some</>,
+                      None => <>{n.value}</>
+                    }
                   }
                 }
             "#},
@@ -10522,7 +10358,8 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {x: A = A {b: B {name: "b", a: None}}}>
+                    let x = A {b: B {name: "b", a: None}};
+                    <>
                       {x.b.name}
                       <match {x.b.a}>
                         <case {Some(_)}>
@@ -10532,7 +10369,7 @@ mod tests {
                           none
                         </case>
                       </match>
-                    </let>
+                    </>
                   }
                 }
             "#},
@@ -10600,32 +10437,29 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      tree: Tree = Tree::Node {
-                        label: "a",
-                        left: Tree::Leaf,
-                        right: None,
-                      },
-                    }>
-                      <match {tree}>
-                        <case {Tree::Node {label: l, left: lt, right: r}}>
-                          <let {s: Step = Step {t: lt, rest: r}}>
-                            {l}
-                            <match {s.rest}>
-                              <case {Some(_)}>
-                                some
-                              </case>
-                              <case {None}>
-                                none
-                              </case>
-                            </match>
-                          </let>
-                        </case>
-                        <case {Tree::Leaf}>
-                          empty
-                        </case>
-                      </match>
-                    </let>
+                    let tree = Tree::Node {
+                      label: "a",
+                      left: Tree::Leaf,
+                      right: None,
+                    };
+                    <match {tree}>
+                      <case {Tree::Node {label: l, left: lt, right: r}}>
+                        <let {s: Step = Step {t: lt, rest: r}}>
+                          {l}
+                          <match {s.rest}>
+                            <case {Some(_)}>
+                              some
+                            </case>
+                            <case {None}>
+                              none
+                            </case>
+                          </match>
+                        </let>
+                      </case>
+                      <case {Tree::Leaf}>
+                        empty
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -10700,29 +10534,26 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      c: Contact = Contact::Email {
-                        address: "a@b.c",
-                        label: Some("work"),
-                      },
-                    }>
-                      <match {c}>
-                        <case {Contact::Email {address: a, label: l}}>
-                          {a}
-                          <match {l}>
-                            <case {Some(s)}>
-                              {s}
-                            </case>
-                            <case {None}>
-                              no-label
-                            </case>
-                          </match>
-                        </case>
-                        <case {Contact::Anonymous}>
-                          anon
-                        </case>
-                      </match>
-                    </let>
+                    let c = Contact::Email {
+                      address: "a@b.c",
+                      label: Some("work"),
+                    };
+                    <match {c}>
+                      <case {Contact::Email {address: a, label: l}}>
+                        {a}
+                        <match {l}>
+                          <case {Some(s)}>
+                            {s}
+                          </case>
+                          <case {None}>
+                            no-label
+                          </case>
+                        </match>
+                      </case>
+                      <case {Contact::Anonymous}>
+                        anon
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -10784,12 +10615,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Greeting(name: String) -> Html {
-                  <>
-                    Hello,
-                    {" "}
-                    {name}
-                    !
-                  </>
+                  <>Hello, {name}!</>
                 }
 
                 page Test() {
@@ -10802,8 +10628,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Greeting@f0(name@v0: String) -> Html {
-                  write("Hello,")
-                  write_string(" ")
+                  write("Hello, ")
                   write_string(v0)
                   write("!")
                 }
@@ -11203,14 +11028,11 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      list: Node = Node {
-                        value: "a",
-                        next: Some(Node {value: "b", next: None}),
-                      },
-                    }>
-                      <NodeView node={list}/>
-                    </let>
+                    let list = Node {
+                      value: "a",
+                      next: Some(Node {value: "b", next: None}),
+                    };
+                    <NodeView node={list}/>
                   }
                 }
             "#},
@@ -11320,19 +11142,16 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      list: Node = Node {
-                        value: "a",
-                        next: Some(
-                          Node {
-                            value: "b",
-                            next: Some(Node {value: "c", next: None}),
-                          }
-                        ),
-                      },
-                    }>
-                      <NodeView node={list}/>
-                    </let>
+                    let list = Node {
+                      value: "a",
+                      next: Some(
+                        Node {
+                          value: "b",
+                          next: Some(Node {value: "c", next: None}),
+                        }
+                      ),
+                    };
+                    <NodeView node={list}/>
                   }
                 }
             "#},
@@ -11532,11 +11351,7 @@ mod tests {
                   subtitle: String = "No subtitle",
                 ) -> Html {
                   <div>
-                    {title}
-                    {" "}
-                    -
-                    {" "}
-                    {subtitle}
+                    {title} - {subtitle}
                   </div>
                 }
 
@@ -11553,9 +11368,7 @@ mod tests {
                   write("<div")
                   write(">")
                   write_string(v0)
-                  write_string(" ")
-                  write("-")
-                  write_string(" ")
+                  write(" - ")
                   write_string(v1)
                   write("</div>")
                 }
@@ -11595,11 +11408,7 @@ mod tests {
                   subtitle: String = "No subtitle",
                 ) -> Html {
                   <div>
-                    {title}
-                    {" "}
-                    -
-                    {" "}
-                    {subtitle}
+                    {title} - {subtitle}
                   </div>
                 }
 
@@ -11616,9 +11425,7 @@ mod tests {
                   write("<div")
                   write(">")
                   write_string(v0)
-                  write_string(" ")
-                  write("-")
-                  write_string(" ")
+                  write(" - ")
                   write_string(v1)
                   write("</div>")
                 }
@@ -11659,15 +11466,7 @@ mod tests {
                   footer: String = "End",
                 ) -> Html {
                   <div>
-                    {title}
-                    {" "}
-                    -
-                    {" "}
-                    {subtitle}
-                    {" "}
-                    -
-                    {" "}
-                    {footer}
+                    {title} - {subtitle} - {footer}
                   </div>
                 }
 
@@ -11688,13 +11487,9 @@ mod tests {
                   write("<div")
                   write(">")
                   write_string(v0)
-                  write_string(" ")
-                  write("-")
-                  write_string(" ")
+                  write(" - ")
                   write_string(v1)
-                  write_string(" ")
-                  write("-")
-                  write_string(" ")
+                  write(" - ")
                   write_string(v2)
                   write("</div>")
                 }
@@ -11871,16 +11666,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {name: String = ""}>
-                      <match {name.is_empty()}>
-                        <case {true}>
-                          empty
-                        </case>
-                        <case {false}>
-                          not empty
-                        </case>
-                      </match>
-                    </let>
+                    let name = "";
+                    match name.is_empty() {
+                      true => <>empty</>,
+                      false => <>not empty</>,
+                    }
                   }
                 }
             "#},
@@ -11931,16 +11721,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {name: String = "hello"}>
-                      <match {name.is_empty()}>
-                        <case {true}>
-                          empty
-                        </case>
-                        <case {false}>
-                          not empty
-                        </case>
-                      </match>
-                    </let>
+                    let name = "hello";
+                    match name.is_empty() {
+                      true => <>empty</>,
+                      false => <>not empty</>,
+                    }
                   }
                 }
             "#},
@@ -11991,16 +11776,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {value: Option[String] = Some("hello")}>
-                      <match {value.is_some()}>
-                        <case {true}>
-                          yes
-                        </case>
-                        <case {false}>
-                          no
-                        </case>
-                      </match>
-                    </let>
+                    let value = Some("hello");
+                    match value.is_some() {
+                      true => <>yes</>,
+                      false => <>no</>,
+                    }
                   }
                 }
             "#},
@@ -12051,16 +11831,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {value: Option[String] = None}>
-                      <match {value.is_some()}>
-                        <case {true}>
-                          yes
-                        </case>
-                        <case {false}>
-                          no
-                        </case>
-                      </match>
-                    </let>
+                    let value: Option[String] = None;
+                    match value.is_some() {
+                      true => <>yes</>,
+                      false => <>no</>,
+                    }
                   }
                 }
             "#},
@@ -12111,16 +11886,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {value: Option[String] = None}>
-                      <match {value.is_none()}>
-                        <case {true}>
-                          yes
-                        </case>
-                        <case {false}>
-                          no
-                        </case>
-                      </match>
-                    </let>
+                    let value: Option[String] = None;
+                    match value.is_none() {
+                      true => <>yes</>,
+                      false => <>no</>,
+                    }
                   }
                 }
             "#},
@@ -12171,16 +11941,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {value: Option[String] = Some("hello")}>
-                      <match {value.is_none()}>
-                        <case {true}>
-                          yes
-                        </case>
-                        <case {false}>
-                          no
-                        </case>
-                      </match>
-                    </let>
+                    let value = Some("hello");
+                    match value.is_none() {
+                      true => <>yes</>,
+                      false => <>no</>,
+                    }
                   }
                 }
             "#},
@@ -12231,11 +11996,10 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {o: Option[Bool] = None}>
-                      <if {true == o.is_none()}>
-                        x
-                      </if>
-                    </let>
+                    let o: Option[Bool] = None;
+                    <if {true == o.is_none()}>
+                      x
+                    </if>
                   }
                 }
             "#},
@@ -12424,17 +12188,19 @@ mod tests {
                 }
 
                 fn RenderItem(item: Item) -> Html {
-                  <match {item}>
-                    <case {Item::Todo {label: l, done: d}}>
-                      <if {d}>
-                        [x]
-                      </if>
-                      <if {!d}>
-                        [ ]
-                      </if>
-                      {l}
-                    </case>
-                  </match>
+                  match item {
+                    Item::Todo {label: l, done: d} => {
+                      <>
+                        <if {d}>
+                          [x]
+                        </if>
+                        <if {!d}>
+                          [ ]
+                        </if>
+                        {l}
+                      </>
+                    }
+                  }
                 }
 
                 page Test() {
@@ -12522,20 +12288,20 @@ mod tests {
                 }
 
                 fn Render(time: TimeAgo) -> Html {
-                  <match {time}>
-                    <case {TimeAgo::MinutesAgo {count: c}}>
-                      {match c == 1 {
-                        true => "1 minute ago",
-                        false => c.to_string() + " minutes ago",
-                      }}
-                    </case>
-                    <case {TimeAgo::HoursAgo {count: c}}>
-                      {match c == 1 {
-                        true => "1 hour ago",
-                        false => c.to_string() + " hours ago",
-                      }}
-                    </case>
-                  </match>
+                  match time {
+                    TimeAgo::MinutesAgo {count: c} => {
+                      match c == 1 {
+                        true => <>1 minute ago</>,
+                        false => <>{c.to_string() + " minutes ago"}</>,
+                      }
+                    },
+                    TimeAgo::HoursAgo {count: c} => {
+                      match c == 1 {
+                        true => <>1 hour ago</>,
+                        false => <>{c.to_string() + " hours ago"}</>,
+                      }
+                    }
+                  }
                 }
 
                 page Test() {
@@ -12557,22 +12323,30 @@ mod tests {
                   match v0 {
                     TimeAgo::MinutesAgo(count: v1) => {
                       let v2 = v1 in {
-                        write_string(let v3 = (v2 == 1) in {
+                        let v3 = (v2 == 1) in {
                           match v3 {
-                            true => { "1 minute ago" }
-                            false => { (v2.to_string() + " minutes ago") }
+                            true => {
+                              write("1 minute ago")
+                            }
+                            false => {
+                              write_string((v2.to_string() + " minutes ago"))
+                            }
                           }
-                        })
+                        }
                       }
                     }
                     TimeAgo::HoursAgo(count: v4) => {
                       let v5 = v4 in {
-                        write_string(let v6 = (v5 == 1) in {
+                        let v6 = (v5 == 1) in {
                           match v6 {
-                            true => { "1 hour ago" }
-                            false => { (v5.to_string() + " hours ago") }
+                            true => {
+                              write("1 hour ago")
+                            }
+                            false => {
+                              write_string((v5.to_string() + " hours ago"))
+                            }
                           }
-                        })
+                        }
                       }
                     }
                   }
@@ -12620,13 +12394,11 @@ mod tests {
                 }
 
                 fn RenderCode(block: CodeBlock) -> Html {
-                  <match {block}>
-                    <case {CodeBlock::Snippet {language: _, code: c}}>
-                      <code>
-                        {c}
-                      </code>
-                    </case>
-                  </match>
+                  match block {
+                    CodeBlock::Snippet {language: _, code: c} => {
+                      <code>{c}</code>
+                    }
+                  }
                 }
 
                 page Test() {
@@ -12694,18 +12466,18 @@ mod tests {
                 }
 
                 fn Render(el: ButtonElement) -> Html {
-                  <match {el}>
-                    <case {ButtonElement::Link {href: h}}>
+                  match el {
+                    ButtonElement::Link {href: h} => {
                       <a href={h}>
                         link
                       </a>
-                    </case>
-                    <case {ButtonElement::Button {disabled: _, type: t}}>
+                    },
+                    ButtonElement::Button {disabled: _, type: t} => {
                       <button type={t}>
                         btn
                       </button>
-                    </case>
-                  </match>
+                    }
+                  }
                 }
 
                 page Test() {
@@ -13099,11 +12871,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Foo(children: Html) -> Html {
-                  <let {x = children}>
-                    <div>
-                      {x}
-                    </div>
-                  </let>
+                  let x = children;
+                  <div>
+                    {x}
+                  </div>
                 }
 
                 page Test() {
