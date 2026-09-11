@@ -2201,6 +2201,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_show_hover_info_for_format_macro() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(a: String, b: Int) -> Html {
+                  <div>
+                    {format!("a: {}, b: {}", a, b)}
+                      ^
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                ```
+                format!(literal: String, ...) -> String
+                ```
+
+                Replaces each `{}` in the format string with the corresponding argument.
+                  --> main.hop (line 3, col 6)
+                3 |     {format!("a: {}, b: {}", a, b)}
+                  |      ^^^^^^^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // WARNING DIAGNOSTICS                                                    //
     ///////////////////////////////////////////////////////////////////////////

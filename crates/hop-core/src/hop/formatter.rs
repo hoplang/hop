@@ -3455,6 +3455,29 @@ mod tests {
     }
 
     #[test]
+    fn format_macro_formats_inline() {
+        check(
+            indoc! {r#"
+                fn Main(name: String, count: Int) -> Html {
+                  <p>{format!(
+                     "a: {}, b: {}", 
+                     name,   count)}</p>
+                }
+            "#},
+            expect![[r#"
+                fn Main(
+                  name: String,
+                  count: Int,
+                ) -> Html {
+                  <p>
+                    {format!("a: {}, b: {}", name, count)}
+                  </p>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_format_deeply_nested_elements() {
         check(
             indoc! {r#"

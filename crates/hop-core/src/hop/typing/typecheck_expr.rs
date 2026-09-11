@@ -11,7 +11,7 @@ use super::typecheck_node::typecheck_node;
 use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
-use crate::document::CheapString;
+use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::hop::parsing::parsed_expr::{ParsedArguments, ParsedBinaryOp, ParsedExpr};
 use crate::hop::parsing::parsed_node::ParsedNode;
@@ -1631,6 +1631,124 @@ pub fn typecheck_expr(
                     }
                     parts.push(arg);
                 }
+                Some(TypedExpr::StringConcat { parts })
+            }
+            "format" => {
+                let Some(template_range) = args.first().and_then(|arg| match arg {
+                    ParsedExpr::StringLiteral { range, .. } => Some(range.clone()),
+                    _ => None,
+                }) else {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::FormatMacroNonLiteralTemplate {},
+                        args.first().map_or(range, ParsedExpr::range).clone(),
+                    ));
+                    return None;
+                };
+
+                // Scan the format string into the literal pieces surrounding its
+                // `{}` placeholders, where `None` marks a placeholder.
+                let mut pieces = Vec::new();
+                let mut piece: Option<DocumentRange> = None;
+                // A string literal range includes the surrounding quotes, so we
+                // skip the first character and stop at the last one.
+                let mut chars = template_range.cursor().peekable();
+                chars.next();
+                while let Some(ch) = chars.next() {
+                    let Some(next) = chars.peek() else {
+                        break;
+                    };
+                    match (ch.ch(), next.ch()) {
+                        ('{', '}') => {
+                            chars.next();
+                            pieces.extend(piece.take().map(|piece| Some(piece.to_cheap_string())));
+                            pieces.push(None);
+                        }
+                        ('{', '{') | ('}', '}') => {
+                            chars.next();
+                            let escaped = match piece.take() {
+                                Some(piece) => piece.to(ch),
+                                None => ch,
+                            };
+                            pieces.push(Some(escaped.to_cheap_string()));
+                        }
+                        ('{' | '}', _) => {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::FormatMacroInvalidPlaceholder {},
+                                template_range,
+                            ));
+                            return None;
+                        }
+                        _ => {
+                            piece = Some(match piece.take() {
+                                Some(piece) => piece.to(ch),
+                                None => ch,
+                            });
+                        }
+                    }
+                }
+                pieces.extend(piece.map(|piece| Some(piece.to_cheap_string())));
+                let placeholders = pieces.iter().filter(|piece| piece.is_none()).count();
+
+                let value_args = &args[1..];
+                let mut typed_args = Vec::with_capacity(value_args.len());
+                for arg in value_args {
+                    let Some(typed) = typecheck_expr(
+                        arg,
+                        None,
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    ) else {
+                        continue;
+                    };
+                    match typed.typ() {
+                        Type::String => typed_args.push(typed),
+                        Type::Int => typed_args.push(TypedExpr::IntToString {
+                            value: Box::new(typed),
+                        }),
+                        found => errors.push(TypeError::new(
+                            TypeErrorKind::FormatMacroUnsupportedArgument { found },
+                            arg.range().clone(),
+                        )),
+                    }
+                }
+
+                if value_args.len() != placeholders {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::FormatMacroArity {
+                            expected: placeholders,
+                            found: value_args.len(),
+                        },
+                        range.clone(),
+                    ));
+                    return None;
+                }
+
+                if typed_args.len() != value_args.len() {
+                    return None;
+                }
+
+                annotations.push(HoverAnnotation::Description {
+                    title: "format!(literal: String, ...) -> String".to_string(),
+                    description:
+                        "Replaces each `{}` in the format string with the corresponding argument."
+                            .to_string(),
+                    range: subject_range.clone(),
+                });
+
+                let mut typed_args = typed_args.into_iter();
+                let parts = pieces
+                    .into_iter()
+                    .map(|piece| match piece {
+                        Some(value) => TypedExpr::StringLiteral { value },
+                        None => typed_args.next().expect("one argument per placeholder"),
+                    })
+                    .collect();
                 Some(TypedExpr::StringConcat { parts })
             }
             "asset" => {
@@ -4987,6 +5105,120 @@ mod tests {
                 error: Mismatched type for 'join': expected String got Int
                 join!(count)
                       ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_format_macro_with_string_and_int_args() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("name", "String"), ("count", "Int")],
+            r#"format!("a: {}, b: {}", name, count)"#,
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn accepts_format_macro_without_placeholders() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"format!("hello")"#,
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn rejects_format_macro_with_non_literal_format_string() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("template", "String")],
+            "format!(template)",
+            expect![[r#"
+                error: format! requires a string literal as its first argument
+                format!(template)
+                        ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_format_macro_with_no_args() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[],
+            "format!()",
+            expect![[r#"
+                error: format! requires a string literal as its first argument
+                format!()
+                ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_format_macro_with_too_few_args() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("name", "String")],
+            r#"format!("{} {}", name)"#,
+            expect![[r#"
+                error: format! expects 2 argument(s) for the format string, got 1
+                format!("{} {}", name)
+                ^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_format_macro_with_too_many_args() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("name", "String")],
+            r#"format!("hello", name)"#,
+            expect![[r#"
+                error: format! expects 0 argument(s) for the format string, got 1
+                format!("hello", name)
+                ^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_format_macro_with_unsupported_arg_type() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("enabled", "Bool")],
+            r#"format!("{}", enabled)"#,
+            expect![[r#"
+                error: format! arguments must be String or Int, got Bool
+                format!("{}", enabled)
+                              ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_format_macro_with_escaped_braces() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("name", "String")],
+            r#"format!("{{{}}}", name)"#,
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn rejects_format_macro_with_unmatched_brace() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("name", "String")],
+            r#"format!("{ {}", name)"#,
+            expect![[r#"
+                error: format! only supports '{}' placeholders
+                format!("{ {}", name)
+                        ^^^^^^
             "#]],
         );
     }

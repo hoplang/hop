@@ -5588,9 +5588,7 @@ mod tests {
                     <for {item in [Some("a"), None, Some("b")]}>
                       <match {item}>
                         <case {Some(s)}>
-                          [
-                          {s}
-                          ]
+                          {format!("[{}]", s)}
                         </case>
                         <case {None}>
                           [_]
@@ -5612,9 +5610,7 @@ mod tests {
                     match v0 {
                       Some(v1) => {
                         let v2 = v1 in {
-                          write("[")
-                          write_string(v2)
-                          write("]")
+                          write_string(("[" + v2 + "]"))
                         }
                       }
                       None => {
@@ -5812,19 +5808,17 @@ mod tests {
                     }>
                       <match {result}>
                         <case {Outcome::Success {value: v}}>
-                          Ok:
-                          {v}
+                          {format!("Ok: {}", v)}
                         </case>
                         <case {Outcome::Failure {message: m}}>
-                          Err:
-                          {m}
+                          {format!("Err: {}", m)}
                         </case>
                       </match>
                     </let>
                   }
                 }
             "#},
-            "Ok:hello",
+            "Ok: hello",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
@@ -5832,14 +5826,12 @@ mod tests {
                     match v0 {
                       Outcome::Success(value: v1) => {
                         let v2 = v1 in {
-                          write("Ok:")
-                          write_string(v2)
+                          write_string(("Ok: " + v2))
                         }
                       }
                       Outcome::Failure(message: v3) => {
                         let v4 = v3 in {
-                          write("Err:")
-                          write_string(v4)
+                          write_string(("Err: " + v4))
                         }
                       }
                     }
@@ -5847,10 +5839,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("Ok:hello")
+                  write("Ok: hello")
                 }
                 -- expected output --
-                Ok:hello
+                Ok: hello
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -5885,8 +5877,7 @@ mod tests {
                     <let {item: Item = Item::Tagged {tag: "news"}}>
                       <match {item}>
                         <case {Item::Tagged {tag: t}}>
-                          tag:
-                          {t}
+                          {format!("tag: {}", t)}
                         </case>
                         <case {Item::Plain}>
                           plain
@@ -5896,7 +5887,7 @@ mod tests {
                   }
                 }
             "#},
-            "tag:news",
+            "tag: news",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
@@ -5904,8 +5895,7 @@ mod tests {
                     match v0 {
                       Item::Tagged(tag: v1) => {
                         let v2 = v1 in {
-                          write("tag:")
-                          write_string(v2)
+                          write_string(("tag: " + v2))
                         }
                       }
                       Item::Plain => {
@@ -5916,10 +5906,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("tag:news")
+                  write("tag: news")
                 }
                 -- expected output --
-                tag:news
+                tag: news
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -5959,13 +5949,12 @@ mod tests {
                         Outcome::Failure {message: m} => m,
                       },
                     }>
-                      got:
-                      {result}
+                      {format!("Got: {}", result)}
                     </let>
                   }
                 }
             "#},
-            "got:hi",
+            "Got: hi",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
@@ -5979,16 +5968,15 @@ mod tests {
                       }
                     }
                   } in {
-                    write("got:")
-                    write_string(v5)
+                    write_string(("Got: " + v5))
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("got:hi")
+                  write("Got: hi")
                 }
                 -- expected output --
-                got:hi
+                Got: hi
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -6102,19 +6090,17 @@ mod tests {
                     }>
                       <match {result}>
                         <case {Outcome::Success {value: v}}>
-                          Ok:
-                          {v}
+                          {format!("Ok: {}", v)}
                         </case>
                         <case {Outcome::Failure {message: m}}>
-                          Err:
-                          {m}
+                          {format!("Err: {}", m)}
                         </case>
                       </match>
                     </let>
                   }
                 }
             "#},
-            "Err:something went wrong",
+            "Err: something went wrong",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
@@ -6122,14 +6108,12 @@ mod tests {
                     match v0 {
                       Outcome::Success(value: v1) => {
                         let v2 = v1 in {
-                          write("Ok:")
-                          write_string(v2)
+                          write_string(("Ok: " + v2))
                         }
                       }
                       Outcome::Failure(message: v3) => {
                         let v4 = v3 in {
-                          write("Err:")
-                          write_string(v4)
+                          write_string(("Err: " + v4))
                         }
                       }
                     }
@@ -6137,10 +6121,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("Err:something went wrong")
+                  write("Err: something went wrong")
                 }
                 -- expected output --
-                Err:something went wrong
+                Err: something went wrong
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -6164,11 +6148,11 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 enum Response {
-                  Win {
+                  Success {
                     code: String,
                     body: String,
                   },
-                  Lose {
+                  Failure {
                     reason: String,
                   },
                 }
@@ -6176,45 +6160,39 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <let {
-                      resp: Response = Response::Win {
+                      resp = Response::Success {
                         code: "200",
                         body: "OK",
                       },
                     }>
                       <match {resp}>
-                        <case {Response::Win {code: c, body: b}}>
-                          {c}
-                          :
-                          {b}
+                        <case {Response::Success {code: c, body: b}}>
+                          {format!("{} {}", c, b)}
                         </case>
-                        <case {Response::Lose {reason: r}}>
-                          Error:
-                          {r}
+                        <case {Response::Failure {reason: r}}>
+                          {format!("Error: {}", r)}
                         </case>
                       </match>
                     </let>
                   }
                 }
             "#},
-            "200:OK",
+            "200 OK",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Response::Win {code: "200", body: "OK"} in {
+                  let v0 = Response::Success {code: "200", body: "OK"} in {
                     match v0 {
-                      Response::Win(code: v1, body: v2) => {
+                      Response::Success(code: v1, body: v2) => {
                         let v3 = v1 in {
                           let v4 = v2 in {
-                            write_string(v3)
-                            write(":")
-                            write_string(v4)
+                            write_string((v3 + " " + v4))
                           }
                         }
                       }
-                      Response::Lose(reason: v5) => {
+                      Response::Failure(reason: v5) => {
                         let v6 = v5 in {
-                          write("Error:")
-                          write_string(v6)
+                          write_string(("Error: " + v6))
                         }
                       }
                     }
@@ -6222,10 +6200,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("200:OK")
+                  write("200 OK")
                 }
                 -- expected output --
-                200:OK
+                200 OK
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -6264,19 +6242,17 @@ mod tests {
                     }>
                       <match {result}>
                         <case {Outcome::Success {value}}>
-                          Ok:
-                          {value}
+                          {format!("Ok: {}", value)}
                         </case>
                         <case {Outcome::Failure {message}}>
-                          Err:
-                          {message}
+                          {format!("Err: {}", message)}
                         </case>
                       </match>
                     </let>
                   }
                 }
             "#},
-            "Ok:hello",
+            "Ok: hello",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
@@ -6284,14 +6260,12 @@ mod tests {
                     match v0 {
                       Outcome::Success(value: v1) => {
                         let v2 = v1 in {
-                          write("Ok:")
-                          write_string(v2)
+                          write_string(("Ok: " + v2))
                         }
                       }
                       Outcome::Failure(message: v3) => {
                         let v4 = v3 in {
-                          write("Err:")
-                          write_string(v4)
+                          write_string(("Err: " + v4))
                         }
                       }
                     }
@@ -6299,10 +6273,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("Ok:hello")
+                  write("Ok: hello")
                 }
                 -- expected output --
-                Ok:hello
+                Ok: hello
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -6807,50 +6781,6 @@ mod tests {
                 }
                 -- expected output --
                 0
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn int_to_string_concat() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    <let {count: Int = 5}>
-                      {"Count: " + count.to_string()}
-                    </let>
-                  }
-                }
-            "#},
-            "Count: 5",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  let v0 = 5 in {
-                    write_string(("Count: " + v0.to_string()))
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  write("Count: 5")
-                }
-                -- expected output --
-                Count: 5
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -7872,7 +7802,7 @@ mod tests {
                   fn body() -> Html {
                     let person = Person {name: "Alice", age: 30};
                     match person {
-                      Person {name: _, age: a} => <>age: {a.to_string()}</>,
+                      Person {name: _, age: a} => <>{format!("age: {}", a)}</>,
                     }
                   }
                 }
@@ -7884,8 +7814,7 @@ mod tests {
                   let v0 = Person {name: "Alice", age: 30} in {
                     let v1 = v0.age in {
                       let v2 = v1 in {
-                        write("age: ")
-                        write_string(v2.to_string())
+                        write_string(("age: " + v2.to_string()))
                       }
                     }
                   }
@@ -8346,6 +8275,95 @@ mod tests {
                 }
                 -- expected output --
                 <div class="foo bar baz"></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn format_macro_interpolates_strings_and_ints() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let name = "hop";
+                    let count = 3;
+                    <>{format!("a: {}, b: {}", name, count)}</>
+                  }
+                }
+            "#},
+            "a: hop, b: 3",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = "hop" in {
+                    let v1 = 3 in {
+                      write_string(("a: " + v0 + ", b: " + v1.to_string()))
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("a: hop, b: 3")
+                }
+                -- expected output --
+                a: hop, b: 3
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn format_macro_escapes_braces() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let name = "c";
+                    <>{format!("a{{b{}d}}e", name)}</>
+                  }
+                }
+            "#},
+            "a{bcd}e",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = "c" in {
+                    write_string(("a{" + "b" + v0 + "d}" + "e"))
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("a{bcd}e")
+                }
+                -- expected output --
+                a{bcd}e
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

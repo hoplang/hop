@@ -384,6 +384,18 @@ pub(crate) enum TypeErrorKind {
     #[error("asset! path must start with '/'")]
     AssetPathMustBeAbsolute,
 
+    #[error("format! requires a string literal as its first argument")]
+    FormatMacroNonLiteralTemplate,
+
+    #[error("format! only supports '{{}}' placeholders")]
+    FormatMacroInvalidPlaceholder,
+
+    #[error("format! expects {expected} argument(s) for the format string, got {found}")]
+    FormatMacroArity { expected: usize, found: usize },
+
+    #[error("format! arguments must be String or Int, got {found}")]
+    FormatMacroUnsupportedArgument { found: Type },
+
     #[error("Function {name} is not defined")]
     UndefinedFunction { name: FunctionName },
 
