@@ -447,13 +447,13 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {f in [Flag {value: true}]}>
-                      <match {f}>
-                        <case {Flag {value: b}}>
+                      {match f {
+                        Flag {value: b} => {
                           <if {b || false}>
                             yes
                           </if>
-                        </case>
-                      </match>
+                        },
+                      }}
                     </for>
                   }
                 }
@@ -649,13 +649,13 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {c in [Count {n: 57}]}>
-                      <match {c}>
-                        <case {Count {n: v}}>
+                      {match c {
+                        Count {n: v} => {
                           <if {v == 57}>
                             eq
                           </if>
-                        </case>
-                      </match>
+                        },
+                      }}
                     </for>
                   }
                 }
@@ -725,11 +725,9 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {f in [Flag {value: true}]}>
-                      <match {f}>
-                        <case {Flag {value: b}}>
-                          {match b {true => "yes", false => "no"}}
-                        </case>
-                      </match>
+                      {match f {
+                        Flag {value: b} => <>{match b {true => "yes", false => "no"}}</>,
+                      }}
                     </for>
                   }
                 }
@@ -758,89 +756,6 @@ mod tests {
                           true => { "yes" }
                           false => { "no" }
                         })
-                      }
-                    }
-                  }
-                }
-                -- expected output --
-                yes
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn bool_binding_from_record_pattern_as_match_statement_subject() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                record Flag {
-                  value: Bool,
-                }
-
-                page Test() {
-                  fn body() -> Html {
-                    <for {f in [Flag {value: true}]}>
-                      <match {f}>
-                        <case {Flag {value: b}}>
-                          <match {b}>
-                            <case {true}>
-                              yes
-                            </case>
-                            <case {false}>
-                              no
-                            </case>
-                          </match>
-                        </case>
-                      </match>
-                    </for>
-                  }
-                }
-            "#},
-            "yes",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  for v0 in [Flag {value: true}] {
-                    let v1 = v0.value in {
-                      let v2 = v1 in {
-                        match v2 {
-                          true => {
-                            write("yes")
-                          }
-                          false => {
-                            write("no")
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  for v0 in [Flag {value: true}] {
-                    let v1 = v0.value in {
-                      let v2 = v1 in {
-                        match v2 {
-                          true => {
-                            write("yes")
-                          }
-                          false => {
-                            write("no")
-                          }
-                        }
                       }
                     }
                   }
@@ -876,13 +791,13 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {f in [Flag {value: true}]}>
-                      <match {f}>
-                        <case {Flag {value: b}}>
+                      {match f {
+                        Flag {value: b} => {
                           <if {b}>
                             yes
                           </if>
-                        </case>
-                      </match>
+                        },
+                      }}
                     </for>
                   }
                 }
@@ -1324,14 +1239,13 @@ mod tests {
                   show: Bool,
                   ...rest,
                 ) -> Html {
-                  <match {show}>
-                    <case {true}>
+                  match show {
+                    true => {
                       <div ...rest>
                       </div>
-                    </case>
-                    <case {false}>
-                    </case>
-                  </match>
+                    },
+                    false => <></>,
+                  }
                 }
 
                 page Test() {
@@ -1924,12 +1838,14 @@ mod tests {
                   fn body() -> Html {
                     let v_1: String = "outer";
                     <for {f in [Flag {value: "x"}]}>
-                      <match {f}>
-                        <case {Flag {value: b}}>
-                          {v_1}
-                          {b}
-                        </case>
-                      </match>
+                      {match f {
+                        Flag {value: b} => {
+                          <>
+                            {v_1}
+                            {b}
+                          </>
+                        },
+                      }}
                     </for>
                   }
                 }
@@ -2938,15 +2854,15 @@ mod tests {
                       Some(x) => Some(x),
                       None => None,
                     };
-                    <match {mapped}>
-                      <case {Some(result)}>
-                        mapped:
-                        {result}
-                      </case>
-                      <case {None}>
-                        was-none
-                      </case>
-                    </match>
+                    match mapped {
+                      Some(result) => {
+                        <>
+                          mapped:
+                          {result}
+                        </>
+                      },
+                      None => <>was-none</>,
+                    }
                   }
                 }
             "#},
@@ -3117,15 +3033,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <match {Some("hi")}>
-                      <case {Some(x)}>
-                        got:
-                        {x}
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
+                    match Some("hi") {
+                      Some(x) => {
+                        <>
+                          got:
+                          {x}
+                        </>
+                      },
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -3181,14 +3097,10 @@ mod tests {
                     let outer: Option[String] = Some(
                       match inner_opt {Some(x) => x, None => "default"}
                     );
-                    <match {outer}>
-                      <case {Some(s)}>
-                        {s}
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
+                    match outer {
+                      Some(s) => <>{s}</>,
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -4664,120 +4576,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn bool_match_true() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    let flag: Bool = true;
-                    <match {flag}>
-                      <case {true}>
-                        yes
-                      </case>
-                      <case {false}>
-                        no
-                      </case>
-                    </match>
-                  }
-                }
-            "#},
-            "yes",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  let v0 = true in {
-                    match v0 {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
-                      }
-                    }
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  write("yes")
-                }
-                -- expected output --
-                yes
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn bool_match_false() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    let flag: Bool = false;
-                    <match {flag}>
-                      <case {true}>
-                        yes
-                      </case>
-                      <case {false}>
-                        no
-                      </case>
-                    </match>
-                  }
-                }
-            "#},
-            "no",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  let v0 = false in {
-                    match v0 {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
-                      }
-                    }
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  write("no")
-                }
-                -- expected output --
-                no
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
     fn field_access() {
         check(
             indoc! {r#"
@@ -4906,13 +4704,15 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let shape = Shape::Rect {height: "b", width: "a"};
-                    <match {shape}>
-                      <case {Shape::Rect {width: w, height: h}}>
-                        {w}
-                        -
-                        {h}
-                      </case>
-                    </match>
+                    match shape {
+                      Shape::Rect {width: w, height: h} => {
+                        <>
+                          {w}
+                          -
+                          {h}
+                        </>
+                      },
+                    }
                   }
                 }
             "#},
@@ -5370,14 +5170,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let some_val: Option[String] = Some("hello");
-                    <match {some_val}>
-                      <case {Some(s)}>
-                        {s}
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
+                    match some_val {
+                      Some(s) => <>{s}</>,
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -5429,14 +5225,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let opt: Option[String] = Some("hello");
-                    <match {opt}>
-                      <case {Some(_)}>
-                        some
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
+                    match opt {
+                      Some(_) => <>some</>,
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -5489,14 +5281,10 @@ mod tests {
                     let outer: Option[String] = Some(
                       match inner_opt {Some(x) => x, None => "default"}
                     );
-                    <match {outer}>
-                      <case {Some(s)}>
-                        {s}
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
+                    match outer {
+                      Some(s) => <>{s}</>,
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -5553,14 +5341,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {item in [Some("a"), None, Some("b")]}>
-                      <match {item}>
-                        <case {Some(s)}>
-                          {format!("[{}]", s)}
-                        </case>
-                        <case {None}>
-                          [_]
-                        </case>
-                      </match>
+                      {match item {
+                        Some(s) => <>{format!("[{}]", s)}</>,
+                        None => <>[_]</>,
+                      }}
                     </for>
                   }
                 }
@@ -5684,75 +5468,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn enum_match_statement() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
-                page Test() {
-                  fn body() -> Html {
-                    let color: Color = Color::Blue;
-                    <match {color}>
-                      <case {Color::Red}>
-                        red
-                      </case>
-                      <case {Color::Green}>
-                        green
-                      </case>
-                      <case {Color::Blue}>
-                        blue
-                      </case>
-                    </match>
-                  }
-                }
-            "#},
-            "blue",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  let v0 = Color::Blue in {
-                    match v0 {
-                      Color::Red => {
-                        write("red")
-                      }
-                      Color::Green => {
-                        write("green")
-                      }
-                      Color::Blue => {
-                        write("blue")
-                      }
-                    }
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  write("blue")
-                }
-                -- expected output --
-                blue
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
     fn enum_match_with_field_bindings() {
         check(
             indoc! {r#"
@@ -5769,14 +5484,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let result: Outcome = Outcome::Success {value: "hello"};
-                    <match {result}>
-                      <case {Outcome::Success {value: v}}>
-                        {format!("Ok: {}", v)}
-                      </case>
-                      <case {Outcome::Failure {message: m}}>
-                        {format!("Err: {}", m)}
-                      </case>
-                    </match>
+                    match result {
+                      Outcome::Success {value: v} => <>{format!("Ok: {}", v)}</>,
+                      Outcome::Failure {message: m} => <>{format!("Err: {}", m)}</>,
+                    }
                   }
                 }
             "#},
@@ -5837,14 +5548,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let item: Item = Item::Tagged {tag: "news"};
-                    <match {item}>
-                      <case {Item::Tagged {tag: t}}>
-                        {format!("tag: {}", t)}
-                      </case>
-                      <case {Item::Plain}>
-                        plain
-                      </case>
-                    </match>
+                    match item {
+                      Item::Tagged {tag: t} => <>{format!("tag: {}", t)}</>,
+                      Item::Plain => <>plain</>,
+                    }
                   }
                 }
             "#},
@@ -5964,17 +5671,11 @@ mod tests {
                 }
 
                 fn Badge(color: Color) -> Html {
-                  <match {color}>
-                    <case {Color::Red}>
-                      red
-                    </case>
-                    <case {Color::Green}>
-                      green
-                    </case>
-                    <case {Color::Blue}>
-                      blue
-                    </case>
-                  </match>
+                  match color {
+                    Color::Red => <>red</>,
+                    Color::Green => <>green</>,
+                    Color::Blue => <>blue</>,
+                  }
                 }
 
                 page Test() {
@@ -6044,14 +5745,10 @@ mod tests {
                     let result: Outcome = Outcome::Failure {
                       message: "something went wrong",
                     };
-                    <match {result}>
-                      <case {Outcome::Success {value: v}}>
-                        {format!("Ok: {}", v)}
-                      </case>
-                      <case {Outcome::Failure {message: m}}>
-                        {format!("Err: {}", m)}
-                      </case>
-                    </match>
+                    match result {
+                      Outcome::Success {value: v} => <>{format!("Ok: {}", v)}</>,
+                      Outcome::Failure {message: m} => <>{format!("Err: {}", m)}</>,
+                    }
                   }
                 }
             "#},
@@ -6118,14 +5815,10 @@ mod tests {
                       code: "200",
                       body: "OK",
                     };
-                    <match {resp}>
-                      <case {Response::Success {code: c, body: b}}>
-                        {format!("{} {}", c, b)}
-                      </case>
-                      <case {Response::Failure {reason: r}}>
-                        {format!("Error: {}", r)}
-                      </case>
-                    </match>
+                    match resp {
+                      Response::Success {code: c, body: b} => <>{format!("{} {}", c, b)}</>,
+                      Response::Failure {reason: r} => <>{format!("Error: {}", r)}</>,
+                    }
                   }
                 }
             "#},
@@ -6190,14 +5883,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let result: Outcome = Outcome::Success {value: "hello"};
-                    <match {result}>
-                      <case {Outcome::Success {value}}>
-                        {format!("Ok: {}", value)}
-                      </case>
-                      <case {Outcome::Failure {message}}>
-                        {format!("Err: {}", message)}
-                      </case>
-                    </match>
+                    match result {
+                      Outcome::Success {value} => <>{format!("Ok: {}", value)}</>,
+                      Outcome::Failure {message} => <>{format!("Err: {}", message)}</>,
+                    }
                   }
                 }
             "#},
@@ -6482,14 +6171,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let items: Array[String] = [];
-                    <match {items.is_empty()}>
-                      <case {true}>
-                        empty
-                      </case>
-                      <case {false}>
-                        not empty
-                      </case>
-                    </match>
+                    match items.is_empty() {
+                      true => <>empty</>,
+                      false => <>not empty</>,
+                    }
                   }
                 }
             "#},
@@ -6541,14 +6226,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let items: Array[String] = ["a", "b"];
-                    <match {items.is_empty()}>
-                      <case {true}>
-                        empty
-                      </case>
-                      <case {false}>
-                        not empty
-                      </case>
-                    </match>
+                    match items.is_empty() {
+                      true => <>empty</>,
+                      false => <>not empty</>,
+                    }
                   }
                 }
             "#},
@@ -6600,14 +6281,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let numbers: Array[Int] = [1, 2, 3];
-                    <match {numbers.is_empty()}>
-                      <case {true}>
-                        no numbers
-                      </case>
-                      <case {false}>
-                        has numbers
-                      </case>
-                    </match>
+                    match numbers.is_empty() {
+                      true => <>no numbers</>,
+                      false => <>has numbers</>,
+                    }
                   }
                 }
             "#},
@@ -7212,17 +6889,11 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let nested: Option[Option[String]] = Some(Some("deep"));
-                    <match {nested}>
-                      <case {Some(Some(x))}>
-                        {x}
-                      </case>
-                      <case {Some(None)}>
-                        some-none
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
+                    match nested {
+                      Some(Some(x)) => <>{x}</>,
+                      Some(None) => <>some-none</>,
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -7256,120 +6927,6 @@ mod tests {
                 }
                 -- expected output --
                 deep
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn option_wildcard_match_some_input() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    let opt: Option[String] = Some("x");
-                    <match {opt}>
-                      <case {Some(_)}>
-                        some
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  }
-                }
-            "#},
-            "some",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  let v0 = Option[String]::Some("x") in {
-                    match v0 {
-                      Some(_) => {
-                        write("some")
-                      }
-                      None => {
-                        write("none")
-                      }
-                    }
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  write("some")
-                }
-                -- expected output --
-                some
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn option_wildcard_match_none_input() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    let opt: Option[String] = None;
-                    <match {opt}>
-                      <case {Some(_)}>
-                        some
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  }
-                }
-            "#},
-            "none",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  let v0 = Option[String]::None in {
-                    match v0 {
-                      Some(_) => {
-                        write("some")
-                      }
-                      None => {
-                        write("none")
-                      }
-                    }
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  write("none")
-                }
-                -- expected output --
-                none
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -8028,7 +7585,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn nested_match_statements_with_literal_subjects() {
+    fn nested_match_with_literal_subjects() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -8100,7 +7657,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn nested_match_statements_with_variable_subjects() {
+    fn nested_match_with_variable_subjects() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -9117,14 +8674,14 @@ mod tests {
                     <for {item in items}>
                       {
                         let opt = Some(item.name);
-                        <match {opt}>
-                          <case {Some(s)}>
-                            [{s}]
-                          </case>
-                          <case {None}>
-                            [-]
-                          </case>
-                        </match>
+                        match opt {
+                          Some(s) => {
+                            <>
+                              [{s}]
+                            </>
+                          },
+                          None => <>[-]</>,
+                        }
                       }
                     </for>
                   }
@@ -9801,7 +9358,7 @@ mod tests {
                     };
                     match e {
                       Expr::Literal {value: v} => <>lit:{v}</>,
-                      Expr::Neg {inner: _} => <>neg</>
+                      Expr::Neg {inner: _} => <>neg</>,
                     }
                   }
                 }
@@ -10249,7 +9806,7 @@ mod tests {
                     let h = Holder {held: n.next};
                     match h.held {
                       Some(_) => <>some</>,
-                      None => <>{n.value}</>
+                      None => <>{n.value}</>,
                     }
                   }
                 }
@@ -10318,14 +9875,10 @@ mod tests {
                     let x = A {b: B {name: "b", a: None}};
                     <>
                       {x.b.name}
-                      <match {x.b.a}>
-                        <case {Some(_)}>
-                          some
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
+                      {match x.b.a {
+                        Some(_) => <>some</>,
+                        None => <>none</>,
+                      }}
                     </>
                   }
                 }
@@ -10399,27 +9952,19 @@ mod tests {
                       left: Tree::Leaf,
                       right: None,
                     };
-                    <match {tree}>
-                      <case {Tree::Node {label: l, left: lt, right: r}}>
-                        {
-                          let s: Step = Step {t: lt, rest: r};
-                          <>
-                            {l}
-                            <match {s.rest}>
-                              <case {Some(_)}>
-                                some
-                              </case>
-                              <case {None}>
-                                none
-                              </case>
-                            </match>
-                          </>
-                        }
-                      </case>
-                      <case {Tree::Leaf}>
-                        empty
-                      </case>
-                    </match>
+                    match tree {
+                      Tree::Node {label: l, left: lt, right: r} => {
+                        let s: Step = Step {t: lt, rest: r};
+                        <>
+                          {l}
+                          {match s.rest {
+                            Some(_) => <>some</>,
+                            None => <>none</>,
+                          }}
+                        </>
+                      },
+                      Tree::Leaf => <>empty</>,
+                    }
                   }
                 }
             "#},
@@ -10498,22 +10043,18 @@ mod tests {
                       address: "a@b.c",
                       label: Some("work"),
                     };
-                    <match {c}>
-                      <case {Contact::Email {address: a, label: l}}>
-                        {a}
-                        <match {l}>
-                          <case {Some(s)}>
-                            {s}
-                          </case>
-                          <case {None}>
-                            no-label
-                          </case>
-                        </match>
-                      </case>
-                      <case {Contact::Anonymous}>
-                        anon
-                      </case>
-                    </match>
+                    match c {
+                      Contact::Email {address: a, label: l} => {
+                        <>
+                          {a}
+                          {match l {
+                            Some(s) => <>{s}</>,
+                            None => <>no-label</>,
+                          }}
+                        </>
+                      },
+                      Contact::Anonymous => <>anon</>,
+                    }
                   }
                 }
             "#},
@@ -10976,13 +10517,12 @@ mod tests {
                 fn NodeView(node: Node) -> Html {
                   <>
                     <Badge text={node.value}/>
-                    <match {node.next}>
-                      <case {Some(next)}>
+                    {match node.next {
+                      Some(next) => {
                         <NodeView node={next}/>
-                      </case>
-                      <case {None}>
-                      </case>
-                    </match>
+                      },
+                      None => <></>,
+                    }}
                   </>
                 }
 
@@ -11090,13 +10630,12 @@ mod tests {
                     <span>
                       {node.value}
                     </span>
-                    <match {node.next}>
-                      <case {Some(next)}>
+                    {match node.next {
+                      Some(next) => {
                         <NodeView node={next}/>
-                      </case>
-                      <case {None}>
-                      </case>
-                    </match>
+                      },
+                      None => <></>,
+                    }}
                   </>
                 }
 
@@ -12504,7 +12043,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn option_record_used_in_inline_match_and_match_tag() {
+    fn option_record_used_in_inline_match_and_match_expr() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -12526,23 +12065,25 @@ mod tests {
                     ];
                     <>
                       <for {item in items}>
-                        <match {item}>
-                          <case {Some(s)}>
-                            [
-                            {s}
-                            ]
-                          </case>
-                          <case {None}>
-                          </case>
-                        </match>
+                        {match item {
+                          Some(s) => {
+                            <>
+                              [
+                              {s}
+                              ]
+                            </>
+                          },
+                          None => <></>,
+                        }}
                       </for>
-                      <match {target}>
-                        <case {Some(t)}>
-                          {t.title}
-                        </case>
-                        <case {None}>
-                        </case>
-                      </match>
+                      {match target {
+                        Some(t) => {
+                          <>
+                            {t.title}
+                          </>
+                        },
+                        None => <></>,
+                      }}
                     </>
                   }
                 }
@@ -12728,18 +12269,16 @@ mod tests {
                   depth: Int,
                   children: Html,
                 ) -> Html {
-                  <match {depth > 0}>
-                    <case {true}>
+                  match depth > 0 {
+                    true => {
                       <div>
                         <Nest depth={depth - 1}>
                           {children}
                         </Nest>
                       </div>
-                    </case>
-                    <case {false}>
-                      {children}
-                    </case>
-                  </match>
+                    },
+                    false => children,
+                  }
                 }
 
                 page Test() {
@@ -13123,14 +12662,10 @@ mod tests {
                   label: Option[String],
                 ) -> Html {
                   <>
-                    <match {label}>
-                      <case {Some(text)}>
-                        {text}
-                      </case>
-                      <case {None}>
-                        x
-                      </case>
-                    </match>
+                    {match label {
+                      Some(text) => <>{text}</>,
+                      None => <>x</>,
+                    }}
                     <if {0 < n}>
                       <Loop n={n - 1} label={label}/>
                     </if>
@@ -13590,20 +13125,19 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 pub fn OptBool(checked: Option[Bool]) -> Html {
-                  <match {checked}>
-                    <case {Some(true)}>
+                  match checked {
+                    Some(true) => {
                       <span>
                         yes
                       </span>
-                    </case>
-                    <case {Some(false)}>
+                    },
+                    Some(false) => {
                       <span>
                         no
                       </span>
-                    </case>
-                    <case {None}>
-                    </case>
-                  </match>
+                    },
+                    None => <></>,
+                  }
                 }
 
                 page Test() {
@@ -13671,20 +13205,12 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let x: Option[Option[Bool]] = Some(Some(true));
-                    <match {x}>
-                      <case {Some(Some(true))}>
-                        tt
-                      </case>
-                      <case {Some(Some(false))}>
-                        tf
-                      </case>
-                      <case {Some(None)}>
-                        some-none
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
+                    match x {
+                      Some(Some(true)) => <>tt</>,
+                      Some(Some(false)) => <>tf</>,
+                      Some(None) => <>some-none</>,
+                      None => <>none</>,
+                    }
                   }
                 }
             "#},
@@ -14276,13 +13802,13 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let e: E = E::A {class: "a"};
-                    <match {e}>
-                      <case {E::A {class: v}}>
+                    match e {
+                      E::A {class: v} => {
                         <div>
                           {v}
                         </div>
-                      </case>
-                    </match>
+                      },
+                    }
                   }
                 }
             "#},
@@ -14609,14 +14135,14 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {item in [Item {label: "a", selected: false}]}>
-                      <match {item.selected}>
-                        <case {true}>
+                      {match item.selected {
+                        true => {
                           <Row item={Item {...item, label: "on"}}/>
-                        </case>
-                        <case {false}>
+                        },
+                        false => {
                           <Row item={Item {...item, label: "off"}}/>
-                        </case>
-                      </match>
+                        },
+                      }}
                     </for>
                   }
                 }
@@ -15406,7 +14932,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn catch_all_after_constructor_in_match_node_on_expression_subject() {
+    fn catch_all_after_constructor_in_match_on_expression_subject() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -15421,21 +14947,15 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <match {mk()}>
-                      <case {Shape::Circle}>
-                        circle
-                      </case>
-                      <case {other}>
-                        <match {other}>
-                          <case {Shape::Square}>
-                            square
-                          </case>
-                          <case {Shape::Circle}>
-                            never
-                          </case>
-                        </match>
-                      </case>
-                    </match>
+                    match mk() {
+                      Shape::Circle => <>circle</>,
+                      other => {
+                        match other {
+                          Shape::Square => <>square</>,
+                          Shape::Circle => <>never</>,
+                        }
+                      },
+                    }
                   }
                 }
             "#},

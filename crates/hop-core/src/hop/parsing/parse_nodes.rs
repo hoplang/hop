@@ -4,12 +4,11 @@ use std::iter::Peekable;
 use super::parse_expr;
 use super::parse_helpers;
 use super::parsed_expr::ParsedExpr;
-use super::parsed_node::{ParsedAttribute, ParsedLoopSource, ParsedMatchCase, ParsedNode};
+use super::parsed_node::{ParsedAttribute, ParsedLoopSource, ParsedNode};
 use super::token;
 use super::tokenize_markup;
 use super::whitespace;
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::hop::parsing::parsed_expr::ParsedMatchPattern;
 use crate::hop::parsing::token::LangTokenPair;
 use crate::hop::parsing::token::MarkupToken;
 use crate::hop::parsing::token::RawTextToken;
@@ -18,20 +17,6 @@ use crate::html::{HtmlElementKind, is_raw_content_tag, is_void_element_tag};
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
-
-/// An item in a markup sequence.
-enum MarkupItem {
-    Node(ParsedNode),
-    /// A `<case>` is not a node: it carries a pattern and only means anything as
-    /// a child of a `<match>`. Parsing collects both kinds uniformly and each
-    /// element then takes the kind it accepts, so `<case>` needs no special
-    /// handling on the way in.
-    Case {
-        case: ParsedMatchCase,
-        /// The range of the name in the opening tag.
-        tag_name_range: DocumentRange,
-    },
-}
 
 /// A closing tag that ended an element.
 struct ClosingTag {
@@ -65,7 +50,7 @@ struct OpenElement {
     opening_range: DocumentRange,
     /// What was read off the opening tag, waiting for the children.
     header: ElementHeader,
-    children: Vec<MarkupItem>,
+    children: Vec<ParsedNode>,
 }
 
 impl OpenElement {
@@ -80,7 +65,7 @@ impl OpenElement {
 
     /// Build the element without a closing tag, reporting that it never got
     /// one.
-    fn close_unclosed(self, errors: &mut ParseErrors) -> Result<MarkupItem, ErrorEmitted> {
+    fn close_unclosed(self, errors: &mut ParseErrors) -> Result<ParsedNode, ErrorEmitted> {
         let kind = match self.header {
             ElementHeader::Fragment => ParseErrorKind::UnclosedFragment {},
             ElementHeader::Tag(_) => ParseErrorKind::UnclosedTag {
@@ -116,12 +101,6 @@ enum TagHeader {
     },
     For {
         expr: Slot<LoopHeader>,
-    },
-    Match {
-        expr: Slot<ParsedExpr>,
-    },
-    Case {
-        pattern: Slot<ParsedMatchPattern>,
     },
     Function {
         name: Result<FunctionName, ErrorEmitted>,
@@ -218,8 +197,8 @@ impl MarkupBuilder {
     /// finished markup when nothing is open.
     fn append(
         &mut self,
-        item: Result<MarkupItem, ErrorEmitted>,
-    ) -> Option<Result<MarkupItem, ErrorEmitted>> {
+        item: Result<ParsedNode, ErrorEmitted>,
+    ) -> Option<Result<ParsedNode, ErrorEmitted>> {
         match self.open.last_mut() {
             // A dropped child is just missing from its parent.
             Some(element) => {
@@ -231,12 +210,12 @@ impl MarkupBuilder {
     }
 
     /// Add a node to the innermost open element, or to the top level.
-    fn append_node(&mut self, node: ParsedNode) -> Option<Result<MarkupItem, ErrorEmitted>> {
-        self.append(Ok(MarkupItem::Node(node)))
+    fn append_node(&mut self, node: ParsedNode) -> Option<Result<ParsedNode, ErrorEmitted>> {
+        self.append(Ok(node))
     }
 
     /// Drop an item that could not be built, keeping the proof of why.
-    fn drop_item(&mut self, guar: ErrorEmitted) -> Option<Result<MarkupItem, ErrorEmitted>> {
+    fn drop_item(&mut self, guar: ErrorEmitted) -> Option<Result<ParsedNode, ErrorEmitted>> {
         self.append(Err(guar))
     }
 
@@ -251,7 +230,7 @@ impl MarkupBuilder {
         element: OpenElement,
         closing: Option<ClosingTag>,
         errors: &mut ParseErrors,
-    ) -> Option<Result<MarkupItem, ErrorEmitted>> {
+    ) -> Option<Result<ParsedNode, ErrorEmitted>> {
         self.append(close_element(element, closing, errors))
     }
 
@@ -262,7 +241,7 @@ impl MarkupBuilder {
         &mut self,
         closing: ClosingTag,
         errors: &mut ParseErrors,
-    ) -> Option<Result<MarkupItem, ErrorEmitted>> {
+    ) -> Option<Result<ParsedNode, ErrorEmitted>> {
         let Some(depth) = self
             .open
             .iter()
@@ -296,7 +275,7 @@ impl MarkupBuilder {
 
     /// Take the markup, closing everything left open. Something is open:
     /// the markup would otherwise have finished with its last item.
-    fn finish(mut self, errors: &mut ParseErrors) -> Result<MarkupItem, ErrorEmitted> {
+    fn finish(mut self, errors: &mut ParseErrors) -> Result<ParsedNode, ErrorEmitted> {
         loop {
             let element = self.open.pop().expect("an element is open");
             if let Some(item) = self.append(element.close_unclosed(errors)) {
@@ -394,14 +373,14 @@ fn parse_node(
         };
 
         if let Some(item) = finished {
-            return expect_node(item?, errors);
+            return item;
         }
         match tokenize_markup::next(iter, errors) {
             Some(next) => token = next,
             None => break,
         }
     }
-    expect_node(builder.finish(errors)?, errors)
+    builder.finish(errors)
 }
 
 /// Parse markup in expression position, from a '<' the caller has
@@ -442,12 +421,6 @@ fn parse_opening_tag(
         },
         "for" => TagHeader::For {
             expr: Slot::empty(),
-        },
-        "match" => TagHeader::Match {
-            expr: Slot::empty(),
-        },
-        "case" => TagHeader::Case {
-            pattern: Slot::empty(),
         },
         name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
             TagHeader::Function {
@@ -546,7 +519,6 @@ fn parse_opening_tag(
 
             TagToken::ExpressionStart { left_brace } => match &mut header {
                 TagHeader::If { cond: slot }
-                | TagHeader::Match { expr: slot }
                 | TagHeader::Function {
                     expression: slot, ..
                 }
@@ -577,19 +549,6 @@ fn parse_opening_tag(
                     );
                     slot.fill(parsed, left_brace, &tag_name_range, errors);
                 }
-
-                TagHeader::Case { pattern: slot } => {
-                    let parsed = parse_helpers::parse_delimited(
-                        iter,
-                        comments,
-                        errors,
-                        &left_brace,
-                        LangTokenPair::Braces,
-                        &left_brace,
-                        parse_expr::parse_match_pattern,
-                    );
-                    slot.fill(parsed, left_brace, &tag_name_range, errors);
-                }
             },
         }
     }
@@ -604,7 +563,7 @@ fn parse_opening_tag(
             content,
             closing_tag_end,
         } = tokenize_markup::next_raw_text_token(iter, &tag_name_range);
-        children.extend(content.map(|range| MarkupItem::Node(ParsedNode::Text { range })));
+        children.extend(content.map(|range| ParsedNode::Text { range }));
         // Without a closing tag the element stays open, and is reported as
         // unclosed with everything else still open when the markup ends.
         if let Some(closing_tag_end) = closing_tag_end {
@@ -677,7 +636,7 @@ fn close_element(
     element: OpenElement,
     closing: Option<ClosingTag>,
     errors: &mut ParseErrors,
-) -> Result<MarkupItem, ErrorEmitted> {
+) -> Result<ParsedNode, ErrorEmitted> {
     let OpenElement {
         tag_name_range,
         opening_range,
@@ -694,72 +653,38 @@ fn close_element(
         None => (None, opening_range.clone()),
     };
 
-    // Children are checked before the header so that their errors are
-    // reported even when the element itself is dropped.
     let header = match header {
         ElementHeader::Fragment => {
-            return Ok(MarkupItem::Node(ParsedNode::Fragment {
-                children: expect_nodes(children, errors),
-                range,
-            }));
+            return Ok(ParsedNode::Fragment { children, range });
         }
         ElementHeader::Tag(header) => header,
     };
     match header {
         TagHeader::If { cond } => {
-            let children = expect_nodes(children, errors);
             let (condition, _) = cond.require(
                 ParseErrorKind::MissingIfExpression {},
                 &opening_range,
                 errors,
             )?;
-            Ok(MarkupItem::Node(ParsedNode::If {
+            Ok(ParsedNode::If {
                 condition,
                 range,
                 children,
-            }))
+            })
         }
 
         TagHeader::For { expr } => {
-            let children = expect_nodes(children, errors);
             let (header, _) = expr.require(
                 ParseErrorKind::MissingForExpression {},
                 &opening_range,
                 errors,
             )?;
-            Ok(MarkupItem::Node(ParsedNode::For {
+            Ok(ParsedNode::For {
                 var_name: header.var_name,
                 var_name_range: header.var_name_range,
                 source: header.loop_source,
                 range,
                 children,
-            }))
-        }
-
-        TagHeader::Match { expr } => {
-            let cases = expect_cases(children, errors);
-            let (subject, _) = expr.require(
-                ParseErrorKind::MissingMatchExpression {},
-                &opening_range,
-                errors,
-            )?;
-            Ok(MarkupItem::Node(ParsedNode::Match {
-                subject,
-                cases,
-                range,
-            }))
-        }
-
-        TagHeader::Case { pattern } => {
-            let children = expect_nodes(children, errors);
-            let (pattern, _) = pattern.require(
-                ParseErrorKind::MissingCasePattern {},
-                &opening_range,
-                errors,
-            )?;
-            Ok(MarkupItem::Case {
-                case: ParsedMatchCase { pattern, children },
-                tag_name_range,
             })
         }
 
@@ -768,17 +693,16 @@ fn close_element(
             attributes,
             expression,
         } => {
-            let children = expect_nodes(children, errors);
             let children = closing_tag_name.is_some().then_some(children);
             expression.reject(&tag_name_range, errors)?;
-            Ok(MarkupItem::Node(ParsedNode::FunctionInvocation {
+            Ok(ParsedNode::FunctionInvocation {
                 function_name: name?,
                 function_name_opening_range: tag_name_range,
                 function_name_closing_range: closing_tag_name,
                 attributes,
                 range,
                 children,
-            }))
+            })
         }
 
         TagHeader::Html {
@@ -786,64 +710,17 @@ fn close_element(
             attributes,
             expression,
         } => {
-            let children = expect_nodes(children, errors);
             expression.reject(&tag_name_range, errors)?;
-            Ok(MarkupItem::Node(ParsedNode::HtmlElement {
+            Ok(ParsedNode::HtmlElement {
                 kind: element?,
                 tag_name: tag_name_range,
                 closing_tag_name,
                 attributes,
                 range,
                 children,
-            }))
+            })
         }
     }
-}
-
-/// Take the nodes out of a markup sequence.
-///
-/// A `<case>` here is not inside a `<match>`, which is the only place it
-/// means anything.
-fn expect_nodes(items: Vec<MarkupItem>, errors: &mut ParseErrors) -> Vec<ParsedNode> {
-    items
-        .into_iter()
-        .filter_map(|item| expect_node(item, errors).ok())
-        .collect()
-}
-
-/// Take the node out of a markup item.
-fn expect_node(item: MarkupItem, errors: &mut ParseErrors) -> Result<ParsedNode, ErrorEmitted> {
-    match item {
-        MarkupItem::Node(node) => Ok(node),
-        MarkupItem::Case {
-            tag_name_range: tag_name,
-            ..
-        } => Err(errors.emit(ParseErrorKind::CaseOutsideMatch {}, tag_name)),
-    }
-}
-
-/// Take the cases out of the body of a `<match>`.
-///
-/// Layout between the cases is dropped, and anything else is rejected.
-fn expect_cases(items: Vec<MarkupItem>, errors: &mut ParseErrors) -> Vec<ParsedMatchCase> {
-    let mut cases = Vec::new();
-    for item in items {
-        let node = match item {
-            MarkupItem::Case { case, .. } => {
-                cases.push(case);
-                continue;
-            }
-            MarkupItem::Node(node) => node,
-        };
-        match node {
-            ParsedNode::Newline { .. } => {}
-            ParsedNode::Text { ref range } if range.as_str().trim().is_empty() => {}
-            node => {
-                let _ = errors.emit(ParseErrorKind::InvalidMatchChild {}, node.range().clone());
-            }
-        }
-    }
-    cases
 }
 
 struct LoopHeader {

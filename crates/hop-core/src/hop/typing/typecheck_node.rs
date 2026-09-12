@@ -11,7 +11,6 @@ use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
-use crate::hop::typing::typecheck_match::{MatchArms, typecheck_match};
 use crate::hop::typing::variable_scope::VariableScope;
 use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hover_annotation::HoverAnnotation;
@@ -481,19 +480,6 @@ pub fn typecheck_node(
                 None
             }
         }
-
-        ParsedNode::Match { subject, cases, .. } => typecheck_match(
-            subject,
-            MatchArms::Cases(cases),
-            forwarded_params,
-            var_env,
-            type_env,
-            registry,
-            annotations,
-            definition_links,
-            asset_references,
-            errors,
-        ),
 
         ParsedNode::Text { range } => Some(TypedExpr::HtmlRaw {
             value: range.to_cheap_string(),

@@ -9,7 +9,7 @@ use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedArguments, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use crate::hop::parsing::parsed_node::{
-    ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode,
+    ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedNode,
 };
 use crate::html::HtmlElementKind;
 use pretty::{Arena, DocAllocator, DocBuilder};
@@ -612,26 +612,6 @@ fn format_node<'a>(
                 .append(arena.text("</for>"))
         }
         ParsedNode::Comment { range } => arena.text(range.as_str()),
-        ParsedNode::Match { subject, cases, .. } => {
-            let cases_doc = if cases.is_empty() {
-                arena.nil()
-            } else {
-                let mut doc = arena.nil();
-                for (i, case) in cases.iter().enumerate() {
-                    if i > 0 {
-                        doc = doc.append(arena.line());
-                    }
-                    doc = doc.append(format_match_case(arena, case, comments));
-                }
-                arena.line().append(doc).nest(2).append(arena.line())
-            };
-            arena
-                .text("<match ")
-                .append(format_braced_expr(arena, subject, comments))
-                .append(arena.text(">"))
-                .append(cases_doc)
-                .append(arena.text("</match>"))
-        }
         ParsedNode::HtmlElement {
             kind: element,
             attributes,
@@ -808,20 +788,6 @@ fn format_children<'a>(
 /// line break the formatter puts next to it.
 fn escaped_whitespace<'a>(arena: &'a Arena<'a>, whitespace: &str) -> DocBuilder<'a, Arena<'a>> {
     arena.text(format!("{{\"{whitespace}\"}}"))
-}
-
-fn format_match_case<'a>(
-    arena: &'a Arena<'a>,
-    case: &'a ParsedMatchCase,
-    comments: &mut VecDeque<&'a DocumentRange>,
-) -> DocBuilder<'a, Arena<'a>> {
-    let children_doc = format_children(arena, &case.children, comments);
-    arena
-        .text("<case {")
-        .append(format_match_pattern(arena, &case.pattern))
-        .append(arena.text("}>"))
-        .append(children_doc)
-        .append(arena.text("</case>"))
 }
 
 fn format_let_binding<'a>(
@@ -1849,9 +1815,9 @@ mod tests {
             indoc! {r#"
                 fn Main(a: Int) -> Html {
                   <if { let n = a; n == 1 }>
-                    <match { let m = a; m == 1 }>
-                      <case {true}>one</case>
-                    </match>
+                    {match { let m = a; m == 1 } {
+                      true => <>one</>,
+                    }}
                   </if>
                 }
             "#},
@@ -1861,14 +1827,10 @@ mod tests {
                     let n = a;
                     n == 1
                   }>
-                    <match {
+                    {match {
                       let m = a;
                       m == 1
-                    }>
-                      <case {true}>
-                        one
-                      </case>
-                    </match>
+                    } {true => <>one</>}}
                   </if>
                 }
             "#]],
@@ -2024,14 +1986,10 @@ mod tests {
             indoc! {r#"
                 enum Outcome { Success {value: String}, Failure {message: String} }
                 fn Main(result: Outcome) -> Html {
-                  <match {result}>
-                    <case {Outcome::Success {value}}>
-                      {value}
-                    </case>
-                    <case {Outcome::Failure {message}}>
-                      {message}
-                    </case>
-                  </match>
+                  match result {
+                    Outcome::Success {value} => <>{value}</>,
+                    Outcome::Failure {message} => <>{message}</>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -2045,14 +2003,18 @@ mod tests {
                 }
 
                 fn Main(result: Outcome) -> Html {
-                  <match {result}>
-                    <case {Outcome::Success {value}}>
-                      {value}
-                    </case>
-                    <case {Outcome::Failure {message}}>
-                      {message}
-                    </case>
-                  </match>
+                  match result {
+                    Outcome::Success {value} => {
+                      <>
+                        {value}
+                      </>
+                    },
+                    Outcome::Failure {message} => {
+                      <>
+                        {message}
+                      </>
+                    },
+                  }
                 }
             "#]],
         );
@@ -2090,11 +2052,9 @@ mod tests {
             indoc! {r#"
                 enum Outcome { Success {value: String} }
                 fn Main(result: Outcome) -> Html {
-                  <match {result}>
-                    <case {Outcome::Success {value: value}}>
-                      {value}
-                    </case>
-                  </match>
+                  match result {
+                    Outcome::Success {value: value} => <>{value}</>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -2105,11 +2065,7 @@ mod tests {
                 }
 
                 fn Main(result: Outcome) -> Html {
-                  <match {result}>
-                    <case {Outcome::Success {value}}>
-                      {value}
-                    </case>
-                  </match>
+                  match result {Outcome::Success {value} => <>{value}</>}
                 }
             "#]],
         );
@@ -2129,10 +2085,9 @@ mod tests {
                   }
                 }
                 fn Main(event: Event) -> Html {
-                  <match {event}>
-                    <case {Event::Button {type, name, value, dialog_trigger, popover_trigger}}>
-                    </case>
-                  </match>
+                  match event {
+                    Event::Button {type, name, value, dialog_trigger, popover_trigger} => <></>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -2147,16 +2102,17 @@ mod tests {
                 }
 
                 fn Main(event: Event) -> Html {
-                  <match {event}>
-                    <case {Event::Button {
+                  match event {
+                    Event::Button {
                       type,
                       name,
                       value,
                       dialog_trigger,
                       popover_trigger,
-                    }}>
-                    </case>
-                  </match>
+                    } => {
+                      <></>
+                    },
+                  }
                 }
             "#]],
         );
@@ -3298,48 +3254,6 @@ mod tests {
 
                 fn ProductImage(product: Product) -> Html {
                   <img class="rounded-lg" src={product.img_src}>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn function_with_match_node() {
-        check(
-            indoc! {"
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
-                fn Main(c: Option[String]) -> Html {
-                  <match {c}>
-                    <case {Some(x)}>
-                      {x}
-                    </case>
-                    <case {None}>
-                      green
-                    </case>
-                  </match>
-                }
-            "},
-            expect![[r#"
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
-                fn Main(c: Option[String]) -> Html {
-                  <match {c}>
-                    <case {Some(x)}>
-                      {x}
-                    </case>
-                    <case {None}>
-                      green
-                    </case>
-                  </match>
                 }
             "#]],
         );

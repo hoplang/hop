@@ -6,7 +6,7 @@ use super::r#type::{NumericType, Type};
 use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_call::{Argument, typecheck_call_arguments};
-use super::typecheck_match::{MatchArms, typecheck_match};
+use super::typecheck_match::typecheck_match;
 use super::typecheck_node::typecheck_node;
 use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
@@ -1561,7 +1561,7 @@ pub fn typecheck_expr(
         }
         ParsedExpr::Match { subject, arms, .. } => typecheck_match(
             subject,
-            MatchArms::Exprs(arms),
+            arms,
             forwarded_params,
             var_env,
             type_env,

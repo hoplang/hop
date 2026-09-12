@@ -121,18 +121,6 @@ pub(crate) enum ParseErrorKind {
         attr_name: CheapString,
     },
 
-    #[error("Missing expression in <match> tag")]
-    MissingMatchExpression,
-
-    #[error("Missing pattern in <case> tag")]
-    MissingCasePattern,
-
-    #[error("Only <case> tags are allowed inside <match>")]
-    InvalidMatchChild,
-
-    #[error("<case> is only allowed inside <match>")]
-    CaseOutsideMatch,
-
     #[error("Missing expression in <if> tag")]
     MissingIfExpression,
 

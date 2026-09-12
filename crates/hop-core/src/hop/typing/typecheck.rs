@@ -1021,16 +1021,8 @@ fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
 }
 
 fn collect_names_in_node(node: &ParsedNode, out: &mut HashSet<CheapString>) {
-    match node {
-        ParsedNode::FunctionInvocation { function_name, .. } => {
-            out.insert(function_name.to_cheap_string());
-        }
-        ParsedNode::Match { cases, .. } => {
-            for case in cases {
-                collect_names_in_pattern(&case.pattern, out);
-            }
-        }
-        _ => {}
+    if let ParsedNode::FunctionInvocation { function_name, .. } = node {
+        out.insert(function_name.to_cheap_string());
     }
     for expr in node.expressions() {
         collect_names_in_expr(expr, out);
@@ -2146,9 +2138,9 @@ mod tests {
                 import other::Account
                 import other::User
                 fn Main(account: Account) -> Html {
-                  <match {account.user}>
-                    <case {User {name: n}}>{n}</case>
-                  </match>
+                  match account.user {
+                    User {name: n} => <>{n}</>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -3826,10 +3818,10 @@ mod tests {
                 }
 
                 fn Main(s: Status) -> Html {
-                    <match {s}>
-                        <case {Status::Bad{}}>bad</case>
-                        <case {Status::Good{label}}>{label}</case>
-                    </match>
+                    match s {
+                        Status::Bad{} => <>bad</>,
+                        Status::Good{label} => <>{label}</>,
+                    }
                 }
             "#},
             expect![[r#"
@@ -4223,12 +4215,12 @@ mod tests {
                 }
 
                 fn Main(t: Tree) -> Html {
-                    <match {t.root}>
-                        <case {Node::Leaf{label}}>{label}</case>
-                        <case {Node::Branch{children}}>
-                            <for {_ in children}>...</for>
-                        </case>
-                    </match>
+                    match t.root {
+                        Node::Leaf{label} => <>{label}</>,
+                        Node::Branch{children} => {
+                          <for {_ in children}>...</for>
+                        },
+                    }
                 }
             "#},
             expect![[r#"
@@ -4236,11 +4228,9 @@ mod tests {
                 fn Main(t: main::Tree) -> Html {
                   let v__0 = t.root in match v__0 {
                     Node::Leaf => let label = v__1 in concat(escape(label)),
-                    Node::Branch => let children = v__2 in concat(
-                      for _ in children {
-                        concat(raw("..."))
-                      },
-                    ),
+                    Node::Branch => let children = v__2 in for _ in children {
+                      concat(raw("..."))
+                    },
                   }
                 }
 
@@ -4944,19 +4934,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_node_with_option() {
+    fn accepts_match_with_option() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
-                    <match {x}>
-                        <case {Some(y)}>
-                            found {y}
-                        </case>
-                        <case {None}>
-                            nothing
-                        </case>
-                    </match>
+                    match x {
+                        Some(y) => <>found {y}</>,
+                        None => <>nothing</>,
+                    }
                 }
             "#},
             expect![[r#"
@@ -4972,17 +4958,17 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_node_with_enum() {
+    fn accepts_match_with_enum() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
                 fn Main(c: Color) -> Html {
-                    <match {c}>
-                        <case {Color::Red}>red</case>
-                        <case {Color::Green}>green</case>
-                        <case {Color::Blue}>blue</case>
-                    </match>
+                    match c {
+                        Color::Red => <>red</>,
+                        Color::Green => <>green</>,
+                        Color::Blue => <>blue</>,
+                    }
                 }
             "#},
             expect![[r#"
@@ -5006,20 +4992,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_node_on_enum_literal_with_fields() {
+    fn accepts_match_on_enum_literal_with_fields() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 enum Status { Active{name: String}, Inactive }
                 fn Main() -> Html {
-                    <match {Status::Active{name: "test"}}>
-                        <case {Status::Active{name: n}}>
-                            {n}
-                        </case>
-                        <case {Status::Inactive}>
-                            none
-                        </case>
-                    </match>
+                    match Status::Active{name: "test"} {
+                        Status::Active{name: n} => <>{n}</>,
+                        Status::Inactive => <>none</>,
+                    }
                 }
             "#},
             expect![[r#"
@@ -5041,15 +5023,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_node_with_bool() {
+    fn accepts_match_with_bool() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(flag: Bool) -> Html {
-                    <match {flag}>
-                        <case {true}>yes</case>
-                        <case {false}>no</case>
-                    </match>
+                    match flag {
+                        true => <>yes</>,
+                        false => <>no</>,
+                    }
                 }
             "#},
             expect![[r#"
@@ -5062,48 +5044,46 @@ mod tests {
     }
 
     #[test]
-    fn rejects_match_node_with_pattern_type_mismatch() {
+    fn rejects_match_with_pattern_type_mismatch() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main(flag: Bool) -> Html {
-                    <match {flag}>
-                        <case {Some(x)}>yes</case>
-                    </match>
+                    match flag {
+                        Some(x) => <>yes</>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Mismatched pattern type: expected Bool got Some(x)
-                  --> main.hop (line 3, col 16)
-                2 |     <match {flag}>
-                3 |         <case {Some(x)}>yes</case>
-                  |                ^^^^^^^
+                  --> main.hop (line 3, col 9)
+                2 |     match flag {
+                3 |         Some(x) => <>yes</>,
+                  |         ^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_binding_in_match_case_children() {
+    fn accepts_binding_in_match_arm_children() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
-                    <match {x}>
-                        <case {Some(name)}>
-                            <div class={name}></div>
-                        </case>
-                        <case {None}>
-                            nothing
-                        </case>
-                    </match>
+                    match x {
+                        Some(name) => <div class={name}></div>,
+                        None => <>nothing</>,
+                    }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
                   match x {
-                    Some(v__0) => let name = v__0 in concat(
-                      html(tag: "div", attrs: [class: escape(name)], children: concat()),
+                    Some(v__0) => let name = v__0 in html(
+                      tag: "div",
+                      attrs: [class: escape(name)],
+                      children: concat(),
                     ),
                     None => concat(raw("nothing")),
                   }
@@ -5113,136 +5093,65 @@ mod tests {
     }
 
     #[test]
-    fn rejects_match_node_with_non_matchable_type() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Main(name: String) -> Html {
-                    <match {name}>
-                        <case {Some(x)}>yes</case>
-                    </match>
-                }
-            "#},
-            expect![[r#"
-                error: Match is not implemented for type String
-                  --> main.hop (line 2, col 13)
-                1 | fn Main(name: String) -> Html {
-                2 |     <match {name}>
-                  |             ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_match_node_with_missing_enum_variants() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                enum Color { Red, Green, Blue }
-                fn Main(c: Color) -> Html {
-                    <match {c}>
-                        <case {Color::Red}>red</case>
-                    </match>
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: Color::Blue, Color::Green
-                  --> main.hop (line 3, col 13)
-                2 | fn Main(c: Color) -> Html {
-                3 |     <match {c}>
-                  |             ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_match_node_with_missing_option_arm() {
+    fn rejects_match_with_missing_option_arm() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
-                    <match {x}>
-                        <case {Some(y)}>{y}</case>
-                    </match>
+                    match x {
+                        Some(y) => <>{y}</>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Match expression is missing arms for: None
-                  --> main.hop (line 2, col 13)
+                  --> main.hop (line 2, col 11)
                 1 | fn Main(x: Option[String]) -> Html {
-                2 |     <match {x}>
-                  |             ^
+                2 |     match x {
+                  |           ^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_match_node_with_missing_bool_arm() {
+    fn rejects_match_with_missing_bool_arm() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main(flag: Bool) -> Html {
-                    <match {flag}>
-                        <case {true}>yes</case>
-                    </match>
+                    match flag {
+                        true => <>yes</>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Match expression is missing arms for: false
-                  --> main.hop (line 2, col 13)
+                  --> main.hop (line 2, col 11)
                 1 | fn Main(flag: Bool) -> Html {
-                2 |     <match {flag}>
-                  |             ^^^^
+                2 |     match flag {
+                  |           ^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_match_node_with_wrong_enum_pattern() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                enum Color { Red, Green }
-                enum Size { Small, Large }
-                fn Main(c: Color) -> Html {
-                    <match {c}>
-                        <case {Color::Red}>red</case>
-                        <case {Size::Small}>small</case>
-                    </match>
-                }
-            "#},
-            expect![[r#"
-                error: Match pattern enum 'Size' does not match subject enum 'Color'
-                  --> main.hop (line 6, col 16)
-                5 |         <case {Color::Red}>red</case>
-                6 |         <case {Size::Small}>small</case>
-                  |                ^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_on_unused_binding_in_match_case() {
+    fn rejects_on_unused_binding_in_match_arm() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
-                    <match {x}>
-                        <case {Some(unused)}>
-                            found something
-                        </case>
-                        <case {None}>
-                            nothing
-                        </case>
-                    </match>
+                    match x {
+                        Some(unused) => <>found something</>,
+                        None => <>nothing</>,
+                    }
                 }
             "#},
             expect![[r#"
                 warning: Unused binding 'unused' in match arm
-                  --> main.hop (line 3, col 21)
-                 2 |     <match {x}>
-                 3 |         <case {Some(unused)}>
-                   |                     ^^^^^^
+                  --> main.hop (line 3, col 14)
+                2 |     match x {
+                3 |         Some(unused) => <>found something</>,
+                  |              ^^^^^^
             "#]],
         );
     }
@@ -5253,28 +5162,24 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
-                    <match {x}>
-                        <case {Some(x)}>
-                            {x}
-                        </case>
-                        <case {None}>
-                            nothing
-                        </case>
-                    </match>
+                    match x {
+                        Some(x) => <>{x}</>,
+                        None => <>nothing</>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Variable x is already defined
-                  --> main.hop (line 3, col 21)
-                 2 |     <match {x}>
-                 3 |         <case {Some(x)}>
-                   |                     ^
+                  --> main.hop (line 3, col 14)
+                2 |     match x {
+                3 |         Some(x) => <>{x}</>,
+                  |              ^
 
                 error: Mismatched type for interpolation: expected String or Html got Option[String]
-                  --> main.hop (line 4, col 14)
-                 3 |         <case {Some(x)}>
-                 4 |             {x}
-                   |              ^
+                  --> main.hop (line 3, col 23)
+                2 |     match x {
+                3 |         Some(x) => <>{x}</>,
+                  |                       ^
             "#]],
         );
     }
@@ -5286,121 +5191,115 @@ mod tests {
                 -- main.hop --
                 enum Event { Comment {author: String} }
                 fn Main(author: String, event: Event) -> Html {
-                    <match {event}>
-                        <case {Event::Comment {author}}>
-                            {author}
-                        </case>
-                    </match>
+                    match event {
+                        Event::Comment {author} => <>{author}</>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Variable author is already defined
-                  --> main.hop (line 4, col 32)
-                3 |     <match {event}>
-                4 |         <case {Event::Comment {author}}>
-                  |                                ^^^^^^
+                  --> main.hop (line 4, col 25)
+                3 |     match event {
+                4 |         Event::Comment {author} => <>{author}</>,
+                  |                         ^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_match_node_with_only_wildcard() {
+    fn rejects_match_with_only_wildcard() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 enum Color { Red, Green, Blue }
                 fn Main(c: Color) -> Html {
-                    <match {c}>
-                        <case {_}>any color</case>
-                    </match>
+                    match c {
+                        _ => <>any color</>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
-                  --> main.hop (line 3, col 13)
+                  --> main.hop (line 3, col 11)
                 2 | fn Main(c: Color) -> Html {
-                3 |     <match {c}>
-                  |             ^
+                3 |     match c {
+                  |           ^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_match_node_with_nested_wildcard_record_followed_by_wildcard() {
+    fn rejects_match_with_nested_wildcard_record_followed_by_wildcard() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 record Role { title: String, salary: Int }
                 record User { role: Role, created_at: Int }
                 fn Main(user: User) -> Html {
-                    <match {user}>
-                        <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
-                        <case {_}>fallback</case>
-                    </match>
+                    match user {
+                        User{role: Role{title: _, salary: _}, created_at: _} => <>matched</>,
+                        _ => <>fallback</>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Unreachable match arm for pattern '_'
-                  --> main.hop (line 6, col 16)
-                5 |         <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
-                6 |         <case {_}>fallback</case>
-                  |                ^
+                  --> main.hop (line 6, col 9)
+                5 |         User{role: Role{title: _, salary: _}, created_at: _} => <>matched</>,
+                6 |         _ => <>fallback</>,
+                  |         ^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_match_node_with_nested_wildcard_record() {
+    fn rejects_match_with_nested_wildcard_record() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 record Role { title: String, salary: Int }
                 record User { role: Role, created_at: Int }
                 fn Main(user: User) -> Html {
-                    <match {user}>
-                        <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
-                    </match>
+                    match user {
+                        User{role: Role{title: _, salary: _}, created_at: _} => <>matched</>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
-                  --> main.hop (line 4, col 13)
+                  --> main.hop (line 4, col 11)
                 3 | fn Main(user: User) -> Html {
-                4 |     <match {user}>
-                  |             ^^^^
+                4 |     match user {
+                  |           ^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_nested_match_nodes() {
+    fn accepts_nested_match_expressions() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(x: Option[Option[String]]) -> Html {
-                    <match {x}>
-                        <case {Some(inner)}>
-                            <match {inner}>
-                                <case {Some(s)}>{s}</case>
-                                <case {None}>inner none</case>
-                            </match>
-                        </case>
-                        <case {None}>
-                            outer none
-                        </case>
-                    </match>
+                    match x {
+                        Some(inner) => {
+                          match inner {
+                              Some(s) => <>{s}</>,
+                              None => <>inner none</>,
+                          }
+                        },
+                        None => <>outer none</>,
+                    }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(x: Option[Option[String]]) -> Html {
                   match x {
-                    Some(v__0) => let inner = v__0 in concat(
-                      match inner {
-                        Some(v__1) => let s = v__1 in concat(escape(s)),
-                        None => concat(raw("inner none")),
-                      },
-                    ),
+                    Some(v__0) => let inner = v__0 in match inner {
+                      Some(v__1) => let s = v__1 in concat(escape(s)),
+                      None => concat(raw("inner none")),
+                    },
                     None => concat(raw("outer none")),
                   }
                 }
@@ -5409,16 +5308,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_node_inside_for_loop() {
+    fn accepts_match_inside_for_loop() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(items: Array[Option[String]]) -> Html {
                     <for {item in items}>
-                        <match {item}>
-                            <case {Some(s)}>{s}</case>
-                            <case {None}>-</case>
-                        </match>
+                        {match item {
+                            Some(s) => <>{s}</>,
+                            None => <>-</>,
+                        }}
                     </for>
                 }
             "#},
@@ -5439,19 +5338,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_node_with_wildcard_binding() {
+    fn accepts_match_with_wildcard_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
-                    <match {x}>
-                        <case {Some(_)}>
-                            found something
-                        </case>
-                        <case {None}>
-                            nothing
-                        </case>
-                    </match>
+                    match x {
+                        Some(_) => <>found something</>,
+                        None => <>nothing</>,
+                    }
                 }
             "#},
             expect![[r#"
@@ -5467,20 +5362,22 @@ mod tests {
     }
 
     #[test]
-    fn accepts_multiple_bindings_with_same_name_in_different_cases() {
+    fn accepts_multiple_bindings_with_same_name_in_different_arms() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(r1: Option[String], r2: Option[Bool]) -> Html {
-                    <match {r1}>
-                        <case {Some(bound)}>{bound}</case>
-                        <case {None}>
-                            <match {r2}>
-                                <case {Some(bound)}><if {bound}>yes</if></case>
-                                <case {None}>both none</case>
-                            </match>
-                        </case>
-                    </match>
+                    match r1 {
+                        Some(bound) => <>{bound}</>,
+                        None => {
+                          match r2 {
+                              Some(bound) => {
+                                <if {bound}>yes</if>
+                              },
+                              None => <>both none</>,
+                          }
+                        },
+                    }
                 }
             "#},
             expect![[r#"
@@ -5488,14 +5385,13 @@ mod tests {
                 fn Main(r1: Option[String], r2: Option[Bool]) -> Html {
                   match r1 {
                     Some(v__0) => let bound = v__0 in concat(escape(bound)),
-                    None => concat(
-                      match r2 {
-                        Some(v__1) => let bound = v__1 in concat(
-                          match bound {true => concat(raw("yes")), false => concat()},
-                        ),
-                        None => concat(raw("both none")),
+                    None => match r2 {
+                      Some(v__1) => let bound = v__1 in match bound {
+                        true => concat(raw("yes")),
+                        false => concat(),
                       },
-                    ),
+                      None => concat(raw("both none")),
+                    },
                   }
                 }
             "#]],
@@ -5503,16 +5399,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_node_with_record_field_subject() {
+    fn accepts_match_with_record_field_subject() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 record User { name: Option[String] }
                 fn Main(user: User) -> Html {
-                    <match {user.name}>
-                        <case {Some(n)}>{n}</case>
-                        <case {None}>anonymous</case>
-                    </match>
+                    match user.name {
+                        Some(n) => <>{n}</>,
+                        None => <>anonymous</>,
+                    }
                 }
             "#},
             expect![[r#"
@@ -5533,37 +5429,37 @@ mod tests {
     }
 
     #[test]
-    fn rejects_match_node_with_int_type() {
+    fn rejects_match_with_int_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main(count: Int) -> Html {
-                    <match {count}>
-                        <case {Some(x)}>{x}</case>
-                    </match>
+                    match count {
+                        Some(x) => <>{x}</>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Match is not implemented for type Int
-                  --> main.hop (line 2, col 13)
+                  --> main.hop (line 2, col 11)
                 1 | fn Main(count: Int) -> Html {
-                2 |     <match {count}>
-                  |             ^^^^^
+                2 |     match count {
+                  |           ^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_match_node_inside_if_condition() {
+    fn accepts_match_inside_if_condition() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(show: Bool, x: Option[String]) -> Html {
                     <if {show}>
-                        <match {x}>
-                            <case {Some(v)}>{v}</case>
-                            <case {None}>none</case>
-                        </match>
+                        {match x {
+                            Some(v) => <>{v}</>,
+                            None => <>none</>,
+                        }}
                     </if>
                 }
             "#},
@@ -5585,16 +5481,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_node_in_html_element() {
+    fn accepts_match_in_html_element() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
                     <div>
-                        <match {x}>
-                            <case {Some(v)}><span>{v}</span></case>
-                            <case {None}><span>none</span></case>
-                        </match>
+                        {match x {
+                            Some(v) => <span>{v}</span>,
+                            None => <span>none</span>,
+                        }}
                     </div>
                 }
             "#},
@@ -5606,12 +5502,12 @@ mod tests {
                     attrs: [],
                     children: concat(
                       match x {
-                        Some(v__0) => let v = v__0 in concat(
-                          html(tag: "span", attrs: [], children: concat(escape(v))),
+                        Some(v__0) => let v = v__0 in html(
+                          tag: "span",
+                          attrs: [],
+                          children: concat(escape(v)),
                         ),
-                        None => concat(
-                          html(tag: "span", attrs: [], children: concat(raw("none"))),
-                        ),
+                        None => html(tag: "span", attrs: [], children: concat(raw("none"))),
                       },
                     ),
                   )
@@ -5626,24 +5522,25 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(c: Option[String]) -> Html {
-                  <match {c}>
-                    <case {Some(x)}>
-                      {match Some("foo") {
-                        None    => x,
-                        Some(x) => x,
-                      }}
-                    </case>
-                    <case {None}>
-                    </case>
-                  </match>
+                  match c {
+                    Some(x) => {
+                      <>
+                        {match Some("foo") {
+                          None    => x,
+                          Some(x) => x,
+                        }}
+                      </>
+                    },
+                    None => <></>,
+                  }
                 }
             "#},
             expect![[r#"
                 error: Variable x is already defined
-                  --> main.hop (line 6, col 14)
-                 5 |         None    => x,
-                 6 |         Some(x) => x,
-                   |              ^
+                  --> main.hop (line 7, col 16)
+                 6 |           None    => x,
+                 7 |           Some(x) => x,
+                   |                ^
             "#]],
         );
     }
@@ -7321,20 +7218,18 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Foo(show: Bool) -> Html {
-                  <match {show}>
-                    <case {true}>
-                      <div ...rest></div>
-                    </case>
-                    <case {false}></case>
-                  </match>
+                  match show {
+                    true => <div ...rest></div>,
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
                 error: Spread '...rest' does not refer to a declared rest parameter
-                  --> main.hop (line 4, col 12)
-                3 |     <case {true}>
-                4 |       <div ...rest></div>
-                  |            ^^^^^^^
+                  --> main.hop (line 3, col 18)
+                2 |   match show {
+                3 |     true => <div ...rest></div>,
+                  |                  ^^^^^^^
             "#]],
         );
     }
@@ -8680,15 +8575,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_invocation_inside_match_case_cycle() {
+    fn accepts_function_invocation_inside_match_arm_cycle() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Render(item: Option[Int]) -> Html {
-                    <match {item}>
-                        <case {Some(n)}><Wrap n={n}/></case>
-                        <case {None}>done</case>
-                    </match>
+                    match item {
+                        Some(n) => <Wrap n={n}/>,
+                        None => <>done</>,
+                    }
                 }
 
                 fn Wrap(n: Int) -> Html {
@@ -8699,7 +8594,7 @@ mod tests {
                 -- main.hop --
                 fn Render(item: Option[Int]) -> Html {
                   match item {
-                    Some(v__0) => let n = v__0 in concat(Wrap(n: n)),
+                    Some(v__0) => let n = v__0 in Wrap(n: n),
                     None => concat(raw("done")),
                   }
                 }
@@ -10095,25 +9990,23 @@ mod tests {
     }
 
     #[test]
-    fn accepts_a_rest_spread_inside_a_match_case() {
+    fn accepts_a_rest_spread_inside_a_match_arm() {
         accept(
             indoc! {"
                 -- main.hop --
                 pub fn Outer(flag: Bool, ...rest) -> Html {
-                  <match {flag}>
-                    <case {true}><div ...rest></div></case>
-                    <case {false}><span></span></case>
-                  </match>
+                  match flag {
+                    true => <div ...rest></div>,
+                    false => <span></span>,
+                  }
                 }
             "},
             expect![[r#"
                 -- main.hop --
                 fn Outer(flag: Bool, rest: Attrs) -> Html {
                   match flag {
-                    true => concat(
-                      html(tag: "div", attrs: concat([], rest), children: concat()),
-                    ),
-                    false => concat(html(tag: "span", attrs: [], children: concat())),
+                    true => html(tag: "div", attrs: concat([], rest), children: concat()),
+                    false => html(tag: "span", attrs: [], children: concat()),
                   }
                 }
             "#]],

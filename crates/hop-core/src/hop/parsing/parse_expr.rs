@@ -672,7 +672,7 @@ fn parse_match(
     })
 }
 
-pub fn parse_match_pattern(
+fn parse_match_pattern(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,

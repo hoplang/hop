@@ -1092,10 +1092,10 @@ mod tests {
                               ^
 
                 fn Main(status: Status) -> Html {
-                  <match {status}>
-                    <case {Status::Active}><span>Active</span></case>
-                    <case {Status::Inactive}><span>Inactive</span></case>
-                  </match>
+                  match status {
+                    Status::Active => <span>Active</span>,
+                    Status::Inactive => <span>Inactive</span>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -1201,13 +1201,13 @@ mod tests {
                 }
 
                 fn Main(x: Option[String]) -> Html {
-                  <match {x}>
-                    <case {Some(_)}>
+                  match x {
+                    Some(_) => {
                       <HelloWorld />
                        ^
-                    </case>
-                    <case {None}></case>
-                  </match>
+                    },
+                    None => <></>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -1706,10 +1706,10 @@ mod tests {
                 }
 
                 fn UserBadge(status: Status) -> Html {
-                  <match {status}>
-                    <case {Status::Active}><span>Active</span></case>
-                    <case {Status::Inactive}><span>Inactive</span></case>
-                  </match>
+                  match status {
+                    Status::Active => <span>Active</span>,
+                    Status::Inactive => <span>Inactive</span>,
+                  }
                 }
 
                 fn UsersPage(statuses: Array[Status]) -> Html {
@@ -1730,14 +1730,14 @@ mod tests {
                    |                      ^^^^^^
 
                 Rename
-                  --> main.hop (line 8, col 12)
-                 8 |     <case {Status::Active}><span>Active</span></case>
-                   |            ^^^^^^
+                  --> main.hop (line 8, col 5)
+                 8 |     Status::Active => <span>Active</span>,
+                   |     ^^^^^^
 
                 Rename
-                  --> main.hop (line 9, col 12)
-                 9 |     <case {Status::Inactive}><span>Inactive</span></case>
-                   |            ^^^^^^
+                  --> main.hop (line 9, col 5)
+                 9 |     Status::Inactive => <span>Inactive</span>,
+                   |     ^^^^^^
 
                 Rename
                   --> main.hop (line 13, col 30)
@@ -1762,10 +1762,10 @@ mod tests {
                 import types::Status
 
                 fn Main(status: Status) -> Html {
-                  <match {status}>
-                    <case {Status::Active}><span>Active</span></case>
-                    <case {Status::Inactive}><span>Inactive</span></case>
-                  </match>
+                  match status {
+                    Status::Active => <span>Active</span>,
+                    Status::Inactive => <span>Inactive</span>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -1780,14 +1780,14 @@ mod tests {
                   |                 ^^^^^^
 
                 Rename
-                  --> main.hop (line 5, col 12)
-                5 |     <case {Status::Active}><span>Active</span></case>
-                  |            ^^^^^^
+                  --> main.hop (line 5, col 5)
+                5 |     Status::Active => <span>Active</span>,
+                  |     ^^^^^^
 
                 Rename
-                  --> main.hop (line 6, col 12)
-                6 |     <case {Status::Inactive}><span>Inactive</span></case>
-                  |            ^^^^^^
+                  --> main.hop (line 6, col 5)
+                6 |     Status::Inactive => <span>Inactive</span>,
+                  |     ^^^^^^
 
                 Rename
                   --> types.hop (line 1, col 10)
@@ -2053,10 +2053,10 @@ mod tests {
                 fn Main() -> Html {
                   let color: Color = Color::Red;
                                      ^
-                    <match {color}>
-                      <case {Color::Red}>red</case>
-                      <case {_}>other</case>
-                    </match>
+                  match color {
+                    Color::Red => <>red</>,
+                    _ => <>other</>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -2079,10 +2079,10 @@ mod tests {
                 fn Main() -> Html {
                   let result: Outcome = Outcome::Success{value: "ok"};
                                         ^
-                  <match {result}>
-                    <case {Outcome::Success{value: v}}>{v}</case>
-                    <case {Outcome::Failure{message: m}}>{m}</case>
-                  </match>
+                  match result {
+                    Outcome::Success{value: v} => <>{v}</>,
+                    Outcome::Failure{message: m} => <>{m}</>,
+                  }
                 }
             "#},
             expect![[r#"

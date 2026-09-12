@@ -1,7 +1,6 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
-use crate::hop::parsing::parsed_expr::ParsedMatchPattern;
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
@@ -97,24 +96,6 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// A match node.
-    ///
-    /// ```text
-    /// <match {user.email}>
-    ///   <case {Some(y)}>
-    ///     ...
-    ///   </case>
-    ///   <case {None}>
-    ///     ...
-    ///   </case>
-    /// </match>
-    /// ```
-    Match {
-        subject: ParsedExpr,
-        cases: Vec<ParsedMatchCase>,
-        range: DocumentRange,
-    },
-
     /// An HTML comment.
     ///
     /// ```text
@@ -192,20 +173,6 @@ pub enum ParsedLoopSource {
     ///            ^^^^^
     /// ```
     RangeInclusive { start: ParsedExpr, end: ParsedExpr },
-}
-
-/// A case in a match node.
-///
-/// ```text
-/// <match {x}>
-///   <case {Some(y)}>...</case>
-///   ^^^^^^^^^^^^^^^^^^^^^^^^^^
-/// </match>
-/// ```
-#[derive(Debug, Clone)]
-pub struct ParsedMatchCase {
-    pub pattern: ParsedMatchPattern,
-    pub children: Vec<ParsedNode>,
 }
 
 /// A single binding in a let statement.
@@ -308,14 +275,6 @@ impl ParsedAttribute {
     }
 }
 
-impl ParsedMatchCase {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        self.pattern.to_doc().append(" => ").append(braced_doc(
-            self.children.iter().map(|c| c.to_doc()).collect(),
-        ))
-    }
-}
-
 impl ParsedNode {
     pub fn range(&self) -> &DocumentRange {
         match self {
@@ -325,7 +284,6 @@ impl ParsedNode {
             | ParsedNode::FunctionInvocation { range, .. }
             | ParsedNode::If { range, .. }
             | ParsedNode::For { range, .. }
-            | ParsedNode::Match { range, .. }
             | ParsedNode::Comment { range }
             | ParsedNode::Fragment { range, .. }
             | ParsedNode::HtmlElement { range, .. } => range,
@@ -340,9 +298,6 @@ impl ParsedNode {
             | ParsedNode::For { children, .. }
             | ParsedNode::HtmlElement { children, .. }
             | ParsedNode::Fragment { children, .. } => children.iter().collect(),
-            ParsedNode::Match { cases, .. } => {
-                cases.iter().flat_map(|case| &case.children).collect()
-            }
             ParsedNode::Comment { .. }
             | ParsedNode::Text { .. }
             | ParsedNode::Newline { .. }
@@ -354,7 +309,6 @@ impl ParsedNode {
         match self {
             ParsedNode::Interpolation { expression, .. } => vec![expression],
             ParsedNode::If { condition, .. } => vec![condition],
-            ParsedNode::Match { subject, .. } => vec![subject],
             ParsedNode::FunctionInvocation { attributes, .. }
             | ParsedNode::HtmlElement { attributes, .. } => attributes
                 .iter()
@@ -509,10 +463,6 @@ impl ParsedNode {
                     .append(" ")
                     .append(braced_doc(children.iter().map(|c| c.to_doc()).collect()))
             }
-            ParsedNode::Match { subject, cases, .. } => BoxDoc::text("match ")
-                .append(subject.to_doc())
-                .append(" ")
-                .append(braced_doc(cases.iter().map(|c| c.to_doc()).collect())),
         }
     }
 }

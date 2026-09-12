@@ -480,17 +480,17 @@ mod tests {
     }
 
     #[test]
-    fn should_find_element_inside_match_case() {
+    fn should_find_element_inside_match_arm() {
         check_find_node_at_position(
             indoc! {"
                 fn Main(x: Option[String]) -> Html {
-                    <match {x}>
-                        <case {Some(s)}>
+                    match x {
+                        Some(s) => {
                             <div>found</div>
                              ^
-                        </case>
-                        <case {None}></case>
-                    </match>
+                        },
+                        None => <></>,
+                    }
                 }
             "},
             expect![[r#"

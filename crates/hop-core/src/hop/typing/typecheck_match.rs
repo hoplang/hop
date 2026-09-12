@@ -1,15 +1,12 @@
 use super::r#type::Type;
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
-use super::typecheck_node::typecheck_node;
 use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
-use crate::document::DocumentRange;
 use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
-use crate::hop::parsing::parsed_node::ParsedMatchCase;
 use crate::hop::patterns::compiler::{Decision, compile_match};
 use crate::hop::patterns::typed::{TypedMatchPattern, typecheck_pattern};
 use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
@@ -19,39 +16,9 @@ use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 
-#[derive(Clone, Copy)]
-pub enum MatchArms<'a> {
-    Exprs(&'a [ParsedMatchArm]),
-    Cases(&'a [ParsedMatchCase]),
-}
-
-impl<'a> MatchArms<'a> {
-    fn len(&self) -> usize {
-        match self {
-            MatchArms::Exprs(arms) => arms.len(),
-            MatchArms::Cases(cases) => cases.len(),
-        }
-    }
-
-    fn pattern(&self, index: usize) -> &'a ParsedMatchPattern {
-        match self {
-            MatchArms::Exprs(arms) => &arms[index].pattern,
-            MatchArms::Cases(cases) => &cases[index].pattern,
-        }
-    }
-
-    /// The range to blame for a mismatch in an arm's body type.
-    fn body_range(&self, index: usize) -> &'a DocumentRange {
-        match self {
-            MatchArms::Exprs(arms) => arms[index].body.range(),
-            MatchArms::Cases(cases) => cases[index].pattern.range(),
-        }
-    }
-}
-
 pub fn typecheck_match(
     subject: &ParsedExpr,
-    arms: MatchArms<'_>,
+    arms: &[ParsedMatchArm],
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
     type_env: &TypeEnv,
@@ -84,8 +51,9 @@ pub fn typecheck_match(
         ));
         return None;
     }
-    let typed_patterns = (0..arms.len())
-        .map(|index| typecheck_pattern(arms.pattern(index), subject_type.clone(), registry, errors))
+    let typed_patterns = arms
+        .iter()
+        .map(|arm| typecheck_pattern(&arm.pattern, subject_type.clone(), registry, errors))
         .collect::<Option<Vec<_>>>()?;
 
     // A subject that is already a variable is matched on directly. Any other
@@ -132,7 +100,7 @@ pub fn typecheck_match(
 }
 
 fn typecheck_arm_bodies(
-    arms: MatchArms<'_>,
+    arms: &[ParsedMatchArm],
     typed_patterns: &[TypedMatchPattern],
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
@@ -147,7 +115,7 @@ fn typecheck_arm_bodies(
     let mut result_type: Option<Type> = None;
 
     for (index, typed_pattern) in typed_patterns.iter().enumerate() {
-        collect_pattern_definition_links(arms.pattern(index), type_env, definition_links);
+        collect_pattern_definition_links(&arms[index].pattern, type_env, definition_links);
 
         let bindings = typed_pattern.bindings();
         let mut arm_ok = true;
@@ -172,40 +140,19 @@ fn typecheck_arm_bodies(
             }
         }
 
-        let typed_body = match arms {
-            // Use the first arm's type as context for subsequent arms
-            MatchArms::Exprs(arms) => typecheck_expr(
-                &arms[index].body,
-                result_type.as_ref(),
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            ),
-            MatchArms::Cases(cases) => Some(TypedExpr::HtmlConcat {
-                nodes: cases[index]
-                    .children
-                    .iter()
-                    .filter_map(|child| {
-                        typecheck_node(
-                            child,
-                            forwarded_params,
-                            registry,
-                            errors,
-                            var_env,
-                            type_env,
-                            annotations,
-                            definition_links,
-                            asset_references,
-                        )
-                    })
-                    .collect(),
-            }),
-        };
+        // Use the first arm's type as context for subsequent arms
+        let typed_body = typecheck_expr(
+            &arms[index].body,
+            result_type.as_ref(),
+            forwarded_params,
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        );
 
         for _ in 0..pushed {
             let (name, entry) = var_env.pop();
@@ -233,7 +180,7 @@ fn typecheck_arm_bodies(
                             expected: expected.clone(),
                             found: body_type,
                         },
-                        arms.body_range(index).clone(),
+                        arms[index].body.range().clone(),
                     ));
                     arm_ok = false;
                 }

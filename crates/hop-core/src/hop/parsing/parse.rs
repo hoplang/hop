@@ -999,14 +999,14 @@ mod tests {
     }
 
     #[test]
-    fn accepts_let_in_tag_headers() {
+    fn accepts_let_in_expression_headers() {
         accept(
             indoc! {"
                 fn Main(a: Int) -> Html {
                   <if { let n = a; n == 1 }>
-                    <match { let m = a; m == 1 }>
-                      <case {true}>one</case>
-                    </match>
+                    {match { let m = a; m == 1 } {
+                      true => <>one</>,
+                    }}
                   </if>
                 }
             "},
@@ -1016,10 +1016,12 @@ mod tests {
                     let n = a;
                     n == 1
                   } {
-                    match {
-                      let m = a;
-                      m == 1
-                    } { true => { text("one") } },
+                    interpolate(
+                      match {
+                        let m = a;
+                        m == 1
+                      } {true => fragment(text("one"))},
+                    ),
                   }
                 }
             "#]],
@@ -1955,55 +1957,6 @@ mod tests {
                 2 |     < >
                   |     ^
                 -- ast --
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_fragment_as_a_child_of_match() {
-        reject(
-            indoc! {"
-                fn Main() -> Html {
-                    <match {x}><>one</></match>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Only <case> tags are allowed inside <match>
-                1 | fn Main() -> Html {
-                2 |     <match {x}><>one</></match>
-                  |                ^^^^^^^^
-                -- ast --
-                fn Main() -> Html {
-                  match x {}
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_case_wrapped_in_a_fragment() {
-        reject(
-            indoc! {"
-                fn Main() -> Html {
-                    <match {x}><><case {None}>one</case></></match>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Only <case> tags are allowed inside <match>
-                1 | fn Main() -> Html {
-                2 |     <match {x}><><case {None}>one</case></></match>
-                  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                error: <case> is only allowed inside <match>
-                1 | fn Main() -> Html {
-                2 |     <match {x}><><case {None}>one</case></></match>
-                  |                   ^^^^
-                -- ast --
-                fn Main() -> Html {
-                  match x {}
-                }
             "#]],
         );
     }
@@ -3721,36 +3674,24 @@ mod tests {
     }
 
     #[test]
-    fn accepts_self_closing_match_with_no_cases() {
-        accept(
-            "fn Main(x: Option[String]) -> Html {<match {x}/>}\n",
-            expect![[r#"
-                fn Main(x: Option[String]) -> Html {
-                  match x {}
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_self_closing_case_with_no_children() {
+    fn accepts_match_expression_with_empty_arm() {
         accept(
             indoc! {r#"
                 fn Main(x: Option[String]) -> Html {
-                    <match {x}>
-                        <case {Some(y)}>found {y}</case>
-                        <case {None}/>
-                    </match>
+                    match x {
+                        Some(y) => <>found {y}</>,
+                        None => <></>,
+                    }
                 }
             "#},
             expect![[r#"
                 fn Main(x: Option[String]) -> Html {
                   match x {
-                    Some(y) => {
+                    Some(y) => fragment(
                       text("found "),
                       interpolate(y),
-                    },
-                    None => {},
+                    ),
+                    None => fragment(),
                   }
                 }
             "#]],
@@ -3758,79 +3699,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_with_option_cases() {
-        accept(
-            indoc! {r#"
-                fn Main(x: Option[String]) -> Html {
-                    <match {x}>
-                        <case {Some(y)}>
-                            found {y}
-                        </case>
-                        <case {None}>
-                            nothing
-                        </case>
-                    </match>
-                }
-            "#},
-            expect![[r#"
-                fn Main(x: Option[String]) -> Html {
-                  match x {
-                    Some(y) => {
-                      text("found "),
-                      interpolate(y),
-                    },
-                    None => { text("nothing") },
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_match_with_enum_cases() {
-        accept(
-            indoc! {r#"
-                enum Color { Red, Green, Blue }
-                fn Main(c: Color) -> Html {
-                    <match {c}>
-                        <case {Color::Red}>red</case>
-                        <case {Color::Green}>green</case>
-                        <case {Color::Blue}>blue</case>
-                    </match>
-                }
-            "#},
-            expect![[r#"
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
-                fn Main(c: Color) -> Html {
-                  match c {
-                    Color::Red => { text("red") },
-                    Color::Green => { text("green") },
-                    Color::Blue => { text("blue") },
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_match_with_enum_variant_fields() {
+    fn accepts_match_expression_with_enum_variant_fields_in_arms() {
         accept(
             indoc! {r#"
                 enum Outcome { Success {value: Int}, Failure {message: String} }
                 fn Main(r: Outcome) -> Html {
-                    <match {r}>
-                        <case {Outcome::Success{value: v}}>
-                            Success: {v}
-                        </case>
-                        <case {Outcome::Failure{message: m}}>
-                            Error: {m}
-                        </case>
-                    </match>
+                    match r {
+                        Outcome::Success{value: v} => <>Success: {v}</>,
+                        Outcome::Failure{message: m} => <>Error: {m}</>,
+                    }
                 }
             "#},
             expect![[r#"
@@ -3841,14 +3718,14 @@ mod tests {
 
                 fn Main(r: Outcome) -> Html {
                   match r {
-                    Outcome::Success{value: v} => {
+                    Outcome::Success{value: v} => fragment(
                       text("Success: "),
                       interpolate(v),
-                    },
-                    Outcome::Failure{message: m} => {
+                    ),
+                    Outcome::Failure{message: m} => fragment(
                       text("Error: "),
                       interpolate(m),
-                    },
+                    ),
                   }
                 }
             "#]],
@@ -3856,19 +3733,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_on_enum_literal_expression() {
+    fn accepts_match_expression_with_enum_literal_subject() {
         accept(
             indoc! {r#"
                 enum Status { Active {name: String}, Inactive }
                 fn Main() -> Html {
-                    <match {Status::Active {name: "test"}}>
-                        <case {Status::Active{name: n}}>
-                            {n}
-                        </case>
-                        <case {Status::Inactive}>
-                            none
-                        </case>
-                    </match>
+                    match Status::Active {name: "test"} {
+                        Status::Active{name: n} => <>{n}</>,
+                        Status::Inactive => <>none</>,
+                    }
                 }
             "#},
             expect![[r#"
@@ -3879,124 +3752,14 @@ mod tests {
 
                 fn Main() -> Html {
                   match Status::Active {name: "test"} {
-                    Status::Active{name: n} => {
+                    Status::Active{name: n} => fragment(
                       interpolate(n),
-                    },
-                    Status::Inactive => {
+                    ),
+                    Status::Inactive => fragment(
                       text("none"),
-                    },
+                    ),
                   }
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_match_with_boolean_cases() {
-        accept(
-            indoc! {r#"
-                fn Main(flag: Bool) -> Html {
-                    <match {flag}>
-                        <case {true}>yes</case>
-                        <case {false}>no</case>
-                    </match>
-                }
-            "#},
-            expect![[r#"
-                fn Main(flag: Bool) -> Html {
-                  match flag {
-                    true => { text("yes") },
-                    false => { text("no") },
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_on_match_without_expression() {
-        reject(
-            indoc! {r#"
-                fn Main() -> Html {
-                    <match>
-                        <case {true}>yes</case>
-                    </match>
-                }
-            "#},
-            expect![[r#"
-                -- errors --
-                error: Missing expression in <match> tag
-                1 | fn Main() -> Html {
-                2 |     <match>
-                  |     ^^^^^^^
-                -- ast --
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_on_case_without_pattern() {
-        reject(
-            indoc! {r#"
-                fn Main(flag: Bool) -> Html {
-                    <match {flag}>
-                        <case>yes</case>
-                    </match>
-                }
-            "#},
-            expect![[r#"
-                -- errors --
-                error: Missing pattern in <case> tag
-                2 |     <match {flag}>
-                3 |         <case>yes</case>
-                  |         ^^^^^^
-                -- ast --
-                fn Main(flag: Bool) -> Html {
-                  match flag {}
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_on_non_case_children_in_match() {
-        reject(
-            indoc! {r#"
-                fn Main(flag: Bool) -> Html {
-                    <match {flag}>
-                        <div>not allowed</div>
-                    </match>
-                }
-            "#},
-            expect![[r#"
-                -- errors --
-                error: Only <case> tags are allowed inside <match>
-                2 |     <match {flag}>
-                3 |         <div>not allowed</div>
-                  |         ^^^^^^^^^^^^^^^^^^^^^^
-                -- ast --
-                fn Main(flag: Bool) -> Html {
-                  match flag {}
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_case_outside_match() {
-        reject(
-            indoc! {r#"
-                fn Main() -> Html {
-                    <case {true}>standalone case</case>
-                }
-            "#},
-            expect![[r#"
-                -- errors --
-                error: <case> is only allowed inside <match>
-                1 | fn Main() -> Html {
-                2 |     <case {true}>standalone case</case>
-                  |      ^^^^
-                -- ast --
             "#]],
         );
     }
@@ -5033,14 +4796,10 @@ mod tests {
             indoc! {"
                 page Index(value: Option[String]) {
                   fn body() -> Html {
-                      <match {value}>
-                          <case {Some(s)}>
-                              <div>{s}</div>
-                          </case>
-                          <case {None}>
-                              <div>No value</div>
-                          </case>
-                      </match>
+                      match value {
+                          Some(s) => <div>{s}</div>,
+                          None => <div>No value</div>,
+                      }
                   }
                 }
             "},
@@ -5048,20 +4807,16 @@ mod tests {
                 page Index(value: Option[String]) {
                   fn body() -> Html {
                     match value {
-                      Some(s) => {
-                        html(
-                          tag: "div",
-                          attrs: [],
-                          children: [interpolate(s)],
-                        ),
-                      },
-                      None => {
-                        html(
-                          tag: "div",
-                          attrs: [],
-                          children: [text("No value")],
-                        ),
-                      },
+                      Some(s) => html(
+                        tag: "div",
+                        attrs: [],
+                        children: [interpolate(s)],
+                      ),
+                      None => html(
+                        tag: "div",
+                        attrs: [],
+                        children: [text("No value")],
+                      ),
                     }
                   }
                 }

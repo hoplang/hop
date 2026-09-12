@@ -42,11 +42,6 @@ pub fn normalize_node(node: &mut ParsedNode) {
                 normalize(children);
             }
         }
-        ParsedNode::Match { cases, .. } => {
-            for case in cases {
-                normalize(&mut case.children);
-            }
-        }
         ParsedNode::Text { .. }
         | ParsedNode::Newline { .. }
         | ParsedNode::Interpolation { .. }
