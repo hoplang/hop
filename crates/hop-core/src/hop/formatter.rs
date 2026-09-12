@@ -1250,11 +1250,11 @@ fn format_match_arm<'a>(
     let body = format_expr(arena, &arm.body, comments);
     let body = match &arm.body {
         ParsedExpr::Markup { .. } => arena
-            .text("(")
+            .text("{")
             .flat_alt(arena.nil())
             .append(arena.line_().append(body).nest(2))
             .append(arena.line_())
-            .append(arena.text(")").flat_alt(arena.nil())),
+            .append(arena.text("}").flat_alt(arena.nil())),
         _ => body,
     };
     leading_comments
@@ -5125,7 +5125,7 @@ mod tests {
             expect![[r#"
                 fn badge(on: Bool) -> Html {
                   match on {
-                    true => (
+                    true => {
                       <span class="a-fairly-long-class">
                         yes
                         {" "}
@@ -5133,12 +5133,12 @@ mod tests {
                           indeed
                         </b>
                       </span>
-                    ),
-                    false => (
+                    },
+                    false => {
                       <i>
                         no
                       </i>
-                    ),
+                    },
                   }
                 }
             "#]],
