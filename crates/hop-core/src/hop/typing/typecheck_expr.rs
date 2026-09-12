@@ -1174,10 +1174,10 @@ pub fn typecheck_expr(
 
             let Some(typed_spread) = typed_spread else {
                 // Check for missing fields
-                let missing_fields = expected_fields
-                    .keys()
-                    .filter(|name| !provided_fields.contains(name))
-                    .cloned()
+                let missing_fields = record_fields
+                    .iter()
+                    .filter(|field| !provided_fields.contains(&field.name))
+                    .map(|field| field.name.clone())
                     .collect::<Vec<_>>();
                 if !missing_fields.is_empty() {
                     errors.push(TypeError::new(
@@ -3285,6 +3285,28 @@ mod tests {
                 error: Record 'User' is missing fields: age
                 User {name: "John"}
                 ^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn lists_missing_record_fields_in_declaration_order() {
+        reject(
+            TypeRegistryBuilder::new().record(
+                "User",
+                [
+                    ("zip", "Int"),
+                    ("name", "String"),
+                    ("age", "Int"),
+                    ("email", "String"),
+                ],
+            ),
+            &[],
+            r#"User {age: 1}"#,
+            expect![[r#"
+                error: Record 'User' is missing fields: zip, name, email
+                User {age: 1}
+                ^^^^^^^^^^^^^
             "#]],
         );
     }
