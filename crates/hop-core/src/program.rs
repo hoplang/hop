@@ -2022,6 +2022,48 @@ mod tests {
     }
 
     #[test]
+    fn should_show_hover_info_for_for_expression_loop_variable() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                fn Items(items: Array[String]) -> Html {
+                  for item in items {
+                      ^
+                    <li>{item}</li>
+                  }
+                }
+            "#},
+            expect![[r#"
+                ```
+                item : String
+                ```
+                  --> main.hop (line 2, col 7)
+                2 |   for item in items {
+                  |       ^^^^
+            "#]],
+        );
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                fn Items(items: Array[String]) -> Html {
+                  for item in items {
+                    <li>{item}</li>
+                           ^
+                  }
+                }
+            "#},
+            expect![[r#"
+                ```
+                item : String
+                ```
+                  --> main.hop (line 3, col 10)
+                3 |     <li>{item}</li>
+                  |          ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_show_hover_info_for_record_literal_type_name() {
         check_hover_info(
             indoc! {r#"

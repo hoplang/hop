@@ -5320,6 +5320,238 @@ mod tests {
     }
 
     #[test]
+    fn accepts_for_expression_over_array() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(items: Array[String]) -> Html {
+                  for item in items {
+                    <li>{item}</li>
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(items: Array[String]) -> Html {
+                  for item in items {
+                    html(tag: "li", attrs: [], children: concat(escape(item)))
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_over_inclusive_range() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(n: Int) -> Html {
+                  for i in 1..=n {
+                    <span>{i.to_string()}</span>
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(n: Int) -> Html {
+                  for i in 1..=n {
+                    html(tag: "span", attrs: [], children: concat(escape(i.to_string())))
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_with_discarded_variable() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(n: Int) -> Html {
+                  for _ in 1..=n {
+                    <span>.</span>
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(n: Int) -> Html {
+                  for _ in 1..=n {
+                    html(tag: "span", attrs: [], children: concat(raw(".")))
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_with_let_in_body() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record Item {
+                  name: String
+                }
+                fn Main(items: Array[Item]) -> Html {
+                  for item in items {
+                    let name = item.name;
+                    <li>{name}</li>
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(items: Array[main::Item]) -> Html {
+                  for item in items {
+                    let name = item.name in html(
+                      tag: "li",
+                      attrs: [],
+                      children: concat(escape(name)),
+                    )
+                  }
+                }
+
+                -- type registry --
+                record main::Item {
+                  name: String,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_name_used_inside_for_expression_body() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record Item {
+                  name: String
+                }
+                fn Main(n: Int) -> Html {
+                  for _ in 1..=n {
+                    <li>{Item {name: "x"}.name}</li>
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(n: Int) -> Html {
+                  for _ in 1..=n {
+                    html(tag: "li", attrs: [], children: concat(escape(Item {name: "x"}.name)))
+                  }
+                }
+
+                -- type registry --
+                record main::Item {
+                  name: String,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_over_non_array() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(flag: Bool) -> Html {
+                  for item in flag {
+                    <li>{item}</li>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type: expected Array[...] got Bool
+                  --> main.hop (line 2, col 15)
+                1 | fn Main(flag: Bool) -> Html {
+                2 |   for item in flag {
+                  |               ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_with_non_int_range_bound() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(limit: String) -> Html {
+                  for i in 1..=limit {
+                    <span>{i.to_string()}</span>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for range bound: expected Int got String
+                  --> main.hop (line 2, col 16)
+                1 | fn Main(limit: String) -> Html {
+                2 |   for i in 1..=limit {
+                  |                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_with_non_html_body() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(items: Array[String]) -> Html {
+                  <div>{for item in items { item }}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for for body: expected Html got String
+                  --> main.hop (line 2, col 29)
+                1 | fn Main(items: Array[String]) -> Html {
+                2 |   <div>{for item in items { item }}</div>
+                  |                             ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_shadowing_an_existing_variable() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(item: String, items: Array[String]) -> Html {
+                  <div>{item}{for item in items { <li>{item}</li> }}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Variable item is already defined
+                  --> main.hop (line 2, col 19)
+                1 | fn Main(item: String, items: Array[String]) -> Html {
+                2 |   <div>{item}{for item in items { <li>{item}</li> }}</div>
+                  |                   ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_with_unused_loop_variable() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(items: Array[String]) -> Html {
+                  for item in items {
+                    <li>x</li>
+                  }
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable item
+                  --> main.hop (line 2, col 7)
+                1 | fn Main(items: Array[String]) -> Html {
+                2 |   for item in items {
+                  |       ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_match_with_wildcard_binding() {
         accept(
             indoc! {r#"

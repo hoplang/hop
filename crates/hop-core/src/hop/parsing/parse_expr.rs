@@ -14,7 +14,7 @@ use super::parse_nodes;
 use super::parse_type::parse_type;
 use super::parsed_expr::{
     Constructor, ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer,
-    ParsedMatchArm, ParsedMatchPattern, ParsedNamedArgument,
+    ParsedLoopSource, ParsedMatchArm, ParsedMatchPattern, ParsedNamedArgument,
 };
 use super::parsed_node::ParsedLetBinding;
 use super::token::LangToken;
@@ -433,6 +433,8 @@ pub fn parse_primary(
         inner
     } else if let Some(match_range) = advance_if(iter, comments, errors, LangToken::Match) {
         parse_match(iter, comments, errors, eof_range, match_range)?
+    } else if let Some(for_range) = advance_if(iter, comments, errors, LangToken::For) {
+        parse_for(iter, comments, errors, eof_range, for_range)?
     } else if let Some(some_range) = advance_if(iter, comments, errors, LangToken::Some) {
         let left_paren = expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
         let (value, parens) = parse_delimited(
@@ -638,6 +640,70 @@ fn parse_enum_literal(
         constructor_range,
         enum_name_range: enum_name_range.clone(),
         range: enum_name_range.to(end_range),
+    })
+}
+
+pub struct LoopHeader {
+    pub var_name: Option<VarName>,
+    pub var_name_range: Option<DocumentRange>,
+    pub loop_source: Box<ParsedLoopSource>,
+}
+
+pub fn parse_loop_header(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<LoopHeader, ErrorEmitted> {
+    let (var_name, var_name_range) =
+        if let Some(underscore_range) = advance_if(iter, comments, errors, LangToken::Underscore) {
+            (None, Some(underscore_range))
+        } else {
+            let (name, name_range) = expect_variable_name(iter, comments, errors, eof_range)?;
+            (Some(name), Some(name_range))
+        };
+    expect_token(iter, comments, errors, eof_range, &LangToken::In)?;
+    let start_expr = parse_expr(iter, comments, errors, eof_range)?;
+    let source = if advance_if(iter, comments, errors, LangToken::DotDotEq).is_some() {
+        let end_expr = parse_expr(iter, comments, errors, eof_range)?;
+        ParsedLoopSource::RangeInclusive {
+            start: start_expr,
+            end: end_expr,
+        }
+    } else {
+        ParsedLoopSource::Array(start_expr)
+    };
+    Ok(LoopHeader {
+        var_name,
+        var_name_range,
+        loop_source: Box::new(source),
+    })
+}
+
+fn parse_for(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+    for_range: DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let header = parse_loop_header(iter, comments, errors, eof_range)?;
+    let left_brace = expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
+    let (body, braces) = parse_delimited(
+        iter,
+        comments,
+        errors,
+        eof_range,
+        LangTokenPair::Braces,
+        &left_brace,
+        parse_block_body,
+    )?;
+    Ok(ParsedExpr::For {
+        var_name: header.var_name,
+        var_name_range: header.var_name_range,
+        source: header.loop_source,
+        body: Box::new(body),
+        range: for_range.to(braces),
     })
 }
 
@@ -2699,6 +2765,151 @@ mod tests {
                 error: Unmatched '('
                 match maybe { Some(x
                                   ^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // FOR EXPRESSION                                                        //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn accepts_for_expression_over_array() {
+        accept(
+            "for item in items { item }",
+            expect![[r#"
+                for item in items { item }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_over_array_literal() {
+        accept(
+            "for item in [1, 2, 3] { item }",
+            expect![[r#"
+                for item in [1, 2, 3] { item }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_over_inclusive_range() {
+        accept(
+            "for i in 1..=n { i }",
+            expect![[r#"
+                for i in 1..=n { i }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_with_discarded_variable() {
+        accept(
+            "for _ in items { x }",
+            expect![[r#"
+                for _ in items { x }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_with_let_in_body() {
+        accept(
+            "for item in items { let name = item.name; name }",
+            expect![[r#"
+                for item in items {
+                  let name = item.name;
+                  name
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_nested_for_expressions() {
+        accept(
+            "for row in rows { for cell in row { cell } }",
+            expect![[r#"
+                for row in rows { for cell in row { cell } }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_in_match_arm() {
+        accept(
+            "match x { Some(items) => for item in items { item }, None => <></> }",
+            expect![[r#"
+                match x {
+                  Some(items) => for item in items { item },
+                  None => fragment(),
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_without_in() {
+        reject(
+            "for item items { item }",
+            expect![[r#"
+                -- errors --
+                error: Expected token 'in' but got 'items'
+                for item items { item }
+                         ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_without_opening_brace() {
+        reject(
+            "for item in items item",
+            expect![[r#"
+                -- errors --
+                error: Expected token '{' but got 'item'
+                for item in items item
+                                  ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_with_empty_body() {
+        reject(
+            "for item in items {}",
+            expect![[r#"
+                -- errors --
+                error: Unexpected token '}'
+                for item in items {}
+                                   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_without_closing_brace() {
+        reject(
+            "for item in items { item",
+            expect![[r#"
+                -- errors --
+                error: Unmatched '{'
+                for item in items { item
+                                  ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_expression_with_let_and_no_tail_expression() {
+        reject(
+            "for item in items { let name = item.name; }",
+            expect![[r#"
+                -- errors --
+                error: A block must end with an expression
+                for item in items { let name = item.name; }
+                                                        ^
             "#]],
         );
     }

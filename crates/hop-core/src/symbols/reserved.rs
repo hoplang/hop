@@ -36,6 +36,7 @@ pub(super) fn is_reserved_name(name: &str) -> bool {
             | "final"
             | "finally"
             | "fn"
+            | "for"
             | "from"
             | "func"
             | "get"

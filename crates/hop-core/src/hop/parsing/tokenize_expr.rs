@@ -185,6 +185,7 @@ pub fn next(
                     "enum" => LangToken::Enum,
                     "false" => LangToken::False,
                     "fn" => LangToken::Fn,
+                    "for" => LangToken::For,
                     "import" => LangToken::Import,
                     "in" => LangToken::In,
                     "let" => LangToken::Let,
@@ -564,6 +565,38 @@ mod tests {
                 token: Semicolon
                 let letter = 1;
                               ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_keyword() {
+        accept(
+            "for x in xs {}",
+            expect![[r#"
+                token: For
+                for x in xs {}
+                ^^^
+
+                token: Identifier("x")
+                for x in xs {}
+                    ^
+
+                token: In
+                for x in xs {}
+                      ^^
+
+                token: Identifier("xs")
+                for x in xs {}
+                         ^^
+
+                token: LeftBrace
+                for x in xs {}
+                            ^
+
+                token: RightBrace
+                for x in xs {}
+                             ^
             "#]],
         );
     }

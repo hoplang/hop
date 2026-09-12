@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use super::parsed_node::{ParsedLetBinding, ParsedNode};
+use super::parsed_node::{ParsedLetBinding, ParsedNode, braced_doc};
 use crate::document::{CheapString, DocumentRange};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -96,6 +96,23 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
+    /// A for expression.
+    ///
+    /// ```text
+    /// for user in users {
+    ///   <li>{user.name}</li>
+    /// }
+    /// ```
+    For {
+        /// The bound variable name, `None` when the variable is discarded
+        /// using `_`.
+        var_name: Option<VarName>,
+        var_name_range: Option<DocumentRange>,
+        source: Box<ParsedLoopSource>,
+        body: Box<Self>,
+        range: DocumentRange,
+    },
+
     OptionLiteral {
         value: Option<Box<Self>>,
         range: DocumentRange,
@@ -139,6 +156,37 @@ pub struct ParsedNamedArgument {
     pub name: VarName,
     pub name_range: DocumentRange,
     pub value: ParsedExpr,
+}
+
+/// The source of iteration in a for loop.
+#[derive(Debug, Clone)]
+pub enum ParsedLoopSource {
+    /// An array expression.
+    ///
+    /// ```text
+    /// for item in [1, 2, 3] {
+    ///             ^^^^^^^^^
+    /// ```
+    Array(ParsedExpr),
+    /// An inclusive integer range.
+    ///
+    /// ```text
+    /// for i in 0..=5 {
+    ///          ^^^^^
+    /// ```
+    RangeInclusive { start: ParsedExpr, end: ParsedExpr },
+}
+
+impl ParsedLoopSource {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            ParsedLoopSource::Array(expr) => expr.to_doc(),
+            ParsedLoopSource::RangeInclusive { start, end } => start
+                .to_doc()
+                .append(BoxDoc::text("..="))
+                .append(end.to_doc()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -386,6 +434,16 @@ impl ParsedExpr {
                     f(&arm.body);
                 }
             }
+            ParsedExpr::For { source, body, .. } => {
+                match source.as_ref() {
+                    ParsedLoopSource::Array(expr) => f(expr),
+                    ParsedLoopSource::RangeInclusive { start, end } => {
+                        f(start);
+                        f(end);
+                    }
+                }
+                f(body);
+            }
             ParsedExpr::OptionLiteral { value, .. } => {
                 if let Some(value) = value {
                     f(value);
@@ -450,6 +508,7 @@ impl ParsedExpr {
             | ParsedExpr::BooleanNegation { .. }
             | ParsedExpr::NumericNegation { .. }
             | ParsedExpr::Match { .. }
+            | ParsedExpr::For { .. }
             | ParsedExpr::MacroInvocation { .. }
             | ParsedExpr::FunctionCall { .. } => false,
         }
@@ -471,6 +530,7 @@ impl ParsedExpr {
             | ParsedExpr::BooleanNegation { range, .. }
             | ParsedExpr::NumericNegation { range, .. }
             | ParsedExpr::Match { range, .. }
+            | ParsedExpr::For { range, .. }
             | ParsedExpr::OptionLiteral { range, .. }
             | ParsedExpr::MacroInvocation { range, .. }
             | ParsedExpr::FunctionCall { range, .. }
@@ -650,6 +710,28 @@ impl ParsedExpr {
                         )
                         .append(BoxDoc::text("}"))
                 }
+            }
+            ParsedExpr::For {
+                var_name,
+                source,
+                body,
+                ..
+            } => {
+                let var_doc = match var_name {
+                    Some(name) => BoxDoc::text(name.as_str()),
+                    None => BoxDoc::text("_"),
+                };
+                // A let body prints its own braces.
+                let body_doc = match body.as_ref() {
+                    ParsedExpr::Let { .. } => body.to_doc(),
+                    _ => braced_doc(vec![body.to_doc()]),
+                };
+                BoxDoc::text("for ")
+                    .append(var_doc)
+                    .append(" in ")
+                    .append(source.to_doc())
+                    .append(" ")
+                    .append(body_doc)
             }
             ParsedExpr::Let { .. } => {
                 let mut statements = Vec::new();

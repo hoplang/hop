@@ -1,6 +1,7 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
+use crate::hop::parsing::parsed_expr::ParsedLoopSource;
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
@@ -143,25 +144,6 @@ pub enum ParsedAttribute {
     Spread { name: VarName, range: DocumentRange },
 }
 
-/// The source of iteration in a for node.
-#[derive(Debug, Clone)]
-pub enum ParsedLoopSource {
-    /// An array expression.
-    ///
-    /// ```text
-    /// <for {item in [1, 2, 3]}>
-    ///               ^^^^^^^^^
-    /// ```
-    Array(ParsedExpr),
-    /// An inclusive integer range.
-    ///
-    /// ```text
-    /// <for {i in 0..=5}>
-    ///            ^^^^^
-    /// ```
-    RangeInclusive { start: ParsedExpr, end: ParsedExpr },
-}
-
 /// A single binding in a let statement.
 ///
 /// ```text
@@ -215,7 +197,7 @@ fn bracketed_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
         .append("]")
 }
 
-fn braced_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
+pub(super) fn braced_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
     if items.is_empty() {
         return BoxDoc::text("{}");
     }
@@ -422,12 +404,6 @@ impl ParsedNode {
                 children,
                 ..
             } => {
-                let source_doc = match &**source {
-                    ParsedLoopSource::Array(expr) => expr.to_doc(),
-                    ParsedLoopSource::RangeInclusive { start, end } => {
-                        start.to_doc().append("..=").append(end.to_doc())
-                    }
-                };
                 let var_doc = match var_name {
                     Some(name) => BoxDoc::text(name.as_str()),
                     None => BoxDoc::text("_"),
@@ -435,7 +411,7 @@ impl ParsedNode {
                 BoxDoc::text("for ")
                     .append(var_doc)
                     .append(" in ")
-                    .append(source_doc)
+                    .append(source.to_doc())
                     .append(" ")
                     .append(braced_doc(children.iter().map(|c| c.to_doc()).collect()))
             }

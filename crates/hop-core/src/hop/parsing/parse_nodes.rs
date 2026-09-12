@@ -1,11 +1,10 @@
 use std::collections::VecDeque;
 use std::iter::Peekable;
 
-use super::parse_expr;
+use super::parse_expr::{self, LoopHeader, parse_loop_header};
 use super::parse_helpers;
 use super::parsed_expr::ParsedExpr;
-use super::parsed_node::{ParsedAttribute, ParsedLoopSource, ParsedNode};
-use super::token;
+use super::parsed_node::{ParsedAttribute, ParsedNode};
 use super::tokenize_markup;
 use super::whitespace;
 use crate::document::{DocumentCursor, DocumentRange};
@@ -701,45 +700,4 @@ fn close_element(
             })
         }
     }
-}
-
-struct LoopHeader {
-    var_name: Option<VarName>,
-    var_name_range: Option<DocumentRange>,
-    loop_source: Box<ParsedLoopSource>,
-}
-
-fn parse_loop_header(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    range: &DocumentRange,
-) -> Result<LoopHeader, ErrorEmitted> {
-    let (var_name, var_name_range) = if let Some(underscore_range) =
-        parse_helpers::advance_if(iter, comments, errors, token::LangToken::Underscore)
-    {
-        (None, Some(underscore_range))
-    } else {
-        let (name, name_range) =
-            parse_helpers::expect_variable_name(iter, comments, errors, range)?;
-        (Some(name), Some(name_range))
-    };
-    parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::In)?;
-    let start_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
-    let source = if parse_helpers::advance_if(iter, comments, errors, token::LangToken::DotDotEq)
-        .is_some()
-    {
-        let end_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
-        ParsedLoopSource::RangeInclusive {
-            start: start_expr,
-            end: end_expr,
-        }
-    } else {
-        ParsedLoopSource::Array(start_expr)
-    };
-    Ok(LoopHeader {
-        var_name,
-        var_name_range,
-        loop_source: Box::new(source),
-    })
 }

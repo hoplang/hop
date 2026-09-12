@@ -2644,6 +2644,96 @@ mod tests {
     }
 
     #[test]
+    fn accepts_for_expression_as_function_body() {
+        accept(
+            indoc! {"
+                fn Dots(n: Int) -> Html {
+                    for _ in 1..=n {
+                        <span>.</span>
+                    }
+                }
+            "},
+            expect![[r#"
+                fn Dots(n: Int) -> Html {
+                  for _ in 1..=n {
+                    html(
+                      tag: "span",
+                      attrs: [],
+                      children: [text(".")],
+                    ),
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_in_interpolation() {
+        accept(
+            indoc! {"
+                fn ItemList(items: Array[Item]) -> Html {
+                    <ul>
+                        {for item in items {
+                            let name = item.name;
+                            <li>{name}</li>
+                        }}
+                    </ul>
+                }
+            "},
+            expect![[r#"
+                fn ItemList(items: Array[Item]) -> Html {
+                  html(
+                    tag: "ul",
+                    attrs: [],
+                    children: [
+                      interpolate(
+                        for item in items {
+                          let name = item.name;
+                          html(
+                            tag: "li",
+                            attrs: [],
+                            children: [
+                              interpolate(name),
+                            ],
+                          )
+                        },
+                      ),
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_for_expression_in_attribute() {
+        accept(
+            indoc! {"
+                fn Main(items: Array[Item]) -> Html {
+                    <Table rows={for item in items { <tr>{item.name}</tr> }}/>
+                }
+            "},
+            expect![[r#"
+                fn Main(items: Array[Item]) -> Html {
+                  Table(
+                    attrs: [
+                      rows: for item in items {
+                        html(
+                          tag: "tr",
+                          attrs: [],
+                          children: [
+                            interpolate(item.name),
+                          ],
+                        ),
+                      },
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_for_with_two_expressions() {
         reject(
             indoc! {"

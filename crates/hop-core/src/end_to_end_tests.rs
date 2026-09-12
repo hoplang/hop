@@ -3903,6 +3903,202 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn for_expression_over_array() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    for item in ["a", "b", "c"] {
+                      <>{item},</>
+                    }
+                  }
+                }
+            "#},
+            "a,b,c,",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in ["a", "b", "c"] {
+                    write_string(v0)
+                    write(",")
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in ["a", "b", "c"] {
+                    write_string(v0)
+                    write(",")
+                  }
+                }
+                -- expected output --
+                a,b,c,
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_expression_over_range() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    for i in 1..=3 {
+                      <>{i.to_string()},</>
+                    }
+                  }
+                }
+            "#},
+            "1,2,3,",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in 1..=3 {
+                    write_string(v0.to_string())
+                    write(",")
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in 1..=3 {
+                    write_string(v0.to_string())
+                    write(",")
+                  }
+                }
+                -- expected output --
+                1,2,3,
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_expression_with_underscore() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let items: Array[String] = ["a", "b", "c"];
+                    for _ in items {
+                      <>*</>
+                    }
+                  }
+                }
+            "#},
+            "***",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = ["a", "b", "c"] in {
+                    for _ in v0 {
+                      write("*")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for _ in ["a", "b", "c"] {
+                    write("*")
+                  }
+                }
+                -- expected output --
+                ***
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_expression_with_let_in_body() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    for item in ["a", "b", "c"] {
+                      let shout = item + "!";
+                      <>{shout}</>
+                    }
+                  }
+                }
+            "#},
+            "a!b!c!",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in ["a", "b", "c"] {
+                    let v1 = (v0 + "!") in {
+                      write_string(v1)
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in ["a", "b", "c"] {
+                    let v1 = (v0 + "!") in {
+                      write_string(v1)
+                    }
+                  }
+                }
+                -- expected output --
+                a!b!c!
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn for_loop_over_bool_array_with_bool_match() {
         check(
             indoc! {r#"

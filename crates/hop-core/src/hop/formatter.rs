@@ -6,11 +6,9 @@ use crate::hop::parsing::parsed_ast::{
     ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
 use crate::hop::parsing::parsed_expr::{
-    Constructor, ParsedArguments, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
+    Constructor, ParsedArguments, ParsedExpr, ParsedLoopSource, ParsedMatchArm, ParsedMatchPattern,
 };
-use crate::hop::parsing::parsed_node::{
-    ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedNode,
-};
+use crate::hop::parsing::parsed_node::{ParsedAttribute, ParsedLetBinding, ParsedNode};
 use crate::html::HtmlElementKind;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;
@@ -577,14 +575,6 @@ fn format_node<'a>(
             ..
         } => {
             let children_doc = format_children(arena, children, comments);
-            let source_doc = match &**source {
-                ParsedLoopSource::Array(expr) => format_expr(arena, expr, comments),
-                ParsedLoopSource::RangeInclusive { start, end } => {
-                    format_expr(arena, start, comments)
-                        .append(arena.text("..="))
-                        .append(format_expr(arena, end, comments))
-                }
-            };
             let var_doc = match var_name {
                 Some(name) => arena.text(name.as_str()),
                 None => arena.text("_"),
@@ -593,7 +583,7 @@ fn format_node<'a>(
                 .text("<for {")
                 .append(var_doc)
                 .append(arena.text(" in "))
-                .append(source_doc)
+                .append(format_loop_source(arena, source, comments))
                 .append(arena.text("}>"))
                 .append(children_doc)
                 .append(arena.text("</for>"))
@@ -793,6 +783,19 @@ fn format_let_binding<'a>(
         .append(format_expr(arena, &binding.value_expr, comments))
 }
 
+fn format_loop_source<'a>(
+    arena: &'a Arena<'a>,
+    source: &'a ParsedLoopSource,
+    comments: &mut VecDeque<&'a DocumentRange>,
+) -> DocBuilder<'a, Arena<'a>> {
+    match source {
+        ParsedLoopSource::Array(expr) => format_expr(arena, expr, comments),
+        ParsedLoopSource::RangeInclusive { start, end } => format_expr(arena, start, comments)
+            .append(arena.text("..="))
+            .append(format_expr(arena, end, comments)),
+    }
+}
+
 fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Arena<'a>> {
     match ty {
         ParsedType::String { .. } => arena.text("String"),
@@ -864,6 +867,28 @@ fn format_expr<'a>(
                 arena
                     .hardline()
                     .append(format_block_body(arena, expr, comments))
+                    .nest(2),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}")),
+        ParsedExpr::For {
+            var_name,
+            source,
+            body,
+            ..
+        } => arena
+            .text("for ")
+            .append(match var_name {
+                Some(name) => arena.text(name.as_str()),
+                None => arena.text("_"),
+            })
+            .append(arena.text(" in "))
+            .append(format_loop_source(arena, source, comments))
+            .append(arena.text(" {"))
+            .append(
+                arena
+                    .hardline()
+                    .append(format_block_body(arena, body, comments))
                     .nest(2),
             )
             .append(arena.hardline())
@@ -5103,6 +5128,128 @@ mod tests {
                       second one
                     </span>,
                   )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn for_expression_over_array() {
+        check(
+            indoc! {"
+                fn Dots(items: Array[String]) -> Html { for item in items { <span>{item}</span> } }
+            "},
+            expect![[r#"
+                fn Dots(items: Array[String]) -> Html {
+                  for item in items {
+                    <span>
+                      {item}
+                    </span>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn for_expression_over_range() {
+        check(
+            indoc! {"
+                fn Dots(n: Int) -> Html {
+                  for _ in 1..=n {
+                    <span>.</span>
+                  }
+                }
+            "},
+            expect![[r#"
+                fn Dots(n: Int) -> Html {
+                  for _ in 1..=n {
+                    <span>
+                      .
+                    </span>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn for_expression_with_let_statements_in_body() {
+        check(
+            indoc! {"
+                fn ItemList(items: Array[Item]) -> Html {
+                  <ul>
+                    {for item in items { let name = item.name; let title = name; <li>{title}</li> }}
+                  </ul>
+                }
+            "},
+            expect![[r#"
+                fn ItemList(items: Array[Item]) -> Html {
+                  <ul>
+                    {for item in items {
+                      let name = item.name;
+                      let title = name;
+                      <li>
+                        {title}
+                      </li>
+                    }}
+                  </ul>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn for_expression_in_match_arm() {
+        check(
+            indoc! {"
+                fn Main(x: Option[Array[String]]) -> Html {
+                  match x {
+                    Some(items) => for item in items { <li>{item}</li> },
+                    None => <></>,
+                  }
+                }
+            "},
+            expect![[r#"
+                fn Main(x: Option[Array[String]]) -> Html {
+                  match x {
+                    Some(items) => for item in items {
+                      <li>
+                        {item}
+                      </li>
+                    },
+                    None => {
+                      <></>
+                    },
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn for_expression_with_comments() {
+        check(
+            indoc! {"
+                fn Main(items: Array[String]) -> Html {
+                  // before
+                  for item in items {
+                    // inside
+                    let name = item;
+                    <li>{name}</li>
+                  }
+                }
+            "},
+            expect![[r#"
+                fn Main(items: Array[String]) -> Html {
+                  // before
+                  for item in items {
+                    // inside
+                    let name = item;
+                    <li>
+                      {name}
+                    </li>
+                  }
                 }
             "#]],
         );

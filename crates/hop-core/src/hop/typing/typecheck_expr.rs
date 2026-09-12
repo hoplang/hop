@@ -13,10 +13,12 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
-use crate::hop::parsing::parsed_expr::{ParsedArguments, ParsedBinaryOp, ParsedExpr};
+use crate::hop::parsing::parsed_expr::{
+    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource,
+};
 use crate::hop::parsing::parsed_node::ParsedNode;
-use crate::hop::typing::TypedExpr;
 use crate::hop::typing::type_env::TypeEnv;
+use crate::hop::typing::{TypedExpr, TypedLoopSource};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
@@ -1571,6 +1573,159 @@ pub fn typecheck_expr(
             asset_references,
             errors,
         ),
+        ParsedExpr::For {
+            var_name,
+            var_name_range,
+            source,
+            body,
+            ..
+        } => {
+            let (typed_source, element_type) = match source.as_ref() {
+                ParsedLoopSource::Array(array_expr) => {
+                    let typed_array = typecheck_expr(
+                        array_expr,
+                        None,
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    )?;
+                    let array_type = typed_array.typ();
+                    let element_type = match &array_type {
+                        Type::Array(inner) => inner.as_ref().clone(),
+                        _ => {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::IterateeTypeMismatch { found: array_type },
+                                array_expr.range().clone(),
+                            ));
+                            return None;
+                        }
+                    };
+                    (TypedLoopSource::Array(typed_array), element_type)
+                }
+                ParsedLoopSource::RangeInclusive { start, end } => {
+                    let typed_start = typecheck_expr(
+                        start,
+                        None,
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    )?;
+                    let typed_end = typecheck_expr(
+                        end,
+                        None,
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    )?;
+                    let start_type = typed_start.typ();
+                    if start_type != Type::Int {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::RangeBoundTypeMismatch { found: start_type },
+                            start.range().clone(),
+                        ));
+                    }
+                    let end_type = typed_end.typ();
+                    if end_type != Type::Int {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::RangeBoundTypeMismatch { found: end_type },
+                            end.range().clone(),
+                        ));
+                    }
+                    (
+                        TypedLoopSource::RangeInclusive {
+                            start: typed_start,
+                            end: typed_end,
+                        },
+                        Type::Int,
+                    )
+                }
+            };
+
+            // The loop variable is only bound when it is not discarded by `_`.
+            let pushed = if let (Some(var_name), Some(var_name_range)) = (var_name, var_name_range)
+            {
+                match var_env.push(
+                    var_name.clone(),
+                    element_type.clone(),
+                    var_name_range.clone(),
+                ) {
+                    Ok(_) => {
+                        annotations.push(HoverAnnotation::TypeForVarName {
+                            range: var_name_range.clone(),
+                            typ: element_type,
+                            var_name: var_name.clone(),
+                        });
+                        true
+                    }
+                    Err(_) => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::VariableAlreadyDefined {
+                                name: var_name.clone(),
+                            },
+                            var_name_range.clone(),
+                        ));
+                        false
+                    }
+                }
+            } else {
+                false
+            };
+
+            let typed_body = typecheck_expr(
+                body,
+                Some(&Type::Html),
+                forwarded_params,
+                var_env,
+                type_env,
+                registry,
+                annotations,
+                definition_links,
+                asset_references,
+                errors,
+            );
+
+            if pushed {
+                let (name, entry) = var_env.pop();
+                if !entry.accessed {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UnusedVariable { var_name: name },
+                        entry.range,
+                    ));
+                }
+            }
+
+            let typed_body = typed_body?;
+            let body_type = typed_body.typ();
+            if body_type != Type::Html {
+                errors.push(TypeError::new(
+                    TypeErrorKind::ForBodyTypeMismatch { found: body_type },
+                    body.range().clone(),
+                ));
+                return None;
+            }
+
+            Some(TypedExpr::For {
+                var_name: var_name.clone(),
+                source: Box::new(typed_source),
+                body: Box::new(typed_body),
+                typ: Type::Html,
+            })
+        }
         ParsedExpr::MacroInvocation {
             name,
             subject_range,

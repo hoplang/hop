@@ -148,6 +148,9 @@ pub(crate) enum TypeErrorKind {
     #[error("Mismatched type for range bound: expected Int got {found}")]
     RangeBoundTypeMismatch { found: Type },
 
+    #[error("Mismatched type for for body: expected Html got {found}")]
+    ForBodyTypeMismatch { found: Type },
+
     #[error("Mismatched type: expected {expected} got {found}")]
     LetBindingTypeMismatch { expected: Type, found: Type },
 
