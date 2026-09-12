@@ -211,10 +211,10 @@ mod tests {
                     <div>
                         {match condition {
                           true => {
-                            <for {item in items}>
+                            for item in items {
                                 <span>{item}</span>
                                         ^
-                            </for>
+                            }
                           },
                           false => <></>,
                         }}
@@ -307,7 +307,7 @@ mod tests {
                             <article>
                                 {match condition {
                                   true => {
-                                    <for {item in items}>
+                                    for item in items {
                                         <header>
                                             <h1>
                                                 <span>
@@ -316,7 +316,7 @@ mod tests {
                                                 </span>
                                             </h1>
                                         </header>
-                                    </for>
+                                    }
                                   },
                                   false => <></>,
                                 }}
@@ -407,17 +407,17 @@ mod tests {
                 fn Main() -> Html {
                     match users {
                       true => {
-                        <for {user in users}>
-                          {match user.active {
+                        for user in users {
+                          match user.active {
                             true => {
-                              <for {role in user.roles}>
+                              for role in user.roles {
                                   <span>{role}</span>
                                      ^
-                              </for>
+                              }
                             },
                             false => <></>,
-                          }}
-                        </for>
+                          }
+                        }
                       },
                       false => <></>,
                     }

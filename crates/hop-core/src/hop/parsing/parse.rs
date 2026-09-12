@@ -1269,20 +1269,19 @@ mod tests {
                 }
                 fn Main(i: Array[S]) -> Html {
                     <>
-                        <for {j in i}>
-                            <for {k in j.s.t}>
-                                {match k {
-                                  true => <></>,
-                                  false => <></>,
-                                }}
-                            </for>
-                        </for>
-                        <for {p in i}>
-                            <for {k in p.s.t}>
-                                <for {item in k}>
-                                </for>
-                            </for>
-                        </for>
+                        {for j in i {
+                          for k in j.s.t {
+                            match k {
+                              true => <></>,
+                              false => <></>,
+                            }
+                          }
+                        }}
+                        {for p in i {
+                          for k in p.s.t {
+                            for item in k { <></> }
+                          }
+                        }}
                     </>
                 }
             "},
@@ -1297,21 +1296,23 @@ mod tests {
 
                 fn Main(i: Array[S]) -> Html {
                   fragment(
-                    for j in i {
-                      for k in j.s.t {
-                        interpolate(
+                    interpolate(
+                      for j in i {
+                        for k in j.s.t {
                           match k {
                             true => fragment(),
                             false => fragment(),
                           },
-                        ),
+                        },
                       },
-                    },
-                    for p in i {
-                      for k in p.s.t {
-                        for item in k {},
+                    ),
+                    interpolate(
+                      for p in i {
+                        for k in p.s.t {
+                          for item in k { fragment() },
+                        },
                       },
-                    },
+                    ),
                   )
                 }
             "#]],
@@ -2257,48 +2258,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_expression_is_missing_in_for_tag() {
-        reject(
-            indoc! {"
-                fn Main() -> Html {
-                    <for>
-                        <div>Content</div>
-                    </for>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Missing loop generator expression in <for> tag
-                1 | fn Main() -> Html {
-                2 |     <for>
-                  |     ^^^^^
-                -- ast --
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_for_tag_has_invalid_expression() {
-        reject(
-            indoc! {"
-                fn Main() -> Html {
-                    <for {foo}>
-                        <div>Content</div>
-                    </for>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Expected token 'in' but got '}'
-                1 | fn Main() -> Html {
-                2 |     <for {foo}>
-                  |              ^
-                -- ast --
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_when_function_parameter_has_parse_error_in_type_name() {
         reject(
             indoc! {"
@@ -2488,9 +2447,7 @@ mod tests {
         accept(
             indoc! {"
                 fn Main(item: Array[String]) -> Html {
-                    <for {item in items}>
-                        <div>Item content</div>
-                    </for>
+                    for item in items { <div>Item content</div> }
                 }
             "},
             expect![[r#"
@@ -2512,9 +2469,7 @@ mod tests {
         accept(
             indoc! {"
                 fn Main(foo: Array[String]) -> Html {
-                    <for {v in foo}>
-                        <div>{v}</div>
-                    </for>
+                    for v in foo { <div>{v}</div> }
                 }
             "},
             expect![[r#"
@@ -2536,14 +2491,14 @@ mod tests {
         accept(
             indoc! {"
                 fn Main() -> Html {
-                    <for {i in 0..=5}>
-                        {i}
-                    </for>
+                    for i in 0..=5 { <>{i}</> }
                 }
             "},
             expect![[r#"
                 fn Main() -> Html {
-                  for i in 0..=5 { interpolate(i) }
+                  for i in 0..=5 {
+                    fragment(interpolate(i)),
+                  }
                 }
             "#]],
         );
@@ -2554,15 +2509,13 @@ mod tests {
         accept(
             indoc! {"
                 fn Main(start: Int, end: Int) -> Html {
-                    <for {x in start..=end}>
-                        {x}
-                    </for>
+                    for x in start..=end { <>{x}</> }
                 }
             "},
             expect![[r#"
                 fn Main(start: Int, end: Int) -> Html {
                   for x in start..=end {
-                    interpolate(x),
+                    fragment(interpolate(x)),
                   }
                 }
             "#]],
@@ -2574,15 +2527,13 @@ mod tests {
         accept(
             indoc! {"
                 fn Main(count: Int) -> Html {
-                    <for {i in 1..=count + 1}>
-                        {i}
-                    </for>
+                    for i in 1..=count + 1 { <>{i}</> }
                 }
             "},
             expect![[r#"
                 fn Main(count: Int) -> Html {
                   for i in 1..=count + 1 {
-                    interpolate(i),
+                    fragment(interpolate(i)),
                   }
                 }
             "#]],
@@ -2594,14 +2545,14 @@ mod tests {
         accept(
             indoc! {"
                 fn Main(items: Array[String]) -> Html {
-                    <for {_ in items}>
-                        item
-                    </for>
+                    for _ in items { <>item</> }
                 }
             "},
             expect![[r#"
                 fn Main(items: Array[String]) -> Html {
-                  for _ in items { text("item") }
+                  for _ in items {
+                    fragment(text("item")),
+                  }
                 }
             "#]],
         );
@@ -2612,14 +2563,14 @@ mod tests {
         accept(
             indoc! {"
                 fn Main() -> Html {
-                    <for {_ in 0..=5}>
-                        item
-                    </for>
+                    for _ in 0..=5 { <>item</> }
                 }
             "},
             expect![[r#"
                 fn Main() -> Html {
-                  for _ in 0..=5 { text("item") }
+                  for _ in 0..=5 {
+                    fragment(text("item")),
+                  }
                 }
             "#]],
         );
@@ -2630,14 +2581,14 @@ mod tests {
         accept(
             indoc! {"
                 fn Main(start: Int, end: Int) -> Html {
-                    <for {_ in start..=end}>
-                        item
-                    </for>
+                    for _ in start..=end { <>item</> }
                 }
             "},
             expect![[r#"
                 fn Main(start: Int, end: Int) -> Html {
-                  for _ in start..=end { text("item") }
+                  for _ in start..=end {
+                    fragment(text("item")),
+                  }
                 }
             "#]],
         );
@@ -2734,46 +2685,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_for_with_two_expressions() {
-        reject(
-            indoc! {"
-                fn Main(xs: Array[Int], ys: Array[Int]) -> Html {
-                    <for {x in xs} {y in ys}>
-                        <div>{x}</div>
-                    </for>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: <for> already has an expression
-                1 | fn Main(xs: Array[Int], ys: Array[Int]) -> Html {
-                2 |     <for {x in xs} {y in ys}>
-                  |                    ^^^^^^^^^
-                -- ast --
-                fn Main(xs: Array[Int], ys: Array[Int]) -> Html {
-                  for x in xs {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [interpolate(x)],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn accepts_match_on_bool_with_nested_for_loop() {
         accept(
             indoc! {"
                 fn Main(x: Bool, data: Array[String]) -> Html {
 	                match x {
-	                  true => {
-	                    <for {d in data}>
-	                      {d}
-	                    </for>
-	                  },
+	                  true => for d in data { <>{d}</> },
 	                  false => <></>,
 	                }
                 }
@@ -2782,7 +2699,7 @@ mod tests {
                 fn Main(x: Bool, data: Array[String]) -> Html {
                   match x {
                     true => for d in data {
-                      interpolate(d),
+                      fragment(interpolate(d)),
                     },
                     false => fragment(),
                   }
@@ -3007,9 +2924,7 @@ mod tests {
         accept(
             indoc! {"
                 fn Main(items: Array[String]) -> Html {
-                    <for {item in items}>
-                        <div>{item}</div>
-                    </for>
+                    for item in items { <div>{item}</div> }
                 }
             "},
             expect![[r#"
@@ -3036,12 +2951,14 @@ mod tests {
                 }
 
                 fn Main(data: Array[Section]) -> Html {
-                    <for {section in data}>
-                        <h1>{section.title}</h1>
-                        <for {item in section.items}>
-                            <div>{item}</div>
-                        </for>
-                    </for>
+                    for section in data {
+                        <>
+                            <h1>{section.title}</h1>
+                            {for item in section.items {
+                                <div>{item}</div>
+                            }}
+                        </>
+                    }
                 }
             "},
             expect![[r#"
@@ -3052,20 +2969,26 @@ mod tests {
 
                 fn Main(data: Array[Section]) -> Html {
                   for section in data {
-                    html(
-                      tag: "h1",
-                      attrs: [],
-                      children: [
-                        interpolate(section.title),
-                      ],
-                    ),
-                    for item in section.items {
+                    fragment(
                       html(
-                        tag: "div",
+                        tag: "h1",
                         attrs: [],
-                        children: [interpolate(item)],
+                        children: [
+                          interpolate(section.title),
+                        ],
                       ),
-                    },
+                      interpolate(
+                        for item in section.items {
+                          html(
+                            tag: "div",
+                            attrs: [],
+                            children: [
+                              interpolate(item),
+                            ],
+                          ),
+                        },
+                      ),
+                    ),
                   }
                 }
             "#]],
@@ -3481,9 +3404,7 @@ mod tests {
         accept(
             indoc! {r#"
                 fn Main(items: Array[String] = ["a", "b"]) -> Html {
-                    <for {item in items}>
-                        {item}
-                    </for>
+                    for item in items { <>{item}</> }
                 }
             "#},
             expect![[r#"
@@ -3492,7 +3413,7 @@ mod tests {
                   "b",
                 ]) -> Html {
                   for item in items {
-                    interpolate(item),
+                    fragment(interpolate(item)),
                   }
                 }
             "#]],
@@ -4690,9 +4611,7 @@ mod tests {
             indoc! {"
                 page Index(items: Array[String]) {
                   fn body() -> Html {
-                      <for {item in items}>
-                          <div>{item}</div>
-                      </for>
+                      for item in items { <div>{item}</div> }
                   }
                 }
             "},
@@ -5213,9 +5132,9 @@ mod tests {
 
                 fn Foo() -> Html {
                   <div>
-                    <for {x in 0..=foo(10)}>
-                      {x.to_string()}
-                    </for>
+                    {for x in 0..=foo(10) {
+                      <>{x.to_string()}</>
+                    }}
                     {foo(10)}
                   </div>
                 }
@@ -5230,9 +5149,13 @@ mod tests {
                     tag: "div",
                     attrs: [],
                     children: [
-                      for x in 0..=foo(10) {
-                        interpolate(x.to_string()),
-                      },
+                      interpolate(
+                        for x in 0..=foo(10) {
+                          fragment(
+                            interpolate(x.to_string()),
+                          ),
+                        },
+                      ),
                       interpolate(foo(10)),
                     ],
                   )
@@ -6204,6 +6127,13 @@ mod tests {
                 2 |   <div {x}>hi</div>
                   |        ^^^
                 -- ast --
+                fn Main() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("hi")],
+                  )
+                }
             "#]],
         );
     }
@@ -6223,6 +6153,9 @@ mod tests {
                 2 |   <Card {x} title="a"/>
                   |         ^^^
                 -- ast --
+                fn Main() -> Html {
+                  Card(attrs: [title: "a"])
+                }
             "#]],
         );
     }
@@ -6242,11 +6175,18 @@ mod tests {
                 2 |   <div {x} {y}>hi</div>
                   |        ^^^
 
-                error: <div> already has an expression
+                error: Unexpected expression on <div>: use attribute syntax instead (e.g. attr={value})
                 1 | fn Main() -> Html {
                 2 |   <div {x} {y}>hi</div>
                   |            ^^^
                 -- ast --
+                fn Main() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("hi")],
+                  )
+                }
             "#]],
         );
     }
@@ -6271,6 +6211,13 @@ mod tests {
                 2 |   <div {x +}>hi</div>
                   |            ^
                 -- ast --
+                fn Main() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("hi")],
+                  )
+                }
             "#]],
         );
     }

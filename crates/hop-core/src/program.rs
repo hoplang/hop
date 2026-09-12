@@ -1270,18 +1270,18 @@ mod tests {
                 -- main.hop --
                 fn Main(items: Array[String]) -> Html {
                   <ul>
-                    <for {item in items}>
+                    {for item in items {
                       <li>{item}</li>
                             ^
-                    </for>
+                    }}
                   </ul>
                 }
             "#},
             expect![[r#"
                 Definition
-                  --> main.hop (line 3, col 11)
-                3 |     <for {item in items}>
-                  |           ^^^^
+                  --> main.hop (line 3, col 10)
+                3 |     {for item in items {
+                  |          ^^^^
             "#]],
         );
     }
@@ -1336,9 +1336,9 @@ mod tests {
 
                 fn Main(items: Array[Item]) -> Html {
                                      ^
-                  <for {item in items}>
+                  for item in items {
                     <span>{item.name}</span>
-                  </for>
+                  }
                 }
             "#},
             expect![[r#"
@@ -1644,11 +1644,9 @@ mod tests {
                   icons: Array[Icon],
                 ) -> Html {
                   <div class="flex">
-                      <for {icon in icons}>
-                        <IconItem {
-                          icon: icon,
-                        }/>
-                      </for>
+                      {for icon in icons {
+                        <IconItem icon={icon}/>
+                      }}
                   </div>
                 }
 
@@ -1687,8 +1685,8 @@ mod tests {
                    |                ^^^^
 
                 Rename
-                  --> main.hop (line 37, col 9)
-                37 |   icon: Icon,
+                  --> main.hop (line 35, col 9)
+                35 |   icon: Icon,
                    |         ^^^^
             "#]],
         );
@@ -1713,9 +1711,9 @@ mod tests {
                 }
 
                 fn UsersPage(statuses: Array[Status]) -> Html {
-                  <for {status in statuses}>
-                    <UserBadge {status: status} />
-                  </for>
+                  for status in statuses {
+                    <UserBadge status={status}/>
+                  }
                 }
             "#},
             expect![[r#"

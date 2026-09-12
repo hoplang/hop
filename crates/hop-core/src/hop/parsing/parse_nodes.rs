@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::iter::Peekable;
 
-use super::parse_expr::{self, LoopHeader, parse_loop_header};
+use super::parse_expr;
 use super::parse_helpers;
 use super::parsed_expr::ParsedExpr;
 use super::parsed_node::{ParsedAttribute, ParsedNode};
@@ -58,7 +58,9 @@ impl OpenElement {
     fn name(&self) -> Option<&str> {
         match self.header {
             ElementHeader::Fragment => None,
-            ElementHeader::Tag(_) => Some(self.tag_name_range.as_str()),
+            ElementHeader::Function { .. } | ElementHeader::Html { .. } => {
+                Some(self.tag_name_range.as_str())
+            }
         }
     }
 
@@ -67,12 +69,14 @@ impl OpenElement {
     fn close_unclosed(self, errors: &mut ParseErrors) -> Result<ParsedNode, ErrorEmitted> {
         let kind = match self.header {
             ElementHeader::Fragment => ParseErrorKind::UnclosedFragment {},
-            ElementHeader::Tag(_) => ParseErrorKind::UnclosedTag {
-                tag: self.tag_name_range.to_cheap_string(),
-            },
+            ElementHeader::Function { .. } | ElementHeader::Html { .. } => {
+                ParseErrorKind::UnclosedTag {
+                    tag: self.tag_name_range.to_cheap_string(),
+                }
+            }
         };
         let _ = errors.emit(kind, self.tag_name_range.clone());
-        close_element(self, None, errors)
+        close_element(self, None)
     }
 }
 
@@ -81,100 +85,16 @@ impl OpenElement {
 enum ElementHeader {
     /// A `<>`, which carries nothing at all.
     Fragment,
-    /// A named tag, and what was read off it.
-    Tag(TagHeader),
-}
-
-/// What a named opening tag carried.
-///
-/// Every tag has a slot for a `{...}`, whether or not it takes one, so that
-/// one written on a tag that takes none is kept until the element is built
-/// and rejected there. E.g.
-/// ```text
-/// <for {x in xs}>
-///      ^^^^^^^^^
-/// ```
-enum TagHeader {
-    For {
-        expr: Slot<LoopHeader>,
-    },
+    /// An uppercase tag, naming a function to invoke.
     Function {
         name: Result<FunctionName, ErrorEmitted>,
         attributes: Vec<ParsedAttribute>,
-        expression: Slot<ParsedExpr>,
     },
+    /// Any other tag, naming an HTML element.
     Html {
         element: Result<HtmlElementKind, ErrorEmitted>,
         attributes: Vec<ParsedAttribute>,
-        expression: Slot<ParsedExpr>,
     },
-}
-
-/// The braced part of a tag: not seen, parsed, or failed to parse. A seen
-/// one carries the range of the braces, or of just the `{` when what was
-/// inside could not be parsed.
-struct Slot<T>(Option<(DocumentRange, Result<T, ErrorEmitted>)>);
-
-impl<T> Slot<T> {
-    fn empty() -> Self {
-        Slot(None)
-    }
-
-    /// Put a `{...}` in the slot. If the tag already carries one, the new
-    /// one is reported and the first kept.
-    fn fill(
-        &mut self,
-        parsed: Result<(T, DocumentRange), ErrorEmitted>,
-        left_brace: DocumentRange,
-        tag_name_range: &DocumentRange,
-        errors: &mut ParseErrors,
-    ) {
-        let (range, value) = match parsed {
-            Ok((value, braces)) => (braces, Ok(value)),
-            Err(reported) => (left_brace, Err(reported)),
-        };
-        if self.0.is_some() {
-            let _ = errors.emit(
-                ParseErrorKind::DuplicateTagExpression {
-                    tag_name: tag_name_range.to_cheap_string(),
-                },
-                range,
-            );
-            return;
-        }
-        self.0 = Some((range, value));
-    }
-
-    /// Take what the tag has to carry, with the range of its braces.
-    /// Reports `missing` at `range` when the tag carries nothing.
-    fn require(
-        self,
-        missing: ParseErrorKind,
-        range: &DocumentRange,
-        errors: &mut ParseErrors,
-    ) -> Result<(T, DocumentRange), ErrorEmitted> {
-        match self.0 {
-            Some((braces, value)) => Ok((value?, braces)),
-            None => Err(errors.emit(missing, range.clone())),
-        }
-    }
-
-    /// Reject whatever the tag carries, since it takes nothing.
-    fn reject(
-        self,
-        tag_name_range: &DocumentRange,
-        errors: &mut ParseErrors,
-    ) -> Result<(), ErrorEmitted> {
-        match self.0 {
-            Some((range, _)) => Err(errors.emit(
-                ParseErrorKind::UnexpectedTagExpression {
-                    tag_name: tag_name_range.to_cheap_string(),
-                },
-                range,
-            )),
-            None => Ok(()),
-        }
-    }
 }
 
 /// The markup built so far.
@@ -225,9 +145,8 @@ impl MarkupBuilder {
         &mut self,
         element: OpenElement,
         closing: Option<ClosingTag>,
-        errors: &mut ParseErrors,
     ) -> Option<Result<ParsedNode, ErrorEmitted>> {
-        self.append(close_element(element, closing, errors))
+        self.append(close_element(element, closing))
     }
 
     /// Close the element this tag names, along with everything opened inside
@@ -266,7 +185,7 @@ impl MarkupBuilder {
                 .children
                 .extend(item.ok());
         }
-        self.append_element(element, Some(closing), errors)
+        self.append_element(element, Some(closing))
     }
 
     /// Take the markup, closing everything left open. Something is open:
@@ -326,7 +245,7 @@ fn parse_node(
                         builder.enter(element);
                         None
                     }
-                    TagEnd::Closed => builder.append_element(element, None, errors),
+                    TagEnd::Closed => builder.append_element(element, None),
                 }
             }
 
@@ -411,35 +330,7 @@ fn parse_opening_tag(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
 ) -> (OpenElement, TagEnd) {
-    let mut header = match tag_name_range.as_str() {
-        "for" => TagHeader::For {
-            expr: Slot::empty(),
-        },
-        name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
-            TagHeader::Function {
-                attributes: Vec::new(),
-                expression: Slot::empty(),
-                name: FunctionName::new(name).map_err(|error| {
-                    errors.emit(
-                        ParseErrorKind::InvalidFunctionName { error },
-                        tag_name_range.clone(),
-                    )
-                }),
-            }
-        }
-        _ => TagHeader::Html {
-            attributes: Vec::new(),
-            expression: Slot::empty(),
-            element: HtmlElementKind::parse(tag_name_range.as_str()).ok_or_else(|| {
-                errors.emit(
-                    ParseErrorKind::UnknownHtmlElement {
-                        tag: tag_name_range.to_cheap_string(),
-                    },
-                    tag_name_range.clone(),
-                )
-            }),
-        },
-    };
+    let mut attributes = Vec::new();
     let mut self_closing = false;
     let mut full_range = tag_start_range.clone();
 
@@ -467,7 +358,7 @@ fn parse_opening_tag(
                     },
                     None => ParsedAttribute::KeyOnly { name },
                 };
-                push_attribute(&mut header, &tag_name_range, attribute, errors);
+                push_attribute(&mut attributes, attribute, errors);
             }
 
             TagToken::AttributeExpressionStart { name, left_brace } => {
@@ -481,8 +372,7 @@ fn parse_opening_tag(
                     parse_expr::parse_block_body,
                 ) {
                     push_attribute(
-                        &mut header,
-                        &tag_name_range,
+                        &mut attributes,
                         ParsedAttribute::Expression { name, value },
                         errors,
                     );
@@ -491,8 +381,7 @@ fn parse_opening_tag(
 
             TagToken::Spread { name, range } => match VarName::new(name.as_str()) {
                 Ok(var_name) => push_attribute(
-                    &mut header,
-                    &tag_name_range,
+                    &mut attributes,
                     ParsedAttribute::Spread {
                         name: var_name,
                         range,
@@ -510,38 +399,26 @@ fn parse_opening_tag(
                 }
             },
 
-            TagToken::ExpressionStart { left_brace } => match &mut header {
-                TagHeader::Function {
-                    expression: slot, ..
-                }
-                | TagHeader::Html {
-                    expression: slot, ..
-                } => {
-                    let parsed = parse_helpers::parse_delimited(
-                        iter,
-                        comments,
-                        errors,
-                        &left_brace,
-                        LangTokenPair::Braces,
-                        &left_brace,
-                        parse_expr::parse_block_body,
-                    );
-                    slot.fill(parsed, left_brace, &tag_name_range, errors);
-                }
-
-                TagHeader::For { expr: slot } => {
-                    let parsed = parse_helpers::parse_delimited(
-                        iter,
-                        comments,
-                        errors,
-                        &left_brace,
-                        LangTokenPair::Braces,
-                        &left_brace,
-                        parse_loop_header,
-                    );
-                    slot.fill(parsed, left_brace, &tag_name_range, errors);
-                }
-            },
+            TagToken::ExpressionStart { left_brace } => {
+                let range = match parse_helpers::parse_delimited(
+                    iter,
+                    comments,
+                    errors,
+                    &left_brace,
+                    LangTokenPair::Braces,
+                    &left_brace,
+                    parse_expr::parse_block_body,
+                ) {
+                    Ok((_, braces)) => braces,
+                    Err(_) => left_brace,
+                };
+                let _ = errors.emit(
+                    ParseErrorKind::UnexpectedTagExpression {
+                        tag_name: tag_name_range.to_cheap_string(),
+                    },
+                    range,
+                );
+            }
         }
     }
 
@@ -564,43 +441,52 @@ fn parse_opening_tag(
         }
     }
 
+    // An uppercase tag names a function to invoke, anything else an HTML
+    // element.
+    let header = match tag_name_range.as_str() {
+        name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
+            ElementHeader::Function {
+                name: FunctionName::new(name).map_err(|error| {
+                    errors.emit(
+                        ParseErrorKind::InvalidFunctionName { error },
+                        tag_name_range.clone(),
+                    )
+                }),
+                attributes,
+            }
+        }
+        _ => ElementHeader::Html {
+            element: HtmlElementKind::parse(tag_name_range.as_str()).ok_or_else(|| {
+                errors.emit(
+                    ParseErrorKind::UnknownHtmlElement {
+                        tag: tag_name_range.to_cheap_string(),
+                    },
+                    tag_name_range.clone(),
+                )
+            }),
+            attributes,
+        },
+    };
+
     let end = if closed { TagEnd::Closed } else { TagEnd::Open };
     (
         OpenElement {
             tag_name_range,
             opening_range: full_range,
-            header: ElementHeader::Tag(header),
+            header,
             children,
         },
         end,
     )
 }
 
-/// Add an attribute to the tag it was written on, rejecting one on a tag
-/// that takes none and a name the tag already has.
+/// Add an attribute to the tag it was written on, rejecting a name the tag
+/// already has.
 fn push_attribute(
-    header: &mut TagHeader,
-    tag_name: &DocumentRange,
+    attributes: &mut Vec<ParsedAttribute>,
     attribute: ParsedAttribute,
     errors: &mut ParseErrors,
 ) {
-    let (TagHeader::Function { attributes, .. } | TagHeader::Html { attributes, .. }) = header
-    else {
-        let (attr_name, range) = match &attribute {
-            ParsedAttribute::KeyOnly { name }
-            | ParsedAttribute::Expression { name, .. }
-            | ParsedAttribute::String { name, .. } => (name.to_cheap_string(), name.clone()),
-            ParsedAttribute::Spread { range, .. } => (range.to_cheap_string(), range.clone()),
-        };
-        let _ = errors.emit(
-            ParseErrorKind::UnrecognizedAttribute {
-                tag_name: tag_name.to_cheap_string(),
-                attr_name,
-            },
-            range,
-        );
-        return;
-    };
     if let Some(name) = attribute.name_range()
         && attributes.iter().any(|existing| {
             existing
@@ -627,7 +513,6 @@ fn push_attribute(
 fn close_element(
     element: OpenElement,
     closing: Option<ClosingTag>,
-    errors: &mut ParseErrors,
 ) -> Result<ParsedNode, ErrorEmitted> {
     let OpenElement {
         tag_name_range,
@@ -638,42 +523,15 @@ fn close_element(
     // A `</>` only ever closes a fragment, which has no name to record, so
     // flattening the two levels of `Option` loses nothing.
     let (closing_tag_name, range) = match closing {
-        Some(closing) => (
-            closing.tag_name_range,
-            opening_range.clone().to(closing.range),
-        ),
-        None => (None, opening_range.clone()),
+        Some(closing) => (closing.tag_name_range, opening_range.to(closing.range)),
+        None => (None, opening_range),
     };
 
-    let header = match header {
-        ElementHeader::Fragment => {
-            return Ok(ParsedNode::Fragment { children, range });
-        }
-        ElementHeader::Tag(header) => header,
-    };
     match header {
-        TagHeader::For { expr } => {
-            let (header, _) = expr.require(
-                ParseErrorKind::MissingForExpression {},
-                &opening_range,
-                errors,
-            )?;
-            Ok(ParsedNode::For {
-                var_name: header.var_name,
-                var_name_range: header.var_name_range,
-                source: header.loop_source,
-                range,
-                children,
-            })
-        }
+        ElementHeader::Fragment => Ok(ParsedNode::Fragment { children, range }),
 
-        TagHeader::Function {
-            name,
-            attributes,
-            expression,
-        } => {
+        ElementHeader::Function { name, attributes } => {
             let children = closing_tag_name.is_some().then_some(children);
-            expression.reject(&tag_name_range, errors)?;
             Ok(ParsedNode::FunctionInvocation {
                 function_name: name?,
                 function_name_opening_range: tag_name_range,
@@ -684,20 +542,16 @@ fn close_element(
             })
         }
 
-        TagHeader::Html {
+        ElementHeader::Html {
             element,
             attributes,
-            expression,
-        } => {
-            expression.reject(&tag_name_range, errors)?;
-            Ok(ParsedNode::HtmlElement {
-                kind: element?,
-                tag_name: tag_name_range,
-                closing_tag_name,
-                attributes,
-                range,
-                children,
-            })
-        }
+        } => Ok(ParsedNode::HtmlElement {
+            kind: element?,
+            tag_name: tag_name_range,
+            closing_tag_name,
+            attributes,
+            range,
+            children,
+        }),
     }
 }

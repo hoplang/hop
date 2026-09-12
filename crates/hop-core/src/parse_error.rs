@@ -115,18 +115,6 @@ pub(crate) enum ParseErrorKind {
     #[error("Unmatched {ch}")]
     UnmatchedCharacter { ch: char },
 
-    #[error("Unrecognized attribute '{attr_name}' on <{tag_name}>")]
-    UnrecognizedAttribute {
-        tag_name: CheapString,
-        attr_name: CheapString,
-    },
-
-    #[error("<{tag_name}> already has an expression")]
-    DuplicateTagExpression { tag_name: CheapString },
-
-    #[error("Missing loop generator expression in <for> tag")]
-    MissingForExpression,
-
     #[error("A block must end with an expression")]
     BlockMissingTailExpression,
 

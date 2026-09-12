@@ -5,14 +5,13 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::ParsedExpr;
-use crate::hop::parsing::parsed_expr::ParsedLoopSource;
 use crate::hop::parsing::parsed_node::{ParsedAttribute, ParsedNode};
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::variable_scope::VariableScope;
-use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
+use crate::hop::typing::{TypedAttribute, TypedAttributeValue};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
@@ -51,161 +50,6 @@ pub fn typecheck_node(
 
             Some(TypedExpr::HtmlConcat {
                 nodes: typed_children,
-            })
-        }
-
-        ParsedNode::For {
-            var_name,
-            var_name_range,
-            source,
-            children,
-            range: _,
-        } => {
-            // Type check the loop source and determine element type
-            let (typed_source, element_type) = match &**source {
-                ParsedLoopSource::Array(array_expr) => {
-                    let typed_array = typecheck_expr(
-                        array_expr,
-                        None,
-                        forwarded_params,
-                        var_env,
-                        type_env,
-                        registry,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                        errors,
-                    )?;
-                    let array_type = typed_array.typ();
-                    let element_type = match &array_type {
-                        Type::Array(inner) => inner.as_ref().clone(),
-                        _ => {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::IterateeTypeMismatch { found: array_type },
-                                array_expr.range().clone(),
-                            ));
-                            return None;
-                        }
-                    };
-                    (TypedLoopSource::Array(typed_array), element_type)
-                }
-                ParsedLoopSource::RangeInclusive { start, end } => {
-                    let typed_start = typecheck_expr(
-                        start,
-                        None,
-                        forwarded_params,
-                        var_env,
-                        type_env,
-                        registry,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                        errors,
-                    )?;
-                    let typed_end = typecheck_expr(
-                        end,
-                        None,
-                        forwarded_params,
-                        var_env,
-                        type_env,
-                        registry,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                        errors,
-                    )?;
-
-                    // Both bounds must be Int
-                    let start_type = typed_start.typ();
-                    if start_type != Type::Int {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::RangeBoundTypeMismatch { found: start_type },
-                            start.range().clone(),
-                        ));
-                    }
-                    let end_type = typed_end.typ();
-                    if end_type != Type::Int {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::RangeBoundTypeMismatch { found: end_type },
-                            end.range().clone(),
-                        ));
-                    }
-
-                    (
-                        TypedLoopSource::RangeInclusive {
-                            start: typed_start,
-                            end: typed_end,
-                        },
-                        Type::Int,
-                    )
-                }
-            };
-
-            // Push the loop variable into scope (only if not discarded with _)
-            let pushed = if let (Some(var_name), Some(var_name_range)) = (var_name, var_name_range)
-            {
-                match var_env.push(
-                    var_name.clone(),
-                    element_type.clone(),
-                    var_name_range.clone(),
-                ) {
-                    Ok(_) => {
-                        annotations.push(HoverAnnotation::TypeForVarName {
-                            range: var_name_range.clone(),
-                            typ: element_type,
-                            var_name: var_name.clone(),
-                        });
-                        true
-                    }
-                    Err(_) => {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::VariableAlreadyDefined {
-                                name: var_name.clone(),
-                            },
-                            var_name_range.clone(),
-                        ));
-                        false
-                    }
-                }
-            } else {
-                // Underscore binding - no variable to push
-                false
-            };
-
-            let typed_children = children
-                .iter()
-                .filter_map(|child| {
-                    typecheck_node(
-                        child,
-                        forwarded_params,
-                        registry,
-                        errors,
-                        var_env,
-                        type_env,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                    )
-                })
-                .collect();
-
-            if pushed {
-                let (name, entry) = var_env.pop();
-                if !entry.accessed {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::UnusedVariable { var_name: name },
-                        entry.range,
-                    ));
-                }
-            }
-
-            Some(TypedExpr::For {
-                var_name: var_name.clone(),
-                source: Box::new(typed_source),
-                body: Box::new(TypedExpr::HtmlConcat {
-                    nodes: typed_children,
-                }),
-                typ: Type::Html,
             })
         }
 

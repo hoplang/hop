@@ -446,16 +446,16 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <for {f in [Flag {value: true}]}>
-                      {match f {
+                    for f in [Flag {value: true}] {
+                      match f {
                         Flag {value: b} => {
                           match b || false {
                             true => <>yes</>,
                             false => <></>,
                           }
                         },
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -653,16 +653,16 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <for {c in [Count {n: 57}]}>
-                      {match c {
+                    for c in [Count {n: 57}] {
+                      match c {
                         Count {n: v} => {
                           match v == 57 {
                             true => <>eq</>,
                             false => <></>,
                           }
                         },
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -734,11 +734,11 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <for {f in [Flag {value: true}]}>
-                      {match f {
+                    for f in [Flag {value: true}] {
+                      match f {
                         Flag {value: b} => <>{match b {true => "yes", false => "no"}}</>,
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -1779,16 +1779,16 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let v_1: String = "outer";
-                    <for {f in [Flag {value: "x"}]}>
-                      {match f {
+                    for f in [Flag {value: "x"}] {
+                      match f {
                         Flag {value: b} => {
                           <>
                             {v_1}
                             {b}
                           </>
                         },
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -3233,11 +3233,11 @@ mod tests {
                   items: Array[String],
                   ...rest,
                 ) -> Html {
-                  <for {item in items}>
+                  for item in items {
                     <div ...rest>
                       {item}
                     </div>
-                  </for>
+                  }
                 }
 
                 page Test() {
@@ -3860,10 +3860,12 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {item in ["a", "b", "c"]}>
-                      {item}
-                      ,
-                    </for>
+                    for item in ["a", "b", "c"] {
+                      <>
+                        {item}
+                        ,
+                      </>
+                    }
                   }
                 }
             "#},
@@ -4105,12 +4107,12 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {v in [true]}>
-                      {match v {
+                    for v in [true] {
+                      match v {
                         true => <>x</>,
                         false => <></>,
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -4166,10 +4168,12 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {i in 1..=3}>
-                      {i.to_string()}
-                      ,
-                    </for>
+                    for i in 1..=3 {
+                      <>
+                        {i.to_string()}
+                        ,
+                      </>
+                    }
                   }
                 }
             "#},
@@ -4215,9 +4219,9 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {x in 0..=5}>
-                      {x.to_string()}
-                    </for>
+                    for x in 0..=5 {
+                      <>{x.to_string()}</>
+                    }
                   }
                 }
             "#},
@@ -4261,15 +4265,17 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {i in 1..=2}>
-                      <for {j in 1..=2}>
-                        (
-                        {i.to_string()}
-                        ,
-                        {j.to_string()}
-                        )
-                      </for>
-                    </for>
+                    for i in 1..=2 {
+                      for j in 1..=2 {
+                        <>
+                          (
+                          {i.to_string()}
+                          ,
+                          {j.to_string()}
+                          )
+                        </>
+                      }
+                    }
                   }
                 }
             "#},
@@ -4411,7 +4417,7 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {name in ["a", "b"]}>
+                    for name in ["a", "b"] {
                       <span class={
                         join!(
                           name,
@@ -4421,7 +4427,7 @@ mod tests {
                       }>
                         {name + "!" + "?"}
                       </span>
-                    </for>
+                    }
                   }
                 }
             "#},
@@ -4521,16 +4527,14 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {item in ["A", "B"]}>
-                      {
-                        let prefix: String = "[";
-                        <>
-                          {prefix}
-                          {item}
-                          ]
-                        </>
-                      }
-                    </for>
+                    for item in ["A", "B"] {
+                      let prefix: String = "[";
+                      <>
+                        {prefix}
+                        {item}
+                        ]
+                      </>
+                    }
                   }
                 }
             "#},
@@ -5533,12 +5537,12 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {item in [Some("a"), None, Some("b")]}>
-                      {match item {
+                    for item in [Some("a"), None, Some("b")] {
+                      match item {
                         Some(s) => <>{format!("[{}]", s)}</>,
                         None => <>[_]</>,
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -6706,9 +6710,9 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {_ in 0..=2}>
-                      x
-                    </for>
+                    for _ in 0..=2 {
+                      <>x</>
+                    }
                   }
                 }
             "#},
@@ -6752,13 +6756,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {x in ["a", "b"]}>
-                      {match false {
-                        true => <>{x}</>,
-                        false => <></>,
-                      }}
-                      y
-                    </for>
+                    for x in ["a", "b"] {
+                      <>
+                        {match false {
+                          true => <>{x}</>,
+                          false => <></>,
+                        }}
+                        y
+                      </>
+                    }
                   }
                 }
             "#},
@@ -6812,9 +6818,9 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let items: Array[String] = ["a", "b", "c"];
-                    <for {_ in items}>
-                      *
-                    </for>
+                    for _ in items {
+                      <>*</>
+                    }
                   }
                 }
             "#},
@@ -6860,11 +6866,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {_ in 0..=1}>
-                      <for {_ in 0..=2}>
-                        .
-                      </for>
-                    </for>
+                    for _ in 0..=1 {
+                      for _ in 0..=2 {
+                        <>.</>
+                      }
+                    }
                   }
                 }
             "#},
@@ -6912,11 +6918,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {i in 1..=2}>
-                      <for {_ in 0..=1}>
-                        {i.to_string()}
-                      </for>
-                    </for>
+                    for i in 1..=2 {
+                      for _ in 0..=1 {
+                        <>{i.to_string()}</>
+                      }
+                    }
                   }
                 }
             "#},
@@ -8568,9 +8574,9 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {s in ["\"", "\\", "foo\nbar", "foo\tbar", "C:\\Users\\name"]}>
-                      {s}
-                    </for>
+                    for s in ["\"", "\\", "foo\nbar", "foo\tbar", "C:\\Users\\name"] {
+                      <>{s}</>
+                    }
                   }
                 }
             "#},
@@ -8636,14 +8642,12 @@ mod tests {
                       Item {name: "a", value: "1"},
                       Item {name: "b", value: "2"},
                     ];
-                    <for {item in items}>
-                      {
-                        let n: String = item.name;
-                        <>
-                          [{n}]
-                        </>
-                      }
-                    </for>
+                    for item in items {
+                      let n: String = item.name;
+                      <>
+                        [{n}]
+                      </>
+                    }
                   }
                 }
             "#},
@@ -8722,14 +8726,12 @@ mod tests {
                         address: Address {city: "london"},
                       },
                     ];
-                    <for {person in people}>
-                      {
-                        let city: String = person.address.city;
-                        <>
-                          [{city}]
-                        </>
-                      }
-                    </for>
+                    for person in people {
+                      let city: String = person.address.city;
+                      <>
+                        [{city}]
+                      </>
+                    }
                   }
                 }
             "#},
@@ -8808,14 +8810,12 @@ mod tests {
                         Source {name: "a", value: "1"},
                         Source {name: "b", value: "2"},
                     ];
-                    <for {src in sources}>
-                      {
-                        let target = Target {label: src.name};
-                        <>
-                          [{target.label}]
-                        </>
-                      }
-                    </for>
+                    for src in sources {
+                      let target = Target {label: src.name};
+                      <>
+                        [{target.label}]
+                      </>
+                    }
                   }
                 }
             "#},
@@ -8883,19 +8883,17 @@ mod tests {
                         Item {name: "a"},
                         Item {name: "b"},
                     ];
-                    <for {item in items}>
-                      {
-                        let opt = Some(item.name);
-                        match opt {
-                          Some(s) => {
-                            <>
-                              [{s}]
-                            </>
-                          },
-                          None => <>[-]</>,
-                        }
+                    for item in items {
+                      let opt = Some(item.name);
+                      match opt {
+                        Some(s) => {
+                          <>
+                            [{s}]
+                          </>
+                        },
+                        None => <>[-]</>,
                       }
-                    </for>
+                    }
                   }
                 }
             "#},
@@ -9116,9 +9114,11 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let c = Container {items: ["a", "b"]};
-                    <for {item in c.items}>
-                      [{item}]
-                    </for>
+                    for item in c.items {
+                      <>
+                        [{item}]
+                      </>
+                    }
                   }
                 }
             "#},
@@ -9224,9 +9224,11 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let o = Outer {inner: Inner {values: ["x", "y"]}};
-                    <for {v in o.inner.values}>
-                      [{v}]
-                    </for>
+                    for v in o.inner.values {
+                      <>
+                        [{v}]
+                      </>
+                    }
                   }
                 }
             "#},
@@ -12286,8 +12288,8 @@ mod tests {
                       },
                     ];
                     <>
-                      <for {item in items}>
-                        {match item {
+                      {for item in items {
+                        match item {
                           Some(s) => {
                             <>
                               [
@@ -12296,8 +12298,8 @@ mod tests {
                             </>
                           },
                           None => <></>,
-                        }}
-                      </for>
+                        }
+                      }}
                       {match target {
                         Some(t) => {
                           <>
@@ -13266,9 +13268,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn C(p: Array[String]) -> Html {
-                  <for {_ in p}>
+                  for _ in p {
                     <C p={[]}/>
-                  </for>
+                  }
                 }
 
                 page Test() {
@@ -13543,12 +13545,12 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {n in [1, 2, 3]}>
-                      {match n > 1 {
+                    for n in [1, 2, 3] {
+                      match n > 1 {
                         true => <>{n.to_string()}</>,
                         false => <></>,
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -13608,12 +13610,12 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {s in ["a", "b"]}>
-                      {match s == "a" {
+                    for s in ["a", "b"] {
+                      match s == "a" {
                         true => <>{s}</>,
                         false => <></>,
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -13673,12 +13675,12 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {f in [1.5, 2.5]}>
-                      {match f > 2.0 {
+                    for f in [1.5, 2.5] {
+                      match f > 2.0 {
                         true => <>big</>,
                         false => <></>,
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -13738,12 +13740,12 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <for {flag in [true, false]}>
-                      {match flag && true {
+                    for flag in [true, false] {
+                      match flag && true {
                         true => <>x</>,
                         false => <></>,
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -13809,12 +13811,12 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <for {s in ["a", "b"]}>
-                      {match s == "a" {
+                    for s in ["a", "b"] {
+                      match s == "a" {
                         true => <Show label={s}/>,
                         false => <></>,
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -14366,10 +14368,12 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <for {s in [State {query: "a", num: 7}]}>
-                      {State {...s, query: "x"}.query}
-                      {State {...s, query: "x"}.num.to_string()}
-                    </for>
+                    for s in [State {query: "a", num: 7}] {
+                      <>
+                        {State {...s, query: "x"}.query}
+                        {State {...s, query: "x"}.num.to_string()}
+                      </>
+                    }
                   }
                 }
             "#},
@@ -14429,16 +14433,16 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <for {item in [Item {label: "a", selected: false}]}>
-                      {match item.selected {
+                    for item in [Item {label: "a", selected: false}] {
+                      match item.selected {
                         true => {
                           <Row item={Item {...item, label: "on"}}/>
                         },
                         false => {
                           <Row item={Item {...item, label: "off"}}/>
                         },
-                      }}
-                    </for>
+                      }
+                    }
                   }
                 }
             "#},
@@ -14758,10 +14762,12 @@ mod tests {
 
                 fn Wrapper() -> Html {
                   <div>
-                    <for {x in 0..=foo(-7)}>
-                      {x.to_string()}
-                      ,
-                    </for>
+                    {for x in 0..=foo(-7) {
+                      <>
+                        {x.to_string()}
+                        ,
+                      </>
+                    }}
                     {foo(10).to_string()}
                   </div>
                 }

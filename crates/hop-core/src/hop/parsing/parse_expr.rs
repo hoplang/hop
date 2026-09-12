@@ -643,18 +643,13 @@ fn parse_enum_literal(
     })
 }
 
-pub struct LoopHeader {
-    pub var_name: Option<VarName>,
-    pub var_name_range: Option<DocumentRange>,
-    pub loop_source: Box<ParsedLoopSource>,
-}
-
-pub fn parse_loop_header(
+fn parse_for(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
-) -> Result<LoopHeader, ErrorEmitted> {
+    for_range: DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
     let (var_name, var_name_range) =
         if let Some(underscore_range) = advance_if(iter, comments, errors, LangToken::Underscore) {
             (None, Some(underscore_range))
@@ -673,21 +668,6 @@ pub fn parse_loop_header(
     } else {
         ParsedLoopSource::Array(start_expr)
     };
-    Ok(LoopHeader {
-        var_name,
-        var_name_range,
-        loop_source: Box::new(source),
-    })
-}
-
-fn parse_for(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
-    for_range: DocumentRange,
-) -> Result<ParsedExpr, ErrorEmitted> {
-    let header = parse_loop_header(iter, comments, errors, eof_range)?;
     let left_brace = expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let (body, braces) = parse_delimited(
         iter,
@@ -699,9 +679,9 @@ fn parse_for(
         parse_block_body,
     )?;
     Ok(ParsedExpr::For {
-        var_name: header.var_name,
-        var_name_range: header.var_name_range,
-        source: header.loop_source,
+        var_name,
+        var_name_range,
+        source: Box::new(source),
         body: Box::new(body),
         range: for_range.to(braces),
     })

@@ -1439,21 +1439,21 @@ mod tests {
                 -- main.hop --
                 fn Main(items: Array[Int]) -> Html {
                   let x = 1;
-                  <for {item in items}>
+                  for item in items {
                     <div class={ let item = x; item }>{ let x = item; x }</div>
-                  </for>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Variable item is already defined
                   --> main.hop (line 4, col 22)
-                3 |   <for {item in items}>
+                3 |   for item in items {
                 4 |     <div class={ let item = x; item }>{ let x = item; x }</div>
                   |                      ^^^^
 
                 error: Variable x is already defined
                   --> main.hop (line 4, col 45)
-                3 |   <for {item in items}>
+                3 |   for item in items {
                 4 |     <div class={ let item = x; item }>{ let x = item; x }</div>
                   |                                             ^
             "#]],
@@ -2272,16 +2272,17 @@ mod tests {
                 }
 
                 fn Main(items: Items) -> Html {
-                  <for {items in items.foo}>
-                  </for>
+                  for items in items.foo {
+                    <></>
+                  }
                 }
             "#},
             expect![[r#"
                 error: Variable items is already defined
-                  --> main.hop (line 6, col 9)
+                  --> main.hop (line 6, col 7)
                 5 | fn Main(items: Items) -> Html {
-                6 |   <for {items in items.foo}>
-                  |         ^^^^^
+                6 |   for items in items.foo {
+                  |       ^^^^^
             "#]],
         );
     }
@@ -2297,19 +2298,19 @@ mod tests {
                 }
 
                 fn Main(items: Items) -> Html {
-                  <for {item in items.a}>
-                    <for {item in items.b}>
+                  for item in items.a {
+                    for item in items.b {
                       <div>{item}</div>
-                    </for>
-                  </for>
+                    }
+                  }
                 }
             "#},
             expect![[r#"
                 error: Variable item is already defined
-                  --> main.hop (line 8, col 11)
-                 7 |   <for {item in items.a}>
-                 8 |     <for {item in items.b}>
-                   |           ^^^^
+                  --> main.hop (line 8, col 9)
+                 7 |   for item in items.a {
+                 8 |     for item in items.b {
+                   |         ^^^^
             "#]],
         );
     }
@@ -2325,12 +2326,12 @@ mod tests {
 
                 fn Main(params: Array[Item]) -> Html {
                   <>
-                  	<for {item in params}>
-                  	  {match item.active {
+                  	{for item in params {
+                  	  match item.active {
                   	    true => <></>,
                   	    false => <></>,
-                  	  }}
-                  	</for>
+                  	  }
+                  	}}
                   	{match item.active {
                   	  true => <></>,
                   	  false => <></>,
@@ -2341,7 +2342,7 @@ mod tests {
             expect![[r#"
                 error: Undefined variable: item
                   --> main.hop (line 13, col 11)
-                12 |       </for>
+                12 |       }}
                 13 |       {match item.active {
                    |              ^^^^
             "#]],
@@ -2354,16 +2355,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(items: Array[String]) -> Html {
-                  <for {item in items}>
-                  </for>
+                  for item in items {
+                    <></>
+                  }
                 }
             "#},
             expect![[r#"
                 warning: Unused variable item
-                  --> main.hop (line 2, col 9)
+                  --> main.hop (line 2, col 7)
                 1 | fn Main(items: Array[String]) -> Html {
-                2 |   <for {item in items}>
-                  |         ^^^^
+                2 |   for item in items {
+                  |       ^^^^
             "#]],
         );
         reject(
@@ -2371,20 +2373,21 @@ mod tests {
                 -- main.hop --
                 fn Main(items: Array[String]) -> Html {
                   <>
-                    <for {item in items}>
-                        <div>{item}</div>
-                    </for>
-                    <for {item in items}>
-                    </for>
+                    {for item in items {
+                      <div>{item}</div>
+                    }}
+                    {for item in items {
+                      <></>
+                    }}
                   </>
                 }
             "#},
             expect![[r#"
                 warning: Unused variable item
-                  --> main.hop (line 6, col 11)
-                5 |     </for>
-                6 |     <for {item in items}>
-                  |           ^^^^
+                  --> main.hop (line 6, col 10)
+                 5 |     }}
+                 6 |     {for item in items {
+                   |          ^^^^
             "#]],
         );
         reject(
@@ -2392,20 +2395,21 @@ mod tests {
                 -- main.hop --
                 fn Main(items: Array[String]) -> Html {
                   <>
-                    <for {item in items}>
-                    </for>
-                    <for {item in items}>
-                        <div>{item}</div>
-                    </for>
+                    {for item in items {
+                      <></>
+                    }}
+                    {for item in items {
+                      <div>{item}</div>
+                    }}
                   </>
                 }
             "#},
             expect![[r#"
                 warning: Unused variable item
-                  --> main.hop (line 3, col 11)
-                2 |   <>
-                3 |     <for {item in items}>
-                  |           ^^^^
+                  --> main.hop (line 3, col 10)
+                 2 |   <>
+                 3 |     {for item in items {
+                   |          ^^^^
             "#]],
         );
     }
@@ -2584,26 +2588,26 @@ mod tests {
                 }
                 fn Main(params: Array[Item]) -> Html {
                   <>
-                  	<for {item in params}>
-                  		{match item.k {
+                  	{for item in params {
+                  		match item.k {
                   		  true => <>ok!</>,
                   		  false => <></>,
-                  		}}
-                  	</for>
-                  	<for {item in params}>
-                  		<for {inner in item.k}>
+                  		}
+                  	}}
+                  	{for item in params {
+                  		for inner in item.k {
                   			<div>{inner}</div>
-                  		</for>
-                  	</for>
+                  		}
+                  	}}
                   </>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type: expected Array[...] got Bool
-                  --> main.hop (line 13, col 20)
-                12 |       <for {item in params}>
-                13 |           <for {inner in item.k}>
-                   |                          ^^^^^^
+                  --> main.hop (line 13, col 18)
+                12 |       {for item in params {
+                13 |           for inner in item.k {
+                   |                        ^^^^^^
             "#]],
         );
     }
@@ -2688,7 +2692,8 @@ mod tests {
                 }
 
                 fn Main(params: Params) -> Html {
-                	<for {item in params.items}>
+                	for item in params.items {
+                		<>
                 		{match item.active {
                 		  true => <></>,
                 		  false => <></>,
@@ -2697,7 +2702,8 @@ mod tests {
                 		  true => <></>,
                 		  false => <></>,
                 		}}
-                	</for>
+                		</>
+                	}
                 }
             "#},
             expect![[r#"
@@ -2733,16 +2739,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn ListComp(items: Array[String]) -> Html {
-                	<for {item in items}>
+                	for item in items {
                 		<div>{item}</div>
-                	</for>
+                	}
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn ListComp(items: Array[String]) -> Html {
                   for item in items {
-                    concat(html(tag: "div", attrs: [], children: concat(escape(item))))
+                    html(tag: "div", attrs: [], children: concat(escape(item)))
                   }
                 }
             "#]],
@@ -2800,18 +2806,18 @@ mod tests {
 
                 fn Main(params: Array[Item]) -> Html {
                   <>
-                  	<for {j in params}>
-                  		{match j.a {
+                  	{for j in params {
+                  		match j.a {
                   		  true => <></>,
                   		  false => <></>,
-                  		}}
-                  	</for>
-                  	<for {j in params}>
-                  		{match j.b {
+                  		}
+                  	}}
+                  	{for j in params {
+                  		match j.b {
                   		  true => <></>,
                   		  false => <></>,
-                  		}}
-                  	</for>
+                  		}
+                  	}}
                   </>
                 }
             "#},
@@ -2820,10 +2826,10 @@ mod tests {
                 fn Main(params: Array[main::Item]) -> Html {
                   concat(
                     for j in params {
-                      concat(let v__0 = j.a in match v__0 {true => concat(), false => concat()})
+                      let v__0 = j.a in match v__0 {true => concat(), false => concat()}
                     },
                     for j in params {
-                      concat(let v__1 = j.b in match v__1 {true => concat(), false => concat()})
+                      let v__1 = j.b in match v__1 {true => concat(), false => concat()}
                     },
                   )
                 }
@@ -2843,19 +2849,19 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(i: Array[Bool]) -> Html {
-                	<for {j in i}>
-                		{match j {
+                	for j in i {
+                		match j {
                 		  true => <></>,
                 		  false => <></>,
-                		}}
-                	</for>
+                		}
+                	}
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(i: Array[Bool]) -> Html {
                   for j in i {
-                    concat(match j {true => concat(), false => concat()})
+                    match j {true => concat(), false => concat()}
                   }
                 }
             "#]],
@@ -2868,25 +2874,23 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(i: Array[Array[Bool]]) -> Html {
-                	<for {j in i}>
-                		<for {k in j}>
-                			{match k {
+                	for j in i {
+                		for k in j {
+                			match k {
                 			  true => <>ok!</>,
                 			  false => <></>,
-                			}}
-                		</for>
-                	</for>
+                			}
+                		}
+                	}
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(i: Array[Array[Bool]]) -> Html {
                   for j in i {
-                    concat(
-                      for k in j {
-                        concat(match k {true => concat(raw("ok!")), false => concat()})
-                      },
-                    )
+                    for k in j {
+                      match k {true => concat(raw("ok!")), false => concat()}
+                    }
                   }
                 }
             "#]],
@@ -2919,9 +2923,9 @@ mod tests {
                 }
 
                 pub fn PanelComp(data: Data) -> Html {
-                  <for {item in data.items}>
+                  for item in data.items {
                     <WidgetComp config={item}/>
-                  </for>
+                  }
                 }
 
                 -- main.hop --
@@ -2951,7 +2955,7 @@ mod tests {
                 -- foo.hop --
                 fn PanelComp(data: foo::Data) -> Html {
                   for item in data.items {
-                    concat(WidgetComp(config: item))
+                    WidgetComp(config: item)
                   }
                 }
 
@@ -3137,21 +3141,21 @@ mod tests {
                 -- main.hop --
                 fn Main(params: Array[String]) -> Html {
                   <>
-                  	<for {x in params}>
-                  		{x}
-                  	</for>
-                  	<for {y in params.foo}>
-                  		{y}
-                  	</for>
+                  	{for x in params {
+                  		<>{x}</>
+                  	}}
+                  	{for y in params.foo {
+                  		<>{y}</>
+                  	}}
                   </>
                 }
             "#},
             expect![[r#"
                 error: Array[String] can not be used as a record
-                  --> main.hop (line 6, col 15)
-                 5 |       </for>
-                 6 |       <for {y in params.foo}>
-                   |                  ^^^^^^
+                  --> main.hop (line 6, col 14)
+                 5 |       }}
+                 6 |       {for y in params.foo {
+                   |                 ^^^^^^
             "#]],
         );
     }
@@ -3289,17 +3293,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                    <for {x in []}>
-                      not ok
-                    </for>
+                    for x in [] {
+                      <>not ok</>
+                    }
                 }
             "#},
             expect![[r#"
                 error: Cannot infer type of empty array
-                  --> main.hop (line 2, col 16)
+                  --> main.hop (line 2, col 14)
                 1 | fn Main() -> Html {
-                2 |     <for {x in []}>
-                  |                ^^
+                2 |     for x in [] {
+                  |              ^^
             "#]],
         );
     }
@@ -3310,9 +3314,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn ListItems(items: Array[String]) -> Html {
-                    <for {item in items}>
+                    for item in items {
                         <li>{item}</li>
-                    </for>
+                    }
                 }
                 fn Main() -> Html {
                     <ListItems items={[]}/>
@@ -3322,7 +3326,7 @@ mod tests {
                 -- main.hop --
                 fn ListItems(items: Array[String]) -> Html {
                   for item in items {
-                    concat(html(tag: "li", attrs: [], children: concat(escape(item))))
+                    html(tag: "li", attrs: [], children: concat(escape(item)))
                   }
                 }
 
@@ -4199,7 +4203,9 @@ mod tests {
                     match t.root {
                         Node::Leaf{label} => <>{label}</>,
                         Node::Branch{children} => {
-                          <for {_ in children}>...</for>
+                          for _ in children {
+                            <>...</>
+                          }
                         },
                     }
                 }
@@ -4645,9 +4651,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn ItemList(items: Array[String] = []) -> Html {
-                  <for {item in items}>
-                    {item}
-                  </for>
+                  for item in items {
+                    <>{item}</>
+                  }
                 }
                 fn Main() -> Html {
                   <ItemList />
@@ -5295,24 +5301,22 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(items: Array[Option[String]]) -> Html {
-                    <for {item in items}>
-                        {match item {
+                    for item in items {
+                        match item {
                             Some(s) => <>{s}</>,
                             None => <>-</>,
-                        }}
-                    </for>
+                        }
+                    }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(items: Array[Option[String]]) -> Html {
                   for item in items {
-                    concat(
-                      match item {
-                        Some(v__0) => let s = v__0 in concat(escape(s)),
-                        None => concat(raw("-")),
-                      },
-                    )
+                    match item {
+                      Some(v__0) => let s = v__0 in concat(escape(s)),
+                      None => concat(raw("-")),
+                    }
                   }
                 }
             "#]],
@@ -9793,9 +9797,9 @@ mod tests {
 
                 fn Foo() -> Html {
                   <div>
-                    <for {x in 0..=add_ten(10)}>
-                      {x.to_string()}
-                    </for>
+                    {for x in 0..=add_ten(10) {
+                      <>{x.to_string()}</>
+                    }}
                   </div>
                 }
             "#},

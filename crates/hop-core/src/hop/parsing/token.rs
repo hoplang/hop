@@ -194,9 +194,10 @@ pub enum TagToken {
         name: DocumentRange,
         range: DocumentRange,
     },
-    /// A `{` inside a tag, starting a tag header. E.g.
+    /// A `{` inside a tag. No tag takes one, so this is only ever reported
+    /// as an error. E.g.
     /// ```text
-    /// <for {x in xs}>
+    /// <div {x}>
     ///      ^
     /// ```
     ExpressionStart { left_brace: DocumentRange },

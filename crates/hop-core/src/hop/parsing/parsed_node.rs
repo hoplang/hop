@@ -1,7 +1,6 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
-use crate::hop::parsing::parsed_expr::ParsedLoopSource;
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
@@ -64,23 +63,6 @@ pub enum ParsedNode {
         function_name_closing_range: Option<DocumentRange>,
         attributes: Vec<ParsedAttribute>,
         children: Option<Vec<ParsedNode>>,
-        range: DocumentRange,
-    },
-
-    /// A for node.
-    ///
-    /// ```text
-    /// <for {user in users}>
-    ///   ...
-    /// </for>
-    /// ```
-    For {
-        /// The bound variable name, `None` when the variable is discarded
-        /// using `_`.
-        var_name: Option<VarName>,
-        var_name_range: Option<DocumentRange>,
-        source: Box<ParsedLoopSource>,
-        children: Vec<ParsedNode>,
         range: DocumentRange,
     },
 
@@ -251,7 +233,6 @@ impl ParsedNode {
             | ParsedNode::Newline { range }
             | ParsedNode::Interpolation { range, .. }
             | ParsedNode::FunctionInvocation { range, .. }
-            | ParsedNode::For { range, .. }
             | ParsedNode::Comment { range }
             | ParsedNode::Fragment { range, .. }
             | ParsedNode::HtmlElement { range, .. } => range,
@@ -262,9 +243,9 @@ impl ParsedNode {
     pub fn children(&self) -> Vec<&Self> {
         match self {
             ParsedNode::FunctionInvocation { children, .. } => children.iter().flatten().collect(),
-            ParsedNode::For { children, .. }
-            | ParsedNode::HtmlElement { children, .. }
-            | ParsedNode::Fragment { children, .. } => children.iter().collect(),
+            ParsedNode::HtmlElement { children, .. } | ParsedNode::Fragment { children, .. } => {
+                children.iter().collect()
+            }
             ParsedNode::Comment { .. }
             | ParsedNode::Text { .. }
             | ParsedNode::Newline { .. }
@@ -285,10 +266,6 @@ impl ParsedNode {
                     | ParsedAttribute::Spread { .. } => None,
                 })
                 .collect(),
-            ParsedNode::For { source, .. } => match source.as_ref() {
-                ParsedLoopSource::Array(expr) => vec![expr],
-                ParsedLoopSource::RangeInclusive { start, end } => vec![start, end],
-            },
             ParsedNode::Text { .. }
             | ParsedNode::Newline { .. }
             | ParsedNode::Comment { .. }
@@ -397,23 +374,6 @@ impl ParsedNode {
                     );
                 }
                 call_doc(function_name.as_str(), args)
-            }
-            ParsedNode::For {
-                var_name,
-                source,
-                children,
-                ..
-            } => {
-                let var_doc = match var_name {
-                    Some(name) => BoxDoc::text(name.as_str()),
-                    None => BoxDoc::text("_"),
-                };
-                BoxDoc::text("for ")
-                    .append(var_doc)
-                    .append(" in ")
-                    .append(source.to_doc())
-                    .append(" ")
-                    .append(braced_doc(children.iter().map(|c| c.to_doc()).collect()))
             }
         }
     }

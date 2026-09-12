@@ -568,26 +568,6 @@ fn format_node<'a>(
             .text("<>")
             .append(format_children(arena, children, comments))
             .append(arena.text("</>")),
-        ParsedNode::For {
-            var_name,
-            source,
-            children,
-            ..
-        } => {
-            let children_doc = format_children(arena, children, comments);
-            let var_doc = match var_name {
-                Some(name) => arena.text(name.as_str()),
-                None => arena.text("_"),
-            };
-            arena
-                .text("<for {")
-                .append(var_doc)
-                .append(arena.text(" in "))
-                .append(format_loop_source(arena, source, comments))
-                .append(arena.text("}>"))
-                .append(children_doc)
-                .append(arena.text("</for>"))
-        }
         ParsedNode::Comment { range } => arena.text(range.as_str()),
         ParsedNode::HtmlElement {
             kind: element,
