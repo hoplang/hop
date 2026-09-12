@@ -1618,6 +1618,19 @@ mod tests {
     }
 
     #[test]
+    fn import_declaration_with_trivia_around_path_separators() {
+        check(
+            indoc! {"
+                import foo :: nested
+                  :: Bar
+            "},
+            expect![[r#"
+                import foo::nested::Bar
+            "#]],
+        );
+    }
+
+    #[test]
     fn multiple_import_declarations() {
         check(
             indoc! {"

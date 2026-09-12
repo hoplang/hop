@@ -143,6 +143,7 @@ fn parse_import_declaration(
             return Err(errors.emit(ParseErrorKind::ExpectedModulePath {}, eof_range.clone()));
         }
     };
+    let mut module_segments: Vec<CheapString> = Vec::new();
     let mut module_path: Option<DocumentRange> = None;
     while parse_helpers::advance_if(iter, comments, errors, LangToken::ColonColon).is_some() {
         let segment = match tokenize_expr::next(iter, comments, errors) {
@@ -159,9 +160,15 @@ fn parse_import_declaration(
                 ));
             }
         };
+        let (token, range) = last_segment;
+        module_segments.push(
+            token
+                .identifier()
+                .expect("import path segments are identifiers"),
+        );
         module_path = Some(match module_path {
-            Some(module_path) => module_path.to(last_segment.1),
-            None => last_segment.1,
+            Some(module_path) => module_path.to(range),
+            None => range,
         });
         last_segment = segment;
     }
@@ -175,12 +182,17 @@ fn parse_import_declaration(
     if let Err(error) = FunctionName::from_cheap_string(name.clone()) {
         return Err(errors.emit(ParseErrorKind::InvalidFunctionName { error }, name_range));
     }
-    let module_name = match ModuleName::new(module_path_range.as_str()) {
+    let module_path = module_segments
+        .iter()
+        .map(|segment| segment.as_str())
+        .collect::<Vec<_>>()
+        .join("::");
+    let module_name = match ModuleName::new(&module_path) {
         Ok(name) => name,
         Err(e) => {
             return Err(errors.emit(
                 ParseErrorKind::InvalidModuleName { error: e },
-                module_path_range.clone(),
+                module_path_range,
             ));
         }
     };
@@ -5208,6 +5220,31 @@ mod tests {
             "},
             expect![[r#"
                 import other::foo
+
+                fn bar() -> Int {
+                  foo()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_import_with_trivia_around_path_separators() {
+        accept(
+            indoc! {"
+                import other :: nested
+                  ::
+                  foo
+                import lib // module
+                  ::Button
+
+                fn bar() -> Int {
+                  foo()
+                }
+            "},
+            expect![[r#"
+                import other::nested::foo
+                import lib::Button
 
                 fn bar() -> Int {
                   foo()
