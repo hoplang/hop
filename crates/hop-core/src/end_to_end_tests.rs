@@ -449,9 +449,10 @@ mod tests {
                     <for {f in [Flag {value: true}]}>
                       {match f {
                         Flag {value: b} => {
-                          <if {b || false}>
-                            yes
-                          </if>
+                          match b || false {
+                            true => <>yes</>,
+                            false => <></>,
+                          }
                         },
                       }}
                     </for>
@@ -465,11 +466,13 @@ mod tests {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
-                        match (v2 || false) {
-                          true => {
-                            write("yes")
-                          }
-                          false => {
+                        let v3 = (v2 || false) in {
+                          match v3 {
+                            true => {
+                              write("yes")
+                            }
+                            false => {
+                            }
                           }
                         }
                       }
@@ -481,11 +484,13 @@ mod tests {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
-                        match (v2 || false) {
-                          true => {
-                            write("yes")
-                          }
-                          false => {
+                        let v3 = (v2 || false) in {
+                          match v3 {
+                            true => {
+                              write("yes")
+                            }
+                            false => {
+                            }
                           }
                         }
                       }
@@ -651,9 +656,10 @@ mod tests {
                     <for {c in [Count {n: 57}]}>
                       {match c {
                         Count {n: v} => {
-                          <if {v == 57}>
-                            eq
-                          </if>
+                          match v == 57 {
+                            true => <>eq</>,
+                            false => <></>,
+                          }
                         },
                       }}
                     </for>
@@ -667,11 +673,13 @@ mod tests {
                   for v0 in [Count {n: 57}] {
                     let v1 = v0.n in {
                       let v2 = v1 in {
-                        match (v2 == 57) {
-                          true => {
-                            write("eq")
-                          }
-                          false => {
+                        let v3 = (v2 == 57) in {
+                          match v3 {
+                            true => {
+                              write("eq")
+                            }
+                            false => {
+                            }
                           }
                         }
                       }
@@ -683,11 +691,13 @@ mod tests {
                   for v0 in [Count {n: 57}] {
                     let v1 = v0.n in {
                       let v2 = v1 in {
-                        match (v2 == 57) {
-                          true => {
-                            write("eq")
-                          }
-                          false => {
+                        let v3 = (v2 == 57) in {
+                          match v3 {
+                            true => {
+                              write("eq")
+                            }
+                            false => {
+                            }
                           }
                         }
                       }
@@ -756,82 +766,6 @@ mod tests {
                           true => { "yes" }
                           false => { "no" }
                         })
-                      }
-                    }
-                  }
-                }
-                -- expected output --
-                yes
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn bool_binding_from_record_pattern_as_if_condition() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                record Flag {
-                  value: Bool,
-                }
-
-                page Test() {
-                  fn body() -> Html {
-                    <for {f in [Flag {value: true}]}>
-                      {match f {
-                        Flag {value: b} => {
-                          <if {b}>
-                            yes
-                          </if>
-                        },
-                      }}
-                    </for>
-                  }
-                }
-            "#},
-            "yes",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  for v0 in [Flag {value: true}] {
-                    let v1 = v0.value in {
-                      let v2 = v1 in {
-                        match v2 {
-                          true => {
-                            write("yes")
-                          }
-                          false => {
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  for v0 in [Flag {value: true}] {
-                    let v1 = v0.value in {
-                      let v2 = v1 in {
-                        match v2 {
-                          true => {
-                            write("yes")
-                          }
-                          false => {
-                          }
-                        }
                       }
                     }
                   }
@@ -940,9 +874,10 @@ mod tests {
                 ) -> Html {
                   <>
                     <Leaf ...rest/>
-                    <if {0 < n}>
-                      <First n={n - 1}/>
-                    </if>
+                    {match 0 < n {
+                      true => <First n={n - 1}/>,
+                      false => <></>,
+                    }}
                   </>
                 }
 
@@ -976,11 +911,13 @@ mod tests {
                   rest@v6: Html,
                 ) -> Html {
                   call Leaf@f1(title = v5)
-                  match (0 < v4) {
-                    true => {
-                      call First@f0(n = (v4 - 1), title = "d", rest = {})
-                    }
-                    false => {
+                  let v7 = (0 < v4) in {
+                    match v7 {
+                      true => {
+                        call First@f0(n = (v4 - 1), title = "d", rest = {})
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -1005,11 +942,13 @@ mod tests {
                   write("<div>")
                   write_string(v5)
                   write("</div>")
-                  match (0 < v4) {
-                    true => {
-                      call First@f0(n = (v4 - 1), title = "d", rest = {})
-                    }
-                    false => {
+                  let v7 = (0 < v4) in {
+                    match v7 {
+                      true => {
+                        call First@f0(n = (v4 - 1), title = "d", rest = {})
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -1122,10 +1061,13 @@ mod tests {
                   show: Bool,
                   ...rest,
                 ) -> Html {
-                  <if {show}>
-                    <div ...rest>
-                    </div>
-                  </if>
+                  match show {
+                    true => {
+                      <div ...rest>
+                      </div>
+                    },
+                    false => <></>,
+                  }
                 }
 
                 page Test() {
@@ -1987,11 +1929,14 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Card(count: Int) -> Html {
-                  <if {count > 0}>
-                    <div>
-                      positive
-                    </div>
-                  </if>
+                  match count > 0 {
+                    true => {
+                      <div>
+                        positive
+                      </div>
+                    },
+                    false => <></>,
+                  }
                 }
 
                 fn Wrapper(...rest) -> Html {
@@ -2008,19 +1953,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0(count@v0: Int) -> Html {
-                  match (0 < v0) {
-                    true => {
-                      write("<div")
-                      write(">")
-                      write("positive")
-                      write("</div>")
-                    }
-                    false => {
+                  let v1 = (0 < v0) in {
+                    match v1 {
+                      true => {
+                        write("<div")
+                        write(">")
+                        write("positive")
+                        write("</div>")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
-                fn Wrapper@f1(count@v1: Int, rest@v2: Html) -> Html {
-                  call Card@f0(count = v1)
+                fn Wrapper@f1(count@v2: Int, rest@v3: Html) -> Html {
+                  call Card@f0(count = v2)
                 }
                 page Test() {
                   call Wrapper@f1(count = 3, rest = {})
@@ -2058,9 +2005,10 @@ mod tests {
                   ...rest,
                 ) -> Html {
                   <div ...rest>
-                    <if {count > 0}>
-                      positive
-                    </if>
+                    {match count > 0 {
+                      true => <>positive</>,
+                      false => <></>,
+                    }}
                   </div>
                 }
 
@@ -2081,18 +2029,20 @@ mod tests {
                   write("<div")
                   write_html(v1)
                   write(">")
-                  match (0 < v0) {
-                    true => {
-                      write("positive")
-                    }
-                    false => {
+                  let v2 = (0 < v0) in {
+                    match v2 {
+                      true => {
+                        write("positive")
+                      }
+                      false => {
+                      }
                     }
                   }
                   write("</div>")
                 }
-                fn B@f1(count@v2: Int, rest@v3: Html) -> Html {
-                  call A@f0(count = v2, rest = {
-                    write_html(v3)
+                fn B@f1(count@v3: Int, rest@v4: Html) -> Html {
+                  call A@f0(count = v3, rest = {
+                    write_html(v4)
                   })
                 }
                 page Test() {
@@ -2777,9 +2727,10 @@ mod tests {
                   ...rest,
                 ) -> Html {
                   <div ...rest>
-                    <if {tabindex > 0}>
-                      focusable
-                    </if>
+                    {match tabindex > 0 {
+                      true => <>focusable</>,
+                      false => <></>,
+                    }}
                   </div>
                 }
 
@@ -2800,18 +2751,20 @@ mod tests {
                   write("<div")
                   write_html(v1)
                   write(">")
-                  match (0 < v0) {
-                    true => {
-                      write("focusable")
-                    }
-                    false => {
+                  let v2 = (0 < v0) in {
+                    match v2 {
+                      true => {
+                        write("focusable")
+                      }
+                      false => {
+                      }
                     }
                   }
                   write("</div>")
                 }
-                fn B@f1(tabindex@v2: Int, rest@v3: Html) -> Html {
-                  call A@f0(tabindex = v2, rest = {
-                    write_html(v3)
+                fn B@f1(tabindex@v3: Int, rest@v4: Html) -> Html {
+                  call A@f0(tabindex = v3, rest = {
+                    write_html(v4)
                   })
                 }
                 page Test() {
@@ -3842,12 +3795,14 @@ mod tests {
                   fn body() -> Html {
                     let show: Bool = true;
                     <>
-                      <if {show}>
-                        Visible
-                      </if>
-                      <if {!show}>
-                        Hidden
-                      </if>
+                      {match show {
+                        true => <>Visible</>,
+                        false => <></>,
+                      }}
+                      {match !show {
+                        true => <>Hidden</>,
+                        false => <></>,
+                      }}
                     </>
                   }
                 }
@@ -3864,11 +3819,13 @@ mod tests {
                       false => {
                       }
                     }
-                    match (!v0) {
-                      true => {
-                        write("Hidden")
-                      }
-                      false => {
+                    let v1 = (!v0) in {
+                      match v1 {
+                        true => {
+                          write("Hidden")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -3946,16 +3903,17 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn for_loop_over_bool_array_with_if() {
+    fn for_loop_over_bool_array_with_bool_match() {
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
                     <for {v in [true]}>
-                      <if {v}>
-                        x
-                      </if>
+                      {match v {
+                        true => <>x</>,
+                        false => <></>,
+                      }}
                     </for>
                   }
                 }
@@ -4426,9 +4384,10 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <if {"foo" + "bar" == "foobar"}>
-                      equals
-                    </if>
+                    match "foo" + "bar" == "foobar" {
+                      true => <>equals</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -4436,11 +4395,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  match (("foo" + "bar") == "foobar") {
-                    true => {
-                      write("equals")
-                    }
-                    false => {
+                  let v0 = (("foo" + "bar") == "foobar") in {
+                    match v0 {
+                      true => {
+                        write("equals")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -4475,12 +4436,14 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <>
-                      <if {3 < 5}>
-                        3 &lt; 5
-                      </if>
-                      <if {10 < 2}>
-                        10 &lt; 2
-                      </if>
+                      {match 3 < 5 {
+                        true => <>3 &lt; 5</>,
+                        false => <></>,
+                      }}
+                      {match 10 < 2 {
+                        true => <>10 &lt; 2</>,
+                        false => <></>,
+                      }}
                     </>
                   }
                 }
@@ -4489,18 +4452,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  match (3 < 5) {
-                    true => {
-                      write("3 &lt; 5")
-                    }
-                    false => {
+                  let v0 = (3 < 5) in {
+                    match v0 {
+                      true => {
+                        write("3 &lt; 5")
+                      }
+                      false => {
+                      }
                     }
                   }
-                  match (10 < 2) {
-                    true => {
-                      write("10 &lt; 2")
-                    }
-                    false => {
+                  let v1 = (10 < 2) in {
+                    match v1 {
+                      true => {
+                        write("10 &lt; 2")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -4534,9 +4501,10 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <if {1.5 < 2.5}>
-                      1.5 &lt; 2.5
-                    </if>
+                    match 1.5 < 2.5 {
+                      true => <>1.5 &lt; 2.5</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -4544,11 +4512,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  match (1.5 < 2.5) {
-                    true => {
-                      write("1.5 &lt; 2.5")
-                    }
-                    false => {
+                  let v0 = (1.5 < 2.5) in {
+                    match v0 {
+                      true => {
+                        write("1.5 &lt; 2.5")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -4590,9 +4560,10 @@ mod tests {
                     let person: Person = Person {name: "Alice", age: 30};
                     <>
                       {person.name}
-                      <if {person.age == 30}>
-                        :30
-                      </if>
+                      {match person.age == 30 {
+                        true => <>:30</>,
+                        false => <></>,
+                      }}
                     </>
                   }
                 }
@@ -4603,11 +4574,13 @@ mod tests {
                 page Test() {
                   let v0 = Person {name: "Alice", age: 30} in {
                     write_string(v0.name)
-                    match (v0.age == 30) {
-                      true => {
-                        write(":30")
-                      }
-                      false => {
+                    let v1 = (v0.age == 30) in {
+                      match v1 {
+                        true => {
+                          write(":30")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -4831,9 +4804,10 @@ mod tests {
                   fn body() -> Html {
                     let a: Int = 3;
                     let b: Int = 7;
-                    <if {a + b == 10}>
-                      correct
-                    </if>
+                    match a + b == 10 {
+                      true => <>correct</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -4843,11 +4817,13 @@ mod tests {
                 page Test() {
                   let v0 = 3 in {
                     let v1 = 7 in {
-                      match ((v0 + v1) == 10) {
-                        true => {
-                          write("correct")
-                        }
-                        false => {
+                      let v2 = ((v0 + v1) == 10) in {
+                        match v2 {
+                          true => {
+                            write("correct")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -4885,9 +4861,10 @@ mod tests {
                   fn body() -> Html {
                     let a: Int = 10;
                     let b: Int = 3;
-                    <if {a - b == 7}>
-                      correct
-                    </if>
+                    match a - b == 7 {
+                      true => <>correct</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -4897,11 +4874,13 @@ mod tests {
                 page Test() {
                   let v0 = 10 in {
                     let v1 = 3 in {
-                      match ((v0 - v1) == 7) {
-                        true => {
-                          write("correct")
-                        }
-                        false => {
+                      let v2 = ((v0 - v1) == 7) in {
+                        match v2 {
+                          true => {
+                            write("correct")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -4939,9 +4918,10 @@ mod tests {
                   fn body() -> Html {
                     let a: Int = 4;
                     let b: Int = 5;
-                    <if {a * b == 20}>
-                      correct
-                    </if>
+                    match a * b == 20 {
+                      true => <>correct</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -4951,11 +4931,13 @@ mod tests {
                 page Test() {
                   let v0 = 4 in {
                     let v1 = 5 in {
-                      match ((v0 * v1) == 20) {
-                        true => {
-                          write("correct")
-                        }
-                        false => {
+                      let v2 = ((v0 * v1) == 20) in {
+                        match v2 {
+                          true => {
+                            write("correct")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -4993,9 +4975,10 @@ mod tests {
                   fn body() -> Html {
                     let a: Bool = true;
                     let b: Bool = true;
-                    <if {a && b}>
-                      TT
-                    </if>
+                    match a && b {
+                      true => <>TT</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -5005,11 +4988,13 @@ mod tests {
                 page Test() {
                   let v0 = true in {
                     let v1 = true in {
-                      match (v0 && v1) {
-                        true => {
-                          write("TT")
-                        }
-                        false => {
+                      let v2 = (v0 && v1) in {
+                        match v2 {
+                          true => {
+                            write("TT")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -5047,9 +5032,10 @@ mod tests {
                   fn body() -> Html {
                     let a: Bool = false;
                     let b: Bool = true;
-                    <if {a || b}>
-                      FT
-                    </if>
+                    match a || b {
+                      true => <>FT</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -5059,11 +5045,13 @@ mod tests {
                 page Test() {
                   let v0 = false in {
                     let v1 = true in {
-                      match (v0 || v1) {
-                        true => {
-                          write("FT")
-                        }
-                        false => {
+                      let v2 = (v0 || v1) in {
+                        match v2 {
+                          true => {
+                            write("FT")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -5100,15 +5088,18 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <>
-                      <if {3 <= 5}>
-                        A
-                      </if>
-                      <if {5 <= 5}>
-                        B
-                      </if>
-                      <if {7 <= 5}>
-                        C
-                      </if>
+                      {match 3 <= 5 {
+                        true => <>A</>,
+                        false => <></>,
+                      }}
+                      {match 5 <= 5 {
+                        true => <>B</>,
+                        false => <></>,
+                      }}
+                      {match 7 <= 5 {
+                        true => <>C</>,
+                        false => <></>,
+                      }}
                     </>
                   }
                 }
@@ -5117,25 +5108,31 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  match (3 <= 5) {
-                    true => {
-                      write("A")
-                    }
-                    false => {
-                    }
-                  }
-                  match (5 <= 5) {
-                    true => {
-                      write("B")
-                    }
-                    false => {
+                  let v0 = (3 <= 5) in {
+                    match v0 {
+                      true => {
+                        write("A")
+                      }
+                      false => {
+                      }
                     }
                   }
-                  match (7 <= 5) {
-                    true => {
-                      write("C")
+                  let v1 = (5 <= 5) in {
+                    match v1 {
+                      true => {
+                        write("B")
+                      }
+                      false => {
+                      }
                     }
-                    false => {
+                  }
+                  let v2 = (7 <= 5) in {
+                    match v2 {
+                      true => {
+                        write("C")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -6026,9 +6023,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let items: Array[String] = ["x", "y"];
-                    <if {items.len() == 2}>
-                      has two
-                    </if>
+                    match items.len() == 2 {
+                      true => <>has two</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -6037,11 +6035,13 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = ["x", "y"] in {
-                    match (v0.len() == 2) {
-                      true => {
-                        write("has two")
-                      }
-                      false => {
+                    let v1 = (v0.len() == 2) in {
+                      match v1 {
+                        true => {
+                          write("has two")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -6077,9 +6077,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let items: Array[String] = ["a"];
-                    <if {items.len() < 5}>
-                      less than 5
-                    </if>
+                    match items.len() < 5 {
+                      true => <>less than 5</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -6088,11 +6089,13 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = ["a"] in {
-                    match (v0.len() < 5) {
-                      true => {
-                        write("less than 5")
-                      }
-                      false => {
+                    let v1 = (v0.len() < 5) in {
+                      match v1 {
+                        true => {
+                          write("less than 5")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -6554,9 +6557,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {x in ["a", "b"]}>
-                      <if {false}>
-                        {x}
-                      </if>
+                      {match false {
+                        true => <>{x}</>,
+                        false => <></>,
+                      }}
                       y
                     </for>
                   }
@@ -6567,11 +6571,13 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   for v0 in ["a", "b"] {
-                    match false {
-                      true => {
-                        write_string(v0)
-                      }
-                      false => {
+                    let v1 = false in {
+                      match v1 {
+                        true => {
+                          write_string(v0)
+                        }
+                        false => {
+                        }
                       }
                     }
                     write("y")
@@ -8219,9 +8225,10 @@ mod tests {
                 fn Countdown(delete: Int) -> Html {
                   <>
                     {delete.to_string()}
-                    <if {0 < delete}>
-                      <Countdown delete={delete - 1}/>
-                    </if>
+                    {match 0 < delete {
+                      true => <Countdown delete={delete - 1}/>,
+                      false => <></>,
+                    }}
                   </>
                 }
 
@@ -8236,11 +8243,13 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Countdown@f0(delete@v0: Int) -> Html {
                   write_string(v0.to_string())
-                  match (0 < v0) {
-                    true => {
-                      call Countdown@f0(delete = (v0 - 1))
-                    }
-                    false => {
+                  let v1 = (0 < v0) in {
+                    match v1 {
+                      true => {
+                        call Countdown@f0(delete = (v0 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -8250,11 +8259,13 @@ mod tests {
                 -- ir (optimized) --
                 fn Countdown@f0(delete@v0: Int) -> Html {
                   write_string(v0.to_string())
-                  match (0 < v0) {
-                    true => {
-                      call Countdown@f0(delete = (v0 - 1))
-                    }
-                    false => {
+                  let v1 = (0 < v0) in {
+                    match v1 {
+                      true => {
+                        call Countdown@f0(delete = (v0 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -8288,9 +8299,10 @@ mod tests {
                 fn Countdown(type: Int) -> Html {
                   <>
                     {type.to_string()}
-                    <if {0 < type}>
-                      <Countdown type={type - 1}/>
-                    </if>
+                    {match 0 < type {
+                      true => <Countdown type={type - 1}/>,
+                      false => <></>,
+                    }}
                   </>
                 }
 
@@ -8305,11 +8317,13 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Countdown@f0(type@v0: Int) -> Html {
                   write_string(v0.to_string())
-                  match (0 < v0) {
-                    true => {
-                      call Countdown@f0(type = (v0 - 1))
-                    }
-                    false => {
+                  let v1 = (0 < v0) in {
+                    match v1 {
+                      true => {
+                        call Countdown@f0(type = (v0 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -8319,11 +8333,13 @@ mod tests {
                 -- ir (optimized) --
                 fn Countdown@f0(type@v0: Int) -> Html {
                   write_string(v0.to_string())
-                  match (0 < v0) {
-                    true => {
-                      call Countdown@f0(type = (v0 - 1))
-                    }
-                    false => {
+                  let v1 = (0 < v0) in {
+                    match v1 {
+                      true => {
+                        call Countdown@f0(type = (v0 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -11496,9 +11512,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let o: Option[Bool] = None;
-                    <if {true == o.is_none()}>
-                      x
-                    </if>
+                    match true == o.is_none() {
+                      true => <>x</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -11507,11 +11524,13 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Option[Bool]::None in {
-                    match (true == v0.is_none()) {
-                      true => {
-                        write("x")
-                      }
-                      false => {
+                    let v1 = (true == v0.is_none()) in {
+                      match v1 {
+                        true => {
+                          write("x")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -11546,9 +11565,10 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <if {"a".is_empty() == "b".is_empty()}>
-                      x
-                    </if>
+                    match "a".is_empty() == "b".is_empty() {
+                      true => <>x</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -11556,11 +11576,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  match ("a".is_empty() == "b".is_empty()) {
-                    true => {
-                      write("x")
-                    }
-                    false => {
+                  let v0 = ("a".is_empty() == "b".is_empty()) in {
+                    match v0 {
+                      true => {
+                        write("x")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -11690,12 +11712,14 @@ mod tests {
                   match item {
                     Item::Todo {label: l, done: d} => {
                       <>
-                        <if {d}>
-                          [x]
-                        </if>
-                        <if {!d}>
-                          [ ]
-                        </if>
+                        {match d {
+                          true => <>[x]</>,
+                          false => <></>,
+                        }}
+                        {match !d {
+                          true => <>[ ]</>,
+                          false => <></>,
+                        }}
                         {l}
                       </>
                     }
@@ -11731,11 +11755,13 @@ mod tests {
                             false => {
                             }
                           }
-                          match (!v4) {
-                            true => {
-                              write("[ ]")
-                            }
-                            false => {
+                          let v5 = (!v4) in {
+                            match v5 {
+                              true => {
+                                write("[ ]")
+                              }
+                              false => {
+                              }
                             }
                           }
                           write_string(v3)
@@ -12512,9 +12538,10 @@ mod tests {
                   ...rest,
                 ) -> Html {
                   <div ...rest>
-                    <if {0 < n}>
-                      <Nest n={n - 1}/>
-                    </if>
+                    {match 0 < n {
+                      true => <Nest n={n - 1}/>,
+                      false => <></>,
+                    }}
                   </div>
                 }
 
@@ -12531,11 +12558,13 @@ mod tests {
                   write("<div")
                   write_html(v1)
                   write(">")
-                  match (0 < v0) {
-                    true => {
-                      call Nest@f0(n = (v0 - 1), rest = {})
-                    }
-                    false => {
+                  let v2 = (0 < v0) in {
+                    match v2 {
+                      true => {
+                        call Nest@f0(n = (v0 - 1), rest = {})
+                      }
+                      false => {
+                      }
                     }
                   }
                   write("</div>")
@@ -12550,11 +12579,13 @@ mod tests {
                   write("<div")
                   write_html(v1)
                   write(">")
-                  match (0 < v0) {
-                    true => {
-                      call Nest@f0(n = (v0 - 1), rest = {})
-                    }
-                    false => {
+                  let v2 = (0 < v0) in {
+                    match v2 {
+                      true => {
+                        call Nest@f0(n = (v0 - 1), rest = {})
+                      }
+                      false => {
+                      }
                     }
                   }
                   write("</div>")
@@ -12591,9 +12622,10 @@ mod tests {
                 fn Countdown(n: Int) -> Html {
                   <>
                     {n.to_string()}
-                    <if {0 < n}>
-                      <Countdown n={n - 1}/>
-                    </if>
+                    {match 0 < n {
+                      true => <Countdown n={n - 1}/>,
+                      false => <></>,
+                    }}
                   </>
                 }
 
@@ -12608,11 +12640,13 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Countdown@f0(n@v0: Int) -> Html {
                   write_string(v0.to_string())
-                  match (0 < v0) {
-                    true => {
-                      call Countdown@f0(n = (v0 - 1))
-                    }
-                    false => {
+                  let v1 = (0 < v0) in {
+                    match v1 {
+                      true => {
+                        call Countdown@f0(n = (v0 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -12622,11 +12656,13 @@ mod tests {
                 -- ir (optimized) --
                 fn Countdown@f0(n@v0: Int) -> Html {
                   write_string(v0.to_string())
-                  match (0 < v0) {
-                    true => {
-                      call Countdown@f0(n = (v0 - 1))
-                    }
-                    false => {
+                  let v1 = (0 < v0) in {
+                    match v1 {
+                      true => {
+                        call Countdown@f0(n = (v0 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -12666,9 +12702,10 @@ mod tests {
                       Some(text) => <>{text}</>,
                       None => <>x</>,
                     }}
-                    <if {0 < n}>
-                      <Loop n={n - 1} label={label}/>
-                    </if>
+                    {match 0 < n {
+                      true => <Loop n={n - 1} label={label}/>,
+                      false => <></>,
+                    }}
                   </>
                 }
 
@@ -12692,11 +12729,13 @@ mod tests {
                       write("x")
                     }
                   }
-                  match (0 < v0) {
-                    true => {
-                      call Loop@f0(n = (v0 - 1), label = v1)
-                    }
-                    false => {
+                  let v4 = (0 < v0) in {
+                    match v4 {
+                      true => {
+                        call Loop@f0(n = (v0 - 1), label = v1)
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -12715,11 +12754,13 @@ mod tests {
                       write("x")
                     }
                   }
-                  match (0 < v0) {
-                    true => {
-                      call Loop@f0(n = (v0 - 1), label = v1)
-                    }
-                    false => {
+                  let v4 = (0 < v0) in {
+                    match v4 {
+                      true => {
+                        call Loop@f0(n = (v0 - 1), label = v1)
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -12751,9 +12792,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn C(x: Option[String]) -> Html {
-                  <if {x.is_none()}>
-                    <C x={x}/>
-                  </if>
+                  match x.is_none() {
+                    true => <C x={x}/>,
+                    false => <></>,
+                  }
                 }
 
                 page Test() {
@@ -12770,11 +12812,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn C@f0(x@v1: Option[String]) -> Html {
-                  match v1.is_none() {
-                    true => {
-                      call C@f0(x = v1)
-                    }
-                    false => {
+                  let v2 = v1.is_none() in {
+                    match v2 {
+                      true => {
+                        call C@f0(x = v1)
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -12786,11 +12830,13 @@ mod tests {
                 }
                 -- ir (optimized) --
                 fn C@f0(x@v1: Option[String]) -> Html {
-                  match v1.is_none() {
-                    true => {
-                      call C@f0(x = v1)
-                    }
-                    false => {
+                  let v2 = v1.is_none() in {
+                    match v2 {
+                      true => {
+                        call C@f0(x = v1)
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -12824,23 +12870,27 @@ mod tests {
                 -- main.hop --
                 fn Even(n: Int) -> Html {
                   <>
-                    <if {n == 0}>
-                      even
-                    </if>
-                    <if {0 < n}>
-                      <Odd n={n - 1}/>
-                    </if>
+                    {match n == 0 {
+                      true => <>even</>,
+                      false => <></>,
+                    }}
+                    {match 0 < n {
+                      true => <Odd n={n - 1}/>,
+                      false => <></>,
+                    }}
                   </>
                 }
 
                 fn Odd(n: Int) -> Html {
                   <>
-                    <if {n == 0}>
-                      odd
-                    </if>
-                    <if {0 < n}>
-                      <Even n={n - 1}/>
-                    </if>
+                    {match n == 0 {
+                      true => <>odd</>,
+                      false => <></>,
+                    }}
+                    {match 0 < n {
+                      true => <Even n={n - 1}/>,
+                      false => <></>,
+                    }}
                   </>
                 }
 
@@ -12854,34 +12904,42 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Even@f0(n@v0: Int) -> Html {
-                  match (v0 == 0) {
-                    true => {
-                      write("even")
-                    }
-                    false => {
+                  let v1 = (v0 == 0) in {
+                    match v1 {
+                      true => {
+                        write("even")
+                      }
+                      false => {
+                      }
                     }
                   }
-                  match (0 < v0) {
-                    true => {
-                      call Odd@f1(n = (v0 - 1))
-                    }
-                    false => {
+                  let v2 = (0 < v0) in {
+                    match v2 {
+                      true => {
+                        call Odd@f1(n = (v0 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
-                fn Odd@f1(n@v1: Int) -> Html {
-                  match (v1 == 0) {
-                    true => {
-                      write("odd")
-                    }
-                    false => {
+                fn Odd@f1(n@v3: Int) -> Html {
+                  let v4 = (v3 == 0) in {
+                    match v4 {
+                      true => {
+                        write("odd")
+                      }
+                      false => {
+                      }
                     }
                   }
-                  match (0 < v1) {
-                    true => {
-                      call Even@f0(n = (v1 - 1))
-                    }
-                    false => {
+                  let v5 = (0 < v3) in {
+                    match v5 {
+                      true => {
+                        call Even@f0(n = (v3 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -12890,34 +12948,42 @@ mod tests {
                 }
                 -- ir (optimized) --
                 fn Even@f0(n@v0: Int) -> Html {
-                  match (v0 == 0) {
-                    true => {
-                      write("even")
-                    }
-                    false => {
+                  let v1 = (v0 == 0) in {
+                    match v1 {
+                      true => {
+                        write("even")
+                      }
+                      false => {
+                      }
                     }
                   }
-                  match (0 < v0) {
-                    true => {
-                      call Odd@f1(n = (v0 - 1))
-                    }
-                    false => {
+                  let v2 = (0 < v0) in {
+                    match v2 {
+                      true => {
+                        call Odd@f1(n = (v0 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
-                fn Odd@f1(n@v1: Int) -> Html {
-                  match (v1 == 0) {
-                    true => {
-                      write("odd")
-                    }
-                    false => {
+                fn Odd@f1(n@v3: Int) -> Html {
+                  let v4 = (v3 == 0) in {
+                    match v4 {
+                      true => {
+                        write("odd")
+                      }
+                      false => {
+                      }
                     }
                   }
-                  match (0 < v1) {
-                    true => {
-                      call Even@f0(n = (v1 - 1))
-                    }
-                    false => {
+                  let v5 = (0 < v3) in {
+                    match v5 {
+                      true => {
+                        call Even@f0(n = (v3 - 1))
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -12944,7 +13010,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn field_access_on_record_literal_in_if_condition() {
+    fn field_access_on_record_literal_as_match_subject() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -12954,9 +13020,10 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <if {R {f: true}.f}>
-                      x
-                    </if>
+                    match R {f: true}.f {
+                      true => <>x</>,
+                      false => <></>,
+                    }
                   }
                 }
             "#},
@@ -12964,11 +13031,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  match R {f: true}.f {
-                    true => {
-                      write("x")
-                    }
-                    false => {
+                  let v0 = R {f: true}.f in {
+                    match v0 {
+                      true => {
+                        write("x")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -13052,7 +13121,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn field_access_on_record_literal_from_arg_in_if_condition() {
+    fn field_access_on_record_literal_from_arg_as_match_subject() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -13061,9 +13130,10 @@ mod tests {
                 }
 
                 fn C(p: Array[String]) -> Html {
-                  <if {R {f: p}.f.is_empty()}>
-                    <C p={[]}/>
-                  </if>
+                  match R {f: p}.f.is_empty() {
+                    true => <C p={[]}/>,
+                    false => <></>,
+                  }
                 }
 
                 page Test() {
@@ -13076,11 +13146,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn C@f0(p@v0: Array[String]) -> Html {
-                  match R {f: v0}.f.is_empty() {
-                    true => {
-                      call C@f0(p = [])
-                    }
-                    false => {
+                  let v1 = R {f: v0}.f.is_empty() in {
+                    match v1 {
+                      true => {
+                        call C@f0(p = [])
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -13089,11 +13161,13 @@ mod tests {
                 }
                 -- ir (optimized) --
                 fn C@f0(p@v0: Array[String]) -> Html {
-                  match v0.is_empty() {
-                    true => {
-                      call C@f0(p = [])
-                    }
-                    false => {
+                  let v1 = v0.is_empty() in {
+                    match v1 {
+                      true => {
+                        call C@f0(p = [])
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -13274,9 +13348,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {n in [1, 2, 3]}>
-                      <if {n > 1}>
-                        {n.to_string()}
-                      </if>
+                      {match n > 1 {
+                        true => <>{n.to_string()}</>,
+                        false => <></>,
+                      }}
                     </for>
                   }
                 }
@@ -13286,11 +13361,13 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   for v0 in [1, 2, 3] {
-                    match (1 < v0) {
-                      true => {
-                        write_string(v0.to_string())
-                      }
-                      false => {
+                    let v1 = (1 < v0) in {
+                      match v1 {
+                        true => {
+                          write_string(v0.to_string())
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -13298,11 +13375,13 @@ mod tests {
                 -- ir (optimized) --
                 page Test() {
                   for v0 in [1, 2, 3] {
-                    match (1 < v0) {
-                      true => {
-                        write_string(v0.to_string())
-                      }
-                      false => {
+                    let v1 = (1 < v0) in {
+                      match v1 {
+                        true => {
+                          write_string(v0.to_string())
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -13334,9 +13413,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {s in ["a", "b"]}>
-                      <if {s == "a"}>
-                        {s}
-                      </if>
+                      {match s == "a" {
+                        true => <>{s}</>,
+                        false => <></>,
+                      }}
                     </for>
                   }
                 }
@@ -13346,11 +13426,13 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   for v0 in ["a", "b"] {
-                    match (v0 == "a") {
-                      true => {
-                        write_string(v0)
-                      }
-                      false => {
+                    let v1 = (v0 == "a") in {
+                      match v1 {
+                        true => {
+                          write_string(v0)
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -13358,11 +13440,13 @@ mod tests {
                 -- ir (optimized) --
                 page Test() {
                   for v0 in ["a", "b"] {
-                    match (v0 == "a") {
-                      true => {
-                        write_string(v0)
-                      }
-                      false => {
+                    let v1 = (v0 == "a") in {
+                      match v1 {
+                        true => {
+                          write_string(v0)
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -13394,9 +13478,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {f in [1.5, 2.5]}>
-                      <if {f > 2.0}>
-                        big
-                      </if>
+                      {match f > 2.0 {
+                        true => <>big</>,
+                        false => <></>,
+                      }}
                     </for>
                   }
                 }
@@ -13406,11 +13491,13 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   for v0 in [1.5, 2.5] {
-                    match (2 < v0) {
-                      true => {
-                        write("big")
-                      }
-                      false => {
+                    let v1 = (2 < v0) in {
+                      match v1 {
+                        true => {
+                          write("big")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -13418,11 +13505,13 @@ mod tests {
                 -- ir (optimized) --
                 page Test() {
                   for v0 in [1.5, 2.5] {
-                    match (2 < v0) {
-                      true => {
-                        write("big")
-                      }
-                      false => {
+                    let v1 = (2 < v0) in {
+                      match v1 {
+                        true => {
+                          write("big")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -13454,9 +13543,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {flag in [true, false]}>
-                      <if {flag && true}>
-                        x
-                      </if>
+                      {match flag && true {
+                        true => <>x</>,
+                        false => <></>,
+                      }}
                     </for>
                   }
                 }
@@ -13466,11 +13556,13 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   for v0 in [true, false] {
-                    match (v0 && true) {
-                      true => {
-                        write("x")
-                      }
-                      false => {
+                    let v1 = (v0 && true) in {
+                      match v1 {
+                        true => {
+                          write("x")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -13478,11 +13570,13 @@ mod tests {
                 -- ir (optimized) --
                 page Test() {
                   for v0 in [true, false] {
-                    match (v0 && true) {
-                      true => {
-                        write("x")
-                      }
-                      false => {
+                    let v1 = (v0 && true) in {
+                      match v1 {
+                        true => {
+                          write("x")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -13520,9 +13614,10 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {s in ["a", "b"]}>
-                      <if {s == "a"}>
-                        <Show label={s}/>
-                      </if>
+                      {match s == "a" {
+                        true => <Show label={s}/>,
+                        false => <></>,
+                      }}
                     </for>
                   }
                 }
@@ -13530,19 +13625,21 @@ mod tests {
             "<span>a</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Show@f0(label@v1: String) -> Html {
+                fn Show@f0(label@v2: String) -> Html {
                   write("<span")
                   write(">")
-                  write_string(v1)
+                  write_string(v2)
                   write("</span>")
                 }
                 page Test() {
                   for v0 in ["a", "b"] {
-                    match (v0 == "a") {
-                      true => {
-                        call Show@f0(label = v0)
-                      }
-                      false => {
+                    let v1 = (v0 == "a") in {
+                      match v1 {
+                        true => {
+                          call Show@f0(label = v0)
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -13550,13 +13647,15 @@ mod tests {
                 -- ir (optimized) --
                 page Test() {
                   for v0 in ["a", "b"] {
-                    match (v0 == "a") {
-                      true => {
-                        write("<span>")
-                        write_string(v0)
-                        write("</span>")
-                      }
-                      false => {
+                    let v1 = (v0 == "a") in {
+                      match v1 {
+                        true => {
+                          write("<span>")
+                          write_string(v0)
+                          write("</span>")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }

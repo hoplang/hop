@@ -570,19 +570,6 @@ fn format_node<'a>(
             .text("<>")
             .append(format_children(arena, children, comments))
             .append(arena.text("</>")),
-        ParsedNode::If {
-            condition,
-            children,
-            ..
-        } => {
-            let children_doc = format_children(arena, children, comments);
-            arena
-                .text("<if ")
-                .append(format_braced_expr(arena, condition, comments))
-                .append(arena.text(">"))
-                .append(children_doc)
-                .append(arena.text("</if>"))
-        }
         ParsedNode::For {
             var_name,
             source,
@@ -1810,28 +1797,35 @@ mod tests {
     }
 
     #[test]
-    fn let_in_tag_headers() {
+    fn let_as_match_subject() {
         check(
             indoc! {r#"
                 fn Main(a: Int) -> Html {
-                  <if { let n = a; n == 1 }>
-                    {match { let m = a; m == 1 } {
-                      true => <>one</>,
-                    }}
-                  </if>
+                  match { let n = a; n == 1 } {
+                    true => {
+                      match { let m = a; m == 1 } {
+                        true => <>one</>,
+                        false => <></>,
+                      }
+                    },
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
                 fn Main(a: Int) -> Html {
-                  <if {
+                  match {
                     let n = a;
                     n == 1
-                  }>
-                    {match {
+                  } {
+                    true => match {
                       let m = a;
                       m == 1
-                    } {true => <>one</>}}
-                  </if>
+                    } {true => <>one</>, false => <></>},
+                    false => {
+                      <></>
+                    },
+                  }
                 }
             "#]],
         );
@@ -2244,13 +2238,14 @@ mod tests {
     }
 
     #[test]
-    fn if_with_equality_condition() {
+    fn match_subject_with_equality() {
         check(
             indoc! {"
                 fn Main(a: String, b: String) -> Html {
-                  <if {a == b}>
-                    <div>equal</div>
-                  </if>
+                  match a == b {
+                    true => <div>equal</div>,
+                    false => <></>,
+                  }
                 }
             "},
             expect![[r#"
@@ -2258,24 +2253,21 @@ mod tests {
                   a: String,
                   b: String,
                 ) -> Html {
-                  <if {a == b}>
-                    <div>
-                      equal
-                    </div>
-                  </if>
+                  match a == b {true => <div>equal</div>, false => <></>}
                 }
             "#]],
         );
     }
 
     #[test]
-    fn if_with_logical_and_condition() {
+    fn match_subject_with_logical_and() {
         check(
             indoc! {"
                 fn Main(a: Bool, b: Bool) -> Html {
-                  <if {a && b}>
-                    <div>both true</div>
-                  </if>
+                  match a && b {
+                    true => <div>both true</div>,
+                    false => <></>,
+                  }
                 }
             "},
             expect![[r#"
@@ -2283,24 +2275,30 @@ mod tests {
                   a: Bool,
                   b: Bool,
                 ) -> Html {
-                  <if {a && b}>
-                    <div>
-                      both true
-                    </div>
-                  </if>
+                  match a && b {
+                    true => {
+                      <div>
+                        both true
+                      </div>
+                    },
+                    false => {
+                      <></>
+                    },
+                  }
                 }
             "#]],
         );
     }
 
     #[test]
-    fn if_with_nested_logical_operators() {
+    fn match_subject_with_nested_logical_operators() {
         check(
             indoc! {"
                 fn Main(a: Bool, b: Bool, c: Bool) -> Html {
-                  <if {a && b || c}>
-                    <div>complex</div>
-                  </if>
+                  match a && b || c {
+                    true => <div>complex</div>,
+                    false => <></>,
+                  }
                 }
             "},
             expect![[r#"
@@ -2309,46 +2307,49 @@ mod tests {
                   b: Bool,
                   c: Bool,
                 ) -> Html {
-                  <if {a && b || c}>
-                    <div>
-                      complex
-                    </div>
-                  </if>
+                  match a && b || c {
+                    true => {
+                      <div>
+                        complex
+                      </div>
+                    },
+                    false => {
+                      <></>
+                    },
+                  }
                 }
             "#]],
         );
     }
 
     #[test]
-    fn if_with_negation() {
+    fn match_subject_with_negation() {
         check(
             indoc! {"
                 fn Main(a: Bool) -> Html {
-                  <if {!a}>
-                    <div>not a</div>
-                  </if>
+                  match !a {
+                    true => <div>not a</div>,
+                    false => <></>,
+                  }
                 }
             "},
             expect![[r#"
                 fn Main(a: Bool) -> Html {
-                  <if {!a}>
-                    <div>
-                      not a
-                    </div>
-                  </if>
+                  match !a {true => <div>not a</div>, false => <></>}
                 }
             "#]],
         );
     }
 
     #[test]
-    fn if_with_negated_equality() {
+    fn match_subject_with_negated_equality() {
         check(
             indoc! {"
                 fn Main(a: String, b: String) -> Html {
-                  <if {!(a == b)}>
-                    <div>not equal</div>
-                  </if>
+                  match !(a == b) {
+                    true => <div>not equal</div>,
+                    false => <></>,
+                  }
                 }
             "},
             expect![[r#"
@@ -2356,11 +2357,16 @@ mod tests {
                   a: String,
                   b: String,
                 ) -> Html {
-                  <if {!(a == b)}>
-                    <div>
-                      not equal
-                    </div>
-                  </if>
+                  match !(a == b) {
+                    true => {
+                      <div>
+                        not equal
+                      </div>
+                    },
+                    false => {
+                      <></>
+                    },
+                  }
                 }
             "#]],
         );

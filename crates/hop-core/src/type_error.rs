@@ -105,9 +105,6 @@ pub(crate) enum TypeErrorKind {
         cycle_display: String,
     },
 
-    #[error("Mismatched type for condition: expected Bool got {found}")]
-    ConditionTypeMismatch { found: Type },
-
     #[error("Function {name} requires arguments: {args}")]
     MissingArguments { name: FunctionName, args: String },
 

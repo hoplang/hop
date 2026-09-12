@@ -2102,10 +2102,11 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(items: Array[String]) -> Html {
-                  <if {items.len() == 0}>
-                             ^
-                    Empty
-                  </if>
+                  match items.len() == 0 {
+                              ^
+                    true => <>Empty</>,
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -2114,9 +2115,9 @@ mod tests {
                 ```
 
                 Returns the number of elements in the array.
-                  --> main.hop (line 2, col 14)
-                2 |   <if {items.len() == 0}>
-                  |              ^^^
+                  --> main.hop (line 2, col 15)
+                2 |   match items.len() == 0 {
+                  |               ^^^
             "#]],
         );
     }
@@ -2127,10 +2128,11 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(items: Array[String]) -> Html {
-                  <if {items.is_empty()}>
+                  match items.is_empty() {
                               ^
-                    Empty
-                  </if>
+                    true => <>Empty</>,
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -2139,9 +2141,9 @@ mod tests {
                 ```
 
                 Returns `true` if the array is empty.
-                  --> main.hop (line 2, col 14)
-                2 |   <if {items.is_empty()}>
-                  |              ^^^^^^^^
+                  --> main.hop (line 2, col 15)
+                2 |   match items.is_empty() {
+                  |               ^^^^^^^^
             "#]],
         );
     }
@@ -2628,9 +2630,10 @@ mod tests {
             page Test() {
               fn body() -> Html {
                 let color: Color = Color::Red;
-                <if {color == Color::Red}>
-                  equal
-                </if>
+                match (color == Color::Red) {
+                  true => <>equal</>,
+                  false => <></>,
+                }
               }
             }
         "#});
@@ -2638,9 +2641,9 @@ mod tests {
             &program,
             expect![[r#"
                 Type main::Color is not comparable
-                  --> main.hop (line 10, col 10)
-                10 |     <if {color == Color::Red}>
-                   |          ^^^^^
+                  --> main.hop (line 10, col 12)
+                10 |     match (color == Color::Red) {
+                   |            ^^^^^
             "#]],
         );
     }
@@ -2658,9 +2661,10 @@ mod tests {
             page Test() {
               fn body() -> Html {
                 let color: Color = Color::Red;
-                <if {color != Color::Red}>
-                  not equal
-                </if>
+                match (color != Color::Red) {
+                  true => <>not equal</>,
+                  false => <></>,
+                }
               }
             }
         "#});
@@ -2668,9 +2672,9 @@ mod tests {
             &program,
             expect![[r#"
                 Type main::Color is not comparable
-                  --> main.hop (line 10, col 10)
-                10 |     <if {color != Color::Red}>
-                   |          ^^^^^
+                  --> main.hop (line 10, col 12)
+                10 |     match (color != Color::Red) {
+                   |            ^^^^^
             "#]],
         );
     }

@@ -35,7 +35,6 @@ pub fn normalize_node(node: &mut ParsedNode) {
         } => {}
         ParsedNode::HtmlElement { children, .. }
         | ParsedNode::Fragment { children, .. }
-        | ParsedNode::If { children, .. }
         | ParsedNode::For { children, .. } => normalize(children),
         ParsedNode::FunctionInvocation { children, .. } => {
             if let Some(children) = children {

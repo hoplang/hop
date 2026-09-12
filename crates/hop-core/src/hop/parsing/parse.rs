@@ -999,29 +999,35 @@ mod tests {
     }
 
     #[test]
-    fn accepts_let_in_expression_headers() {
+    fn accepts_let_as_match_subject() {
         accept(
             indoc! {"
                 fn Main(a: Int) -> Html {
-                  <if { let n = a; n == 1 }>
-                    {match { let m = a; m == 1 } {
-                      true => <>one</>,
-                    }}
-                  </if>
+                  match { let n = a; n == 1 } {
+                    true => {
+                      match { let m = a; m == 1 } {
+                        true => <>one</>,
+                        false => <></>,
+                      }
+                    },
+                    false => <></>,
+                  }
                 }
             "},
             expect![[r#"
                 fn Main(a: Int) -> Html {
-                  if {
+                  match {
                     let n = a;
                     n == 1
                   } {
-                    interpolate(
-                      match {
-                        let m = a;
-                        m == 1
-                      } {true => fragment(text("one"))},
-                    ),
+                    true => match {
+                      let m = a;
+                      m == 1
+                    } {
+                      true => fragment(text("one")),
+                      false => fragment(),
+                    },
+                    false => fragment(),
                   }
                 }
             "#]],
@@ -1265,8 +1271,10 @@ mod tests {
                     <>
                         <for {j in i}>
                             <for {k in j.s.t}>
-                                <if {k}>
-                                </if>
+                                {match k {
+                                  true => <></>,
+                                  false => <></>,
+                                }}
                             </for>
                         </for>
                         <for {p in i}>
@@ -1290,7 +1298,14 @@ mod tests {
                 fn Main(i: Array[S]) -> Html {
                   fragment(
                     for j in i {
-                      for k in j.s.t { if k {} },
+                      for k in j.s.t {
+                        interpolate(
+                          match k {
+                            true => fragment(),
+                            false => fragment(),
+                          },
+                        ),
+                      },
                     },
                     for p in i {
                       for k in p.s.t {
@@ -2242,27 +2257,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_expression_is_missing_in_if_tag() {
-        reject(
-            indoc! {"
-                fn Main() -> Html {
-                    <if>
-                        <div>Content</div>
-                    </if>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Missing expression in <if> tag
-                1 | fn Main() -> Html {
-                2 |     <if>
-                  |     ^^^^
-                -- ast --
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_when_expression_is_missing_in_for_tag() {
         reject(
             indoc! {"
@@ -2299,32 +2293,6 @@ mod tests {
                 1 | fn Main() -> Html {
                 2 |     <for {foo}>
                   |              ^
-                -- ast --
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_if_tag_has_invalid_expression() {
-        reject(
-            indoc! {"
-                fn Main() -> Html {
-                    <if {~}>
-                        <div>Content</div>
-                    </if>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Unexpected character: '~'
-                1 | fn Main() -> Html {
-                2 |     <if {~}>
-                  |          ^
-
-                error: Unexpected token '}'
-                1 | fn Main() -> Html {
-                2 |     <if {~}>
-                  |           ^
                 -- ast --
             "#]],
         );
@@ -2676,60 +2644,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_if_statement() {
-        accept(
-            indoc! {"
-                fn Main(x: Int, y: Int) -> Html {
-                    <if {x == y}>
-                        <div>Equal</div>
-                    </if>
-                }
-            "},
-            expect![[r#"
-                fn Main(x: Int, y: Int) -> Html {
-                  if x == y {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [text("Equal")],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_if_with_two_expressions() {
-        reject(
-            indoc! {"
-                fn Main(x: Int, y: Int) -> Html {
-                    <if {x == 1} {y == 2}>
-                        <div>Which</div>
-                    </if>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: <if> already has an expression
-                1 | fn Main(x: Int, y: Int) -> Html {
-                2 |     <if {x == 1} {y == 2}>
-                  |                  ^^^^^^^^
-                -- ast --
-                fn Main(x: Int, y: Int) -> Html {
-                  if x == 1 {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [text("Which")],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_for_with_two_expressions() {
         reject(
             indoc! {"
@@ -2760,21 +2674,27 @@ mod tests {
     }
 
     #[test]
-    fn accepts_if_statement_with_nested_for_loop() {
+    fn accepts_match_on_bool_with_nested_for_loop() {
         accept(
             indoc! {"
                 fn Main(x: Bool, data: Array[String]) -> Html {
-	                <if {x}>
-		                <for {d in data}>
-                          {d}
-		                </for>
-	                </if>
+	                match x {
+	                  true => {
+	                    <for {d in data}>
+	                      {d}
+	                    </for>
+	                  },
+	                  false => <></>,
+	                }
                 }
             "},
             expect![[r#"
                 fn Main(x: Bool, data: Array[String]) -> Html {
-                  if x {
-                    for d in data { interpolate(d) },
+                  match x {
+                    true => for d in data {
+                      interpolate(d),
+                    },
+                    false => fragment(),
                   }
                 }
             "#]],
@@ -4645,26 +4565,28 @@ mod tests {
     }
 
     #[test]
-    fn accepts_page_with_if_statement() {
+    fn accepts_page_with_match_on_bool() {
         accept(
             indoc! {"
                 page Index(show: Bool) {
                   fn body() -> Html {
-                      <if {show}>
-                          <div>Visible</div>
-                      </if>
+                      match show {
+                        true => <div>Visible</div>,
+                        false => <></>,
+                      }
                   }
                 }
             "},
             expect![[r#"
                 page Index(show: Bool) {
                   fn body() -> Html {
-                    if show {
-                      html(
+                    match show {
+                      true => html(
                         tag: "div",
                         attrs: [],
                         children: [text("Visible")],
                       ),
+                      false => fragment(),
                     }
                   }
                 }
@@ -5704,30 +5626,6 @@ mod tests {
                         ),
                       ],
                     )
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_a_control_flow_tag_in_expression_position() {
-        accept(
-            indoc! {"
-                fn card(on: Bool) -> Html {
-                  <if {on}>
-                    <div>hello</div>
-                  </if>
-                }
-            "},
-            expect![[r#"
-                fn card(on: Bool) -> Html {
-                  if on {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [text("hello")],
-                    ),
                   }
                 }
             "#]],

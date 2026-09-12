@@ -172,29 +172,6 @@ mod tests {
     }
 
     #[test]
-    fn should_find_if_node() {
-        check_find_node_at_position(
-            indoc! {"
-                fn Main() -> Html {
-                    <if {true}>
-                        ^
-                        <div/>
-                    </if>
-                }
-            "},
-            expect![[r#"
-                range
-                2 |     <if {true}>
-                  |     ^^^^^^^^^^^
-                3 |         <div/>
-                  | ^^^^^^^^^^^^^^
-                4 |     </if>
-                  | ^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_find_nested_text_content() {
         check_find_node_at_position(
             indoc! {"
@@ -232,19 +209,22 @@ mod tests {
             indoc! {"
                 fn Main() -> Html {
                     <div>
-                        <if {condition}>
+                        {match condition {
+                          true => {
                             <for {item in items}>
                                 <span>{item}</span>
                                         ^
                             </for>
-                        </if>
+                          },
+                          false => <></>,
+                        }}
                     </div>
                 }
             "},
             expect![[r#"
                 range
-                5 |                 <span>{item}</span>
-                  |                       ^^^^^^
+                 6 |                 <span>{item}</span>
+                   |                       ^^^^^^
             "#]],
         );
     }
@@ -325,7 +305,8 @@ mod tests {
                     <div>
                         <section>
                             <article>
-                                <if {condition}>
+                                {match condition {
+                                  true => {
                                     <for {item in items}>
                                         <header>
                                             <h1>
@@ -336,7 +317,9 @@ mod tests {
                                             </h1>
                                         </header>
                                     </for>
-                                </if>
+                                  },
+                                  false => <></>,
+                                }}
                             </article>
                         </section>
                     </div>
@@ -344,7 +327,7 @@ mod tests {
             "},
             expect![[r#"
                 range
-                10 |                                     <em>Deep {item.name} text</em>
+                11 |                                     <em>Deep {item.name} text</em>
                    |                                              ^^^^^^^^^^^
             "#]],
         );
@@ -422,22 +405,28 @@ mod tests {
         check_find_node_at_position(
             indoc! {"
                 fn Main() -> Html {
-                    <if {users}>
+                    match users {
+                      true => {
                         <for {user in users}>
-                            <if {user.active}>
-                                <for {role in user.roles}>
-                                    <span>{role}</span>
-                                       ^
-                                </for>
-                            </if>
+                          {match user.active {
+                            true => {
+                              <for {role in user.roles}>
+                                  <span>{role}</span>
+                                     ^
+                              </for>
+                            },
+                            false => <></>,
+                          }}
                         </for>
-                    </if>
+                      },
+                      false => <></>,
+                    }
                 }
             "},
             expect![[r#"
                 range
-                 6 |                     <span>{role}</span>
-                   |                     ^^^^^^^^^^^^^^^^^^^
+                 8 |                   <span>{role}</span>
+                   |                   ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

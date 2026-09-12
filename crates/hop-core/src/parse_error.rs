@@ -121,9 +121,6 @@ pub(crate) enum ParseErrorKind {
         attr_name: CheapString,
     },
 
-    #[error("Missing expression in <if> tag")]
-    MissingIfExpression,
-
     #[error("<{tag_name}> already has an expression")]
     DuplicateTagExpression { tag_name: CheapString },
 

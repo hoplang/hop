@@ -66,19 +66,6 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// An if node.
-    ///
-    /// ```text
-    /// <if {x == 20}>
-    ///   ...
-    /// </if>
-    /// ```
-    If {
-        condition: ParsedExpr,
-        children: Vec<ParsedNode>,
-        range: DocumentRange,
-    },
-
     /// A for node.
     ///
     /// ```text
@@ -282,7 +269,6 @@ impl ParsedNode {
             | ParsedNode::Newline { range }
             | ParsedNode::Interpolation { range, .. }
             | ParsedNode::FunctionInvocation { range, .. }
-            | ParsedNode::If { range, .. }
             | ParsedNode::For { range, .. }
             | ParsedNode::Comment { range }
             | ParsedNode::Fragment { range, .. }
@@ -294,8 +280,7 @@ impl ParsedNode {
     pub fn children(&self) -> Vec<&Self> {
         match self {
             ParsedNode::FunctionInvocation { children, .. } => children.iter().flatten().collect(),
-            ParsedNode::If { children, .. }
-            | ParsedNode::For { children, .. }
+            ParsedNode::For { children, .. }
             | ParsedNode::HtmlElement { children, .. }
             | ParsedNode::Fragment { children, .. } => children.iter().collect(),
             ParsedNode::Comment { .. }
@@ -308,7 +293,6 @@ impl ParsedNode {
     pub fn expressions(&self) -> Vec<&ParsedExpr> {
         match self {
             ParsedNode::Interpolation { expression, .. } => vec![expression],
-            ParsedNode::If { condition, .. } => vec![condition],
             ParsedNode::FunctionInvocation { attributes, .. }
             | ParsedNode::HtmlElement { attributes, .. } => attributes
                 .iter()
@@ -432,14 +416,6 @@ impl ParsedNode {
                 }
                 call_doc(function_name.as_str(), args)
             }
-            ParsedNode::If {
-                condition,
-                children,
-                ..
-            } => BoxDoc::text("if ")
-                .append(condition.to_doc())
-                .append(" ")
-                .append(braced_doc(children.iter().map(|c| c.to_doc()).collect())),
             ParsedNode::For {
                 var_name,
                 source,

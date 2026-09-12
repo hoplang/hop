@@ -195,8 +195,8 @@ pub enum TagToken {
     },
     /// A `{` inside a tag, starting a tag header. E.g.
     /// ```text
-    /// <if {true}>
-    ///     ^
+    /// <for {x in xs}>
+    ///      ^
     /// ```
     ExpressionStart { left_brace: DocumentRange },
     /// The `>` that ends the tag. E.g.

@@ -92,13 +92,10 @@ enum ElementHeader {
 /// one written on a tag that takes none is kept until the element is built
 /// and rejected there. E.g.
 /// ```text
-/// <if {done}>
-///     ^^^^^^
+/// <for {x in xs}>
+///      ^^^^^^^^^
 /// ```
 enum TagHeader {
-    If {
-        cond: Slot<ParsedExpr>,
-    },
     For {
         expr: Slot<LoopHeader>,
     },
@@ -416,9 +413,6 @@ fn parse_opening_tag(
     errors: &mut ParseErrors,
 ) -> (OpenElement, TagEnd) {
     let mut header = match tag_name_range.as_str() {
-        "if" => TagHeader::If {
-            cond: Slot::empty(),
-        },
         "for" => TagHeader::For {
             expr: Slot::empty(),
         },
@@ -518,8 +512,7 @@ fn parse_opening_tag(
             },
 
             TagToken::ExpressionStart { left_brace } => match &mut header {
-                TagHeader::If { cond: slot }
-                | TagHeader::Function {
+                TagHeader::Function {
                     expression: slot, ..
                 }
                 | TagHeader::Html {
@@ -660,19 +653,6 @@ fn close_element(
         ElementHeader::Tag(header) => header,
     };
     match header {
-        TagHeader::If { cond } => {
-            let (condition, _) = cond.require(
-                ParseErrorKind::MissingIfExpression {},
-                &opening_range,
-                errors,
-            )?;
-            Ok(ParsedNode::If {
-                condition,
-                range,
-                children,
-            })
-        }
-
         TagHeader::For { expr } => {
             let (header, _) = expr.require(
                 ParseErrorKind::MissingForExpression {},

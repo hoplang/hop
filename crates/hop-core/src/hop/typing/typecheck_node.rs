@@ -6,7 +6,6 @@ use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parsed_node::{ParsedAttribute, ParsedLoopSource, ParsedNode};
-use crate::hop::patterns::Match;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
@@ -51,63 +50,6 @@ pub fn typecheck_node(
 
             Some(TypedExpr::HtmlConcat {
                 nodes: typed_children,
-            })
-        }
-
-        ParsedNode::If {
-            condition,
-            children,
-            range: _,
-        } => {
-            let typed_children = children
-                .iter()
-                .filter_map(|child| {
-                    typecheck_node(
-                        child,
-                        forwarded_params,
-                        registry,
-                        errors,
-                        var_env,
-                        type_env,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                    )
-                })
-                .collect();
-
-            let typed_condition = typecheck_expr(
-                condition,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            )?;
-
-            let condition_type = typed_condition.typ();
-            if condition_type != Type::Bool {
-                errors.push(TypeError::new(
-                    TypeErrorKind::ConditionTypeMismatch {
-                        found: condition_type,
-                    },
-                    condition.range().clone(),
-                ));
-            }
-
-            Some(TypedExpr::Match {
-                match_: Match::Bool {
-                    subject: Box::new(typed_condition),
-                    true_body: Box::new(TypedExpr::HtmlConcat {
-                        nodes: typed_children,
-                    }),
-                    false_body: Box::new(TypedExpr::HtmlConcat { nodes: Vec::new() }),
-                },
-                typ: Type::Html,
             })
         }
 

@@ -2326,20 +2326,24 @@ mod tests {
                 fn Main(params: Array[Item]) -> Html {
                   <>
                   	<for {item in params}>
-                  	  <if {item.active}>
-                  	  </if>
+                  	  {match item.active {
+                  	    true => <></>,
+                  	    false => <></>,
+                  	  }}
                   	</for>
-                  	<if {item.active}>
-                  	</if>
+                  	{match item.active {
+                  	  true => <></>,
+                  	  false => <></>,
+                  	}}
                   </>
                 }
             "#},
             expect![[r#"
                 error: Undefined variable: item
-                  --> main.hop (line 11, col 9)
-                10 |       </for>
-                11 |       <if {item.active}>
-                   |            ^^^^
+                  --> main.hop (line 13, col 11)
+                12 |       </for>
+                13 |       {match item.active {
+                   |              ^^^^
             "#]],
         );
     }
@@ -2447,9 +2451,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(a: Bool, b: String) -> Html {
-                  <if {a}>
-                    <div>{b}</div>
-                  </if>
+                  match a {
+                    true => <div>{b}</div>,
+                    false => <></>,
+                  }
                 }
                 fn Foo() -> Html {
                   <Main b="foo" a={true}/>
@@ -2463,7 +2468,7 @@ mod tests {
 
                 fn Main(a: Bool, b: String) -> Html {
                   match a {
-                    true => concat(html(tag: "div", attrs: [], children: concat(escape(b)))),
+                    true => html(tag: "div", attrs: [], children: concat(escape(b))),
                     false => concat(),
                   }
                 }
@@ -2477,9 +2482,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(a: Bool, b: String) -> Html {
-                  <if {a}>
-                    <div>{b}</div>
-                  </if>
+                  match a {
+                    true => <div>{b}</div>,
+                    false => <></>,
+                  }
                 }
                 fn Foo() -> Html {
                   <Main b="foo"/>
@@ -2487,9 +2493,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Function Main requires arguments: a
-                  --> main.hop (line 7, col 4)
-                6 | fn Foo() -> Html {
-                7 |   <Main b="foo"/>
+                  --> main.hop (line 8, col 4)
+                7 | fn Foo() -> Html {
+                8 |   <Main b="foo"/>
                   |    ^^^^
             "#]],
         );
@@ -2525,9 +2531,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(a: Bool, b: String) -> Html {
-                  <if {a}>
-                    <div>{b}</div>
-                  </if>
+                  match a {
+                    true => <div>{b}</div>,
+                    false => <></>,
+                  }
                 }
                 fn Foo() -> Html {
                   <Main />
@@ -2535,9 +2542,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Function Main requires arguments: a, b
-                  --> main.hop (line 7, col 4)
-                6 | fn Foo() -> Html {
-                7 |   <Main />
+                  --> main.hop (line 8, col 4)
+                7 | fn Foo() -> Html {
+                8 |   <Main />
                   |    ^^^^
             "#]],
         );
@@ -2578,9 +2585,10 @@ mod tests {
                 fn Main(params: Array[Item]) -> Html {
                   <>
                   	<for {item in params}>
-                  		<if {item.k}>
-                            ok!
-                  		</if>
+                  		{match item.k {
+                  		  true => <>ok!</>,
+                  		  false => <></>,
+                  		}}
                   	</for>
                   	<for {item in params}>
                   		<for {inner in item.k}>
@@ -2592,9 +2600,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Mismatched type: expected Array[...] got Bool
-                  --> main.hop (line 12, col 20)
-                11 |       <for {item in params}>
-                12 |           <for {inner in item.k}>
+                  --> main.hop (line 13, col 20)
+                12 |       <for {item in params}>
+                13 |           <for {inner in item.k}>
                    |                          ^^^^^^
             "#]],
         );
@@ -2624,18 +2632,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn ToggleComp(enabled: Bool) -> Html {
-                	<if {enabled}>
-                		<div>Enabled</div>
-                	</if>
+                  match enabled {
+                    true => <div>Enabled</div>,
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn ToggleComp(enabled: Bool) -> Html {
                   match enabled {
-                    true => concat(
-                      html(tag: "div", attrs: [], children: concat(raw("Enabled"))),
-                    ),
+                    true => html(tag: "div", attrs: [], children: concat(raw("Enabled"))),
                     false => concat(),
                   }
                 }
@@ -2649,16 +2656,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn CounterComp(count: Float) -> Html {
-                	<if {count == 0.0}>
-                		<div>Zero</div>
-                	</if>
+                  match count == 0.0 {
+                    true => <div>Zero</div>,
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn CounterComp(count: Float) -> Html {
-                  match (count == 0) {
-                    true => concat(html(tag: "div", attrs: [], children: concat(raw("Zero")))),
+                  let v__0 = (count == 0) in match v__0 {
+                    true => html(tag: "div", attrs: [], children: concat(raw("Zero"))),
                     false => concat(),
                   }
                 }
@@ -2681,10 +2689,14 @@ mod tests {
 
                 fn Main(params: Params) -> Html {
                 	<for {item in params.items}>
-                		<if {item.active}>
-                		</if>
-                		<if {item.name}>
-                		</if>
+                		{match item.active {
+                		  true => <></>,
+                		  false => <></>,
+                		}}
+                		{match item.name {
+                		  true => <></>,
+                		  false => <></>,
+                		}}
                 	</for>
                 }
             "#},
@@ -2693,8 +2705,11 @@ mod tests {
                 fn Main(params: main::Params) -> Html {
                   for item in params.items {
                     concat(
-                      match item.active {true => concat(), false => concat()},
-                      match item.name {true => concat(), false => concat()},
+                      let v__0 = item.active in match v__0 {
+                        true => concat(),
+                        false => concat(),
+                      },
+                      let v__1 = item.name in match v__1 {true => concat(), false => concat()},
                     )
                   }
                 }
@@ -2745,17 +2760,20 @@ mod tests {
                 }
 
                 fn Main(params: Params) -> Html {
-                  <if {params.x == params.y}>
-                    <div>Values are equal</div>
-                  </if>
+                  match params.x == params.y {
+                    true => <div>Values are equal</div>,
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(params: main::Params) -> Html {
-                  match (params.x == params.y) {
-                    true => concat(
-                      html(tag: "div", attrs: [], children: concat(raw("Values are equal"))),
+                  let v__0 = (params.x == params.y) in match v__0 {
+                    true => html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(raw("Values are equal")),
                     ),
                     false => concat(),
                   }
@@ -2783,12 +2801,16 @@ mod tests {
                 fn Main(params: Array[Item]) -> Html {
                   <>
                   	<for {j in params}>
-                  		<if {j.a}>
-                  		</if>
+                  		{match j.a {
+                  		  true => <></>,
+                  		  false => <></>,
+                  		}}
                   	</for>
                   	<for {j in params}>
-                  		<if {j.b}>
-                  		</if>
+                  		{match j.b {
+                  		  true => <></>,
+                  		  false => <></>,
+                  		}}
                   	</for>
                   </>
                 }
@@ -2798,10 +2820,10 @@ mod tests {
                 fn Main(params: Array[main::Item]) -> Html {
                   concat(
                     for j in params {
-                      concat(match j.a {true => concat(), false => concat()})
+                      concat(let v__0 = j.a in match v__0 {true => concat(), false => concat()})
                     },
                     for j in params {
-                      concat(match j.b {true => concat(), false => concat()})
+                      concat(let v__1 = j.b in match v__1 {true => concat(), false => concat()})
                     },
                   )
                 }
@@ -2822,8 +2844,10 @@ mod tests {
                 -- main.hop --
                 fn Main(i: Array[Bool]) -> Html {
                 	<for {j in i}>
-                		<if {j}>
-                		</if>
+                		{match j {
+                		  true => <></>,
+                		  false => <></>,
+                		}}
                 	</for>
                 }
             "#},
@@ -2846,9 +2870,10 @@ mod tests {
                 fn Main(i: Array[Array[Bool]]) -> Html {
                 	<for {j in i}>
                 		<for {k in j}>
-                			<if {k}>
-                              ok!
-                			</if>
+                			{match k {
+                			  true => <>ok!</>,
+                			  false => <></>,
+                			}}
                 		</for>
                 	</for>
                 }
@@ -2879,9 +2904,10 @@ mod tests {
                 }
 
                 pub fn WidgetComp(config: Config) -> Html {
-                  <if {config.enabled}>
-                    <div>{config.title}</div>
-                  </if>
+                  match config.enabled {
+                    true => <div>{config.title}</div>,
+                    false => <></>,
+                  }
                 }
 
                 -- foo.hop --
@@ -2916,10 +2942,8 @@ mod tests {
             expect![[r#"
                 -- a/bar.hop --
                 fn WidgetComp(config: a::bar::Config) -> Html {
-                  match config.enabled {
-                    true => concat(
-                      html(tag: "div", attrs: [], children: concat(escape(config.title))),
-                    ),
+                  let v__0 = config.enabled in match v__0 {
+                    true => html(tag: "div", attrs: [], children: concat(escape(config.title))),
                     false => concat(),
                   }
                 }
@@ -3133,37 +3157,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_if_statement() {
-        accept(
-            indoc! {r#"
-                -- main.hop --
-                record User {is_active: Bool}
-                fn Main(user: User) -> Html {
-                  <if {user.is_active}>
-                    <div>User is active</div>
-                  </if>
-                }
-            "#},
-            expect![[r#"
-                -- main.hop --
-                fn Main(user: main::User) -> Html {
-                  match user.is_active {
-                    true => concat(
-                      html(tag: "div", attrs: [], children: concat(raw("User is active"))),
-                    ),
-                    false => concat(),
-                  }
-                }
-
-                -- type registry --
-                record main::User {
-                  is_active: Bool,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_when_records_are_used_in_equals_expression() {
         reject(
             indoc! {r#"
@@ -3172,17 +3165,18 @@ mod tests {
                   foo: String,
                 }
                 fn Main(p1: Params, p2: Params) -> Html {
-                  <if {p1 == p2}>
-                    eq 2
-                  </if>
+                  match p1 == p2 {
+                    true => <>eq 2</>,
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
                 error: Type main::Params is not comparable
-                  --> main.hop (line 5, col 8)
+                  --> main.hop (line 5, col 9)
                 4 | fn Main(p1: Params, p2: Params) -> Html {
-                5 |   <if {p1 == p2}>
-                  |        ^^
+                5 |   match p1 == p2 {
+                  |         ^^
             "#]],
         );
     }
@@ -3215,9 +3209,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn ToggleComp(enabled: Bool) -> Html {
-                	<if {enabled}>
-                		<div>Enabled</div>
-                	</if>
+                  match enabled {
+                    true => <div>Enabled</div>,
+                    false => <></>,
+                  }
                 }
                 fn Main() -> Html {
                 	<ToggleComp enabled=""/>
@@ -3225,9 +3220,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected Bool got String
-                  --> main.hop (line 7, col 22)
-                6 | fn Main() -> Html {
-                7 |     <ToggleComp enabled=""/>
+                  --> main.hop (line 8, col 22)
+                7 | fn Main() -> Html {
+                8 |     <ToggleComp enabled=""/>
                   |                         ^^
             "#]],
         );
@@ -3239,9 +3234,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn ToggleComp(enabled: Bool) -> Html {
-                	<if {enabled}>
-                		<div>Enabled</div>
-                	</if>
+                  match enabled {
+                    true => <div>Enabled</div>,
+                    false => <></>,
+                  }
                 }
                 fn Main() -> Html {
                 	<ToggleComp enabled="not a boolean"/>
@@ -3249,31 +3245,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected Bool got String
-                  --> main.hop (line 7, col 22)
-                6 | fn Main() -> Html {
-                7 |     <ToggleComp enabled="not a boolean"/>
+                  --> main.hop (line 8, col 22)
+                7 | fn Main() -> Html {
+                8 |     <ToggleComp enabled="not a boolean"/>
                   |                         ^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_non_bool_is_used_as_if_condition() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Main() -> Html {
-                    <if {"str"}>
-                      is str?
-                    </if>
-                }
-            "#},
-            expect![[r#"
-                error: Mismatched type for condition: expected Bool got String
-                  --> main.hop (line 2, col 10)
-                1 | fn Main() -> Html {
-                2 |     <if {"str"}>
-                  |          ^^^^^
             "#]],
         );
     }
@@ -3544,15 +3519,18 @@ mod tests {
                 record Params {app: App}
                 fn Main(params: Params) -> Html {
                   <>
-                  	<if {params.app.ui.theme.dark}>
-                        ok!
-                  	</if>
-                  	<if {params.app.api.endpoints.users.enabled}>
-                        ok!
-                  	</if>
-                  	<if {params.app.database.connection.ssl}>
-                        ok!
-                  	</if>
+                  	{match params.app.ui.theme.dark {
+                  	  true => <>ok!</>,
+                  	  false => <></>,
+                  	}}
+                  	{match params.app.api.endpoints.users.enabled {
+                  	  true => <>ok!</>,
+                  	  false => <></>,
+                  	}}
+                  	{match params.app.database.connection.ssl {
+                  	  true => <>ok!</>,
+                  	  false => <></>,
+                  	}}
                   </>
                 }
             "#},
@@ -3560,15 +3538,15 @@ mod tests {
                 -- main.hop --
                 fn Main(params: main::Params) -> Html {
                   concat(
-                    match params.app.ui.theme.dark {
+                    let v__0 = params.app.ui.theme.dark in match v__0 {
                       true => concat(raw("ok!")),
                       false => concat(),
                     },
-                    match params.app.api.endpoints.users.enabled {
+                    let v__1 = params.app.api.endpoints.users.enabled in match v__1 {
                       true => concat(raw("ok!")),
                       false => concat(),
                     },
-                    match params.app.database.connection.ssl {
+                    let v__2 = params.app.database.connection.ssl in match v__2 {
                       true => concat(raw("ok!")),
                       false => concat(),
                     },
@@ -3879,16 +3857,18 @@ mod tests {
                 enum Color {Red, Green, Blue}
 
                 fn Main(a: Color, b: Color) -> Html {
-                    <if {a == b}>
-                    </if>
+                    match a == b {
+                      true => <></>,
+                      false => <></>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Type main::Color is not comparable
-                  --> main.hop (line 4, col 10)
+                  --> main.hop (line 4, col 11)
                 3 | fn Main(a: Color, b: Color) -> Html {
-                4 |     <if {a == b}>
-                  |          ^
+                4 |     match a == b {
+                  |           ^
             "#]],
         );
     }
@@ -4056,21 +4036,22 @@ mod tests {
                 }
 
                 fn Main(color: Color) -> Html {
-                    <if {color == Color::Red}>
-                        <div>{match color {
-                            Color::Red => "red",
-                            Color::Green => "green",
-                            Color::Blue => "blue",
-                        }}</div>
-                    </if>
+                    match (color == Color::Red) {
+                      true => <div>{match color {
+                          Color::Red => "red",
+                          Color::Green => "green",
+                          Color::Blue => "blue",
+                      }}</div>,
+                      false => <></>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Type main::Color is not comparable
-                  --> main.hop (line 8, col 10)
+                  --> main.hop (line 8, col 12)
                  7 | fn Main(color: Color) -> Html {
-                 8 |     <if {color == Color::Red}>
-                   |          ^^^^^
+                 8 |     match (color == Color::Red) {
+                   |            ^^^^^
             "#]],
         );
     }
@@ -4264,17 +4245,18 @@ mod tests {
                 }
 
                 fn Main(person: Person) -> Html {
-                    <if {person.role == Role::Admin}>
-                        <div>Welcome, admin!</div>
-                    </if>
+                    match (person.role == Role::Admin) {
+                      true => <div>Welcome, admin!</div>,
+                      false => <></>,
+                    }
                 }
             "#},
             expect![[r#"
                 error: Type main::Role is not comparable
-                  --> main.hop (line 13, col 10)
+                  --> main.hop (line 13, col 12)
                 12 | fn Main(person: Person) -> Html {
-                13 |     <if {person.role == Role::Admin}>
-                   |          ^^^^^^^^^^^
+                13 |     match (person.role == Role::Admin) {
+                   |            ^^^^^^^^^^^
             "#]],
         );
     }
@@ -4817,7 +4799,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  <if {name.is_none()}></if>
+                  match name.is_none() {true => <></>, false => <></>,}
                 }
                 fn Main() -> Html {
                   <Greeting name={Some("World")} />
@@ -4826,7 +4808,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  match name.is_none() {true => concat(), false => concat()}
+                  let v__0 = name.is_none() in match v__0 {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Html {
@@ -4842,7 +4824,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  <if {name.is_none()}></if>
+                  match name.is_none() {true => <></>, false => <></>,}
                 }
                 fn Main() -> Html {
                   <Greeting name={None} />
@@ -4851,7 +4833,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  match name.is_none() {true => concat(), false => concat()}
+                  let v__0 = name.is_none() in match v__0 {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Html {
@@ -4867,7 +4849,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Greeting(name: Option[String] = None) -> Html {
-                  <if {name.is_none()}></if>
+                  match name.is_none() {true => <></>, false => <></>,}
                 }
                 fn Main() -> Html {
                   <Greeting />
@@ -4876,7 +4858,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  match name.is_none() {true => concat(), false => concat()}
+                  let v__0 = name.is_none() in match v__0 {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Html {
@@ -4892,7 +4874,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Greeting(name: Option[String] = Some("World")) -> Html {
-                  <if {name.is_none()}></if>
+                  match name.is_none() {true => <></>, false => <></>,}
                 }
                 fn Main() -> Html {
                   <Greeting />
@@ -4901,7 +4883,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  match name.is_none() {true => concat(), false => concat()}
+                  let v__0 = name.is_none() in match v__0 {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Html {
@@ -4917,7 +4899,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  <if {name.is_none()}></if>
+                  match name.is_none() {true => <></>, false => <></>,}
                 }
                 fn Main() -> Html {
                   <Greeting name="World" />
@@ -5372,7 +5354,10 @@ mod tests {
                         None => {
                           match r2 {
                               Some(bound) => {
-                                <if {bound}>yes</if>
+                                {match bound {
+                                  true => <>yes</>,
+                                  false => <></>,
+                                }}
                               },
                               None => <>both none</>,
                           }
@@ -5450,29 +5435,28 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_inside_if_condition() {
+    fn accepts_match_inside_bool_match() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(show: Bool, x: Option[String]) -> Html {
-                    <if {show}>
-                        {match x {
-                            Some(v) => <>{v}</>,
-                            None => <>none</>,
-                        }}
-                    </if>
+                    match show {
+                      true => {match x {
+                          Some(v) => <>{v}</>,
+                          None => <>none</>,
+                      }},
+                      false => <></>,
+                    }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(show: Bool, x: Option[String]) -> Html {
                   match show {
-                    true => concat(
-                      match x {
-                        Some(v__0) => let v = v__0 in concat(escape(v)),
-                        None => concat(raw("none")),
-                      },
-                    ),
+                    true => match x {
+                      Some(v__0) => let v = v__0 in concat(escape(v)),
+                      None => concat(raw("none")),
+                    },
                     false => concat(),
                   }
                 }
@@ -6502,18 +6486,17 @@ mod tests {
                   let x: Int = 0;
                   let y: Int = x + 1;
                   let z: Int = y + 2;
-                  <if {z == 3}>
-                    <div>correct</div>
-                  </if>
+                  match z == 3 {
+                    true => <div>correct</div>,
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let x = 0 in let y = (x + 1) in let z = (y + 2) in match (z == 3) {
-                    true => concat(
-                      html(tag: "div", attrs: [], children: concat(raw("correct"))),
-                    ),
+                  let x = 0 in let y = (x + 1) in let z = (y + 2) in let v__0 = (z == 3) in match v__0 {
+                    true => html(tag: "div", attrs: [], children: concat(raw("correct"))),
                     false => concat(),
                   }
                 }
@@ -6529,9 +6512,10 @@ mod tests {
                 fn Main() -> Html {
                   let x: Int = y + 1;
                   let y: Int = 0;
-                  <if {x == 1}>
-                    <div>correct</div>
-                  </if>
+                  match x == 1 {
+                    true => <div>correct</div>,
+                    false => <></>,
+                  }
                 }
             "#},
             expect![[r#"
@@ -7486,9 +7470,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Card(count: Int) -> Html {
-                    <if {count > 0}>
-                        <div>positive</div>
-                    </if>
+                    match count > 0 {
+                      true => <div>positive</div>,
+                      false => <></>,
+                    }
                 }
                 fn Wrapper(...rest) -> Html {
                     <Card ...rest/>
@@ -7501,9 +7486,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'count' of function 'Wrapper': expected Int got String
-                  --> main.hop (line 11, col 22)
-                10 |   fn body() -> Html {
-                11 |       <Wrapper count="hi"/>
+                  --> main.hop (line 12, col 22)
+                11 |   fn body() -> Html {
+                12 |       <Wrapper count="hi"/>
                    |                      ^^^^
             "#]],
         );
@@ -7732,9 +7717,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Card(count: Int) -> Html {
-                    <if {count > 0}>
-                        <div>positive</div>
-                    </if>
+                    match count > 0 {
+                      true => <div>positive</div>,
+                      false => <></>,
+                    }
                 }
                 fn Wrapper(...rest) -> Html {
                     <Card ...rest/>
@@ -7754,10 +7740,8 @@ mod tests {
                 }
 
                 fn Card(count: Int) -> Html {
-                  match (count > 0) {
-                    true => concat(
-                      html(tag: "div", attrs: [], children: concat(raw("positive"))),
-                    ),
+                  let v__0 = (count > 0) in match v__0 {
+                    true => html(tag: "div", attrs: [], children: concat(raw("positive"))),
                     false => concat(),
                   }
                 }
@@ -7776,9 +7760,10 @@ mod tests {
                 -- main.hop --
                 fn A(count: Int, ...rest) -> Html {
                     <div ...rest>
-                        <if {count > 0}>
-                            positive
-                        </if>
+                        {match count > 0 {
+                          true => <>positive</>,
+                          false => <></>,
+                        }}
                     </div>
                 }
                 fn B(...rest) -> Html {
@@ -7803,7 +7788,10 @@ mod tests {
                     tag: "div",
                     attrs: concat([], rest),
                     children: concat(
-                      match (count > 0) {true => concat(raw("positive")), false => concat()},
+                      let v__0 = (count > 0) in match v__0 {
+                        true => concat(raw("positive")),
+                        false => concat(),
+                      },
                     ),
                   )
                 }
@@ -8385,7 +8373,10 @@ mod tests {
                 -- main.hop --
                 fn A(tabindex: Int, ...rest) -> Html {
                     <div ...rest>
-                        <if {tabindex > 0}>focusable</if>
+                        {match tabindex > 0 {
+                          true => <>focusable</>,
+                          false => <></>,
+                        }}
                     </div>
                 }
                 fn B(...rest) -> Html {
@@ -8399,9 +8390,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Mismatched type for argument 'tabindex' of function 'B': expected Int got String
-                  --> main.hop (line 11, col 19)
-                10 |   fn body() -> Html {
-                11 |       <B tabindex="nope"/>
+                  --> main.hop (line 14, col 19)
+                13 |   fn body() -> Html {
+                14 |       <B tabindex="nope"/>
                    |                   ^^^^^^
             "#]],
         );
@@ -8414,7 +8405,10 @@ mod tests {
                 -- main.hop --
                 fn A(tabindex: Int, ...rest) -> Html {
                     <div ...rest>
-                        <if {tabindex > 0}>focusable</if>
+                        {match tabindex > 0 {
+                          true => <>focusable</>,
+                          false => <></>,
+                        }}
                     </div>
                 }
                 fn B(...rest) -> Html {
@@ -8439,7 +8433,7 @@ mod tests {
                     tag: "div",
                     attrs: concat([], rest),
                     children: concat(
-                      match (tabindex > 0) {
+                      let v__0 = (tabindex > 0) in match v__0 {
                         true => concat(raw("focusable")),
                         false => concat(),
                       },
@@ -8460,25 +8454,27 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Ping(n: Int) -> Html {
-                    <if {n > 0}>
-                        <Pong n={n - 1}/>
-                    </if>
+                    match n > 0 {
+                      true => <Pong n={n - 1}/>,
+                      false => <></>,
+                    }
                 }
 
                 fn Pong(n: Int) -> Html {
-                    <if {n > 0}>
-                        <Ping n={n - 1}/>
-                    </if>
+                    match n > 0 {
+                      true => <Ping n={n - 1}/>,
+                      false => <></>,
+                    }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Ping(n: Int) -> Html {
-                  match (n > 0) {true => concat(Pong(n: (n - 1))), false => concat()}
+                  let v__0 = (n > 0) in match v__0 {true => Pong(n: (n - 1)), false => concat()}
                 }
 
                 fn Pong(n: Int) -> Html {
-                  match (n > 0) {true => concat(Ping(n: (n - 1))), false => concat()}
+                  let v__0 = (n > 0) in match v__0 {true => Ping(n: (n - 1)), false => concat()}
                 }
             "#]],
         );
@@ -8490,29 +8486,29 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn A(n: Int) -> Html {
-                    <if {n > 0}><B n={n - 1}/></if>
+                    match n > 0 {true => <B n={n - 1}/>, false => <></>,}
                 }
 
                 fn B(n: Int) -> Html {
-                    <if {n > 0}><C n={n - 1}/></if>
+                    match n > 0 {true => <C n={n - 1}/>, false => <></>,}
                 }
 
                 fn C(n: Int) -> Html {
-                    <if {n > 0}><A n={n - 1}/></if>
+                    match n > 0 {true => <A n={n - 1}/>, false => <></>,}
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn A(n: Int) -> Html {
-                  match (n > 0) {true => concat(B(n: (n - 1))), false => concat()}
+                  let v__0 = (n > 0) in match v__0 {true => B(n: (n - 1)), false => concat()}
                 }
 
                 fn B(n: Int) -> Html {
-                  match (n > 0) {true => concat(C(n: (n - 1))), false => concat()}
+                  let v__0 = (n > 0) in match v__0 {true => C(n: (n - 1)), false => concat()}
                 }
 
                 fn C(n: Int) -> Html {
-                  match (n > 0) {true => concat(A(n: (n - 1))), false => concat()}
+                  let v__0 = (n > 0) in match v__0 {true => A(n: (n - 1)), false => concat()}
                 }
             "#]],
         );
