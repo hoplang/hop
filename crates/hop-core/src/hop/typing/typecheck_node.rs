@@ -5,11 +5,8 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::ParsedExpr;
-use crate::hop::parsing::parsed_node::{
-    ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedNode,
-};
+use crate::hop::parsing::parsed_node::{ParsedAttribute, ParsedLoopSource, ParsedNode};
 use crate::hop::patterns::Match;
-use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
@@ -268,140 +265,6 @@ pub fn typecheck_node(
                 }),
                 typ: Type::Html,
             })
-        }
-
-        ParsedNode::Let {
-            bindings, children, ..
-        } => {
-            // Count the bindings pushed to scope (for popping later)
-            let mut pushed_bindings = 0;
-            // Only store successfully typechecked bindings
-            let mut typed_bindings: Vec<(&ParsedLetBinding, TypedExpr)> = Vec::new();
-
-            for binding in bindings {
-                // Resolve the declared type, if an annotation is present.
-                let declared_type = match &binding.var_type {
-                    Some(parsed_type) => {
-                        let Some(t) =
-                            resolve_type(parsed_type, &type_env.names, definition_links, errors)
-                        else {
-                            continue;
-                        };
-                        Some(t)
-                    }
-                    None => None,
-                };
-
-                let typed_value = typecheck_expr(
-                    &binding.value_expr,
-                    declared_type.as_ref(),
-                    forwarded_params,
-                    var_env,
-                    type_env,
-                    registry,
-                    annotations,
-                    definition_links,
-                    asset_references,
-                    errors,
-                );
-
-                let binding_type = match (&declared_type, &typed_value) {
-                    (Some(declared), _) => Some(declared.clone()),
-                    (None, Some(typed_value)) => Some(typed_value.typ()),
-                    (None, None) => None,
-                };
-
-                if let Some(binding_type) = binding_type {
-                    match var_env.push(
-                        binding.var_name.clone(),
-                        binding_type.clone(),
-                        binding.var_name_range.clone(),
-                    ) {
-                        Ok(_) => {
-                            annotations.push(HoverAnnotation::TypeForVarName {
-                                range: binding.var_name_range.clone(),
-                                typ: binding_type,
-                                var_name: binding.var_name.clone(),
-                            });
-                            pushed_bindings += 1;
-                        }
-                        Err(_) => {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::VariableAlreadyDefined {
-                                    name: binding.var_name.clone(),
-                                },
-                                binding.var_name_range.clone(),
-                            ));
-                        }
-                    }
-                }
-
-                let Some(typed_value) = typed_value else {
-                    continue;
-                };
-
-                // Validate that the value type matches the declared type.
-                if let Some(declared) = &declared_type {
-                    let value_type = typed_value.typ();
-                    if value_type != *declared {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::LetBindingTypeMismatch {
-                                expected: declared.clone(),
-                                found: value_type,
-                            },
-                            binding.value_expr.range().clone(),
-                        ));
-                    }
-                }
-
-                typed_bindings.push((binding, typed_value));
-            }
-
-            // Type-check children with all variables in scope
-            let typed_children: Vec<TypedExpr> = children
-                .iter()
-                .filter_map(|child| {
-                    typecheck_node(
-                        child,
-                        forwarded_params,
-                        registry,
-                        errors,
-                        var_env,
-                        type_env,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                    )
-                })
-                .collect();
-
-            // Pop variables in reverse order and check for unused
-            for _ in 0..pushed_bindings {
-                let (name, entry) = var_env.pop();
-                if !entry.accessed {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::UnusedVariable { var_name: name },
-                        entry.range,
-                    ));
-                }
-            }
-
-            // Build nested Let structure from innermost to outermost
-            // Start with children, then wrap with each binding in reverse order
-            let mut result = TypedExpr::HtmlConcat {
-                nodes: typed_children,
-            };
-            for (binding, typed_value) in typed_bindings.into_iter().rev() {
-                let typ = result.typ();
-                result = TypedExpr::Let {
-                    var: binding.var_name.clone(),
-                    value: Box::new(typed_value),
-                    body: Box::new(result),
-                    typ,
-                };
-            }
-
-            Some(result)
         }
 
         ParsedNode::FunctionInvocation {

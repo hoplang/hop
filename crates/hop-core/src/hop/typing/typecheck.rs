@@ -1025,13 +1025,6 @@ fn collect_names_in_node(node: &ParsedNode, out: &mut HashSet<CheapString>) {
         ParsedNode::FunctionInvocation { function_name, .. } => {
             out.insert(function_name.to_cheap_string());
         }
-        ParsedNode::Let { bindings, .. } => {
-            for binding in bindings {
-                if let Some(parsed_type) = &binding.var_type {
-                    collect_names_in_type(parsed_type, out);
-                }
-            }
-        }
         ParsedNode::Match { cases, .. } => {
             for case in cases {
                 collect_names_in_pattern(&case.pattern, out);
@@ -1448,30 +1441,29 @@ mod tests {
     }
 
     #[test]
-    fn rejects_let_shadowing_loop_and_let_tag_variables() {
+    fn rejects_let_shadowing_loop_and_let_variables() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main(items: Array[Int]) -> Html {
-                  <let {x = 1}>
-                    <for {item in items}>
-                      <div class={ let item = x; item }>{ let x = item; x }</div>
-                    </for>
-                  </let>
+                  let x = 1;
+                  <for {item in items}>
+                    <div class={ let item = x; item }>{ let x = item; x }</div>
+                  </for>
                 }
             "#},
             expect![[r#"
                 error: Variable item is already defined
-                  --> main.hop (line 4, col 24)
-                3 |     <for {item in items}>
-                4 |       <div class={ let item = x; item }>{ let x = item; x }</div>
-                  |                        ^^^^
+                  --> main.hop (line 4, col 22)
+                3 |   <for {item in items}>
+                4 |     <div class={ let item = x; item }>{ let x = item; x }</div>
+                  |                      ^^^^
 
                 error: Variable x is already defined
-                  --> main.hop (line 4, col 47)
-                3 |     <for {item in items}>
-                4 |       <div class={ let item = x; item }>{ let x = item; x }</div>
-                  |                                               ^
+                  --> main.hop (line 4, col 45)
+                3 |   <for {item in items}>
+                4 |     <div class={ let item = x; item }>{ let x = item; x }</div>
+                  |                                             ^
             "#]],
         );
     }
@@ -1740,17 +1732,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
-                    <let {content: Html = children}>
-                        <div></div>
-                    </let>
+                    let content: Html = children;
+                    <div></div>
                 }
             "#},
             expect![[r#"
                 warning: Unused variable content
-                  --> main.hop (line 2, col 11)
+                  --> main.hop (line 2, col 9)
                 1 | fn Card(children: Html) -> Html {
-                2 |     <let {content: Html = children}>
-                  |           ^^^^^^^
+                2 |     let content: Html = children;
+                  |         ^^^^^^^
             "#]],
         );
     }
@@ -6047,21 +6038,22 @@ mod tests {
     }
 
     #[test]
-    fn accepts_let_binding_used_in_children() {
+    fn accepts_let_binding_used_in_markup() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {name: String = "World"}>
-                    <div>Hello {name}</div>
-                  </let>
+                  let name: String = "World";
+                  <div>Hello {name}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let name = "World" in concat(
-                    html(tag: "div", attrs: [], children: concat(raw("Hello "), escape(name))),
+                  let name = "World" in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(raw("Hello "), escape(name)),
                   )
                 }
             "#]],
@@ -6074,16 +6066,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {name = "World"}>
-                    <div>{name}</div>
-                  </let>
+                  let name = "World";
+                  <div>{name}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let name = "World" in concat(
-                    html(tag: "div", attrs: [], children: concat(escape(name))),
+                  let name = "World" in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(name)),
                   )
                 }
             "#]],
@@ -6096,16 +6089,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {count = 42}>
-                    <div>{count.to_string()}</div>
-                  </let>
+                  let count = 42;
+                  <div>{count.to_string()}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let count = 42 in concat(
-                    html(tag: "div", attrs: [], children: concat(escape(count.to_string()))),
+                  let count = 42 in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(count.to_string())),
                   )
                 }
             "#]],
@@ -6118,20 +6112,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {price = 2.5}>
-                    <div>{price.to_int().to_string()}</div>
-                  </let>
+                  let price = 2.5;
+                  <div>{price.to_int().to_string()}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let price = 2.5 in concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(escape(price.to_int().to_string())),
-                    ),
+                  let price = 2.5 in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(price.to_int().to_string())),
                   )
                 }
             "#]],
@@ -6144,20 +6135,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {items = [1, 2, 3]}>
-                    <div>{items.len().to_string()}</div>
-                  </let>
+                  let items = [1, 2, 3];
+                  <div>{items.len().to_string()}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let items = [1, 2, 3] in concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(escape(items.len().to_string())),
-                    ),
+                  let items = [1, 2, 3] in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(items.len().to_string())),
                   )
                 }
             "#]],
@@ -6171,16 +6159,17 @@ mod tests {
                 -- main.hop --
                 record User { name: String, age: Int }
                 fn Main() -> Html {
-                  <let {user = User {name: "Alice", age: 30}}>
-                    <div>{user.name}</div>
-                  </let>
+                  let user = User {name: "Alice", age: 30};
+                  <div>{user.name}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let user = User {name: "Alice", age: 30} in concat(
-                    html(tag: "div", attrs: [], children: concat(escape(user.name))),
+                  let user = User {name: "Alice", age: 30} in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(user.name)),
                   )
                 }
 
@@ -6200,16 +6189,17 @@ mod tests {
                 -- main.hop --
                 record User { name: String, age: Int }
                 fn Main(user: User) -> Html {
-                  <let {updated = User {...user, name: "Jane"}}>
-                    <div>{updated.name}</div>
-                  </let>
+                  let updated = User {...user, name: "Jane"};
+                  <div>{updated.name}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(user: main::User) -> Html {
-                  let updated = User {name: "Jane", age: user.age} in concat(
-                    html(tag: "div", attrs: [], children: concat(escape(updated.name))),
+                  let updated = User {name: "Jane", age: user.age} in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(updated.name)),
                   )
                 }
 
@@ -6230,18 +6220,18 @@ mod tests {
                 record State { query: String, num: Int }
                 record App { state: State }
                 fn Main(app: App) -> Html {
-                  <let {next = State {...app.state, num: 1}}>
-                    <div>{next.query}</div>
-                  </let>
+                  let next = State {...app.state, num: 1};
+                  <div>{next.query}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(app: main::App) -> Html {
-                  let next = let v__0 = app.state in State {
-                    query: v__0.query,
-                    num: 1,
-                  } in concat(html(tag: "div", attrs: [], children: concat(escape(next.query))))
+                  let next = let v__0 = app.state in State {query: v__0.query, num: 1} in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(next.query)),
+                  )
                 }
 
                 -- type registry --
@@ -6264,16 +6254,17 @@ mod tests {
                 -- main.hop --
                 record User { name: String, age: Int }
                 fn Main(user: User) -> Html {
-                  <let {updated = User {...user, name: "Jane", age: 30}}>
-                    <div>{updated.name}</div>
-                  </let>
+                  let updated = User {...user, name: "Jane", age: 30};
+                  <div>{updated.name}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main(user: main::User) -> Html {
-                  let updated = User {name: "Jane", age: 30} in concat(
-                    html(tag: "div", attrs: [], children: concat(escape(updated.name))),
+                  let updated = User {name: "Jane", age: 30} in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(updated.name)),
                   )
                 }
 
@@ -6294,23 +6285,16 @@ mod tests {
                 record User { name: String }
                 record Admin { name: String }
                 fn Main(admin: Admin) -> Html {
-                  <let {user = User {...admin}}>
-                    <div>{user.name}</div>
-                  </let>
+                  let user = User {...admin};
+                  <div>{user.name}</div>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for spread: expected main::User got main::Admin
-                  --> main.hop (line 4, col 25)
+                  --> main.hop (line 4, col 23)
                 3 | fn Main(admin: Admin) -> Html {
-                4 |   <let {user = User {...admin}}>
-                  |                         ^^^^^
-
-                error: Undefined variable: user
-                  --> main.hop (line 5, col 11)
-                4 |   <let {user = User {...admin}}>
-                5 |     <div>{user.name}</div>
-                  |           ^^^^
+                4 |   let user = User {...admin};
+                  |                       ^^^^^
             "#]],
         );
     }
@@ -6321,20 +6305,18 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {first: String = "Hello", second = "World"}>
-                    <div>{first}{second}</div>
-                  </let>
+                  let first: String = "Hello";
+                  let second = "World";
+                  <div>{first}{second}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let first = "Hello" in let second = "World" in concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(escape(first), escape(second)),
-                    ),
+                  let first = "Hello" in let second = "World" in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(first), escape(second)),
                   )
                 }
             "#]],
@@ -6347,16 +6329,18 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {greeting = "Hello", shout = greeting}>
-                    <div>{shout}</div>
-                  </let>
+                  let greeting = "Hello";
+                  let shout = greeting;
+                  <div>{shout}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let greeting = "Hello" in let shout = greeting in concat(
-                    html(tag: "div", attrs: [], children: concat(escape(shout))),
+                  let greeting = "Hello" in let shout = greeting in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(shout)),
                   )
                 }
             "#]],
@@ -6369,17 +6353,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {name = "World"}>
-                    <div>x</div>
-                  </let>
+                  let name = "World";
+                  <div>x</div>
                 }
             "#},
             expect![[r#"
                 warning: Unused variable name
-                  --> main.hop (line 2, col 9)
+                  --> main.hop (line 2, col 7)
                 1 | fn Main() -> Html {
-                2 |   <let {name = "World"}>
-                  |         ^^^^
+                2 |   let name = "World";
+                  |       ^^^^
             "#]],
         );
     }
@@ -6390,17 +6373,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {items = []}>
-                    <div>x</div>
-                  </let>
+                  let items = [];
+                  <div>x</div>
                 }
             "#},
             expect![[r#"
                 error: Cannot infer type of empty array
-                  --> main.hop (line 2, col 17)
+                  --> main.hop (line 2, col 15)
                 1 | fn Main() -> Html {
-                2 |   <let {items = []}>
-                  |                 ^^
+                2 |   let items = [];
+                  |               ^^
             "#]],
         );
     }
@@ -6411,17 +6393,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {maybe = None}>
-                    <div>x</div>
-                  </let>
+                  let maybe = None;
+                  <div>x</div>
                 }
             "#},
             expect![[r#"
                 error: Cannot infer type of None without context
-                  --> main.hop (line 2, col 17)
+                  --> main.hop (line 2, col 15)
                 1 | fn Main() -> Html {
-                2 |   <let {maybe = None}>
-                  |                 ^^^^
+                2 |   let maybe = None;
+                  |               ^^^^
             "#]],
         );
     }
@@ -6432,38 +6413,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {name: String = "World"}>
-                    <div>Hello</div>
-                  </let>
+                  let name: String = "World";
+                  <div>Hello</div>
                 }
             "#},
             expect![[r#"
                 warning: Unused variable name
-                  --> main.hop (line 2, col 9)
+                  --> main.hop (line 2, col 7)
                 1 | fn Main() -> Html {
-                2 |   <let {name: String = "World"}>
-                  |         ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_let_shadowing_parameter() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Main(name: String) -> Html {
-                  <let {name: String = "Shadow"}>
-                    <div>{name}</div>
-                  </let>
-                }
-            "#},
-            expect![[r#"
-                error: Variable name is already defined
-                  --> main.hop (line 2, col 9)
-                1 | fn Main(name: String) -> Html {
-                2 |   <let {name: String = "Shadow"}>
-                  |         ^^^^
+                2 |   let name: String = "World";
+                  |       ^^^^
             "#]],
         );
     }
@@ -6474,19 +6433,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {name: String = "First"}>
-                    <let {name: String = "Second"}>
-                      <div>{name}</div>
-                    </let>
-                  </let>
+                  let name: String = "First";
+                  let name: String = "Second";
+                  <div>{name}</div>
                 }
             "#},
             expect![[r#"
                 error: Variable name is already defined
-                  --> main.hop (line 3, col 11)
-                2 |   <let {name: String = "First"}>
-                3 |     <let {name: String = "Second"}>
-                  |           ^^^^
+                  --> main.hop (line 3, col 7)
+                2 |   let name: String = "First";
+                3 |   let name: String = "Second";
+                  |       ^^^^
             "#]],
         );
     }
@@ -6498,12 +6455,14 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Html {
                   <>
-                    <let {name: String = "First"}>
+                    {
+                      let name: String = "First";
                       <div>{name}</div>
-                    </let>
-                    <let {name: String = "Second"}>
+                    }
+                    {
+                      let name: String = "Second";
                       <div>{name}</div>
-                    </let>
+                    }
                   </>
                 }
             "#},
@@ -6511,11 +6470,15 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Html {
                   concat(
-                    let name = "First" in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(name))),
+                    let name = "First" in html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(name)),
                     ),
-                    let name = "Second" in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(name))),
+                    let name = "Second" in html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(name)),
                     ),
                   )
                 }
@@ -6529,17 +6492,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {name: String = 42}>
-                    <div>{name}</div>
-                  </let>
+                  let name: String = 42;
+                  <div>{name}</div>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type: expected String got Int
-                  --> main.hop (line 2, col 24)
+                  --> main.hop (line 2, col 22)
                 1 | fn Main() -> Html {
-                2 |   <let {name: String = 42}>
-                  |                        ^^
+                2 |   let name: String = 42;
+                  |                      ^^
             "#]],
         );
     }
@@ -6550,20 +6512,18 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {first: String = "Hello", second: String = "World"}>
-                    <div>{first} {second}</div>
-                  </let>
+                  let first: String = "Hello";
+                  let second: String = "World";
+                  <div>{first} {second}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let first = "Hello" in let second = "World" in concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(escape(first), raw(" "), escape(second)),
-                    ),
+                  let first = "Hello" in let second = "World" in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(first), raw(" "), escape(second)),
                   )
                 }
             "#]],
@@ -6576,17 +6536,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {name: String = "Hello", name: String = "World"}>
-                    <div>{name}</div>
-                  </let>
+                  let name: String = "Hello";
+                  let name: String = "World";
+                  <div>{name}</div>
                 }
             "#},
             expect![[r#"
                 error: Variable name is already defined
-                  --> main.hop (line 2, col 33)
-                1 | fn Main() -> Html {
-                2 |   <let {name: String = "Hello", name: String = "World"}>
-                  |                                 ^^^^
+                  --> main.hop (line 3, col 7)
+                2 |   let name: String = "Hello";
+                3 |   let name: String = "World";
+                  |       ^^^^
             "#]],
         );
     }
@@ -6597,17 +6557,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {name: String = "Hello", count: Int = 42}>
-                    <div>{name}</div>
-                  </let>
+                  let name: String = "Hello";
+                  let count: Int = 42;
+                  <div>{name}</div>
                 }
             "#},
             expect![[r#"
                 warning: Unused variable count
-                  --> main.hop (line 2, col 33)
-                1 | fn Main() -> Html {
-                2 |   <let {name: String = "Hello", count: Int = 42}>
-                  |                                 ^^^^^
+                  --> main.hop (line 3, col 7)
+                2 |   let name: String = "Hello";
+                3 |   let count: Int = 42;
+                  |       ^^^^^
             "#]],
         );
     }
@@ -6618,16 +6578,18 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {greeting: String = "Hello", message: String = greeting}>
-                    <div>{message}</div>
-                  </let>
+                  let greeting: String = "Hello";
+                  let message: String = greeting;
+                  <div>{message}</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let greeting = "Hello" in let message = greeting in concat(
-                    html(tag: "div", attrs: [], children: concat(escape(message))),
+                  let greeting = "Hello" in let message = greeting in html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(message)),
                   )
                 }
             "#]],
@@ -6640,24 +6602,23 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {x: Int = 0, y: Int = x + 1, z: Int = y + 2}>
-                    <if {z == 3}>
-                      <div>correct</div>
-                    </if>
-                  </let>
+                  let x: Int = 0;
+                  let y: Int = x + 1;
+                  let z: Int = y + 2;
+                  <if {z == 3}>
+                    <div>correct</div>
+                  </if>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let x = 0 in let y = (x + 1) in let z = (y + 2) in concat(
-                    match (z == 3) {
-                      true => concat(
-                        html(tag: "div", attrs: [], children: concat(raw("correct"))),
-                      ),
-                      false => concat(),
-                    },
-                  )
+                  let x = 0 in let y = (x + 1) in let z = (y + 2) in match (z == 3) {
+                    true => concat(
+                      html(tag: "div", attrs: [], children: concat(raw("correct"))),
+                    ),
+                    false => concat(),
+                  }
                 }
             "#]],
         );
@@ -6669,25 +6630,25 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {x: Int = y + 1, y: Int = 0}>
-                    <if {x == 1}>
-                      <div>correct</div>
-                    </if>
-                  </let>
+                  let x: Int = y + 1;
+                  let y: Int = 0;
+                  <if {x == 1}>
+                    <div>correct</div>
+                  </if>
                 }
             "#},
             expect![[r#"
                 error: Undefined variable: y
-                  --> main.hop (line 2, col 18)
+                  --> main.hop (line 2, col 16)
                 1 | fn Main() -> Html {
-                2 |   <let {x: Int = y + 1, y: Int = 0}>
-                  |                  ^
+                2 |   let x: Int = y + 1;
+                  |                ^
 
                 warning: Unused variable y
-                  --> main.hop (line 2, col 25)
-                1 | fn Main() -> Html {
-                2 |   <let {x: Int = y + 1, y: Int = 0}>
-                  |                         ^
+                  --> main.hop (line 3, col 7)
+                2 |   let x: Int = y + 1;
+                3 |   let y: Int = 0;
+                  |       ^
             "#]],
         );
     }
@@ -6698,17 +6659,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {x: Int = x}>
-                    <div>{x.to_string()}</div>
-                  </let>
+                  let x: Int = x;
+                  <div>{x.to_string()}</div>
                 }
             "#},
             expect![[r#"
                 error: Undefined variable: x
-                  --> main.hop (line 2, col 18)
+                  --> main.hop (line 2, col 16)
                 1 | fn Main() -> Html {
-                2 |   <let {x: Int = x}>
-                  |                  ^
+                2 |   let x: Int = x;
+                  |                ^
             "#]],
         );
     }
@@ -6719,22 +6679,15 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {x = x}>
-                    <div>{x.to_string()}</div>
-                  </let>
+                  let x = x;
+                  <div>{x.to_string()}</div>
                 }
             "#},
             expect![[r#"
                 error: Undefined variable: x
-                  --> main.hop (line 2, col 13)
+                  --> main.hop (line 2, col 11)
                 1 | fn Main() -> Html {
-                2 |   <let {x = x}>
-                  |             ^
-
-                error: Undefined variable: x
-                  --> main.hop (line 3, col 11)
-                2 |   <let {x = x}>
-                3 |     <div>{x.to_string()}</div>
+                2 |   let x = x;
                   |           ^
             "#]],
         );
@@ -6746,17 +6699,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {x: Int = missing, y: Int = x + 1}>
-                    <div>{y.to_string()}</div>
-                  </let>
+                  let x: Int = missing;
+                  let y: Int = x + 1;
+                  <div>{y.to_string()}</div>
                 }
             "#},
             expect![[r#"
                 error: Undefined variable: missing
-                  --> main.hop (line 2, col 18)
+                  --> main.hop (line 2, col 16)
                 1 | fn Main() -> Html {
-                2 |   <let {x: Int = missing, y: Int = x + 1}>
-                  |                  ^^^^^^^
+                2 |   let x: Int = missing;
+                  |                ^^^^^^^
             "#]],
         );
     }

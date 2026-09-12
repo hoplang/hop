@@ -1866,9 +1866,8 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {user: User = User {name: "Ada"}}>
-                      <Wrapper user={user}/>
-                    </let>
+                    let user: User = User {name: "Ada"};
+                    <Wrapper user={user}/>
                   }
                 }
             "#},
@@ -1923,16 +1922,15 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {v_1: String = "outer"}>
-                      <for {f in [Flag {value: "x"}]}>
-                        <match {f}>
-                          <case {Flag {value: b}}>
-                            {v_1}
-                            {b}
-                          </case>
-                        </match>
-                      </for>
-                    </let>
+                    let v_1: String = "outer";
+                    <for {f in [Flag {value: "x"}]}>
+                      <match {f}>
+                        <case {Flag {value: b}}>
+                          {v_1}
+                          {b}
+                        </case>
+                      </match>
+                    </for>
                   }
                 }
             "#},
@@ -2935,24 +2933,20 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {inner: Option[String] = Some("hello")}>
-                      <let {
-                        mapped: Option[String] = match inner {
-                          Some(x) => Some(x),
-                          None => None,
-                        },
-                      }>
-                        <match {mapped}>
-                          <case {Some(result)}>
-                            mapped:
-                            {result}
-                          </case>
-                          <case {None}>
-                            was-none
-                          </case>
-                        </match>
-                      </let>
-                    </let>
+                    let inner: Option[String] = Some("hello");
+                    let mapped: Option[String] = match inner {
+                      Some(x) => Some(x),
+                      None => None,
+                    };
+                    <match {mapped}>
+                      <case {Some(result)}>
+                        mapped:
+                        {result}
+                      </case>
+                      <case {None}>
+                        was-none
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -3016,14 +3010,13 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      result: String = match Point {x: "hi", y: "bye"} {
-                        Point {x: a, y: _} => a,
-                      },
-                    }>
+                    let result: String = match Point {x: "hi", y: "bye"} {
+                      Point {x: a, y: _} => a,
+                    };
+                    <>
                       got:
                       {result}
-                    </let>
+                    </>
                   }
                 }
             "#},
@@ -3073,14 +3066,13 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      result: String = match Point {x: "hi", y: "bye"} {
-                        p => p.x,
-                      },
-                    }>
+                    let result: String = match Point {x: "hi", y: "bye"} {
+                      p => p.x,
+                    };
+                    <>
                       got:
                       {result}
-                    </let>
+                    </>
                   }
                 }
             "#},
@@ -3185,22 +3177,18 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {inner_opt: Option[String] = Some("inner")}>
-                      <let {
-                        outer: Option[String] = Some(
-                          match inner_opt {Some(x) => x, None => "default"}
-                        ),
-                      }>
-                        <match {outer}>
-                          <case {Some(s)}>
-                            {s}
-                          </case>
-                          <case {None}>
-                            none
-                          </case>
-                        </match>
-                      </let>
-                    </let>
+                    let inner_opt: Option[String] = Some("inner");
+                    let outer: Option[String] = Some(
+                      match inner_opt {Some(x) => x, None => "default"}
+                    );
+                    <match {outer}>
+                      <case {Some(s)}>
+                        {s}
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -3255,11 +3243,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Tag(text: String) -> Html {
-                  <let {label: String = text}>
-                    <div>
-                      {label}
-                    </div>
-                  </let>
+                  let label: String = text;
+                  <div>
+                    {label}
+                  </div>
                 }
 
                 page Test() {
@@ -3325,11 +3312,9 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {a: String = "A"}>
-                      <let {b: String = "B"}>
-                        <Swap a={b} b={a}/>
-                      </let>
-                    </let>
+                    let a: String = "A";
+                    let b: String = "B";
+                    <Swap a={b} b={a}/>
                   }
                 }
             "#},
@@ -3392,9 +3377,8 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {item: String = "outer"}>
-                      <Rows items={["a", "b"]} id={item}/>
-                    </let>
+                    let item: String = "outer";
+                    <Rows items={["a", "b"]} id={item}/>
                   }
                 }
             "#},
@@ -3460,12 +3444,14 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <>
-                      <let {flag: Bool = true}>
-                        {match flag {true => "yes", false => "no"}}
-                      </let>
-                      <let {other: Bool = false}>
-                        {match other {true => "YES", false => "NO"}}
-                      </let>
+                      {
+                        let flag: Bool = true;
+                        <>{match flag {true => "yes", false => "no"}}</>
+                      }
+                      {
+                        let other: Bool = false;
+                        <>{match other {true => "YES", false => "NO"}}</>
+                      }
                     </>
                   }
                 }
@@ -3517,14 +3503,12 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {path: String = ""}>
-                      <let {git_ref: String = "main"}>
-                        {match path == "" {
-                          true => git_ref,
-                          _ => git_ref + " - " + path,
-                        }}
-                      </let>
-                    </let>
+                    let path: String = "";
+                    let git_ref: String = "main";
+                    <>{match path == "" {
+                      true => git_ref,
+                      _ => git_ref + " - " + path,
+                    }}</>
                   }
                 }
             "#},
@@ -3574,13 +3558,15 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <>
-                      <let {opt1: Option[String] = Some("hi")}>
-                        {match opt1 {Some(_) => "some", None => "none"}}
-                      </let>
+                      {
+                        let opt1: Option[String] = Some("hi");
+                        <>{match opt1 {Some(_) => "some", None => "none"}}</>
+                      }
                       ,
-                      <let {opt2: Option[String] = None}>
-                        {match opt2 {Some(_) => "SOME", None => "NONE"}}
-                      </let>
+                      {
+                        let opt2: Option[String] = None;
+                        <>{match opt2 {Some(_) => "SOME", None => "NONE"}}</>
+                      }
                     </>
                   }
                 }
@@ -3634,23 +3620,23 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <>
-                      <let {outer: Bool = true}>
-                        <let {inner: Bool = false}>
-                          {match outer {
-                            true => match inner {true => "TT", false => "TF"},
-                            false => "F",
-                          }}
-                        </let>
-                      </let>
+                      {
+                        let outer: Bool = true;
+                        let inner: Bool = false;
+                        <>{match outer {
+                          true => match inner {true => "TT", false => "TF"},
+                          false => "F",
+                        }}</>
+                      }
                       ,
-                      <let {outer2: Bool = false}>
-                        <let {inner2: Bool = true}>
-                          {match outer2 {
-                            true => match inner2 {true => "TT", false => "TF"},
-                            false => "F",
-                          }}
-                        </let>
-                      </let>
+                      {
+                        let outer2: Bool = false;
+                        let inner2: Bool = true;
+                        <>{match outer2 {
+                          true => match inner2 {true => "TT", false => "TF"},
+                          false => "F",
+                        }}</>
+                      }
                     </>
                   }
                 }
@@ -3711,9 +3697,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {num: Int = -123}>
-                      {num.to_string()}
-                    </let>
+                    let num: Int = -123;
+                    <>{num.to_string()}</>
                   }
                 }
             "#},
@@ -3755,9 +3740,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {temp: Float = -2.9}>
-                      {temp.to_int().to_string()}
-                    </let>
+                    let temp: Float = -2.9;
+                    <>{temp.to_int().to_string()}</>
                   }
                 }
             "#},
@@ -3893,12 +3877,13 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {name: String = "Alice"}>
+                    let name: String = "Alice";
+                    <>
                       Hello,
                       {" "}
                       {name}
                       !
-                    </let>
+                    </>
                   }
                 }
             "#},
@@ -3943,14 +3928,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {show: Bool = true}>
+                    let show: Bool = true;
+                    <>
                       <if {show}>
                         Visible
                       </if>
                       <if {!show}>
                         Hidden
                       </if>
-                    </let>
+                    </>
                   }
                 }
             "#},
@@ -4273,9 +4259,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {text: String = "<div>Hello & world</div>"}>
-                      {text}
-                    </let>
+                    let text: String = "<div>Hello & world</div>";
+                    <>{text}</>
                   }
                 }
             "#},
@@ -4317,9 +4302,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {message: String = "Hello from let"}>
-                      {message}
-                    </let>
+                    let message: String = "Hello from let";
+                    <>{message}</>
                   }
                 }
             "#},
@@ -4425,11 +4409,9 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {first: String = "Hello"}>
-                      <let {second: String = " World"}>
-                        {first + second}
-                      </let>
-                    </let>
+                    let first: String = "Hello";
+                    let second: String = " World";
+                    <>{first + second}</>
                   }
                 }
             "#},
@@ -4474,11 +4456,14 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     <for {item in ["A", "B"]}>
-                      <let {prefix: String = "["}>
-                        {prefix}
-                        {item}
-                        ]
-                      </let>
+                      {
+                        let prefix: String = "[";
+                        <>
+                          {prefix}
+                          {item}
+                          ]
+                        </>
+                      }
                     </for>
                   }
                 }
@@ -4685,16 +4670,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {flag: Bool = true}>
-                      <match {flag}>
-                        <case {true}>
-                          yes
-                        </case>
-                        <case {false}>
-                          no
-                        </case>
-                      </match>
-                    </let>
+                    let flag: Bool = true;
+                    <match {flag}>
+                      <case {true}>
+                        yes
+                      </case>
+                      <case {false}>
+                        no
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -4743,16 +4727,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {flag: Bool = false}>
-                      <match {flag}>
-                        <case {true}>
-                          yes
-                        </case>
-                        <case {false}>
-                          no
-                        </case>
-                      </match>
-                    </let>
+                    let flag: Bool = false;
+                    <match {flag}>
+                      <case {true}>
+                        yes
+                      </case>
+                      <case {false}>
+                        no
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -4806,12 +4789,13 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {person: Person = Person {name: "Alice", age: 30}}>
+                    let person: Person = Person {name: "Alice", age: 30};
+                    <>
                       {person.name}
                       <if {person.age == 30}>
                         :30
                       </if>
-                    </let>
+                    </>
                   }
                 }
             "#},
@@ -4865,11 +4849,12 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {pair: Pair = Pair {second: "b", first: "a"}}>
+                    let pair: Pair = Pair {second: "b", first: "a"};
+                    <>
                       {pair.first}
                       -
                       {pair.second}
-                    </let>
+                    </>
                   }
                 }
             "#},
@@ -4920,15 +4905,14 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {shape = Shape::Rect {height: "b", width: "a"}}>
-                      <match {shape}>
-                        <case {Shape::Rect {width: w, height: h}}>
-                          {w}
-                          -
-                          {h}
-                        </case>
-                      </match>
-                    </let>
+                    let shape = Shape::Rect {height: "b", width: "a"};
+                    <match {shape}>
+                      <case {Shape::Rect {width: w, height: h}}>
+                        {w}
+                        -
+                        {h}
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -4990,16 +4974,15 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      person: Person = Person {
-                        name: "Alice",
-                        address: Address {city: "Paris", zip: "75001"},
-                      },
-                    }>
+                    let person: Person = Person {
+                      name: "Alice",
+                      address: Address {city: "Paris", zip: "75001"},
+                    };
+                    <>
                       {person.name}
                       ,
                       {person.address.city}
-                    </let>
+                    </>
                   }
                 }
             "#},
@@ -5046,13 +5029,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {a: Int = 3}>
-                      <let {b: Int = 7}>
-                        <if {a + b == 10}>
-                          correct
-                        </if>
-                      </let>
-                    </let>
+                    let a: Int = 3;
+                    let b: Int = 7;
+                    <if {a + b == 10}>
+                      correct
+                    </if>
                   }
                 }
             "#},
@@ -5102,13 +5083,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {a: Int = 10}>
-                      <let {b: Int = 3}>
-                        <if {a - b == 7}>
-                          correct
-                        </if>
-                      </let>
-                    </let>
+                    let a: Int = 10;
+                    let b: Int = 3;
+                    <if {a - b == 7}>
+                      correct
+                    </if>
                   }
                 }
             "#},
@@ -5158,13 +5137,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {a: Int = 4}>
-                      <let {b: Int = 5}>
-                        <if {a * b == 20}>
-                          correct
-                        </if>
-                      </let>
-                    </let>
+                    let a: Int = 4;
+                    let b: Int = 5;
+                    <if {a * b == 20}>
+                      correct
+                    </if>
                   }
                 }
             "#},
@@ -5214,13 +5191,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {a: Bool = true}>
-                      <let {b: Bool = true}>
-                        <if {a && b}>
-                          TT
-                        </if>
-                      </let>
-                    </let>
+                    let a: Bool = true;
+                    let b: Bool = true;
+                    <if {a && b}>
+                      TT
+                    </if>
                   }
                 }
             "#},
@@ -5270,13 +5245,11 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {a: Bool = false}>
-                      <let {b: Bool = true}>
-                        <if {a || b}>
-                          FT
-                        </if>
-                      </let>
-                    </let>
+                    let a: Bool = false;
+                    let b: Bool = true;
+                    <if {a || b}>
+                      FT
+                    </if>
                   }
                 }
             "#},
@@ -5396,16 +5369,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {some_val: Option[String] = Some("hello")}>
-                      <match {some_val}>
-                        <case {Some(s)}>
-                          {s}
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let some_val: Option[String] = Some("hello");
+                    <match {some_val}>
+                      <case {Some(s)}>
+                        {s}
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -5456,16 +5428,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {opt: Option[String] = Some("hello")}>
-                      <match {opt}>
-                        <case {Some(_)}>
-                          some
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let opt: Option[String] = Some("hello");
+                    <match {opt}>
+                      <case {Some(_)}>
+                        some
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -5514,22 +5485,18 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {inner_opt: Option[String] = Some("inner")}>
-                      <let {
-                        outer: Option[String] = Some(
-                          match inner_opt {Some(x) => x, None => "default"}
-                        ),
-                      }>
-                        <match {outer}>
-                          <case {Some(s)}>
-                            {s}
-                          </case>
-                          <case {None}>
-                            none
-                          </case>
-                        </match>
-                      </let>
-                    </let>
+                    let inner_opt: Option[String] = Some("inner");
+                    let outer: Option[String] = Some(
+                      match inner_opt {Some(x) => x, None => "default"}
+                    );
+                    <match {outer}>
+                      <case {Some(s)}>
+                        {s}
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -5672,13 +5639,12 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {color: Color = Color::Green}>
-                      {match color {
-                        Color::Red => "red",
-                        Color::Green => "green",
-                        Color::Blue => "blue",
-                      }}
-                    </let>
+                    let color: Color = Color::Green;
+                    <>{match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
+                    }}</>
                   }
                 }
             "#},
@@ -5730,19 +5696,18 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {color: Color = Color::Blue}>
-                      <match {color}>
-                        <case {Color::Red}>
-                          red
-                        </case>
-                        <case {Color::Green}>
-                          green
-                        </case>
-                        <case {Color::Blue}>
-                          blue
-                        </case>
-                      </match>
-                    </let>
+                    let color: Color = Color::Blue;
+                    <match {color}>
+                      <case {Color::Red}>
+                        red
+                      </case>
+                      <case {Color::Green}>
+                        green
+                      </case>
+                      <case {Color::Blue}>
+                        blue
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -5803,18 +5768,15 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      result: Outcome = Outcome::Success {value: "hello"},
-                    }>
-                      <match {result}>
-                        <case {Outcome::Success {value: v}}>
-                          {format!("Ok: {}", v)}
-                        </case>
-                        <case {Outcome::Failure {message: m}}>
-                          {format!("Err: {}", m)}
-                        </case>
-                      </match>
-                    </let>
+                    let result: Outcome = Outcome::Success {value: "hello"};
+                    <match {result}>
+                      <case {Outcome::Success {value: v}}>
+                        {format!("Ok: {}", v)}
+                      </case>
+                      <case {Outcome::Failure {message: m}}>
+                        {format!("Err: {}", m)}
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -5874,16 +5836,15 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {item: Item = Item::Tagged {tag: "news"}}>
-                      <match {item}>
-                        <case {Item::Tagged {tag: t}}>
-                          {format!("tag: {}", t)}
-                        </case>
-                        <case {Item::Plain}>
-                          plain
-                        </case>
-                      </match>
-                    </let>
+                    let item: Item = Item::Tagged {tag: "news"};
+                    <match {item}>
+                      <case {Item::Tagged {tag: t}}>
+                        {format!("tag: {}", t)}
+                      </case>
+                      <case {Item::Plain}>
+                        plain
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -5943,14 +5904,11 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      result: String = match Outcome::Success {value: "hi"} {
-                        Outcome::Success {value: v} => v,
-                        Outcome::Failure {message: m} => m,
-                      },
-                    }>
-                      {format!("Got: {}", result)}
-                    </let>
+                    let result: String = match Outcome::Success {value: "hi"} {
+                      Outcome::Success {value: v} => v,
+                      Outcome::Failure {message: m} => m,
+                    };
+                    <>{format!("Got: {}", result)}</>
                   }
                 }
             "#},
@@ -6083,20 +6041,17 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      result: Outcome = Outcome::Failure {
-                        message: "something went wrong",
-                      },
-                    }>
-                      <match {result}>
-                        <case {Outcome::Success {value: v}}>
-                          {format!("Ok: {}", v)}
-                        </case>
-                        <case {Outcome::Failure {message: m}}>
-                          {format!("Err: {}", m)}
-                        </case>
-                      </match>
-                    </let>
+                    let result: Outcome = Outcome::Failure {
+                      message: "something went wrong",
+                    };
+                    <match {result}>
+                      <case {Outcome::Success {value: v}}>
+                        {format!("Ok: {}", v)}
+                      </case>
+                      <case {Outcome::Failure {message: m}}>
+                        {format!("Err: {}", m)}
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -6159,21 +6114,18 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      resp = Response::Success {
-                        code: "200",
-                        body: "OK",
-                      },
-                    }>
-                      <match {resp}>
-                        <case {Response::Success {code: c, body: b}}>
-                          {format!("{} {}", c, b)}
-                        </case>
-                        <case {Response::Failure {reason: r}}>
-                          {format!("Error: {}", r)}
-                        </case>
-                      </match>
-                    </let>
+                    let resp = Response::Success {
+                      code: "200",
+                      body: "OK",
+                    };
+                    <match {resp}>
+                      <case {Response::Success {code: c, body: b}}>
+                        {format!("{} {}", c, b)}
+                      </case>
+                      <case {Response::Failure {reason: r}}>
+                        {format!("Error: {}", r)}
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -6237,18 +6189,15 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      result: Outcome = Outcome::Success {value: "hello"},
-                    }>
-                      <match {result}>
-                        <case {Outcome::Success {value}}>
-                          {format!("Ok: {}", value)}
-                        </case>
-                        <case {Outcome::Failure {message}}>
-                          {format!("Err: {}", message)}
-                        </case>
-                      </match>
-                    </let>
+                    let result: Outcome = Outcome::Success {value: "hello"};
+                    <match {result}>
+                      <case {Outcome::Success {value}}>
+                        {format!("Ok: {}", value)}
+                      </case>
+                      <case {Outcome::Failure {message}}>
+                        {format!("Err: {}", message)}
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -6301,9 +6250,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {items: Array[String] = ["a", "b", "c"]}>
-                      {items.len().to_string()}
-                    </let>
+                    let items: Array[String] = ["a", "b", "c"];
+                    <>{items.len().to_string()}</>
                   }
                 }
             "#},
@@ -6345,9 +6293,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {items: Array[String] = []}>
-                      {items.len().to_string()}
-                    </let>
+                    let items: Array[String] = [];
+                    <>{items.len().to_string()}</>
                   }
                 }
             "#},
@@ -6389,11 +6336,10 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {items: Array[String] = ["x", "y"]}>
-                      <if {items.len() == 2}>
-                        has two
-                      </if>
-                    </let>
+                    let items: Array[String] = ["x", "y"];
+                    <if {items.len() == 2}>
+                      has two
+                    </if>
                   }
                 }
             "#},
@@ -6441,11 +6387,10 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {items: Array[String] = ["a"]}>
-                      <if {items.len() < 5}>
-                        less than 5
-                      </if>
-                    </let>
+                    let items: Array[String] = ["a"];
+                    <if {items.len() < 5}>
+                      less than 5
+                    </if>
                   }
                 }
             "#},
@@ -6493,9 +6438,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>
-                      {numbers.len().to_string()}
-                    </let>
+                    let numbers: Array[Int] = [1, 2, 3, 4, 5];
+                    <>{numbers.len().to_string()}</>
                   }
                 }
             "#},
@@ -6537,16 +6481,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {items: Array[String] = []}>
-                      <match {items.is_empty()}>
-                        <case {true}>
-                          empty
-                        </case>
-                        <case {false}>
-                          not empty
-                        </case>
-                      </match>
-                    </let>
+                    let items: Array[String] = [];
+                    <match {items.is_empty()}>
+                      <case {true}>
+                        empty
+                      </case>
+                      <case {false}>
+                        not empty
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -6597,16 +6540,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {items: Array[String] = ["a", "b"]}>
-                      <match {items.is_empty()}>
-                        <case {true}>
-                          empty
-                        </case>
-                        <case {false}>
-                          not empty
-                        </case>
-                      </match>
-                    </let>
+                    let items: Array[String] = ["a", "b"];
+                    <match {items.is_empty()}>
+                      <case {true}>
+                        empty
+                      </case>
+                      <case {false}>
+                        not empty
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -6657,16 +6599,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {numbers: Array[Int] = [1, 2, 3]}>
-                      <match {numbers.is_empty()}>
-                        <case {true}>
-                          no numbers
-                        </case>
-                        <case {false}>
-                          has numbers
-                        </case>
-                      </match>
-                    </let>
+                    let numbers: Array[Int] = [1, 2, 3];
+                    <match {numbers.is_empty()}>
+                      <case {true}>
+                        no numbers
+                      </case>
+                      <case {false}>
+                        has numbers
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -6717,9 +6658,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {count: Int = 42}>
-                      {count.to_string()}
-                    </let>
+                    let count: Int = 42;
+                    <>{count.to_string()}</>
                   }
                 }
             "#},
@@ -6761,9 +6701,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {num: Int = 0}>
-                      {num.to_string()}
-                    </let>
+                    let num: Int = 0;
+                    <>{num.to_string()}</>
                   }
                 }
             "#},
@@ -6805,9 +6744,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {price: Float = 3.7}>
-                      {price.to_int().to_string()}
-                    </let>
+                    let price: Float = 3.7;
+                    <>{price.to_int().to_string()}</>
                   }
                 }
             "#},
@@ -6849,9 +6787,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {num: Float = 5.0}>
-                      {num.to_int().to_string()}
-                    </let>
+                    let num: Float = 5.0;
+                    <>{num.to_int().to_string()}</>
                   }
                 }
             "#},
@@ -6995,11 +6932,10 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {items: Array[String] = ["a", "b", "c"]}>
-                      <for {_ in items}>
-                        *
-                      </for>
-                    </let>
+                    let items: Array[String] = ["a", "b", "c"];
+                    <for {_ in items}>
+                      *
+                    </for>
                   }
                 }
             "#},
@@ -7275,21 +7211,18 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      nested: Option[Option[String]] = Some(Some("deep")),
-                    }>
-                      <match {nested}>
-                        <case {Some(Some(x))}>
-                          {x}
-                        </case>
-                        <case {Some(None)}>
-                          some-none
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let nested: Option[Option[String]] = Some(Some("deep"));
+                    <match {nested}>
+                      <case {Some(Some(x))}>
+                        {x}
+                      </case>
+                      <case {Some(None)}>
+                        some-none
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -7347,16 +7280,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {opt: Option[String] = Some("x")}>
-                      <match {opt}>
-                        <case {Some(_)}>
-                          some
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let opt: Option[String] = Some("x");
+                    <match {opt}>
+                      <case {Some(_)}>
+                        some
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -7405,16 +7337,15 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {opt: Option[String] = None}>
-                      <match {opt}>
-                        <case {Some(_)}>
-                          some
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let opt: Option[String] = None;
+                    <match {opt}>
+                      <case {Some(_)}>
+                        some
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -7463,9 +7394,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {opt: Option[String] = Some("x")}>
-                      {match opt {Some(_) => "some", None => "none"}}
-                    </let>
+                    let opt: Option[String] = Some("x");
+                    <>{match opt {Some(_) => "some", None => "none"}}</>
                   }
                 }
             "#},
@@ -7510,9 +7440,8 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {opt: Option[String] = None}>
-                      {match opt {Some(_) => "some", None => "none"}}
-                    </let>
+                    let opt: Option[String] = None;
+                    <>{match opt {Some(_) => "some", None => "none"}}</>
                   }
                 }
             "#},
@@ -8939,9 +8868,12 @@ mod tests {
                       Item {name: "b", value: "2"},
                     ];
                     <for {item in items}>
-                      <let {n: String = item.name}>
-                        [{n}]
-                      </let>
+                      {
+                        let n: String = item.name;
+                        <>
+                          [{n}]
+                        </>
+                      }
                     </for>
                   }
                 }
@@ -9022,9 +8954,12 @@ mod tests {
                       },
                     ];
                     <for {person in people}>
-                      <let {city: String = person.address.city}>
-                        [{city}]
-                      </let>
+                      {
+                        let city: String = person.address.city;
+                        <>
+                          [{city}]
+                        </>
+                      }
                     </for>
                   }
                 }
@@ -9105,9 +9040,12 @@ mod tests {
                         Source {name: "b", value: "2"},
                     ];
                     <for {src in sources}>
-                      <let {target = Target {label: src.name}}>
-                        [{target.label}]
-                      </let>
+                      {
+                        let target = Target {label: src.name};
+                        <>
+                          [{target.label}]
+                        </>
+                      }
                     </for>
                   }
                 }
@@ -9177,7 +9115,8 @@ mod tests {
                         Item {name: "b"},
                     ];
                     <for {item in items}>
-                      <let {opt = Some(item.name)}>
+                      {
+                        let opt = Some(item.name);
                         <match {opt}>
                           <case {Some(s)}>
                             [{s}]
@@ -9186,7 +9125,7 @@ mod tests {
                             [-]
                           </case>
                         </match>
-                      </let>
+                      }
                     </for>
                   }
                 }
@@ -10462,17 +10401,20 @@ mod tests {
                     };
                     <match {tree}>
                       <case {Tree::Node {label: l, left: lt, right: r}}>
-                        <let {s: Step = Step {t: lt, rest: r}}>
-                          {l}
-                          <match {s.rest}>
-                            <case {Some(_)}>
-                              some
-                            </case>
-                            <case {None}>
-                              none
-                            </case>
-                          </match>
-                        </let>
+                        {
+                          let s: Step = Step {t: lt, rest: r};
+                          <>
+                            {l}
+                            <match {s.rest}>
+                              <case {Some(_)}>
+                                some
+                              </case>
+                              <case {None}>
+                                none
+                              </case>
+                            </match>
+                          </>
+                        }
                       </case>
                       <case {Tree::Leaf}>
                         empty
@@ -12573,39 +12515,35 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {
-                      target: Option[Target] = Some(
-                        Target {id: "1", title: "hello"}
-                      ),
-                    }>
-                      <let {
-                        items: Array[Option[String]] = [
-                          match target {
-                            Some(t) => Some(t.title),
-                            None => None,
-                          },
-                        ],
-                      }>
-                        <for {item in items}>
-                          <match {item}>
-                            <case {Some(s)}>
-                              [
-                              {s}
-                              ]
-                            </case>
-                            <case {None}>
-                            </case>
-                          </match>
-                        </for>
-                        <match {target}>
-                          <case {Some(t)}>
-                            {t.title}
+                    let target: Option[Target] = Some(
+                      Target {id: "1", title: "hello"}
+                    );
+                    let items: Array[Option[String]] = [
+                      match target {
+                        Some(t) => Some(t.title),
+                        None => None,
+                      },
+                    ];
+                    <>
+                      <for {item in items}>
+                        <match {item}>
+                          <case {Some(s)}>
+                            [
+                            {s}
+                            ]
                           </case>
                           <case {None}>
                           </case>
                         </match>
-                      </let>
-                    </let>
+                      </for>
+                      <match {target}>
+                        <case {Some(t)}>
+                          {t.title}
+                        </case>
+                        <case {None}>
+                        </case>
+                      </match>
+                    </>
                   }
                 }
             "#},
@@ -13285,10 +13223,11 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {o: Option[String] = Some("a")}>
+                    let o: Option[String] = Some("a");
+                    <>
                       <C x={o}/>
                       <C x={o}/>
-                    </let>
+                    </>
                   }
                 }
             "#},
@@ -13731,22 +13670,21 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <let {x: Option[Option[Bool]] = Some(Some(true))}>
-                      <match {x}>
-                        <case {Some(Some(true))}>
-                          tt
-                        </case>
-                        <case {Some(Some(false))}>
-                          tf
-                        </case>
-                        <case {Some(None)}>
-                          some-none
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    let x: Option[Option[Bool]] = Some(Some(true));
+                    <match {x}>
+                      <case {Some(Some(true))}>
+                        tt
+                      </case>
+                      <case {Some(Some(false))}>
+                        tf
+                      </case>
+                      <case {Some(None)}>
+                        some-none
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -14127,11 +14065,10 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {foo: Foo = Foo {class: "a"}}>
-                      <div>
-                        {foo.class}
-                      </div>
-                    </let>
+                    let foo: Foo = Foo {class: "a"};
+                    <div>
+                      {foo.class}
+                    </div>
                   }
                 }
             "#},
@@ -14180,11 +14117,10 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {f: Foo = Foo {function: "a"}}>
-                      <div>
-                        {f.function}
-                      </div>
-                    </let>
+                    let f: Foo = Foo {function: "a"};
+                    <div>
+                      {f.function}
+                    </div>
                   }
                 }
             "#},
@@ -14233,11 +14169,10 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {f: Foo = Foo {protected: "a"}}>
-                      <div>
-                        {f.protected}
-                      </div>
-                    </let>
+                    let f: Foo = Foo {protected: "a"};
+                    <div>
+                      {f.protected}
+                    </div>
                   }
                 }
             "#},
@@ -14286,11 +14221,10 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {f: Foo = Foo {eval: "a"}}>
-                      <div>
-                        {f.eval}
-                      </div>
-                    </let>
+                    let f: Foo = Foo {eval: "a"};
+                    <div>
+                      {f.eval}
+                    </div>
                   }
                 }
             "#},
@@ -14341,15 +14275,14 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {e: E = E::A {class: "a"}}>
-                      <match {e}>
-                        <case {E::A {class: v}}>
-                          <div>
-                            {v}
-                          </div>
-                        </case>
-                      </match>
-                    </let>
+                    let e: E = E::A {class: "a"};
+                    <match {e}>
+                      <case {E::A {class: v}}>
+                        <div>
+                          {v}
+                        </div>
+                      </case>
+                    </match>
                   }
                 }
             "#},
@@ -14404,11 +14337,9 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {m: Math = Math {x: 4}}>
-                      <let {b: Int = 5}>
-                        {(m.x * b).to_string()}
-                      </let>
-                    </let>
+                    let m: Math = Math {x: 4};
+                    let b: Int = 5;
+                    <>{(m.x * b).to_string()}</>
                   }
                 }
             "#},
@@ -14456,9 +14387,8 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {n: Number = Number {x: 3.7}}>
-                      {n.x.to_int().to_string()}
-                    </let>
+                    let n: Number = Number {x: 3.7};
+                    <>{n.x.to_int().to_string()}</>
                   }
                 }
             "#},
@@ -14505,12 +14435,12 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {base = State {query: "a", num: 1}}>
-                      <let {next = State {...base, num: 2}}>
-                        {next.query}
-                        {next.num.to_string()}
-                      </let>
-                    </let>
+                    let base = State {query: "a", num: 1};
+                    let next = State {...base, num: 2};
+                    <>
+                      {next.query}
+                      {next.num.to_string()}
+                    </>
                   }
                 }
             "#},
@@ -14560,12 +14490,12 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <let {base = State {query: "a", num: 1}}>
-                      <let {next = State {...base, query: "b", num: 2}}>
-                        {next.query}
-                        {next.num.to_string()}
-                      </let>
-                    </let>
+                    let base = State {query: "a", num: 1};
+                    let next = State {...base, query: "b", num: 2};
+                    <>
+                      {next.query}
+                      {next.num.to_string()}
+                    </>
                   }
                 }
             "#},
@@ -14770,19 +14700,18 @@ mod tests {
                 }
 
                 fn Dark(s: State) -> Html {
-                  <let {t = Settings {...s.settings, theme: "dark"}}>
-                    <let {next = State {...s, settings: t}}>
-                      {next.query}
-                      {next.settings.theme}
-                    </let>
-                  </let>
+                  let t = Settings {...s.settings, theme: "dark"};
+                  let next = State {...s, settings: t};
+                  <>
+                    {next.query}
+                    {next.settings.theme}
+                  </>
                 }
 
                 page Test() {
                   fn body() -> Html {
-                    <let {s = Settings {theme: "light", compact: true}}>
-                      <Dark s={State {query: "q", settings: s}}/>
-                    </let>
+                    let s = Settings {theme: "light", compact: true};
+                    <Dark s={State {query: "q", settings: s}}/>
                   }
                 }
             "#},

@@ -36,8 +36,7 @@ pub fn normalize_node(node: &mut ParsedNode) {
         ParsedNode::HtmlElement { children, .. }
         | ParsedNode::Fragment { children, .. }
         | ParsedNode::If { children, .. }
-        | ParsedNode::For { children, .. }
-        | ParsedNode::Let { children, .. } => normalize(children),
+        | ParsedNode::For { children, .. } => normalize(children),
         ParsedNode::FunctionInvocation { children, .. } => {
             if let Some(children) = children {
                 normalize(children);
@@ -328,9 +327,9 @@ mod tests {
             indoc! {r#"
                 page Test() {
                   fn body() -> Html {
-                    <let {first: String = "Hello", second: String = "World"}>
-                      <div>{first} {second}</div>
-                    </let>
+                    let first: String = "Hello";
+                    let second: String = "World";
+                    <div>{first} {second}</div>
                   }
                 }
             "#},

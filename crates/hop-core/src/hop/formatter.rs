@@ -611,49 +611,6 @@ fn format_node<'a>(
                 .append(children_doc)
                 .append(arena.text("</for>"))
         }
-        ParsedNode::Let {
-            bindings,
-            bindings_range,
-            children,
-            ..
-        } => {
-            let end_position = bindings_range.end();
-            let has_trailing_comments = comments.front().is_some_and(|c| c.start() < end_position);
-
-            let mut bindings_doc = arena.nil();
-            for (i, binding) in bindings.iter().enumerate() {
-                if i > 0 {
-                    bindings_doc = bindings_doc.append(arena.text(",")).append(arena.line());
-                }
-                bindings_doc = bindings_doc.append(format_let_binding(arena, binding, comments));
-            }
-
-            let trailing_comments = drain_comments_before(arena, comments, end_position);
-
-            let body = if bindings.is_empty() && !has_trailing_comments {
-                arena.nil()
-            } else if bindings.is_empty() {
-                arena.line_().append(trailing_comments).nest(2)
-            } else if has_trailing_comments {
-                arena
-                    .line_()
-                    .append(bindings_doc)
-                    .append(arena.text(","))
-                    .append(arena.line())
-                    .append(trailing_comments)
-                    .nest(2)
-            } else {
-                soft_block(arena, bindings_doc)
-            };
-
-            let children_doc = format_children(arena, children, comments);
-            arena
-                .text("<let {")
-                .append(body)
-                .append(arena.text("}>"))
-                .append(children_doc)
-                .append(arena.text("</let>"))
-        }
         ParsedNode::Comment { range } => arena.text(range.as_str()),
         ParsedNode::Match { subject, cases, .. } => {
             let cases_doc = if cases.is_empty() {
@@ -1502,7 +1459,7 @@ mod tests {
                 if body.contains("{x}") {
                     let value = u.choose(STRINGS)?;
                     format!(
-                        "page Test() {{ fn body() -> Html {{<let {{x: String = {value:?}}}>{body}</let>}} }}"
+                        "page Test() {{ fn body() -> Html {{ let x: String = {value:?}; <>{body}</> }} }}"
                     )
                 } else {
                     format!("page Test() {{ fn body() -> Html {{<>{body}</>}} }}")
@@ -2500,18 +2457,20 @@ mod tests {
         check(
             indoc! {r#"
                 fn Main() -> Html {
-                  <let {hello = "Hello", world = "World"}>
-                    {hello} {world}
-                  </let>
+                  let hello = "Hello";
+                  let world = "World";
+                  <>{hello} {world}</>
                 }
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  <let {hello = "Hello", world = "World"}>
+                  let hello = "Hello";
+                  let world = "World";
+                  <>
                     {hello}
                     {" "}
                     {world}
-                  </let>
+                  </>
                 }
             "#]],
         );
@@ -2522,20 +2481,22 @@ mod tests {
         check(
             indoc! {r#"
                 fn Main() -> Html {
-                  <let {hello = "Hello", world = "World"}>
-                    {hello} <b>{world}</b>
-                  </let>
+                  let hello = "Hello";
+                  let world = "World";
+                  <>{hello} <b>{world}</b></>
                 }
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  <let {hello = "Hello", world = "World"}>
+                  let hello = "Hello";
+                  let world = "World";
+                  <>
                     {hello}
                     {" "}
                     <b>
                       {world}
                     </b>
-                  </let>
+                  </>
                 }
             "#]],
         );
@@ -2947,9 +2908,8 @@ mod tests {
             indoc! {r#"
                 record User { name: String, age: Int }
                 fn Main() -> Html {
-                  <let {user: User = User {name: "Alice", age: 30}}>
-                    {user.name}
-                  </let>
+                  let user: User = User {name: "Alice", age: 30};
+                  <>{user.name}</>
                 }
             "#},
             expect![[r#"
@@ -2959,9 +2919,10 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  <let {user: User = User {name: "Alice", age: 30}}>
+                  let user: User = User {name: "Alice", age: 30};
+                  <>
                     {user.name}
-                  </let>
+                  </>
                 }
             "#]],
         );
@@ -2973,9 +2934,8 @@ mod tests {
             indoc! {r#"
                 record User { name: String, age: Int }
                 fn Main(base: User) -> Html {
-                  <let {user: User = User {...base, name: "Alice"}}>
-                    {user.name}
-                  </let>
+                  let user: User = User {...base, name: "Alice"};
+                  <>{user.name}</>
                 }
             "#},
             expect![[r#"
@@ -2985,9 +2945,10 @@ mod tests {
                 }
 
                 fn Main(base: User) -> Html {
-                  <let {user: User = User {...base, name: "Alice"}}>
+                  let user: User = User {...base, name: "Alice"};
+                  <>
                     {user.name}
-                  </let>
+                  </>
                 }
             "#]],
         );
@@ -2999,9 +2960,8 @@ mod tests {
             indoc! {r#"
                 record User { name: String, age: Int }
                 fn Main(base: User) -> Html {
-                  <let {user: User = User {name: "Alice", ...base}}>
-                    {user.name}
-                  </let>
+                  let user: User = User {name: "Alice", ...base};
+                  <>{user.name}</>
                 }
             "#},
             expect![[r#"
@@ -3011,9 +2971,10 @@ mod tests {
                 }
 
                 fn Main(base: User) -> Html {
-                  <let {user: User = User {...base, name: "Alice"}}>
+                  let user: User = User {...base, name: "Alice"};
+                  <>
                     {user.name}
-                  </let>
+                  </>
                 }
             "#]],
         );
@@ -3025,9 +2986,8 @@ mod tests {
             indoc! {r#"
                 record User { name: String, age: Int }
                 fn Main(base: User) -> Html {
-                  <let {user: User = User {...base}}>
-                    {user.name}
-                  </let>
+                  let user: User = User {...base};
+                  <>{user.name}</>
                 }
             "#},
             expect![[r#"
@@ -3037,9 +2997,10 @@ mod tests {
                 }
 
                 fn Main(base: User) -> Html {
-                  <let {user: User = User {...base}}>
+                  let user: User = User {...base};
+                  <>
                     {user.name}
-                  </let>
+                  </>
                 }
             "#]],
         );
@@ -3051,9 +3012,8 @@ mod tests {
             indoc! {r#"
                 record User { name: String, age: Int, email: String }
                 fn Main(base: User) -> Html {
-                  <let {user: User = User {...base, name: "Alexandra", email: "alexandra@example.com"}}>
-                    {user.name}
-                  </let>
+                  let user: User = User {...base, name: "Alexandra", email: "alexandra@example.com"};
+                  <>{user.name}</>
                 }
             "#},
             expect![[r#"
@@ -3064,15 +3024,14 @@ mod tests {
                 }
 
                 fn Main(base: User) -> Html {
-                  <let {
-                    user: User = User {
-                      ...base,
-                      name: "Alexandra",
-                      email: "alexandra@example.com",
-                    },
-                  }>
+                  let user: User = User {
+                    ...base,
+                    name: "Alexandra",
+                    email: "alexandra@example.com",
+                  };
+                  <>
                     {user.name}
-                  </let>
+                  </>
                 }
             "#]],
         );
@@ -3083,16 +3042,16 @@ mod tests {
         check(
             indoc! {r#"
                 fn Main() -> Html {
-                  <let {name = "World"}>
-                    {name}
-                  </let>
+                  let name = "World";
+                  <>{name}</>
                 }
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  <let {name = "World"}>
+                  let name = "World";
+                  <>
                     {name}
-                  </let>
+                  </>
                 }
             "#]],
         );
@@ -3104,16 +3063,16 @@ mod tests {
             indoc! {"
                 record Empty {}
                 fn Main() -> Html {
-                  <let {e: Empty = Empty {}}>
-                  </let>
+                  let e: Empty = Empty {};
+                  <></>
                 }
             "},
             expect![[r#"
                 record Empty {}
 
                 fn Main() -> Html {
-                  <let {e: Empty = Empty {}}>
-                  </let>
+                  let e: Empty = Empty {};
+                  <></>
                 }
             "#]],
         );
@@ -3170,8 +3129,8 @@ mod tests {
             indoc! {r#"
                 enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
                 fn Main() -> Html {
-                  <let {s: Shape = Shape::Circle {radius: 5.0}}>
-                  </let>
+                  let s: Shape = Shape::Circle {radius: 5.0};
+                  <></>
                 }
             "#},
             expect![[r#"
@@ -3186,8 +3145,8 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  <let {s: Shape = Shape::Circle {radius: 5.0}}>
-                  </let>
+                  let s: Shape = Shape::Circle {radius: 5.0};
+                  <></>
                 }
             "#]],
         );
@@ -3199,8 +3158,8 @@ mod tests {
             indoc! {"
                 enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
                 fn Main() -> Html {
-                  <let {s: Shape = Shape::Rect {w: 3.0, h: 4.0}}>
-                  </let>
+                  let s: Shape = Shape::Rect {w: 3.0, h: 4.0};
+                  <></>
                 }
             "},
             expect![[r#"
@@ -3215,8 +3174,8 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  <let {s: Shape = Shape::Rect {w: 3.0, h: 4.0}}>
-                  </let>
+                  let s: Shape = Shape::Rect {w: 3.0, h: 4.0};
+                  <></>
                 }
             "#]],
         );
@@ -3228,8 +3187,8 @@ mod tests {
             indoc! {r#"
                 enum PopoverMenuItemElement { Link {href: String}, Button {href: String, name: String, value: String} }
                 fn Main() -> Html {
-                  <let {el: PopoverMenuItemElement = PopoverMenuItemElement::Button {href: "/path/to/some/page", name: "button_name", value: "button_value"}}>
-                  </let>
+                  let el: PopoverMenuItemElement = PopoverMenuItemElement::Button {href: "/path/to/some/page", name: "button_name", value: "button_value"};
+                  <></>
                 }
             "#},
             expect![[r#"
@@ -3245,14 +3204,12 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  <let {
-                    el: PopoverMenuItemElement = PopoverMenuItemElement::Button {
-                      href: "/path/to/some/page",
-                      name: "button_name",
-                      value: "button_value",
-                    },
-                  }>
-                  </let>
+                  let el: PopoverMenuItemElement = PopoverMenuItemElement::Button {
+                    href: "/path/to/some/page",
+                    name: "button_name",
+                    value: "button_value",
+                  };
+                  <></>
                 }
             "#]],
         );
@@ -3264,8 +3221,8 @@ mod tests {
             indoc! {r#"
                 record Button { href: String, name: String, value: String, dialog_trigger: String }
                 fn Main() -> Html {
-                  <let {btn: Button = Button {href: "/path/to/some/page", name: "button_name", value: "button_value", dialog_trigger: "dialog_trigger_value"}}>
-                  </let>
+                  let btn: Button = Button {href: "/path/to/some/page", name: "button_name", value: "button_value", dialog_trigger: "dialog_trigger_value"};
+                  <></>
                 }
             "#},
             expect![[r#"
@@ -3277,15 +3234,13 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  <let {
-                    btn: Button = Button {
-                      href: "/path/to/some/page",
-                      name: "button_name",
-                      value: "button_value",
-                      dialog_trigger: "dialog_trigger_value",
-                    },
-                  }>
-                  </let>
+                  let btn: Button = Button {
+                    href: "/path/to/some/page",
+                    name: "button_name",
+                    value: "button_value",
+                    dialog_trigger: "dialog_trigger_value",
+                  };
+                  <></>
                 }
             "#]],
         );
@@ -3296,13 +3251,14 @@ mod tests {
         check(
             indoc! {r#"
                 fn Main() -> Html {
-                  <let {x: Option[String] = Some("short")}></let>
+                  let x: Option[String] = Some("short");
+                  <></>
                 }
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  <let {x: Option[String] = Some("short")}>
-                  </let>
+                  let x: Option[String] = Some("short");
+                  <></>
                 }
             "#]],
         );
@@ -3598,332 +3554,6 @@ mod tests {
                       </p>
                     </p>
                   </p>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_with_single_string_binding() {
-        check(
-            indoc! {r#"
-                fn Main() -> Html {
-                  <let {name: String = "World"}>
-                    Hello, {name}!
-                  </let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  <let {name: String = "World"}>
-                    Hello,
-                    {" "}
-                    {name}
-                    !
-                  </let>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_with_single_int_binding() {
-        check(
-            indoc! {"
-                fn Main() -> Html {
-                  <let {count: Int = 42}>
-                    <span>{count}</span>
-                  </let>
-                }
-            "},
-            expect![[r#"
-                fn Main() -> Html {
-                  <let {count: Int = 42}>
-                    <span>
-                      {count}
-                    </span>
-                  </let>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_with_trailing_comma() {
-        check(
-            indoc! {r#"
-                fn Main() -> Html {
-                  <let {name: String = "World",}>
-                    {name}
-                  </let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  <let {name: String = "World"}>
-                    {name}
-                  </let>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_with_multiple_bindings() {
-        check(
-            indoc! {r#"
-                fn Main() -> Html {
-                  <let {first: String = "Hello", second: String = "World"}>
-                    {first} {second}
-                  </let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  <let {first: String = "Hello", second: String = "World"}>
-                    {first}
-                    {" "}
-                    {second}
-                  </let>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_with_three_bindings() {
-        check(
-            indoc! {"
-                fn Main() -> Html {
-                  <let {a: Int = 1, b: Int = 2, c: Int = 3}>
-                    <div>{a} + {b} + {c}</div>
-                  </let>
-                }
-            "},
-            expect![[r#"
-                fn Main() -> Html {
-                  <let {a: Int = 1, b: Int = 2, c: Int = 3}>
-                    <div>
-                      {a}
-                      {" "}
-                      +
-                      {" "}
-                      {b}
-                      {" "}
-                      +
-                      {" "}
-                      {c}
-                    </div>
-                  </let>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_with_expression_value() {
-        check(
-            indoc! {"
-                fn Main(x: Int, y: Int) -> Html {
-                  <let {sum: Int = x + y}>
-                    <span>{sum}</span>
-                  </let>
-                }
-            "},
-            expect![[r#"
-                fn Main(
-                  x: Int,
-                  y: Int,
-                ) -> Html {
-                  <let {sum: Int = x + y}>
-                    <span>
-                      {sum}
-                    </span>
-                  </let>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_with_field_access_value() {
-        check(
-            indoc! {"
-                record User { name: String }
-                fn Main(user: User) -> Html {
-                  <let {name: String = user.name}>
-                    <div>{name}</div>
-                  </let>
-                }
-            "},
-            expect![[r#"
-                record User {
-                  name: String,
-                }
-
-                fn Main(user: User) -> Html {
-                  <let {name: String = user.name}>
-                    <div>
-                      {name}
-                    </div>
-                  </let>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn nested_let_tags() {
-        check(
-            indoc! {r#"
-                fn Main() -> Html {
-                  <let {a: String = "outer"}>
-                    <let {b: String = "inner"}>
-                      {a} {b}
-                    </let>
-                  </let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  <let {a: String = "outer"}>
-                    <let {b: String = "inner"}>
-                      {a}
-                      {" "}
-                      {b}
-                    </let>
-                  </let>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_inside_if() {
-        check(
-            indoc! {r#"
-                fn Main(show: Bool) -> Html {
-                  <if {show}>
-                    <let {msg: String = "visible"}>
-                      {msg}
-                    </let>
-                  </if>
-                }
-            "#},
-            expect![[r#"
-                fn Main(show: Bool) -> Html {
-                  <if {show}>
-                    <let {msg: String = "visible"}>
-                      {msg}
-                    </let>
-                  </if>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_inside_for() {
-        check(
-            indoc! {"
-                fn Main(items: Array[Int]) -> Html {
-                  <for {item in items}>
-                    <let {doubled: Int = item * 2}>
-                      <span>{doubled}</span>
-                    </let>
-                  </for>
-                }
-            "},
-            expect![[r#"
-                fn Main(items: Array[Int]) -> Html {
-                  <for {item in items}>
-                    <let {doubled: Int = item * 2}>
-                      <span>
-                        {doubled}
-                      </span>
-                    </let>
-                  </for>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn multiple_sibling_let_tags() {
-        check(
-            indoc! {r#"
-                fn Main() -> Html {
-                  <>
-                    <let {a: String = "first"}>
-                      {a}
-                    </let>
-                    <let {b: String = "second"}>
-                      {b}
-                    </let>
-                  </>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  <>
-                    <let {a: String = "first"}>
-                      {a}
-                    </let>
-                    <let {b: String = "second"}>
-                      {b}
-                    </let>
-                  </>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_with_empty_children() {
-        check(
-            indoc! {r#"
-                fn Main() -> Html {
-                  <let {x: String = "unused"}></let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  <let {x: String = "unused"}>
-                  </let>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn let_with_long_bindings_breaks_to_multiple_lines() {
-        check(
-            indoc! {r#"
-                fn Main() -> Html {
-                  <let {
-                    // a
-                    first_name: String = "Hello",
-                    // b
-                    last_name: String = "World",
-                    // c
-                  }>
-                    {first_name} {last_name}
-                  </let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  <let {
-                    // a
-                    first_name: String = "Hello",
-                    // b
-                    last_name: String = "World",
-                    // c
-                  }>
-                    {first_name}
-                    {" "}
-                    {last_name}
-                  </let>
                 }
             "#]],
         );
@@ -4593,16 +4223,16 @@ mod tests {
         check(
             indoc! {"
                 fn Main() -> Html {
-                  <let {x: Float = 5.0}>
-                    {x}
-                  </let>
+                  let x: Float = 5.0;
+                  <>{x}</>
                 }
             "},
             expect![[r#"
                 fn Main() -> Html {
-                  <let {x: Float = 5.0}>
+                  let x: Float = 5.0;
+                  <>
                     {x}
-                  </let>
+                  </>
                 }
             "#]],
         );
@@ -4613,20 +4243,20 @@ mod tests {
         check(
             indoc! {"
                 fn Main() -> Html {
-                  <let {a: Float = 0.000, b: Float = 0.001, c: Float = 0.002}>
-                    {a}
-                  </let>
+                  let a: Float = 0.000;
+                  let b: Float = 0.001;
+                  let c: Float = 0.002;
+                  <>{a}</>
                 }
             "},
             expect![[r#"
                 fn Main() -> Html {
-                  <let {
-                    a: Float = 0.000,
-                    b: Float = 0.001,
-                    c: Float = 0.002,
-                  }>
+                  let a: Float = 0.000;
+                  let b: Float = 0.001;
+                  let c: Float = 0.002;
+                  <>
                     {a}
-                  </let>
+                  </>
                 }
             "#]],
         );

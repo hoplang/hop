@@ -115,20 +115,6 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// A let node.
-    ///
-    /// ```text
-    /// <let {name: String = "World", count: Int = 0}>
-    ///   ...
-    /// </let>
-    /// ```
-    Let {
-        bindings: Vec<ParsedLetBinding>,
-        bindings_range: DocumentRange,
-        children: Vec<ParsedNode>,
-        range: DocumentRange,
-    },
-
     /// An HTML comment.
     ///
     /// ```text
@@ -222,14 +208,11 @@ pub struct ParsedMatchCase {
     pub children: Vec<ParsedNode>,
 }
 
-/// A single binding in a let node.
+/// A single binding in a let statement.
 ///
 /// ```text
-/// <let {
-///   name: String = "World",
-///   ^^^^^^^^^^^^^^^^^^^^^^
-///   count: Int = 0,
-/// }>
+/// let name: String = "World";
+///     ^^^^^^^^^^^^^^^^^^^^^^
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedLetBinding {
@@ -342,7 +325,6 @@ impl ParsedNode {
             | ParsedNode::FunctionInvocation { range, .. }
             | ParsedNode::If { range, .. }
             | ParsedNode::For { range, .. }
-            | ParsedNode::Let { range, .. }
             | ParsedNode::Match { range, .. }
             | ParsedNode::Comment { range }
             | ParsedNode::Fragment { range, .. }
@@ -356,7 +338,6 @@ impl ParsedNode {
             ParsedNode::FunctionInvocation { children, .. } => children.iter().flatten().collect(),
             ParsedNode::If { children, .. }
             | ParsedNode::For { children, .. }
-            | ParsedNode::Let { children, .. }
             | ParsedNode::HtmlElement { children, .. }
             | ParsedNode::Fragment { children, .. } => children.iter().collect(),
             ParsedNode::Match { cases, .. } => {
@@ -388,9 +369,6 @@ impl ParsedNode {
                 ParsedLoopSource::Array(expr) => vec![expr],
                 ParsedLoopSource::RangeInclusive { start, end } => vec![start, end],
             },
-            ParsedNode::Let { bindings, .. } => {
-                bindings.iter().map(|binding| &binding.value_expr).collect()
-            }
             ParsedNode::Text { .. }
             | ParsedNode::Newline { .. }
             | ParsedNode::Comment { .. }
@@ -529,24 +507,6 @@ impl ParsedNode {
                     .append(" in ")
                     .append(source_doc)
                     .append(" ")
-                    .append(braced_doc(children.iter().map(|c| c.to_doc()).collect()))
-            }
-            ParsedNode::Let {
-                bindings, children, ..
-            } => {
-                let bindings_doc = BoxDoc::intersperse(
-                    bindings.iter().map(|b| {
-                        let mut doc = BoxDoc::text(b.var_name.as_str());
-                        if let Some(var_type) = &b.var_type {
-                            doc = doc.append(": ").append(var_type.to_doc());
-                        }
-                        doc.append(" = ").append(b.value_expr.to_doc())
-                    }),
-                    BoxDoc::text(", "),
-                );
-                BoxDoc::text("let ")
-                    .append(bindings_doc)
-                    .append(" in ")
                     .append(braced_doc(children.iter().map(|c| c.to_doc()).collect()))
             }
             ParsedNode::Match { subject, cases, .. } => BoxDoc::text("match ")

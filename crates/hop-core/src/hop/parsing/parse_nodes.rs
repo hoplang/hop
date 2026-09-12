@@ -4,15 +4,11 @@ use std::iter::Peekable;
 use super::parse_expr;
 use super::parse_helpers;
 use super::parsed_expr::ParsedExpr;
-use super::parsed_node::{
-    ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode,
-};
+use super::parsed_node::{ParsedAttribute, ParsedLoopSource, ParsedMatchCase, ParsedNode};
 use super::token;
-use super::tokenize_expr;
 use super::tokenize_markup;
 use super::whitespace;
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_expr::ParsedMatchPattern;
 use crate::hop::parsing::token::LangTokenPair;
 use crate::hop::parsing::token::MarkupToken;
@@ -120,9 +116,6 @@ enum TagHeader {
     },
     For {
         expr: Slot<LoopHeader>,
-    },
-    Let {
-        bindings: Slot<Vec<ParsedLetBinding>>,
     },
     Match {
         expr: Slot<ParsedExpr>,
@@ -450,9 +443,6 @@ fn parse_opening_tag(
         "for" => TagHeader::For {
             expr: Slot::empty(),
         },
-        "let" => TagHeader::Let {
-            bindings: Slot::empty(),
-        },
         "match" => TagHeader::Match {
             expr: Slot::empty(),
         },
@@ -600,11 +590,6 @@ fn parse_opening_tag(
                     );
                     slot.fill(parsed, left_brace, &tag_name_range, errors);
                 }
-
-                TagHeader::Let { bindings: slot } => {
-                    let parsed = parse_let_bindings(iter, comments, errors, &left_brace);
-                    slot.fill(parsed, left_brace, &tag_name_range, errors);
-                }
             },
         }
     }
@@ -746,18 +731,6 @@ fn close_element(
                 var_name: header.var_name,
                 var_name_range: header.var_name_range,
                 source: header.loop_source,
-                range,
-                children,
-            }))
-        }
-
-        TagHeader::Let { bindings } => {
-            let children = expect_nodes(children, errors);
-            let (bindings, bindings_range) =
-                bindings.require(ParseErrorKind::MissingLetBinding {}, &opening_range, errors)?;
-            Ok(MarkupItem::Node(ParsedNode::Let {
-                bindings,
-                bindings_range,
                 range,
                 children,
             }))
@@ -912,54 +885,4 @@ fn parse_loop_header(
         var_name_range,
         loop_source: Box::new(source),
     })
-}
-
-/// Parse the bindings of a `<let>` from a `{` the caller has already
-/// consumed, through the `}` that closes them. Returns the bindings with the
-/// range of the whole `{...}`.
-fn parse_let_bindings(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    left_brace: &DocumentRange,
-) -> Result<(Vec<ParsedLetBinding>, DocumentRange), ErrorEmitted> {
-    if let Some((token::LangToken::RightBrace, right_brace)) = tokenize_expr::peek(iter) {
-        let _ = errors.emit(
-            ParseErrorKind::MissingLetBinding {},
-            left_brace.clone().to(right_brace),
-        );
-    }
-    parse_helpers::parse_delimited_list(
-        iter,
-        comments,
-        errors,
-        left_brace,
-        LangTokenPair::Braces,
-        left_brace,
-        &[],
-        |iter, comments, errors, range| {
-            let (var_name, var_name_range) =
-                parse_helpers::expect_variable_name(iter, comments, errors, range)?;
-            let var_type = if let Some((token::LangToken::Colon, _)) = tokenize_expr::peek(iter) {
-                parse_helpers::expect_token(
-                    iter,
-                    comments,
-                    errors,
-                    range,
-                    &token::LangToken::Colon,
-                )?;
-                Some(parse_type(iter, comments, errors, range)?)
-            } else {
-                None
-            };
-            parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::Assign)?;
-            let value_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
-            Ok(ParsedLetBinding {
-                var_name,
-                var_name_range,
-                var_type,
-                value_expr,
-            })
-        },
-    )
 }

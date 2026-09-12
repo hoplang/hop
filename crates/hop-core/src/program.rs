@@ -1292,17 +1292,16 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <let {greeting: String = "Hello"}>
-                    <span>{greeting}</span>
-                            ^
-                  </let>
+                  let greeting: String = "Hello";
+                  <span>{greeting}</span>
+                         ^
                 }
             "#},
             expect![[r#"
                 Definition
-                  --> main.hop (line 2, col 9)
-                2 |   <let {greeting: String = "Hello"}>
-                  |         ^^^^^^^^
+                  --> main.hop (line 2, col 7)
+                2 |   let greeting: String = "Hello";
+                  |       ^^^^^^^^
             "#]],
         );
     }
@@ -2029,19 +2028,18 @@ mod tests {
                 -- main.hop --
                 record User {name: String}
                 fn Main() -> Html {
-                  <let {user: User = User{name: "John"}}>
-                                     ^
-                    {user.name}
-                  </let>
+                  let user: User = User{name: "John"};
+                                   ^
+                  <>{user.name}</>
                 }
             "#},
             expect![[r#"
                 ```
                 User : main::User
                 ```
-                  --> main.hop (line 3, col 22)
-                3 |   <let {user: User = User{name: "John"}}>
-                  |                      ^^^^
+                  --> main.hop (line 3, col 20)
+                3 |   let user: User = User{name: "John"};
+                  |                    ^^^^
             "#]],
         );
     }
@@ -2053,22 +2051,21 @@ mod tests {
                 -- main.hop --
                 enum Color { Red, Green, Blue }
                 fn Main() -> Html {
-                  <let {color: Color = Color::Red}>
-                                       ^
+                  let color: Color = Color::Red;
+                                     ^
                     <match {color}>
                       <case {Color::Red}>red</case>
                       <case {_}>other</case>
                     </match>
-                  </let>
                 }
             "#},
             expect![[r#"
                 ```
                 Color : main::Color
                 ```
-                  --> main.hop (line 3, col 24)
-                3 |   <let {color: Color = Color::Red}>
-                  |                        ^^^^^^^^^^
+                  --> main.hop (line 3, col 22)
+                3 |   let color: Color = Color::Red;
+                  |                      ^^^^^^^^^^
             "#]],
         );
     }
@@ -2080,22 +2077,21 @@ mod tests {
                 -- main.hop --
                 enum Outcome { Success{value: String}, Failure{message: String} }
                 fn Main() -> Html {
-                  <let {result: Outcome = Outcome::Success{value: "ok"}}>
-                                          ^
-                    <match {result}>
-                      <case {Outcome::Success{value: v}}>{v}</case>
-                      <case {Outcome::Failure{message: m}}>{m}</case>
-                    </match>
-                  </let>
+                  let result: Outcome = Outcome::Success{value: "ok"};
+                                        ^
+                  <match {result}>
+                    <case {Outcome::Success{value: v}}>{v}</case>
+                    <case {Outcome::Failure{message: m}}>{m}</case>
+                  </match>
                 }
             "#},
             expect![[r#"
                 ```
                 Outcome : main::Outcome
                 ```
-                  --> main.hop (line 3, col 27)
-                3 |   <let {result: Outcome = Outcome::Success{value: "ok"}}>
-                  |                           ^^^^^^^^^^^^^^^^
+                  --> main.hop (line 3, col 25)
+                3 |   let result: Outcome = Outcome::Success{value: "ok"};
+                  |                         ^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -2631,11 +2627,10 @@ mod tests {
 
             page Test() {
               fn body() -> Html {
-                <let {color: Color = Color::Red}>
-                  <if {color == Color::Red}>
-                    equal
-                  </if>
-                </let>
+                let color: Color = Color::Red;
+                <if {color == Color::Red}>
+                  equal
+                </if>
               }
             }
         "#});
@@ -2643,9 +2638,9 @@ mod tests {
             &program,
             expect![[r#"
                 Type main::Color is not comparable
-                  --> main.hop (line 10, col 12)
-                10 |       <if {color == Color::Red}>
-                   |            ^^^^^
+                  --> main.hop (line 10, col 10)
+                10 |     <if {color == Color::Red}>
+                   |          ^^^^^
             "#]],
         );
     }
@@ -2662,11 +2657,10 @@ mod tests {
 
             page Test() {
               fn body() -> Html {
-                <let {color: Color = Color::Red}>
-                  <if {color != Color::Red}>
-                    not equal
-                  </if>
-                </let>
+                let color: Color = Color::Red;
+                <if {color != Color::Red}>
+                  not equal
+                </if>
               }
             }
         "#});
@@ -2674,9 +2668,9 @@ mod tests {
             &program,
             expect![[r#"
                 Type main::Color is not comparable
-                  --> main.hop (line 10, col 12)
-                10 |       <if {color != Color::Red}>
-                   |            ^^^^^
+                  --> main.hop (line 10, col 10)
+                10 |     <if {color != Color::Red}>
+                   |          ^^^^^
             "#]],
         );
     }

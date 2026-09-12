@@ -4002,216 +4002,29 @@ mod tests {
     }
 
     #[test]
-    fn accepts_let_with_string_value() {
+    fn accepts_nested_let_blocks() {
         accept(
             indoc! {r#"
                 fn Main() -> Html {
-                    <let {name: String = "World"}>
-                        <div>Hello {name}</div>
-                    </let>
+                    let a: Int = 1;
+                    let b: Int = 2;
+                    <div>{a} + {b}</div>
                 }
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  let name: String = "World" in {
+                  {
+                    let a: Int = 1;
+                    let b: Int = 2;
                     html(
                       tag: "div",
                       attrs: [],
                       children: [
-                        text("Hello "),
-                        interpolate(name),
+                        interpolate(a),
+                        text(" + "),
+                        interpolate(b),
                       ],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_let_with_int_value() {
-        accept(
-            indoc! {"
-                fn Main() -> Html {
-                    <let {count: Int = 42}>
-                        <span>{count}</span>
-                    </let>
-                }
-            "},
-            expect![[r#"
-                fn Main() -> Html {
-                  let count: Int = 42 in {
-                    html(
-                      tag: "span",
-                      attrs: [],
-                      children: [interpolate(count)],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_let_with_expression_value() {
-        accept(
-            indoc! {r#"
-                record User { name: String }
-                fn Main(user: User) -> Html {
-                    <let {greeting: String = user.name}>
-                        <div>{greeting}</div>
-                    </let>
-                }
-            "#},
-            expect![[r#"
-                record User {
-                  name: String,
-                }
-
-                fn Main(user: User) -> Html {
-                  let greeting: String = user.name in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [interpolate(greeting)],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_nested_let_tags() {
-        accept(
-            indoc! {r#"
-                fn Main() -> Html {
-                    <let {a: Int = 1}>
-                        <let {b: Int = 2}>
-                            <div>{a} + {b}</div>
-                        </let>
-                    </let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  let a: Int = 1 in {
-                    let b: Int = 2 in {
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: [
-                          interpolate(a),
-                          text(" + "),
-                          interpolate(b),
-                        ],
-                      ),
-                    },
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_let_without_binding() {
-        reject(
-            indoc! {"
-                fn Main() -> Html {
-                    <let>
-                        <div>Content</div>
-                    </let>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Missing binding in <let> tag
-                1 | fn Main() -> Html {
-                2 |     <let>
-                  |     ^^^^^
-                -- ast --
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_let_with_omitted_type() {
-        accept(
-            indoc! {"
-                fn Main() -> Html {
-                    <let {x = 1}>
-                        <div>Content</div>
-                    </let>
-                }
-            "},
-            expect![[r#"
-                fn Main() -> Html {
-                  let x = 1 in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [text("Content")],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_let_with_no_bindings() {
-        reject(
-            indoc! {"
-                fn Main() -> Html {
-                    <let {}>
-                        <div>Content</div>
-                    </let>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Missing binding in <let> tag
-                1 | fn Main() -> Html {
-                2 |     <let {}>
-                  |          ^^
-                -- ast --
-                fn Main() -> Html {
-                  let  in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [text("Content")],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_let_with_missing_value() {
-        reject(
-            indoc! {"
-                fn Main() -> Html {
-                    <let {x: String}>
-                        <div>Content</div>
-                    </let>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Expected token '=' but got '}'
-                1 | fn Main() -> Html {
-                2 |     <let {x: String}>
-                  |                    ^
-                -- ast --
-                fn Main() -> Html {
-                  let  in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [text("Content")],
-                    ),
+                    )
                   }
                 }
             "#]],
@@ -4223,14 +4036,16 @@ mod tests {
         accept(
             indoc! {r#"
                 fn Main() -> Html {
-                    <let {first: String = "Hello", second: String = "World"}>
-                        <div>{first} {second}</div>
-                    </let>
+                    let first: String = "Hello";
+                    let second: String = "World";
+                    <div>{first} {second}</div>
                 }
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  let first: String = "Hello", second: String = "World" in {
+                  {
+                    let first: String = "Hello";
+                    let second: String = "World";
                     html(
                       tag: "div",
                       attrs: [],
@@ -4239,7 +4054,7 @@ mod tests {
                         text(" "),
                         interpolate(second),
                       ],
-                    ),
+                    )
                   }
                 }
             "#]],
@@ -4247,177 +4062,37 @@ mod tests {
     }
 
     #[test]
-    fn accepts_let_with_three_bindings() {
-        accept(
-            indoc! {r#"
-                fn Main() -> Html {
-                    <let {a: Int = 1, b: Int = 2, c: Int = 3}>
-                        <div>{a} + {b} + {c}</div>
-                    </let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  let a: Int = 1, b: Int = 2, c: Int = 3 in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [
-                        interpolate(a),
-                        text(" + "),
-                        interpolate(b),
-                        text(" + "),
-                        interpolate(c),
-                      ],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_let_with_trailing_comma() {
-        accept(
-            indoc! {r#"
-                fn Main() -> Html {
-                    <let {name: String = "World",}>
-                        <div>Hello {name}</div>
-                    </let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  let name: String = "World" in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [
-                        text("Hello "),
-                        interpolate(name),
-                      ],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_let_with_multiple_bindings_and_trailing_comma() {
-        accept(
-            indoc! {r#"
-                fn Main() -> Html {
-                    <let {first: String = "Hello", second: String = "World",}>
-                        <div>{first} {second}</div>
-                    </let>
-                }
-            "#},
-            expect![[r#"
-                fn Main() -> Html {
-                  let first: String = "Hello", second: String = "World" in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [
-                        interpolate(first),
-                        text(" "),
-                        interpolate(second),
-                      ],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_let_with_field_access_value() {
-        accept(
-            indoc! {r#"
-                record User { name: String }
-                fn Main(user: User) -> Html {
-                    <let {name: String = user.name}>
-                        <div>{name}</div>
-                    </let>
-                }
-            "#},
-            expect![[r#"
-                record User {
-                  name: String,
-                }
-
-                fn Main(user: User) -> Html {
-                  let name: String = user.name in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [interpolate(name)],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_let_with_missing_comma_between_bindings() {
-        reject(
-            indoc! {r#"
-                fn Main() -> Html {
-                    <let {first: String = "a" second: String = "b"}>
-                        <div>{first} {second}</div>
-                    </let>
-                }
-            "#},
-            expect![[r#"
-                -- errors --
-                error: Expected token ',' but got 'second'
-                1 | fn Main() -> Html {
-                2 |     <let {first: String = "a" second: String = "b"}>
-                  |                               ^^^^^^
-                -- ast --
-                fn Main() -> Html {
-                  let first: String = "a" in {
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: [
-                        interpolate(first),
-                        text(" "),
-                        interpolate(second),
-                      ],
-                    ),
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_multiple_sibling_let_tags() {
+    fn accepts_multiple_sibling_let_blocks() {
         accept(
             indoc! {r#"
                 fn Main() -> Html {
                     <>
-                        <let {a: String = "Hello"}>
-                            {a}
-                        </let>
-                        <let {b: String = "World"}>
-                            {b}
-                        </let>
+                        {
+                            let a: String = "Hello";
+                            <>{a}</>
+                        }
+                        {
+                            let b: String = "World";
+                            <>{b}</>
+                        }
                     </>
                 }
             "#},
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    let a: String = "Hello" in {
-                      interpolate(a),
-                    },
-                    let b: String = "World" in {
-                      interpolate(b),
-                    },
+                    interpolate(
+                      {
+                        let a: String = "Hello";
+                        fragment(interpolate(a))
+                      },
+                    ),
+                    interpolate(
+                      {
+                        let b: String = "World";
+                        fragment(interpolate(b))
+                      },
+                    ),
                   )
                 }
             "#]],
@@ -4431,9 +4106,10 @@ mod tests {
                 fn Main() -> Html {
                     <>
                         <div>First</div>
-                        <let {name: String = "World"}>
+                        {
+                            let name: String = "World";
                             <div>Hello {name}</div>
-                        </let>
+                        }
                     </>
                 }
             "#},
@@ -4445,16 +4121,19 @@ mod tests {
                       attrs: [],
                       children: [text("First")],
                     ),
-                    let name: String = "World" in {
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: [
-                          text("Hello "),
-                          interpolate(name),
-                        ],
-                      ),
-                    },
+                    interpolate(
+                      {
+                        let name: String = "World";
+                        html(
+                          tag: "div",
+                          attrs: [],
+                          children: [
+                            text("Hello "),
+                            interpolate(name),
+                          ],
+                        )
+                      },
+                    ),
                   )
                 }
             "#]],
@@ -4467,9 +4146,10 @@ mod tests {
             indoc! {r#"
                 fn Main() -> Html {
                     <>
-                        <let {name: String = "World"}>
+                        {
+                            let name: String = "World";
                             <div>Hello {name}</div>
-                        </let>
+                        }
                         <div>Last</div>
                     </>
                 }
@@ -4477,16 +4157,19 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    let name: String = "World" in {
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: [
-                          text("Hello "),
-                          interpolate(name),
-                        ],
-                      ),
-                    },
+                    interpolate(
+                      {
+                        let name: String = "World";
+                        html(
+                          tag: "div",
+                          attrs: [],
+                          children: [
+                            text("Hello "),
+                            interpolate(name),
+                          ],
+                        )
+                      },
+                    ),
                     html(
                       tag: "div",
                       attrs: [],
@@ -4642,9 +4325,8 @@ mod tests {
             indoc! {r#"
                 page Test() {
                   fn body() -> Html {
-                    <let {default: String = "x"}>
-                      <div></div>
-                    </let>
+                    let default: String = "x";
+                    <div></div>
                   }
                 }
             "#},
@@ -4652,20 +4334,9 @@ mod tests {
                 -- errors --
                 error: Invalid variable name 'default': Variable name is a reserved word
                 2 |   fn body() -> Html {
-                3 |     <let {default: String = "x"}>
-                  |           ^^^^^^^
+                3 |     let default: String = "x";
+                  |         ^^^^^^^
                 -- ast --
-                page Test() {
-                  fn body() -> Html {
-                    let  in {
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: [],
-                      ),
-                    }
-                  }
-                }
             "#]],
         );
     }
@@ -5272,16 +4943,16 @@ mod tests {
             indoc! {r#"
                 page Index() {
                   fn body() -> Html {
-                      <let {name: String = "World"}>
-                          <div>Hello {name}</div>
-                      </let>
+                      let name: String = "World";
+                      <div>Hello {name}</div>
                   }
                 }
             "#},
             expect![[r#"
                 page Index() {
                   fn body() -> Html {
-                    let name: String = "World" in {
+                    {
+                      let name: String = "World";
                       html(
                         tag: "div",
                         attrs: [],
@@ -5289,7 +4960,7 @@ mod tests {
                           text("Hello "),
                           interpolate(name),
                         ],
-                      ),
+                      )
                     }
                   }
                 }

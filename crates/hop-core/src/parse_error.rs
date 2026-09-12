@@ -142,9 +142,6 @@ pub(crate) enum ParseErrorKind {
     #[error("Missing loop generator expression in <for> tag")]
     MissingForExpression,
 
-    #[error("Missing binding in <let> tag")]
-    MissingLetBinding,
-
     #[error("A block must end with an expression")]
     BlockMissingTailExpression,
 
