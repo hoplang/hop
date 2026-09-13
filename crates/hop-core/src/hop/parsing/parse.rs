@@ -9,6 +9,7 @@ use super::tokenize_expr;
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
+use crate::gate::Gate;
 
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_type::parse_type;
@@ -527,26 +528,46 @@ fn parse_function_declaration(
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedFunctionDeclaration, ErrorEmitted> {
-    let (name, name_range) =
-        parse_helpers::expect_function_name(iter, comments, errors, eof_range)?;
-    let left_paren =
-        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
-    let (items, _) = parse_parameters(iter, comments, errors, &left_paren)?;
-    let (params, rest_param) = build_function_parameters(items, errors);
-    let return_type = match tokenize_expr::peek(iter) {
-        Some((LangToken::LeftBrace, _)) => Err(errors.emit(
-            ParseErrorKind::FunctionMissingReturnTypeAnnotation {
-                name: CheapString::new(name.as_str().to_string()),
-            },
-            name_range.clone(),
-        )),
-        _ => {
-            parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::Arrow)?;
-            parse_type(iter, comments, errors, eof_range)
+    let mut gate = Gate::default();
+    let name = gate.run(|| parse_helpers::expect_function_name(iter, comments, errors, eof_range));
+    let params = gate.run(|| {
+        let left_paren =
+            parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
+        let (items, _) = parse_parameters(iter, comments, errors, &left_paren)?;
+        Ok(build_function_parameters(items, errors))
+    });
+    let return_type = gate.run(|| {
+        if let Some((LangToken::LeftBrace, _)) = tokenize_expr::peek(iter) {
+            let (name, name_range) = name.as_ref().map_err(|reported| *reported)?;
+            return Err(errors.emit(
+                ParseErrorKind::FunctionMissingReturnTypeAnnotation {
+                    name: name.to_cheap_string(),
+                },
+                name_range.clone(),
+            ));
+        }
+        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::Arrow)?;
+        parse_type(iter, comments, errors, eof_range)
+    });
+    let left_brace = gate.run(|| {
+        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)
+    });
+    // Synchronize at left brace
+    let left_brace = match left_brace {
+        Ok(left_brace) => left_brace,
+        Err(reported) => {
+            parse_helpers::skip_to(iter, reported, |token| {
+                matches!(token, LangToken::LeftBrace | LangToken::RightBrace)
+                    || parse_helpers::DECLARATION_KEYWORDS.contains(token)
+            });
+            match parse_helpers::advance_if(iter, comments, errors, LangToken::LeftBrace) {
+                // Recovery succeeded
+                Some(left_brace) => left_brace,
+                // No body to consume, leave the rest to the caller
+                None => return Err(reported),
+            }
         }
     };
-    let left_brace =
-        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let (body, braces) = parse_helpers::parse_delimited(
         iter,
         comments,
@@ -555,7 +576,10 @@ fn parse_function_declaration(
         LangTokenPair::Braces,
         &left_brace,
         |iter, comments, errors, eof_range| {
-            if let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter) {
+            // Provide a dedicated error message for empty bodies
+            if let Ok((name, name_range)) = &name
+                && let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter)
+            {
                 return Err(errors.emit(
                     ParseErrorKind::EmptyFunctionBody {
                         name: name.to_cheap_string(),
@@ -566,12 +590,15 @@ fn parse_function_declaration(
             parse_expr::parse_block_body(iter, comments, errors, eof_range)
         },
     )?;
+    let (name, name_range) = name?;
+    let (params, rest_param) = params?;
+    let return_type = return_type?;
     Ok(ParsedFunctionDeclaration {
         name,
         name_range,
         params,
         rest_param,
-        return_type: return_type?,
+        return_type,
         body,
         range: pub_range
             .clone()
@@ -846,6 +873,32 @@ mod tests {
     }
 
     #[test]
+    fn accepts_empty_file() {
+        accept("", expect![[""]]);
+    }
+
+    #[test]
+    fn rejects_function_without_return_type_and_body() {
+        reject(
+            indoc! {r#"
+              fn f() {
+              }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Function 'f' is missing a return type annotation
+                1 | fn f() {
+                  |    ^
+
+                error: Function 'f' has an empty body: a function body must be a single expression
+                1 | fn f() {
+                  |    ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_enum_literal_as_match_subject() {
         accept(
             indoc! {r#"
@@ -1054,11 +1107,6 @@ mod tests {
                 -- ast --
             "#]],
         );
-    }
-
-    #[test]
-    fn accepts_empty_file() {
-        accept("", expect![[""]]);
     }
 
     #[test]
@@ -3396,6 +3444,101 @@ mod tests {
                 -- ast --
                 fn f() -> Int {
                   1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_member_missing_its_parameter_list() {
+        reject(
+            indoc! {"
+                page P { fn body) -> Html { 1 } }
+                fn f() -> Int { 1 }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '(' but got ')'
+                1 | page P { fn body) -> Html { 1 } }
+                  |                 ^
+                -- ast --
+                fn f() -> Int {
+                  1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn recovers_after_a_page_member_with_a_broken_signature() {
+        reject(
+            indoc! {"
+                page P {
+                  fn head) -> Html { 1 }
+                  fn body() -> Html { 2 }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '(' but got ')'
+                1 | page P {
+                2 |   fn head) -> Html { 1 }
+                  |          ^
+                -- ast --
+                page P() {
+                  fn body() -> Html {
+                    2
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn recovers_after_a_page_member_missing_its_body_braces() {
+        reject(
+            indoc! {"
+                page P {
+                  fn head() -> Html 1
+                  fn body() -> Html { 2 }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '{' but got '1'
+                1 | page P {
+                2 |   fn head() -> Html 1
+                  |                     ^
+                -- ast --
+                page P() {
+                  fn body() -> Html {
+                    2
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn recovers_after_a_page_member_missing_its_name() {
+        reject(
+            indoc! {"
+                page P {
+                  fn ) -> Html { 1 }
+                  fn body() -> Html { 2 }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected function name but got ')'
+                1 | page P {
+                2 |   fn ) -> Html { 1 }
+                  |      ^
+                -- ast --
+                page P() {
+                  fn body() -> Html {
+                    2
+                  }
                 }
             "#]],
         );
