@@ -1040,6 +1040,20 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unexpected_token_inside_nested_record_literals() {
+        reject(
+            "fn f() -> Int { A { a: B { a: C { a: D { a: ] } } } } }",
+            expect![[r#"
+                -- errors --
+                error: Unexpected token ']'
+                1 | fn f() -> Int { A { a: B { a: C { a: D { a: ] } } } } }
+                  |                                             ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_empty_file() {
         accept("", expect![[""]]);
     }
@@ -3347,6 +3361,24 @@ mod tests {
                   |    ^^^^
                 -- ast --
             "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_enum_variant_field_preceded_by_extra_identifier() {
+        reject(
+            "enum E { V { i a: Array[Int] } }",
+            expect![[r#"
+            -- errors --
+            error: Expected token ':' but got 'a'
+            1 | enum E { V { i a: Array[Int] } }
+              |                ^
+
+            error: Expected token '}' but got ']'
+            1 | enum E { V { i a: Array[Int] } }
+              |                            ^
+            -- ast --
+        "#]],
         );
     }
 
@@ -6149,10 +6181,6 @@ mod tests {
                   |                            ^^^^^
 
                 error: Expected token ']' but got '->'
-                1 | fn Main(#[examples(min = 1 count: Int) -> Html {
-                  |                                        ^^
-
-                error: Expected token ')' but got '->'
                 1 | fn Main(#[examples(min = 1 count: Int) -> Html {
                   |                                        ^^
                 -- ast --

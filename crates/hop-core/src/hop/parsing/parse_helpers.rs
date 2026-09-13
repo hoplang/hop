@@ -284,6 +284,10 @@ where
             || stops.contains(token)
     };
     let mut items = Vec::new();
+    // The list ended on a token that cannot close it, and the failure that
+    // got us there is already reported: propagate it rather than report the
+    // stray token again here and in every list around this one.
+    let mut failed_on_end = None;
     // Every pass either breaks or consumes at least one token: a comma, or
     // the unexpected token that stands where a comma should be.
     loop {
@@ -304,6 +308,7 @@ where
             break;
         };
         if ends_list(&actual) {
+            failed_on_end = failed.filter(|_| actual != pair.right_delimiter());
             break;
         }
         // Unexpected token follows the item. The item reported it if it failed
@@ -320,7 +325,18 @@ where
         skip_to(iter, reported, |token| {
             *token == LangToken::Comma || ends_list(token)
         });
-        advance_if(iter, comments, errors, LangToken::Comma);
+        if advance_if(iter, comments, errors, LangToken::Comma).is_some() {
+            continue;
+        }
+        // Skipping stopped on a token that ends the list rather than on a
+        // comma.
+        if peek(iter).is_some_and(|(token, _)| token != pair.right_delimiter()) {
+            failed_on_end = Some(reported);
+        }
+        break;
+    }
+    if let Some(reported) = failed_on_end {
+        return Err(reported);
     }
     let closing_range = expect_right_delimiter(iter, comments, errors, pair, left_delimiter_range)?;
     Ok((items, left_delimiter_range.clone().to(closing_range)))
