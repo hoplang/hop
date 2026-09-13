@@ -19,7 +19,6 @@ use crate::hop::parsing::token::LangTokenPair;
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
-use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
@@ -337,74 +336,6 @@ fn parse_field_declarations(
     )
 }
 
-fn parse_page_header(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    keyword_range: &DocumentRange,
-) -> Result<PageHeader, ErrorEmitted> {
-    let (name_str, name_range) = match tokenize_expr::next(iter, comments, errors) {
-        Some((LangToken::Identifier(name_str), range)) => (name_str, range),
-        Some((actual, range)) => {
-            return Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGot { actual }, range));
-        }
-        None => {
-            return Err(errors.emit(
-                ParseErrorKind::ExpectedTypeNameButGotEof {},
-                keyword_range.clone(),
-            ));
-        }
-    };
-
-    let (params, params_range) =
-        match parse_helpers::advance_if(iter, comments, errors, LangToken::LeftParen) {
-            Some(left_paren) => {
-                let (items, parens) = parse_parameters(iter, comments, errors, &left_paren)?;
-                let mut params = Vec::new();
-                for item in items {
-                    match item {
-                        ParameterItem::Parameter(parameter) => {
-                            if let Some(value) = &parameter.default_value {
-                                let _ = errors.emit(
-                                    ParseErrorKind::DefaultValueNotAllowedOnPage {},
-                                    value.range().clone(),
-                                );
-                            }
-                            params.push(*parameter);
-                        }
-                        ParameterItem::Rest { range, .. } => {
-                            let _ =
-                                errors.emit(ParseErrorKind::RestParamNotAllowedOnPage {}, range);
-                        }
-                    }
-                }
-                (params, parens)
-            }
-            None => (Vec::new(), name_range.clone()),
-        };
-
-    let name = TypeName::new(&name_str).map_err(|error| {
-        errors.emit(
-            ParseErrorKind::InvalidTypeName { error },
-            name_range.clone(),
-        )
-    });
-
-    Ok(PageHeader {
-        name,
-        name_range,
-        params,
-        params_range,
-    })
-}
-
-struct PageHeader {
-    name: Result<TypeName, ErrorEmitted>,
-    name_range: DocumentRange,
-    params: Vec<ParsedParameter>,
-    params_range: DocumentRange,
-}
-
 fn parse_page_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
@@ -413,14 +344,64 @@ fn parse_page_declaration(
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedPageDeclaration, ErrorEmitted> {
-    let PageHeader {
-        name,
-        name_range,
-        params,
-        params_range,
-    } = parse_page_header(iter, comments, errors, &keyword_range)?;
-    let outer_body_start =
-        parse_helpers::expect_token(iter, comments, errors, &params_range, &LangToken::LeftBrace)?;
+    let mut gate = Gate::default();
+    let name = gate.run(|| parse_helpers::expect_type_name(iter, comments, errors, eof_range));
+    let params = gate.run(|| {
+        if let Some((LangToken::LeftBrace, _)) = tokenize_expr::peek(iter) {
+            return Ok((Vec::new(), None));
+        }
+        let left_paren =
+            parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
+        let (items, parens) = parse_parameters(iter, comments, errors, &left_paren)?;
+        let mut params = Vec::new();
+        for item in items {
+            match item {
+                ParameterItem::Parameter(parameter) => {
+                    if let Some(value) = &parameter.default_value {
+                        let _ = errors.emit(
+                            ParseErrorKind::DefaultValueNotAllowedOnPage {},
+                            value.range().clone(),
+                        );
+                    }
+                    params.push(*parameter);
+                }
+                ParameterItem::Rest { range, .. } => {
+                    let _ = errors.emit(ParseErrorKind::RestParamNotAllowedOnPage {}, range);
+                }
+            }
+        }
+        Ok((params, Some(parens)))
+    });
+    let header_eof_range = match (&name, &params) {
+        (_, Ok((_, Some(parens)))) => parens,
+        (Ok((_, name_range)), _) => name_range,
+        _ => &keyword_range,
+    };
+    let left_brace = gate.run(|| {
+        parse_helpers::expect_token(
+            iter,
+            comments,
+            errors,
+            header_eof_range,
+            &LangToken::LeftBrace,
+        )
+    });
+    // Synchronize at left brace
+    let left_brace = match left_brace {
+        Ok(left_brace) => left_brace,
+        Err(reported) => {
+            parse_helpers::skip_to(iter, reported, |token| {
+                matches!(token, LangToken::LeftBrace | LangToken::RightBrace)
+                    || parse_helpers::DECLARATION_KEYWORDS.contains(token)
+            });
+            match parse_helpers::advance_if(iter, comments, errors, LangToken::LeftBrace) {
+                // Recovery succeeded
+                Some(left_brace) => left_brace,
+                // No member block to consume, leave the rest to the caller
+                None => return Err(reported),
+            }
+        }
+    };
 
     let mut head: Option<ParsedFunctionDeclaration> = None;
     let mut body: Option<ParsedFunctionDeclaration> = None;
@@ -443,7 +424,7 @@ fn parse_page_declaration(
                     ParseErrorKind::UnmatchedToken {
                         token: LangToken::LeftBrace,
                     },
-                    outer_body_start,
+                    left_brace,
                 ));
             };
             return Err(errors.emit(ParseErrorKind::ExpectedPageMember {}, range));
@@ -506,8 +487,10 @@ fn parse_page_declaration(
             None => errors.emit(ParseErrorKind::ExpectedPageBodyBlock {}, right_brace),
         });
     };
+    let (name, name_range) = name?;
+    let (params, _) = params?;
     Ok(ParsedPageDeclaration {
-        name: name?,
+        name,
         name_range,
         params,
         head,
@@ -3441,6 +3424,86 @@ mod tests {
                 error: Expected token '}' but got ')'
                 1 | enum E { A0, B1 {) }
                   |                  ^
+                -- ast --
+                fn f() -> Int {
+                  1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_text_after_page_name() {
+        reject(
+            indoc! {"
+                page P x { fn body() -> Html { 1 } }
+                fn f() -> Int { 1 }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '(' but got 'x'
+                1 | page P x { fn body() -> Html { 1 } }
+                  |        ^
+                -- ast --
+                fn f() -> Int {
+                  1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_page_with_a_lowercase_name() {
+        reject(
+            indoc! {"
+                page foo(x: ) { fn body() -> Html { 1 } }
+                fn f() -> Int { 1 }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Type name must start with an uppercase letter
+                1 | page foo(x: ) { fn body() -> Html { 1 } }
+                  |      ^^^
+                -- ast --
+                fn f() -> Int {
+                  1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn recovers_after_a_page_with_an_invalid_name() {
+        reject(
+            indoc! {"
+                page 123 { fn body() -> Html { 1 } }
+                fn f() -> Int { 1 }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected type name but got '123'
+                1 | page 123 { fn body() -> Html { 1 } }
+                  |      ^^^
+                -- ast --
+                fn f() -> Int {
+                  1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn recovers_after_a_page_with_an_unclosed_parameter_list() {
+        reject(
+            indoc! {"
+                page P(x: Int { fn body() -> Html { 1 } }
+                fn f() -> Int { 1 }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token ')' but got '{'
+                1 | page P(x: Int { fn body() -> Html { 1 } }
+                  |               ^
                 -- ast --
                 fn f() -> Int {
                   1
