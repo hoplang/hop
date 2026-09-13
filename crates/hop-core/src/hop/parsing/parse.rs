@@ -799,6 +799,7 @@ fn parse_examples_annotation(
 mod tests {
     use super::*;
     use crate::document_annotator::DocumentAnnotator;
+    use crate::hop::parsing::source_generator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -6400,5 +6401,28 @@ mod tests {
                 }
             "#]],
         );
+    }
+
+    #[test]
+    fn fuzz_generated_sources_parse() {
+        arbtest::arbtest(|u| {
+            let source = source_generator::random_source(u)?;
+            let mut errors = ParseErrors::new();
+            let document_id = DocumentId::new("test.hop").unwrap();
+            parse(
+                document_id.clone(),
+                Document::new(document_id, source.clone()),
+                &mut errors,
+            );
+            if !errors.is_empty() {
+                let rendered = DocumentAnnotator::new()
+                    .with_label("error")
+                    .with_lines_before(1)
+                    .annotate(&DocumentId::new("test.hop").unwrap(), errors.clone())
+                    .render();
+                panic!("expected no parse errors, got:\n{rendered}\nsource:\n{source}");
+            }
+            Ok(())
+        });
     }
 }

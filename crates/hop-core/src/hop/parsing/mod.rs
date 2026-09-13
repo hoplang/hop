@@ -8,6 +8,8 @@ pub mod parsed_ast;
 pub mod parsed_expr;
 pub mod parsed_node;
 pub mod parsed_type;
+#[cfg(test)]
+pub mod source_generator;
 pub mod token;
 pub mod tokenize_expr;
 pub mod tokenize_markup;

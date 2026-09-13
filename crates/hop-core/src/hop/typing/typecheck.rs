@@ -1068,6 +1068,7 @@ mod tests {
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
     use crate::hop::parsing::parse::parse;
+    use crate::hop::parsing::source_generator;
     use crate::parse_error::ParseErrors;
     use crate::{document::Document, program::Severity};
     use expect_test::{Expect, expect};
@@ -10471,5 +10472,34 @@ mod tests {
                   |        ^^^^^^^
             "#]],
         );
+    }
+
+    #[test]
+    fn fuzz_typechecking_generated_sources_does_not_panic() {
+        arbtest::arbtest(|u| {
+            let source = source_generator::random_source(u)?;
+            let document_id = DocumentId::new("test.hop").unwrap();
+            let mut parse_errors = ParseErrors::new();
+            let ast = parse(
+                document_id.clone(),
+                Document::new(document_id, source.clone()),
+                &mut parse_errors,
+            );
+            assert!(
+                parse_errors.is_empty(),
+                "parse errors: {parse_errors:?}\n\nsource:\n{source}"
+            );
+            typecheck(
+                &[&ast],
+                &mut HashMap::new(),
+                &mut TypeRegistry::default(),
+                &mut HashMap::new(),
+                &mut HashMap::new(),
+                &mut HashMap::new(),
+                &mut HashMap::new(),
+                &mut HashMap::new(),
+            );
+            Ok(())
+        });
     }
 }
