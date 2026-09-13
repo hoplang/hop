@@ -2879,7 +2879,7 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    let result: String = match Point {x: "hi", y: "bye"} {
+                    let result: String = match (Point {x: "hi", y: "bye"}) {
                       Point {x: a, y: _} => a,
                     };
                     <>
@@ -2935,7 +2935,7 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    let result: String = match Point {x: "hi", y: "bye"} {
+                    let result: String = match (Point {x: "hi", y: "bye"}) {
                       p => p.x,
                     };
                     <>
@@ -5808,7 +5808,7 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    let result: String = match Outcome::Success {value: "hi"} {
+                    let result: String = match (Outcome::Success {value: "hi"}) {
                       Outcome::Success {value: v} => v,
                       Outcome::Failure {message: m} => m,
                     };
@@ -13218,7 +13218,7 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    match R {f: true}.f {
+                    match (R {f: true}.f) {
                       true => <>x</>,
                       false => <></>,
                     }
@@ -13328,7 +13328,7 @@ mod tests {
                 }
 
                 fn C(p: Array[String]) -> Html {
-                  match R {f: p}.f.is_empty() {
+                  match (R {f: p}.f.is_empty()) {
                     true => <C p={[]}/>,
                     false => <></>,
                   }

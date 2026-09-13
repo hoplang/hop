@@ -27,6 +27,15 @@ pub fn peek2(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRang
     next(&mut cloned, &mut dropped_comments, &mut dropped_errors)
 }
 
+pub fn peek3(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange)> {
+    let mut cloned = iter.clone();
+    let mut dropped_comments = VecDeque::new();
+    let mut dropped_errors = ParseErrors::new();
+    next(&mut cloned, &mut dropped_comments, &mut dropped_errors)?;
+    next(&mut cloned, &mut dropped_comments, &mut dropped_errors)?;
+    next(&mut cloned, &mut dropped_comments, &mut dropped_errors)
+}
+
 /// Returns the next token, collecting any comments encountered along the way
 /// into the provided deque.
 pub fn next(

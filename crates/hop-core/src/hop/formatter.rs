@@ -769,10 +769,65 @@ fn format_loop_source<'a>(
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match source {
-        ParsedLoopSource::Array(expr) => format_expr(arena, expr, comments),
-        ParsedLoopSource::RangeInclusive { start, end } => format_expr(arena, start, comments)
-            .append(arena.text("..="))
-            .append(format_expr(arena, end, comments)),
+        ParsedLoopSource::Array(expr) => format_expr_before_brace(arena, expr, comments),
+        ParsedLoopSource::RangeInclusive { start, end } => {
+            format_expr_before_brace(arena, start, comments)
+                .append(arena.text("..="))
+                .append(format_expr_before_brace(arena, end, comments))
+        }
+    }
+}
+
+/// Format an expression that a `{` follows, as the subject of a `match` or
+/// the source of a `for`. The parser refuses a record or enum literal with
+/// a field list there unless it is inside a delimiter, so an expression
+/// that has one outside any is parenthesized as a whole.
+fn format_expr_before_brace<'a>(
+    arena: &'a Arena<'a>,
+    expr: &'a ParsedExpr,
+    comments: &mut VecDeque<&'a DocumentRange>,
+) -> DocBuilder<'a, Arena<'a>> {
+    if contains_exterior_record_literal(expr) {
+        arena
+            .text("(")
+            .append(format_expr(arena, expr, comments))
+            .append(arena.text(")"))
+    } else {
+        format_expr(arena, expr, comments)
+    }
+}
+
+/// Whether the expression, as printed, holds a record or enum literal with
+/// a field list outside every delimiter. Only operands that print without
+/// parentheses of their own are looked into.
+fn contains_exterior_record_literal(expr: &ParsedExpr) -> bool {
+    match expr {
+        ParsedExpr::RecordLiteral { .. } => true,
+        ParsedExpr::EnumLiteral { fields, .. } => !fields.is_empty(),
+        ParsedExpr::BinaryOp {
+            left,
+            operator,
+            right,
+            ..
+        } => {
+            let (left_power, right_power) = operator.binding_power();
+            (left.binding_power() >= left_power && contains_exterior_record_literal(left))
+                || (right.binding_power() >= right_power && contains_exterior_record_literal(right))
+        }
+        ParsedExpr::BooleanNegation { operand, .. }
+        | ParsedExpr::NumericNegation { operand, .. } => {
+            operand.binding_power() >= ParsedExpr::PREFIX_BINDING_POWER
+                && contains_exterior_record_literal(operand)
+        }
+        ParsedExpr::FieldAccess { record, .. } => {
+            record.binding_power() >= ParsedExpr::POSTFIX_BINDING_POWER
+                && contains_exterior_record_literal(record)
+        }
+        ParsedExpr::MethodCall { receiver, .. } => {
+            receiver.binding_power() >= ParsedExpr::POSTFIX_BINDING_POWER
+                && contains_exterior_record_literal(receiver)
+        }
+        _ => false,
     }
 }
 
@@ -1003,13 +1058,13 @@ fn format_expr<'a>(
             if arms.is_empty() && !has_trailing_comments {
                 arena
                     .text("match ")
-                    .append(format_expr(arena, subject, comments))
+                    .append(format_expr_before_brace(arena, subject, comments))
                     .append(arena.text(" {}"))
             } else if arms.is_empty() {
                 let trailing_comments = drain_comments_before(arena, comments, end_position);
                 arena
                     .text("match ")
-                    .append(format_expr(arena, subject, comments))
+                    .append(format_expr_before_brace(arena, subject, comments))
                     .append(arena.text(" {"))
                     .append(arena.line_().append(trailing_comments).nest(2))
                     .append(arena.text("}"))
@@ -1038,7 +1093,7 @@ fn format_expr<'a>(
 
                 arena
                     .text("match ")
-                    .append(format_expr(arena, subject, comments))
+                    .append(format_expr_before_brace(arena, subject, comments))
                     .append(arena.text(" {"))
                     .append(body)
                     .append(arena.text("}"))
@@ -1439,6 +1494,74 @@ mod tests {
             );
             Ok(())
         });
+    }
+
+    #[test]
+    fn subject_before_brace_is_parenthesized_only_around_braced_literals() {
+        check(
+            indoc! {"
+                fn f() -> Int {
+                  match (Color::Red) { Color::Red => 1, _ => 0 }
+                }
+
+                fn g() -> Int {
+                  match (Point { x: 1 }) { _ => 0 }
+                }
+
+                fn h() -> Int {
+                  match (Point { x: 1 }).x == 1 { true => 1, false => 0 }
+                }
+
+                fn i() -> Int {
+                  match !(Point::XY { x: 1 } == p) { true => 1, false => 0 }
+                }
+
+                fn j() -> Int {
+                  match g(Point { x: 1 }) { _ => 0 }
+                }
+
+                fn k() -> Int {
+                  for x in (Point { x: 1 }) { 1 }
+                }
+
+                fn l() -> Int {
+                  for x in (Point { x: 1 }).x..=(Point { x: 2 }.x) { 1 }
+                }
+            "},
+            expect![[r#"
+                fn f() -> Int {
+                  match Color::Red {Color::Red => 1, _ => 0}
+                }
+
+                fn g() -> Int {
+                  match (Point {x: 1}) {_ => 0}
+                }
+
+                fn h() -> Int {
+                  match (Point {x: 1}.x == 1) {true => 1, false => 0}
+                }
+
+                fn i() -> Int {
+                  match !(Point::XY {x: 1} == p) {true => 1, false => 0}
+                }
+
+                fn j() -> Int {
+                  match g(Point {x: 1}) {_ => 0}
+                }
+
+                fn k() -> Int {
+                  for x in (Point {x: 1}) {
+                    1
+                  }
+                }
+
+                fn l() -> Int {
+                  for x in (Point {x: 1}.x)..=(Point {x: 2}.x) {
+                    1
+                  }
+                }
+            "#]],
+        );
     }
 
     #[test]

@@ -670,7 +670,7 @@ fn parse_parameters(
             let var_type = parse_type(iter, comments, errors, range)?;
             let default_value =
                 if parse_helpers::advance_if(iter, comments, errors, LangToken::Assign).is_some() {
-                    Some(parse_expr::parse_primary(iter, comments, errors, range)?)
+                    Some(parse_expr::parse_expr(iter, comments, errors, range)?)
                 } else {
                     None
                 };
@@ -842,9 +842,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_enum_literal_as_match_subject() {
-        // Known limitation, not desired behavior.
-        reject(
+    fn accepts_enum_literal_as_match_subject() {
+        accept(
             indoc! {r#"
               fn f() -> Int {
                 match Color::Red {
@@ -853,24 +852,173 @@ mod tests {
               }
             "#},
             expect![[r#"
-                -- errors --
-                error: Invalid field name 'Color': Field name must be lowercase (found uppercase: 'C')
-                2 |   match Color::Red {
-                3 |     Color::Red => 1,
-                  |     ^^^^^
-
-                error: Expected token '{' but got '}'
-                4 |   }
-                5 | }
-                  | ^
-                -- ast --
+                fn f() -> Int {
+                  match Color::Red {Color::Red => 1}
+                }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_record_literal_as_match_subject() {
-        // Known limitation, not desired behavior.
+    fn accepts_enum_literal_as_for_source() {
+        accept(
+            indoc! {r#"
+              fn f() -> Int {
+                for x in Color::Red {
+                  x
+                }
+              }
+            "#},
+            expect![[r#"
+                fn f() -> Int {
+                  for x in Color::Red { x }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_braced_enum_literal_as_match_subject() {
+        reject(
+            indoc! {r#"
+              fn f() -> Int {
+                match Point::XY { x: 1, y: 2 } {
+                  _ => 1,
+                }
+              }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: A record or enum literal is not allowed here: surround it with parentheses
+                1 | fn f() -> Int {
+                2 |   match Point::XY { x: 1, y: 2 } {
+                  |         ^^^^^^^^^^^^^^^^^^^^^^^^
+                -- ast --
+                fn f() -> Int {
+                  match Point::XY {x: 1, y: 2} {_ => 1}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_with_spread_as_for_source() {
+        reject(
+            indoc! {r#"
+              fn f(p: Point) -> Int {
+                for x in Point { ...p } {
+                  x
+                }
+              }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: A record or enum literal is not allowed here: surround it with parentheses
+                1 | fn f(p: Point) -> Int {
+                2 |   for x in Point { ...p } {
+                  |            ^^^^^^^^^^^^^^
+                -- ast --
+                fn f(p: Point) -> Int {
+                  for x in Point {...p} { x }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_before_postfix_in_match_subject() {
+        reject(
+            indoc! {r#"
+              fn f() -> Int {
+                match Point { x: 1 }.x {
+                  _ => 1,
+                }
+              }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: A record or enum literal is not allowed here: surround it with parentheses
+                1 | fn f() -> Int {
+                2 |   match Point { x: 1 }.x {
+                  |         ^^^^^^^^^^^^^^
+                -- ast --
+                fn f() -> Int {
+                  match Point {x: 1}.x {_ => 1}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_each_record_literal_in_for_range_bounds() {
+        reject(
+            indoc! {"
+                fn f() -> Int {
+                  for x in Point { x: 1 }.x..=Point { x: 2 }.x { 1 }
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: A record or enum literal is not allowed here: surround it with parentheses
+                1 | fn f() -> Int {
+                2 |   for x in Point { x: 1 }.x..=Point { x: 2 }.x { 1 }
+                  |            ^^^^^^^^^^^^^^
+
+                error: A record or enum literal is not allowed here: surround it with parentheses
+                1 | fn f() -> Int {
+                2 |   for x in Point { x: 1 }.x..=Point { x: 2 }.x { 1 }
+                  |                               ^^^^^^^^^^^^^^
+                -- ast --
+                fn f() -> Int {
+                  for x in Point {x: 1}.x..=Point {
+                    x: 2,
+                  }.x { 1 }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_parenthesized_record_literal_as_match_subject() {
+        accept(
+            indoc! {r#"
+              fn f() -> Int {
+                match (Point { x: 1 }) {
+                  _ => 1,
+                }
+              }
+            "#},
+            expect![[r#"
+                fn f() -> Int {
+                  match Point {x: 1} {_ => 1}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_literal_inside_call_in_match_subject() {
+        accept(
+            indoc! {r#"
+              fn f() -> Int {
+                match g(Point { x: 1 }, [Color::Red { a: 1 }]) {
+                  _ => 1,
+                }
+              }
+            "#},
+            expect![[r#"
+                fn f() -> Int {
+                  match g(
+                    Point {x: 1},
+                    [Color::Red {a: 1}],
+                  ) {_ => 1}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_bare_type_name_as_match_subject() {
         reject(
             indoc! {r#"
                 fn f() -> Int {
@@ -881,15 +1029,10 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Invalid field name 'Point': Field name must be lowercase (found uppercase: 'P')
+                error: A record or enum literal is not allowed here: surround it with parentheses
+                1 | fn f() -> Int {
                 2 |   match Point {
-                3 |     Point => 1,
-                  |     ^^^^^
-
-                error: Expected token '{' but got '}'
-                4 |   }
-                5 | }
-                  | ^
+                  |         ^^^^^
                 -- ast --
             "#]],
         );
@@ -3681,7 +3824,7 @@ mod tests {
             indoc! {r#"
                 enum Status { Active {name: String}, Inactive }
                 fn Main() -> Html {
-                    match Status::Active {name: "test"} {
+                    match (Status::Active {name: "test"}) {
                         Status::Active{name: n} => <>{n}</>,
                         Status::Inactive => <>none</>,
                     }

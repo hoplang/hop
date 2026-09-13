@@ -305,4 +305,7 @@ pub(crate) enum ParseErrorKind {
 
     #[error("Spread is not allowed in an enum variant literal")]
     SpreadNotAllowedInEnumLiteral,
+
+    #[error("A record or enum literal is not allowed here: surround it with parentheses")]
+    RecordLiteralNotAllowedHere,
 }

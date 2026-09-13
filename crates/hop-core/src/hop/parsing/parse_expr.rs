@@ -18,8 +18,15 @@ use super::parsed_expr::{
 };
 use super::parsed_node::ParsedLetBinding;
 use super::token::LangToken;
-use super::tokenize_expr::{peek, peek2};
+use super::tokenize_expr::{peek, peek2, peek3};
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
+
+/// Restrictions on an expression that follow from where it sits. Compare
+/// `Restrictions` in rustc and rust-analyzer.
+#[derive(Debug, Clone, Copy)]
+pub struct Restrictions {
+    pub forbid_record_literals: bool,
+}
 
 pub fn parse_expr(
     iter: &mut Peekable<DocumentCursor>,
@@ -27,9 +34,27 @@ pub fn parse_expr(
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_logical_and(iter, comments, errors, eof_range)?;
+    parse_expr_with(
+        iter,
+        comments,
+        errors,
+        eof_range,
+        Restrictions {
+            forbid_record_literals: false,
+        },
+    )
+}
+
+pub fn parse_expr_with(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+    restrictions: Restrictions,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let mut expr = parse_logical_and(iter, comments, errors, eof_range, restrictions)?;
     while advance_if(iter, comments, errors, LangToken::LogicalOr).is_some() {
-        let right = parse_logical_and(iter, comments, errors, eof_range)?;
+        let right = parse_logical_and(iter, comments, errors, eof_range, restrictions)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
@@ -45,10 +70,11 @@ fn parse_logical_and(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
+    restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_equality(iter, comments, errors, eof_range)?;
+    let mut expr = parse_equality(iter, comments, errors, eof_range, restrictions)?;
     while advance_if(iter, comments, errors, LangToken::LogicalAnd).is_some() {
-        let right = parse_equality(iter, comments, errors, eof_range)?;
+        let right = parse_equality(iter, comments, errors, eof_range, restrictions)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
@@ -64,11 +90,12 @@ fn parse_equality(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
+    restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_relational(iter, comments, errors, eof_range)?;
+    let mut expr = parse_relational(iter, comments, errors, eof_range, restrictions)?;
     loop {
         if advance_if(iter, comments, errors, LangToken::Eq).is_some() {
-            let right = parse_relational(iter, comments, errors, eof_range)?;
+            let right = parse_relational(iter, comments, errors, eof_range, restrictions)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -76,7 +103,7 @@ fn parse_equality(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::NotEq).is_some() {
-            let right = parse_relational(iter, comments, errors, eof_range)?;
+            let right = parse_relational(iter, comments, errors, eof_range, restrictions)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -95,11 +122,12 @@ fn parse_relational(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
+    restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_additive(iter, comments, errors, eof_range)?;
+    let mut expr = parse_additive(iter, comments, errors, eof_range, restrictions)?;
     loop {
         if advance_if(iter, comments, errors, LangToken::LessThan).is_some() {
-            let right = parse_additive(iter, comments, errors, eof_range)?;
+            let right = parse_additive(iter, comments, errors, eof_range, restrictions)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -107,7 +135,7 @@ fn parse_relational(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::GreaterThan).is_some() {
-            let right = parse_additive(iter, comments, errors, eof_range)?;
+            let right = parse_additive(iter, comments, errors, eof_range, restrictions)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -115,7 +143,7 @@ fn parse_relational(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::LessThanOrEqual).is_some() {
-            let right = parse_additive(iter, comments, errors, eof_range)?;
+            let right = parse_additive(iter, comments, errors, eof_range, restrictions)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -123,7 +151,7 @@ fn parse_relational(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::GreaterThanOrEqual).is_some() {
-            let right = parse_additive(iter, comments, errors, eof_range)?;
+            let right = parse_additive(iter, comments, errors, eof_range, restrictions)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -142,11 +170,12 @@ fn parse_additive(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
+    restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_multiplicative(iter, comments, errors, eof_range)?;
+    let mut expr = parse_multiplicative(iter, comments, errors, eof_range, restrictions)?;
     loop {
         if advance_if(iter, comments, errors, LangToken::Plus).is_some() {
-            let right = parse_multiplicative(iter, comments, errors, eof_range)?;
+            let right = parse_multiplicative(iter, comments, errors, eof_range, restrictions)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -154,7 +183,7 @@ fn parse_additive(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::Minus).is_some() {
-            let right = parse_multiplicative(iter, comments, errors, eof_range)?;
+            let right = parse_multiplicative(iter, comments, errors, eof_range, restrictions)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -173,10 +202,11 @@ fn parse_multiplicative(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
+    restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_unary(iter, comments, errors, eof_range)?;
+    let mut expr = parse_unary(iter, comments, errors, eof_range, restrictions)?;
     while advance_if(iter, comments, errors, LangToken::Asterisk).is_some() {
-        let right = parse_unary(iter, comments, errors, eof_range)?;
+        let right = parse_unary(iter, comments, errors, eof_range, restrictions)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
@@ -192,21 +222,22 @@ fn parse_unary(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
+    restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     if let Some(operator_range) = advance_if(iter, comments, errors, LangToken::Not) {
-        let expr = parse_unary(iter, comments, errors, eof_range)?; // Right associative for multiple !
+        let expr = parse_unary(iter, comments, errors, eof_range, restrictions)?; // Right associative for multiple !
         Ok(ParsedExpr::BooleanNegation {
             range: operator_range.to(expr.range().clone()),
             operand: Box::new(expr),
         })
     } else if let Some(operator_range) = advance_if(iter, comments, errors, LangToken::Minus) {
-        let expr = parse_unary(iter, comments, errors, eof_range)?; // Right associative for multiple -
+        let expr = parse_unary(iter, comments, errors, eof_range, restrictions)?; // Right associative for multiple -
         Ok(ParsedExpr::NumericNegation {
             range: operator_range.to(expr.range().clone()),
             operand: Box::new(expr),
         })
     } else {
-        parse_primary(iter, comments, errors, eof_range)
+        parse_primary(iter, comments, errors, eof_range, restrictions)
     }
 }
 
@@ -273,6 +304,7 @@ pub fn parse_primary(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
+    restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = if let Some((name, name_range)) =
         next_if_map(iter, comments, errors, LangToken::not_uppercase_identifier)
@@ -374,9 +406,18 @@ pub fn parse_primary(
                 type_name,
                 name_range,
                 colon_colon,
+                restrictions,
             )?
         } else {
-            parse_record_literal(iter, comments, errors, eof_range, type_name, name_range)?
+            parse_record_literal(
+                iter,
+                comments,
+                errors,
+                eof_range,
+                type_name,
+                name_range,
+                restrictions,
+            )?
         }
     } else if let Some((value, lit_range)) =
         next_if_map(iter, comments, errors, |token| match token {
@@ -538,12 +579,23 @@ fn parse_record_literal(
     eof_range: &DocumentRange,
     name: TypeName,
     name_range: DocumentRange,
+    restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     enum Entry {
         Field(ParsedFieldInitializer),
         Spread(ParsedExpr, DocumentRange),
     }
-    let left_brace = expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
+    let left_brace = match advance_if_field_list(iter, comments, errors, restrictions) {
+        Some(left_brace) => left_brace,
+        // A bare type name is not an expression, so the literal is the
+        // problem rather than the `{` that was left for the block.
+        None if restrictions.forbid_record_literals
+            && matches!(peek(iter), Some((LangToken::LeftBrace, _))) =>
+        {
+            return Err(errors.emit(ParseErrorKind::RecordLiteralNotAllowedHere {}, name_range));
+        }
+        None => expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?,
+    };
     let (entries, braces) = parse_delimited_list(
         iter,
         comments,
@@ -582,12 +634,19 @@ fn parse_record_literal(
             }
         }
     }
+    let range = name_range.clone().to(braces);
+    if restrictions.forbid_record_literals {
+        let _ = errors.emit(
+            ParseErrorKind::RecordLiteralNotAllowedHere {},
+            range.clone(),
+        );
+    }
     Ok(ParsedExpr::RecordLiteral {
         record_name: name,
-        record_name_range: name_range.clone(),
+        record_name_range: name_range,
         fields,
         spread,
-        range: name_range.to(braces),
+        range,
     })
 }
 
@@ -599,13 +658,14 @@ fn parse_enum_literal(
     enum_name: TypeName,
     enum_name_range: DocumentRange,
     colon_colon: DocumentRange,
+    restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let path_range = enum_name_range.clone().to(colon_colon);
     let (variant_name, variant_range) = expect_type_name(iter, comments, errors, &path_range)?;
     let constructor_range = enum_name_range.clone().to(variant_range.clone());
     let (fields, end_range) =
-        if let Some(left_delim) = advance_if(iter, comments, errors, LangToken::LeftBrace) {
-            parse_delimited_list(
+        if let Some(left_delim) = advance_if_field_list(iter, comments, errors, restrictions) {
+            let (fields, braces) = parse_delimited_list(
                 iter,
                 comments,
                 errors,
@@ -629,7 +689,14 @@ fn parse_enum_literal(
                         value: parse_expr(iter, comments, errors, range)?,
                     })
                 },
-            )?
+            )?;
+            if restrictions.forbid_record_literals {
+                let _ = errors.emit(
+                    ParseErrorKind::RecordLiteralNotAllowedHere {},
+                    enum_name_range.clone().to(braces.clone()),
+                );
+            }
+            (fields, braces)
         } else {
             (Vec::new(), variant_range)
         };
@@ -641,6 +708,35 @@ fn parse_enum_literal(
         enum_name_range: enum_name_range.clone(),
         range: enum_name_range.to(end_range),
     })
+}
+
+/// Consume the `{` that starts a field list of a record or enum literal.
+///
+/// Where record literals are forbidden the `{` is left alone, since it
+/// belongs to the block after the expression, unless what follows it can
+/// only be a field list: `{ x,`, `{ x:`, or `{ ...`. The caller then
+/// parses the literal anyway, so that the parse resumes after it, and
+/// reports it.
+fn advance_if_field_list(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ParseErrors,
+    restrictions: Restrictions,
+) -> Option<DocumentRange> {
+    if restrictions.forbid_record_literals {
+        let likely_field_list = matches!(peek(iter), Some((LangToken::LeftBrace, _)))
+            && match peek2(iter) {
+                Some((LangToken::DotDotDot, _)) => true,
+                Some((LangToken::Identifier(_), _)) => {
+                    matches!(peek3(iter), Some((LangToken::Comma | LangToken::Colon, _)))
+                }
+                _ => false,
+            };
+        if !likely_field_list {
+            return None;
+        }
+    }
+    advance_if(iter, comments, errors, LangToken::LeftBrace)
 }
 
 fn parse_for(
@@ -658,9 +754,25 @@ fn parse_for(
             (Some(name), Some(name_range))
         };
     expect_token(iter, comments, errors, eof_range, &LangToken::In)?;
-    let start_expr = parse_expr(iter, comments, errors, eof_range)?;
+    let start_expr = parse_expr_with(
+        iter,
+        comments,
+        errors,
+        eof_range,
+        Restrictions {
+            forbid_record_literals: true,
+        },
+    )?;
     let source = if advance_if(iter, comments, errors, LangToken::DotDotEq).is_some() {
-        let end_expr = parse_expr(iter, comments, errors, eof_range)?;
+        let end_expr = parse_expr_with(
+            iter,
+            comments,
+            errors,
+            eof_range,
+            Restrictions {
+                forbid_record_literals: true,
+            },
+        )?;
         ParsedLoopSource::RangeInclusive {
             start: start_expr,
             end: end_expr,
@@ -694,7 +806,15 @@ fn parse_match(
     eof_range: &DocumentRange,
     match_range: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let subject = parse_expr(iter, comments, errors, eof_range)?;
+    let subject = parse_expr_with(
+        iter,
+        comments,
+        errors,
+        eof_range,
+        Restrictions {
+            forbid_record_literals: true,
+        },
+    )?;
     let left_brace = expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let (arms, braces) = parse_delimited_list(
         iter,

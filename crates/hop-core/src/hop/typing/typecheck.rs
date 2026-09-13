@@ -4986,7 +4986,7 @@ mod tests {
                 -- main.hop --
                 enum Status { Active{name: String}, Inactive }
                 fn Main() -> Html {
-                    match Status::Active{name: "test"} {
+                    match (Status::Active{name: "test"}) {
                         Status::Active{name: n} => <>{n}</>,
                         Status::Inactive => <>none</>,
                     }
