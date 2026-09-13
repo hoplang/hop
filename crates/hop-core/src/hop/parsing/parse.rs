@@ -262,9 +262,12 @@ fn parse_enum_declaration(
             }
             let fields =
                 match parse_helpers::advance_if(iter, comments, errors, LangToken::LeftBrace) {
-                    Some(left_brace) => {
-                        parse_field_declarations(iter, comments, errors, &left_brace).ok()
-                    }
+                    Some(left_brace) => Some(parse_field_declarations(
+                        iter,
+                        comments,
+                        errors,
+                        &left_brace,
+                    )?),
                     None => None,
                 };
             Ok(ParsedEnumDeclarationVariant {
@@ -3369,16 +3372,32 @@ mod tests {
         reject(
             "enum E { V { i a: Array[Int] } }",
             expect![[r#"
-            -- errors --
-            error: Expected token ':' but got 'a'
-            1 | enum E { V { i a: Array[Int] } }
-              |                ^
+                -- errors --
+                error: Expected token ':' but got 'a'
+                1 | enum E { V { i a: Array[Int] } }
+                  |                ^
+                -- ast --
+            "#]],
+        );
+    }
 
-            error: Expected token '}' but got ']'
-            1 | enum E { V { i a: Array[Int] } }
-              |                            ^
-            -- ast --
-        "#]],
+    #[test]
+    fn rejects_enum_variant_body_closed_by_a_right_paren() {
+        reject(
+            indoc! {"
+                enum E { A0, B1 {) }
+                fn f() -> Int { 1 }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '}' but got ')'
+                1 | enum E { A0, B1 {) }
+                  |                  ^
+                -- ast --
+                fn f() -> Int {
+                  1
+                }
+            "#]],
         );
     }
 
