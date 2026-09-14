@@ -118,7 +118,9 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
             out.push(WriterStatement::Match { match_ });
         }
 
-        PureExpr::VariableReference { ref typ, .. } | PureExpr::FieldAccess { ref typ, .. } => {
+        PureExpr::VariableReference { ref typ, .. }
+        | PureExpr::FieldAccess { ref typ, .. }
+        | PureExpr::TupleIndex { ref typ, .. } => {
             assert!(
                 matches!(*typ, Type::Html),
                 "non-Html expression in output position: {:?}",
@@ -133,6 +135,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
         | PureExpr::FloatLiteral { .. }
         | PureExpr::IntLiteral { .. }
         | PureExpr::ArrayLiteral { .. }
+        | PureExpr::TupleLiteral { .. }
         | PureExpr::RecordLiteral { .. }
         | PureExpr::EnumLiteral { .. }
         | PureExpr::OptionLiteral { .. }
@@ -352,6 +355,19 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
 
         PureExpr::ArrayLiteral { elements, typ, .. } => WriterExpr::ArrayLiteral {
             elements: elements.into_iter().map(lower_value).collect(),
+            typ,
+        },
+
+        PureExpr::TupleLiteral { elements, typ, .. } => WriterExpr::TupleLiteral {
+            elements: elements.into_iter().map(lower_value).collect(),
+            typ,
+        },
+
+        PureExpr::TupleIndex {
+            tuple, index, typ, ..
+        } => WriterExpr::TupleIndex {
+            tuple: Box::new(lower_value(*tuple)),
+            index,
             typ,
         },
 

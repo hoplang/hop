@@ -1,7 +1,9 @@
 use std::{collections::VecDeque, iter::Peekable};
 
-use super::parse_helpers::{advance_if, expect_token, next_if_map, parse_delimited};
-use super::tokenize_expr::peek;
+use super::parse_helpers::{
+    advance_if, expect_token, next_if_map, parse_delimited, parse_delimited_list,
+};
+use super::tokenize_expr::{peek, peek2};
 
 use super::parsed_type::ParsedType;
 use super::token::LangToken;
@@ -61,6 +63,33 @@ pub fn parse_type(
         return Ok(ParsedType::Option {
             element: Box::new(element),
             range: type_option.to(brackets),
+        });
+    }
+    if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
+        let mut trailing_comma = false;
+        let (elements, parens) = parse_delimited_list(
+            iter,
+            comments,
+            errors,
+            range,
+            LangTokenPair::Parens,
+            &left_paren,
+            &[],
+            |iter, comments, errors, range| {
+                let element = parse_type(iter, comments, errors, range)?;
+                trailing_comma = matches!(peek(iter), Some((LangToken::Comma, _)))
+                    && matches!(peek2(iter), Some((LangToken::RightParen, _)));
+                Ok(element)
+            },
+        )?;
+        let tuple_range = left_paren.to(parens);
+        let mut elements = elements;
+        if elements.len() == 1 && !trailing_comma {
+            return Ok(elements.remove(0));
+        }
+        return Ok(ParsedType::Tuple {
+            elements,
+            range: tuple_range,
         });
     }
     if let Some((name, type_range)) = next_if_map(iter, comments, errors, LangToken::identifier) {

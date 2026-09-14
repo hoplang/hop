@@ -547,12 +547,14 @@ fn is_const(expr: &PureExpr) -> bool {
         PureExpr::EnumLiteral { fields, .. } => fields.iter().all(|(_, value)| is_const(value)),
         PureExpr::RecordLiteral { fields, .. } => fields.iter().all(|(_, value)| is_const(value)),
         PureExpr::ArrayLiteral { elements, .. } => elements.iter().all(is_const),
+        PureExpr::TupleLiteral { elements, .. } => elements.iter().all(is_const),
         PureExpr::OptionLiteral { value, .. } => value.as_ref().is_none_or(|inner| is_const(inner)),
 
         PureExpr::Let { .. }
         | PureExpr::Match { .. }
         | PureExpr::VariableReference { .. }
         | PureExpr::FieldAccess { .. }
+        | PureExpr::TupleIndex { .. }
         | PureExpr::HtmlRaw { .. }
         | PureExpr::HtmlEscape { .. }
         | PureExpr::HtmlConcat { .. }
@@ -630,6 +632,14 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
             typ: typ.clone(),
             id: expr_ids.next(),
         },
+        PureExpr::TupleLiteral { elements, typ, .. } => PureExpr::TupleLiteral {
+            elements: elements
+                .iter()
+                .map(|element| instantiate(element, expr_ids))
+                .collect(),
+            typ: typ.clone(),
+            id: expr_ids.next(),
+        },
         PureExpr::ArrayLiteral { elements, typ, .. } => PureExpr::ArrayLiteral {
             elements: elements
                 .iter()
@@ -650,6 +660,7 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
         | PureExpr::Match { .. }
         | PureExpr::VariableReference { .. }
         | PureExpr::FieldAccess { .. }
+        | PureExpr::TupleIndex { .. }
         | PureExpr::HtmlRaw { .. }
         | PureExpr::HtmlEscape { .. }
         | PureExpr::HtmlConcat { .. }

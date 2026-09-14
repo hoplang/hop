@@ -220,6 +220,19 @@ pub enum WriterExpr {
         typ: Type,
     },
 
+    /// A TupleLiteral expression.
+    TupleLiteral {
+        elements: Vec<WriterExpr>,
+        typ: Type,
+    },
+
+    /// A TupleIndex expression.
+    TupleIndex {
+        tuple: Box<WriterExpr>,
+        index: usize,
+        typ: Type,
+    },
+
     /// A RecordLiteral expression.
     RecordLiteral {
         record_name: TypeName,
@@ -594,6 +607,8 @@ impl WriterExpr {
             WriterExpr::VariableReference { typ, .. }
             | WriterExpr::FieldAccess { typ, .. }
             | WriterExpr::ArrayLiteral { typ, .. }
+            | WriterExpr::TupleLiteral { typ, .. }
+            | WriterExpr::TupleIndex { typ, .. }
             | WriterExpr::RecordLiteral { typ, .. }
             | WriterExpr::EnumLiteral { typ, .. }
             | WriterExpr::OptionLiteral { typ, .. }
@@ -681,6 +696,27 @@ impl WriterExpr {
             WriterExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             WriterExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             WriterExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            WriterExpr::TupleLiteral { elements, .. } => BoxDoc::text("(")
+                .append(
+                    BoxDoc::line_()
+                        .append(BoxDoc::intersperse(
+                            elements.iter().map(|e| e.to_doc()),
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(if elements.len() == 1 {
+                            BoxDoc::text(",")
+                        } else {
+                            BoxDoc::text(",").flat_alt(BoxDoc::nil())
+                        })
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(BoxDoc::text(")")),
+            WriterExpr::TupleIndex { tuple, index, .. } => tuple
+                .to_doc()
+                .append(BoxDoc::text("."))
+                .append(BoxDoc::text(index.to_string())),
             WriterExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")

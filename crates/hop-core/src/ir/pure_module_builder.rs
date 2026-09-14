@@ -530,6 +530,31 @@ impl PureBuilder {
         }
     }
 
+    pub fn tuple(&self, elements: Vec<PureExpr>) -> PureExpr {
+        PureExpr::TupleLiteral {
+            typ: Type::Tuple(elements.iter().map(|element| element.typ()).collect()),
+            elements,
+            id: self.next_expr_id(),
+        }
+    }
+
+    pub fn tuple_index(&self, tuple: PureExpr, index: usize) -> PureExpr {
+        let Type::Tuple(elements) = tuple.typ() else {
+            panic!("Cannot index into non-tuple type: {}", tuple.typ());
+        };
+        assert!(
+            index < elements.len(),
+            "Index {index} is out of range for a {}-tuple",
+            elements.len()
+        );
+        PureExpr::TupleIndex {
+            typ: elements[index].clone(),
+            tuple: Box::new(tuple),
+            index,
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn int_to_string(&self, value: PureExpr) -> PureExpr {
         assert_eq!(
             value.typ(),

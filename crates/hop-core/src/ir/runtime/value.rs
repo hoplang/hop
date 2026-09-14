@@ -10,6 +10,7 @@ pub enum Value {
     Int(i32),
     Float(f64),
     Array(Vec<Value>),
+    Tuple(Vec<Value>),
     Record(HashMap<FieldName, Value>),
     /// Option::Some with inner value
     Some(Box<Value>),

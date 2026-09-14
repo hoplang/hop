@@ -30,6 +30,10 @@ pub enum ParsedType {
         element: Box<ParsedType>,
         range: DocumentRange,
     },
+    Tuple {
+        elements: Vec<ParsedType>,
+        range: DocumentRange,
+    },
     Named {
         name: TypeName,
         range: DocumentRange,
@@ -46,6 +50,7 @@ impl ParsedType {
             | ParsedType::Html { range }
             | ParsedType::Array { range, .. }
             | ParsedType::Option { range, .. }
+            | ParsedType::Tuple { range, .. }
             | ParsedType::Named { range, .. } => range,
         }
     }
@@ -65,6 +70,18 @@ impl ParsedType {
                 .append(BoxDoc::text("Array["))
                 .append(element.to_doc())
                 .append(BoxDoc::text("]")),
+            ParsedType::Tuple { elements, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::intersperse(
+                    elements.iter().map(|element| element.to_doc()),
+                    BoxDoc::text(", "),
+                ))
+                .append(if elements.len() == 1 {
+                    BoxDoc::text(",")
+                } else {
+                    BoxDoc::nil()
+                })
+                .append(BoxDoc::text(")")),
             ParsedType::Named { name, .. } => BoxDoc::text(name.to_string()),
         }
     }

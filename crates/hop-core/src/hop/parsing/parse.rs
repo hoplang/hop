@@ -3146,6 +3146,106 @@ mod tests {
     }
 
     #[test]
+    fn accepts_function_parameter_with_tuple_type() {
+        accept(
+            indoc! {"
+                fn Main(pair: (Int, String)) -> Html {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                fn Main(pair: (Int, String)) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_nested_tuple_type() {
+        accept(
+            indoc! {"
+                fn Main(rows: Array[(Int, (String, Bool))]) -> Html {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                fn Main(rows: Array[(Int, (String, Bool))]) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_one_tuple_type() {
+        accept(
+            indoc! {"
+                fn Main(only: (Int,), rows: Array[(String,)]) -> Html {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                fn Main(only: (Int,), rows: Array[(String,)]) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_parenthesized_type_as_the_type_itself() {
+        accept(
+            indoc! {"
+                fn Main(plain: (Int), nested: ((Int, String))) -> Html {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                fn Main(plain: Int, nested: (Int, String)) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_empty_tuple_type() {
+        accept(
+            indoc! {"
+                fn Main(nothing: (), rows: Array[()]) -> Html {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                fn Main(nothing: (), rows: Array[()]) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_function_parameter_with_array_of_record_type() {
         accept(
             indoc! {"

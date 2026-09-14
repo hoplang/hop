@@ -28,6 +28,13 @@ pub fn resolve_type(
             let elem_type = resolve_type(element, names, definition_links, errors)?;
             (Type::Array(Box::new(elem_type)), range)
         }
+        ParsedType::Tuple { elements, range } => {
+            let element_types = elements
+                .iter()
+                .map(|element| resolve_type(element, names, definition_links, errors))
+                .collect::<Option<Vec<_>>>()?;
+            (Type::Tuple(element_types), range)
+        }
         ParsedType::Named { name, range } => match names.get(name.as_str()) {
             Some(Name {
                 kind: NameKind::Type(typ),

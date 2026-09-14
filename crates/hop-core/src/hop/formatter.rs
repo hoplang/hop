@@ -846,6 +846,18 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
             .text("Array[")
             .append(format_type(arena, element))
             .append(arena.text("]")),
+        ParsedType::Tuple { elements, .. } => arena
+            .text("(")
+            .append(arena.intersperse(
+                elements.iter().map(|element| format_type(arena, element)),
+                arena.text(", "),
+            ))
+            .append(if elements.len() == 1 {
+                arena.text(",")
+            } else {
+                arena.nil()
+            })
+            .append(arena.text(")")),
         ParsedType::Named { name, .. } => arena.text(name.to_string()),
     }
 }
@@ -2842,6 +2854,54 @@ mod tests {
                   <>
                     {name}
                   </>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_empty_tuple_parameter() {
+        check(
+            indoc! {r#"
+                fn Row(nothing: (  ), rows: Array[()]) -> Html {<></>}
+            "#},
+            expect![[r#"
+                fn Row(
+                  nothing: (),
+                  rows: Array[()],
+                ) -> Html {
+                  <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_tuple_parameter() {
+        check(
+            indoc! {r#"
+                fn Row(cell:   ( Int ,Array[String] )) -> Html {<></>}
+            "#},
+            expect![[r#"
+                fn Row(cell: (Int, Array[String])) -> Html {
+                  <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_one_tuple_parameter_keeps_the_trailing_comma() {
+        check(
+            indoc! {r#"
+                fn Row(only: ( Int , ), plain: (Int)) -> Html {<></>}
+            "#},
+            expect![[r#"
+                fn Row(
+                  only: (Int,),
+                  plain: Int,
+                ) -> Html {
+                  <></>
                 }
             "#]],
         );

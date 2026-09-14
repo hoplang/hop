@@ -121,6 +121,8 @@ pub trait Transpiler {
     fn transpile_html_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &Type) -> Doc<'a>;
     fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &Type) -> Doc<'a>;
+    fn transpile_tuple_type<'a>(&mut self, arena: &'a Arena<'a>, element_types: &[Type])
+    -> Doc<'a>;
     fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
     fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
     fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &Type) -> Doc<'a> {
@@ -133,6 +135,7 @@ pub trait Transpiler {
             Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
             Type::Array(elem) => self.transpile_array_type(arena, elem),
             Type::Option(inner) => self.transpile_option_type(arena, inner),
+            Type::Tuple(elements) => self.transpile_tuple_type(arena, elements),
             Type::Named { name, .. } => {
                 let is_record = matches!(
                     self.registry()
@@ -167,6 +170,18 @@ pub trait Transpiler {
         arena: &'a Arena<'a>,
         elements: &'a [WriterExpr],
         elem_type: &'a Type,
+    ) -> Doc<'a>;
+    fn transpile_tuple_literal<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        elements: &'a [WriterExpr],
+        element_types: &'a [Type],
+    ) -> Doc<'a>;
+    fn transpile_tuple_index<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        tuple: &'a WriterExpr,
+        index: usize,
     ) -> Doc<'a>;
     fn transpile_string_equals<'a>(
         &mut self,
@@ -369,6 +384,15 @@ pub trait Transpiler {
             }
             WriterExpr::FloatLiteral { value, .. } => self.transpile_float_literal(arena, *value),
             WriterExpr::IntLiteral { value, .. } => self.transpile_int_literal(arena, *value),
+            WriterExpr::TupleLiteral { elements, typ, .. } => match typ {
+                Type::Tuple(element_types) => {
+                    self.transpile_tuple_literal(arena, elements, element_types)
+                }
+                _ => unreachable!("a tuple literal has a tuple type"),
+            },
+            WriterExpr::TupleIndex { tuple, index, .. } => {
+                self.transpile_tuple_index(arena, tuple, *index)
+            }
             WriterExpr::ArrayLiteral { elements, typ, .. } => match typ {
                 Type::Array(elem_type) => self.transpile_array_literal(arena, elements, elem_type),
                 _ => {

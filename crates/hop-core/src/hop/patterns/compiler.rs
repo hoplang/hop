@@ -440,7 +440,8 @@ fn compile_rows(
         | ResolvedType::Int
         | ResolvedType::Float
         | ResolvedType::Html
-        | ResolvedType::Array(_) => {
+        | ResolvedType::Array(_)
+        | ResolvedType::Tuple(_) => {
             panic!("pattern matching not supported for this type")
         }
     };

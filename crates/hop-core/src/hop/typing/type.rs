@@ -15,6 +15,7 @@ pub enum Type {
     Attrs,
     Array(Box<Type>),
     Option(Box<Type>),
+    Tuple(Vec<Type>),
     Named { module: DocumentId, name: TypeName },
 }
 
@@ -51,9 +52,12 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::Option(_) | Type::Html | Type::Attrs | Type::Array(_) | Type::Named { .. } => {
-                None
-            }
+            Type::Option(_)
+            | Type::Html
+            | Type::Attrs
+            | Type::Array(_)
+            | Type::Tuple(_)
+            | Type::Named { .. } => None,
         }
     }
 
@@ -67,6 +71,7 @@ impl Type {
             | Type::Attrs
             | Type::Array(_)
             | Type::Option(_)
+            | Type::Tuple(_)
             | Type::Named { .. } => None,
         }
     }
@@ -75,9 +80,13 @@ impl Type {
     pub fn is_matchable(&self) -> bool {
         match self {
             Type::Bool | Type::Option(_) | Type::Named { .. } => true,
-            Type::String | Type::Int | Type::Float | Type::Html | Type::Attrs | Type::Array(_) => {
-                false
-            }
+            Type::String
+            | Type::Int
+            | Type::Float
+            | Type::Html
+            | Type::Attrs
+            | Type::Array(_)
+            | Type::Tuple(_) => false,
         }
     }
 }
@@ -105,6 +114,18 @@ impl<'a> Type {
                 .append(BoxDoc::text("Option["))
                 .append(elem_type.to_doc())
                 .append(BoxDoc::text("]")),
+            Type::Tuple(elements) => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::intersperse(
+                    elements.iter().map(|element| element.to_doc()),
+                    BoxDoc::text(", "),
+                ))
+                .append(if elements.len() == 1 {
+                    BoxDoc::text(",")
+                } else {
+                    BoxDoc::nil()
+                })
+                .append(BoxDoc::text(")")),
             Type::Named { module, name, .. } => {
                 BoxDoc::text(format!("{}::{}", module.to_module_id(), name))
             }

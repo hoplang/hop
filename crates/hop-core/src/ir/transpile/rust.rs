@@ -159,13 +159,14 @@ impl RustTranspiler {
                     Binding::Owned | Binding::BorrowedBoxed => NaturalForm::Place,
                 }
             }
-            WriterExpr::FieldAccess { .. } => NaturalForm::Place,
+            WriterExpr::FieldAccess { .. } | WriterExpr::TupleIndex { .. } => NaturalForm::Place,
             WriterExpr::HtmlLiteral { .. }
             | WriterExpr::FunctionCall { .. }
             | WriterExpr::BooleanLiteral { .. }
             | WriterExpr::FloatLiteral { .. }
             | WriterExpr::IntLiteral { .. }
             | WriterExpr::ArrayLiteral { .. }
+            | WriterExpr::TupleLiteral { .. }
             | WriterExpr::RecordLiteral { .. }
             | WriterExpr::EnumLiteral { .. }
             | WriterExpr::OptionLiteral { .. }
@@ -268,6 +269,11 @@ impl RustTranspiler {
                 out.insert(name.clone());
             }
             Type::Option(inner) => Self::inline_refs(inner, out),
+            Type::Tuple(elements) => {
+                for element in elements {
+                    Self::inline_refs(element, out);
+                }
+            }
             _ => {}
         }
     }
@@ -308,7 +314,8 @@ impl RustTranspiler {
 
     /// Whether a field of `owner` declaring type `t` carries a `Box`, which is
     /// the case when the field stores an inline reference to a type `owner`
-    /// boxes. Mirrors `inline_refs`: descend `Option`, stop at `Array`.
+    /// boxes. Mirrors `inline_refs`: descend `Option` and tuples, stop at
+    /// `Array`.
     fn field_type_is_boxed(&self, t: &Type, owner: &str) -> bool {
         match t {
             Type::Named { name, .. } => self
@@ -316,6 +323,9 @@ impl RustTranspiler {
                 .iter()
                 .any(|(o, target)| o.as_str() == owner && target == name),
             Type::Option(inner) => self.field_type_is_boxed(inner, owner),
+            Type::Tuple(elements) => elements
+                .iter()
+                .any(|element| self.field_type_is_boxed(element, owner)),
             _ => false,
         }
     }
@@ -400,9 +410,12 @@ impl RustTranspiler {
     fn is_scalar(t: &Type) -> bool {
         match t {
             Type::Bool | Type::Int | Type::Float => true,
-            Type::String | Type::Html | Type::Array(_) | Type::Named { .. } | Type::Option(_) => {
-                false
-            }
+            Type::String
+            | Type::Html
+            | Type::Array(_)
+            | Type::Tuple(_)
+            | Type::Named { .. }
+            | Type::Option(_) => false,
             Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
         }
     }
@@ -427,6 +440,7 @@ impl RustTranspiler {
                 .text("&Option<")
                 .append(self.transpile_type(arena, inner))
                 .append(arena.text(">")),
+            Type::Tuple(_) => arena.text("&").append(self.transpile_type(arena, t)),
             Type::Named { name, .. } => arena.text("&").append(arena.text(name.as_str())),
         }
     }
@@ -1192,6 +1206,30 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(">"))
     }
 
+    fn transpile_tuple_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        element_types: &[Type],
+    ) -> Doc<'a> {
+        arena
+            .text("(")
+            .append(
+                arena.intersperse(
+                    element_types
+                        .iter()
+                        .map(|element| self.transpile_type(arena, element))
+                        .collect::<Vec<_>>(),
+                    arena.text(", "),
+                ),
+            )
+            .append(if element_types.len() == 1 {
+                arena.text(",")
+            } else {
+                arena.nil()
+            })
+            .append(arena.text(")"))
+    }
+
     fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &Type) -> Doc<'a> {
         arena
             .text("Option<")
@@ -1242,6 +1280,8 @@ impl Transpiler for RustTranspiler {
             | WriterExpr::FloatLiteral { .. }
             | WriterExpr::IntLiteral { .. }
             | WriterExpr::ArrayLiteral { .. }
+            | WriterExpr::TupleLiteral { .. }
+            | WriterExpr::TupleIndex { .. }
             | WriterExpr::EnumLiteral { .. }
             | WriterExpr::OptionLiteral { .. }
             | WriterExpr::Match { .. }
@@ -1357,6 +1397,38 @@ impl Transpiler for RustTranspiler {
                 .append(arena.intersperse(items, arena.text(", ")))
                 .append(arena.text("]"))
         }
+    }
+
+    fn transpile_tuple_literal<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        elements: &'a [WriterExpr],
+        _element_types: &'a [Type],
+    ) -> Doc<'a> {
+        let items: Vec<Doc<'a>> = elements
+            .iter()
+            .map(|e| self.transpile_expr_owned(arena, e))
+            .collect();
+        arena
+            .text("(")
+            .append(arena.intersperse(items, arena.text(", ")))
+            .append(if elements.len() == 1 {
+                arena.text(",")
+            } else {
+                arena.nil()
+            })
+            .append(arena.text(")"))
+    }
+
+    fn transpile_tuple_index<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        tuple: &'a WriterExpr,
+        index: usize,
+    ) -> Doc<'a> {
+        self.transpile_expr_place(arena, tuple)
+            .append(arena.text("."))
+            .append(arena.text(index.to_string()))
     }
 
     fn transpile_string_equals<'a>(
@@ -1965,6 +2037,203 @@ mod tests {
         let after = RustTranspiler::new().transpile_module(&module, &registry);
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn record_reaching_itself_through_a_tuple_field_boxes_the_tuple() {
+        check(
+            PureModuleBuilder::new()
+                .record("Node", [("link", "(Option[Node], Int)")])
+                .page_no_params("Test", |t| {
+                    let node = t.record(
+                        "Node",
+                        vec![("link", t.tuple(vec![t.none("Node"), t.int(1)]))],
+                    );
+                    t.escape(t.int_to_string(t.tuple_index(t.field_access(node, "link"), 1)))
+                }),
+            expect![[r#"
+                -- before --
+                page Test() {
+                  write_string(Node {
+                    link: (Option[test::Node]::None, 1),
+                  }.link.1.to_string())
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct Node {
+                    pub link: Box<(Option<Node>, i32)>,
+                }
+
+                pub struct Test {}
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        write_escaped_html(&((*(Node { link: Box::new((None::<Node>, 1_i32)) }).link).1).to_string(), output);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn page_with_empty_tuple() {
+        check(
+            PureModuleBuilder::new()
+                .record("Holder", [("nothing", "()")])
+                .page("Test", [("unit", "()")], |t| {
+                    let held = t.record("Holder", vec![("nothing", t.tuple(vec![]))]);
+                    t.escape(t.int_to_string(t.array_length(t.array_typed(
+                        t.resolve_type("()"),
+                        vec![t.var("unit"), t.field_access(held, "nothing")],
+                    ))))
+                }),
+            expect![[r#"
+                -- before --
+                page Test(unit@v0: ()) {
+                  write_string([
+                    v0,
+                    Holder {nothing: ()}.nothing,
+                  ].len().to_string())
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct Holder {
+                    pub nothing: (),
+                }
+
+                pub struct Test {
+                    pub unit: (),
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { unit: v_0 } = self;
+                        write_escaped_html(&((vec![v_0.clone(), (Holder { nothing: () }).nothing.clone()].len() as i32)).to_string(), output);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn page_with_tuple_parameter() {
+        check(
+            PureModuleBuilder::new().page("Row", [("cell", "(Int, String)")], |t| {
+                t.concat(vec![
+                    t.escape(t.int_to_string(t.tuple_index(t.var("cell"), 0))),
+                    t.raw(": "),
+                    t.escape(t.tuple_index(t.var("cell"), 1)),
+                ])
+            }),
+            expect![[r#"
+                -- before --
+                page Row(cell@v0: (Int, String)) {
+                  write_string(v0.0.to_string())
+                  write(": ")
+                  write_string(v0.1)
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                pub struct Row {
+                    pub cell: (i32, String),
+                }
+
+                impl View for Row {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Row { cell: v_0 } = self;
+                        write_escaped_html(&(v_0.0).to_string(), output);
+                        output.push_str(": ");
+                        write_escaped_html(&v_0.1, output);
+                    }
+                }
+            "#]],
+        );
     }
 
     #[test]

@@ -985,6 +985,11 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
         ParsedType::Option { element, .. } | ParsedType::Array { element, .. } => {
             collect_names_in_type(element, out);
         }
+        ParsedType::Tuple { elements, .. } => {
+            for element in elements {
+                collect_names_in_type(element, out);
+            }
+        }
         ParsedType::String { .. }
         | ParsedType::Bool { .. }
         | ParsedType::Int { .. }
@@ -1180,6 +1185,32 @@ mod tests {
             panic!("expected diagnostics but got none");
         }
         expected.assert_eq(&actual);
+    }
+
+    #[test]
+    fn accepts_record_field_with_tuple_type() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                pub record Row {
+                  cell: (Int, Array[String]),
+                  only: (Int,),
+                  nothing: (),
+                  plain: (Int),
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+
+                -- type registry --
+                record main::Row {
+                  cell: (Int, Array[String]),
+                  only: (Int,),
+                  nothing: (),
+                  plain: Int,
+                }
+            "#]],
+        );
     }
 
     #[test]

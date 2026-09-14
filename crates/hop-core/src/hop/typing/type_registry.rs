@@ -40,6 +40,7 @@ pub enum ResolvedType<'a> {
     Html,
     Array(&'a Type),
     Option(&'a Type),
+    Tuple(&'a [Type]),
     Record {
         name: &'a TypeName,
         fields: &'a [RecordField],
@@ -112,6 +113,7 @@ impl TypeRegistry {
             Type::Attrs => None,
             Type::Array(inner) => Some(ResolvedType::Array(inner)),
             Type::Option(inner) => Some(ResolvedType::Option(inner)),
+            Type::Tuple(elements) => Some(ResolvedType::Tuple(elements)),
             Type::Named { module, name } => match self.defs.get(module)?.get(name)? {
                 TypeDef::Record { fields } => Some(ResolvedType::Record { name, fields }),
                 TypeDef::Enum { variants } => Some(ResolvedType::Enum { name, variants }),

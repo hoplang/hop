@@ -46,6 +46,9 @@ pub(crate) fn can_construct(
         // Arrays and options can always terminate as empty and None
         | ResolvedType::Array(_)
         | ResolvedType::Option(_) => true,
+        ResolvedType::Tuple(elements) => elements
+            .iter()
+            .all(|element| can_construct(element, registry, visiting)),
         ResolvedType::Record { fields, .. } => fields
             .iter()
             .all(|field| can_construct(&field.typ, registry, visiting)),
@@ -153,6 +156,14 @@ fn generate(
                 Value::None
             }
         }
+        ResolvedType::Tuple(elements) => Value::Tuple(
+            elements
+                .iter()
+                .map(|element| {
+                    random_value_at_depth(rng, element, None, registry, depth + 1, visiting)
+                })
+                .collect(),
+        ),
         ResolvedType::Record { fields, .. } => {
             let map = fields
                 .iter()

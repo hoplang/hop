@@ -272,6 +272,7 @@ impl PureGenerator<'_, '_> {
             Named,
             Array,
             Option,
+            Tuple,
         }
         let mut kinds = vec![P::Scalar];
         let named_count = self.named_type_count(named);
@@ -279,7 +280,7 @@ impl PureGenerator<'_, '_> {
             kinds.push(P::Named);
         }
         if depth > 0 {
-            kinds.extend([P::Array, P::Option]);
+            kinds.extend([P::Array, P::Option, P::Tuple]);
         }
         match self.u.choose(&kinds).unwrap() {
             P::Scalar => {
@@ -292,6 +293,17 @@ impl PureGenerator<'_, '_> {
             }
             P::Array => format!("Array[{}]", self.type_string(depth - 1, NamedTypes::Any)),
             P::Option => format!("Option[{}]", self.type_string(depth - 1, NamedTypes::Any)),
+            P::Tuple => {
+                let arity = self.count(0..=3);
+                let elements: Vec<String> = (0..arity)
+                    .map(|_| self.type_string(depth - 1, named))
+                    .collect();
+                if arity == 1 {
+                    format!("({},)", elements[0])
+                } else {
+                    format!("({})", elements.join(", "))
+                }
+            }
         }
     }
 
@@ -355,6 +367,7 @@ impl PureGenerator<'_, '_> {
             StringIsEmpty,
             ArrayIsEmpty,
             ArrayLength,
+            TupleIndex,
             Neg,
             Add,
             Sub,
@@ -376,7 +389,7 @@ impl PureGenerator<'_, '_> {
             if !record_fields.is_empty() {
                 productions.push(P::FieldAccess);
             }
-            productions.extend([P::Let, P::BoolMatch, P::OptionMatch]);
+            productions.extend([P::Let, P::BoolMatch, P::OptionMatch, P::TupleIndex]);
             if !self.enums.is_empty() {
                 productions.push(P::EnumMatch);
             }
@@ -570,6 +583,21 @@ impl PureGenerator<'_, '_> {
                 let operand = self.expr(b, &array_ty, depth - 1);
                 b.array_length(operand)
             }
+            P::TupleIndex => {
+                let arity = self.count(1..=3);
+                let index = self.index(arity);
+                let elements = (0..arity)
+                    .map(|i| {
+                        if i == index {
+                            target.clone()
+                        } else {
+                            b.resolve_type(&self.random_type_string(1))
+                        }
+                    })
+                    .collect();
+                let tuple = self.expr(b, &Type::Tuple(elements), depth - 1);
+                b.tuple_index(tuple, index)
+            }
             P::Neg => {
                 let operand = self.expr(b, target, depth - 1);
                 b.neg(operand)
@@ -706,6 +734,13 @@ impl PureGenerator<'_, '_> {
                 }
             }
             Type::Html => b.concat(Vec::new()),
+            Type::Tuple(elements) => {
+                let values = elements
+                    .iter()
+                    .map(|element| self.expr(b, element, depth.saturating_sub(1)))
+                    .collect();
+                b.tuple(values)
+            }
         }
     }
 }

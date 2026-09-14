@@ -171,6 +171,23 @@ pub enum PureExpr {
         id: ExprId,
     },
 
+    /// A TupleLiteral expression.
+    #[allow(dead_code)]
+    TupleLiteral {
+        elements: Vec<PureExpr>,
+        typ: Type,
+        id: ExprId,
+    },
+
+    /// A TupleIndex expression.
+    #[allow(dead_code)]
+    TupleIndex {
+        tuple: Box<PureExpr>,
+        index: usize,
+        typ: Type,
+        id: ExprId,
+    },
+
     /// A RecordLiteral expression.
     RecordLiteral {
         record_name: TypeName,
@@ -362,6 +379,8 @@ impl PureExpr {
             PureExpr::VariableReference { typ, .. }
             | PureExpr::FieldAccess { typ, .. }
             | PureExpr::ArrayLiteral { typ, .. }
+            | PureExpr::TupleLiteral { typ, .. }
+            | PureExpr::TupleIndex { typ, .. }
             | PureExpr::RecordLiteral { typ, .. }
             | PureExpr::EnumLiteral { typ, .. }
             | PureExpr::OptionLiteral { typ, .. }
@@ -425,6 +444,8 @@ impl PureExpr {
             | PureExpr::FloatLiteral { id, .. }
             | PureExpr::IntLiteral { id, .. }
             | PureExpr::ArrayLiteral { id, .. }
+            | PureExpr::TupleLiteral { id, .. }
+            | PureExpr::TupleIndex { id, .. }
             | PureExpr::RecordLiteral { id, .. }
             | PureExpr::EnumLiteral { id, .. }
             | PureExpr::OptionLiteral { id, .. }
@@ -518,11 +539,13 @@ impl PureExpr {
                 }
             }
 
-            PureExpr::ArrayLiteral { elements, .. } => {
+            PureExpr::ArrayLiteral { elements, .. } | PureExpr::TupleLiteral { elements, .. } => {
                 for element in elements {
                     f(element);
                 }
             }
+
+            PureExpr::TupleIndex { tuple, .. } => f(tuple),
 
             PureExpr::RecordLiteral { fields, .. } | PureExpr::EnumLiteral { fields, .. } => {
                 for (_, value) in fields {
@@ -694,6 +717,24 @@ impl PureExpr {
 
             PureExpr::ArrayLiteral { elements, typ, id } => PureExpr::ArrayLiteral {
                 elements: elements.into_iter().map(&mut *f).collect(),
+                typ,
+                id,
+            },
+
+            PureExpr::TupleLiteral { elements, typ, id } => PureExpr::TupleLiteral {
+                elements: elements.into_iter().map(&mut *f).collect(),
+                typ,
+                id,
+            },
+
+            PureExpr::TupleIndex {
+                tuple,
+                index,
+                typ,
+                id,
+            } => PureExpr::TupleIndex {
+                tuple: Box::new(f(*tuple)),
+                index,
                 typ,
                 id,
             },
@@ -1037,6 +1078,27 @@ impl PureExpr {
                         .append(BoxDoc::text("]"))
                 }
             }
+            PureExpr::TupleLiteral { elements, .. } => BoxDoc::text("(")
+                .append(
+                    BoxDoc::line_()
+                        .append(BoxDoc::intersperse(
+                            elements.iter().map(|e| e.to_doc()),
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(if elements.len() == 1 {
+                            BoxDoc::text(",")
+                        } else {
+                            BoxDoc::text(",").flat_alt(BoxDoc::nil())
+                        })
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(BoxDoc::text(")")),
+            PureExpr::TupleIndex { tuple, index, .. } => tuple
+                .to_doc()
+                .append(BoxDoc::text("."))
+                .append(BoxDoc::text(index.to_string())),
             PureExpr::RecordLiteral {
                 record_name,
                 fields,

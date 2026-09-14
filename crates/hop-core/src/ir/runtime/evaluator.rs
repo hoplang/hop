@@ -239,6 +239,23 @@ fn evaluate_expr(
             }
             Ok(Value::Array(array))
         }
+        PureExpr::TupleLiteral { elements, .. } => {
+            let mut tuple = Vec::new();
+            for element in elements {
+                tuple.push(evaluate_expr(element, env, function_decls)?);
+            }
+            Ok(Value::Tuple(tuple))
+        }
+        PureExpr::TupleIndex { tuple, index, .. } => {
+            let value = evaluate_expr(tuple, env, function_decls)?;
+            let Value::Tuple(elements) = value else {
+                panic!("Expected tuple for tuple index");
+            };
+            Ok(elements
+                .into_iter()
+                .nth(*index)
+                .unwrap_or_else(|| panic!("Index {index} is out of range for the tuple")))
+        }
         PureExpr::RecordLiteral { fields, .. } => {
             let mut rec = HashMap::new();
             for (key, value) in fields {
@@ -673,6 +690,98 @@ mod tests {
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn should_hold_an_empty_tuple_in_a_record_field() {
+        check(
+            PureModuleBuilder::new()
+                .record("Holder", [("nothing", "()")])
+                .page_no_params("Test", |t| {
+                    let held = t.record("Holder", vec![("nothing", t.tuple(vec![]))]);
+                    t.escape(t.int_to_string(t.array_length(
+                        t.array_typed(t.resolve_type("()"), vec![t.field_access(held, "nothing")]),
+                    )))
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                page Test() {
+                  escape([Holder {nothing: ()}.nothing].len().to_string())
+                }
+
+                -- after --
+                1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_read_an_element_back_out_of_a_tuple() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    let pair = t.tuple(vec![t.int(1), t.str("two")]);
+                    t.escape(t.tuple_index(pair, 1))
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                page Test() {
+                  escape((1, "two").1)
+                }
+
+                -- after --
+                two
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_read_an_element_back_out_of_a_one_tuple() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    let only = t.tuple(vec![t.str("alone")]);
+                    t.escape(t.tuple_index(only, 0))
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                page Test() {
+                  escape(("alone",).0)
+                }
+
+                -- after --
+                alone
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_index_a_nested_tuple() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    let inner = t.tuple(vec![t.str("deep"), t.int(2)]);
+                    let outer = t.tuple(vec![t.int(1), inner]);
+                    t.escape(t.tuple_index(t.tuple_index(outer, 1), 0))
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                page Test() {
+                  escape((1, ("deep", 2)).1.0)
+                }
+
+                -- after --
+                deep
+            "#]],
+        );
     }
 
     #[test]
