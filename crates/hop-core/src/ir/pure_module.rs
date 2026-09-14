@@ -17,6 +17,10 @@ use super::writer_module::WriterParameter;
 /// A Pure module.
 ///
 /// An expression-only, side-effect-free form of the IR.
+///
+/// All IDs in the module are unique across the whole module. Each binder has
+/// a unique VarId, so two binders are never the same variable: shadowing is
+/// impossible and substitution is capture-free.
 #[derive(Debug)]
 pub struct PureModule {
     pub pages: Vec<PurePageDeclaration>,
