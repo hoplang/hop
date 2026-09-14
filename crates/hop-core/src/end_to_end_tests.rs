@@ -9586,6 +9586,100 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn match_on_recursive_enum_field_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Expr {
+                  Literal { value: String },
+                  Neg { inner: Expr },
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    for e in [Expr::Neg {inner: Expr::Literal {value: "42"}}] {
+                      match e {
+                        Expr::Neg {inner: i} =>
+                          match i {
+                            Expr::Literal {value: v} => <>{v}</>,
+                            Expr::Neg {inner: _} => <>nested</>,
+                          },
+                        Expr::Literal {value: _} => <>lit</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "42",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in [
+                    Expr::Neg {inner: Expr::Literal {value: "42"}},
+                  ] {
+                    match v0 {
+                      Expr::Literal => {
+                        write("lit")
+                      }
+                      Expr::Neg(inner: v1) => {
+                        let v2 = v1 in {
+                          match v2 {
+                            Expr::Literal(value: v3) => {
+                              let v4 = v3 in {
+                                write_string(v4)
+                              }
+                            }
+                            Expr::Neg => {
+                              write("nested")
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [
+                    Expr::Neg {inner: Expr::Literal {value: "42"}},
+                  ] {
+                    match v0 {
+                      Expr::Literal => {
+                        write("lit")
+                      }
+                      Expr::Neg(inner: v1) => {
+                        match v1 {
+                          Expr::Literal(value: v3) => {
+                            write_string(v3)
+                          }
+                          Expr::Neg => {
+                            write("nested")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                42
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn nested_self_referential_enum() {
         check(
             indoc! {r#"
