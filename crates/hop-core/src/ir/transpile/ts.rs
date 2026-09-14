@@ -1632,7 +1632,7 @@ impl Transpiler for TsTranspiler {
     }
 
     /// A `let` in expression position.
-    fn transpile_let<'a>(
+    fn transpile_let_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         var: &'a IrVar,

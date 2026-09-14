@@ -1853,7 +1853,7 @@ impl Transpiler for RustTranspiler {
         }
     }
 
-    fn transpile_let<'a>(
+    fn transpile_let_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         var: &'a IrVar,

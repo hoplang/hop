@@ -304,7 +304,7 @@ pub trait Transpiler {
         arena: &'a Arena<'a>,
         match_: &'a Match<WriterExpr, WriterExpr, IrVar>,
     ) -> Doc<'a>;
-    fn transpile_let<'a>(
+    fn transpile_let_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         var: &'a IrVar,
@@ -475,7 +475,7 @@ pub trait Transpiler {
             WriterExpr::Match { match_, .. } => self.transpile_match_expr(arena, match_),
             WriterExpr::Let {
                 var, value, body, ..
-            } => self.transpile_let(arena, var, value, body),
+            } => self.transpile_let_expr(arena, var, value, body),
             WriterExpr::ArrayLength { array, .. } => self.transpile_array_length(arena, array),
             WriterExpr::ArrayIsEmpty { array, .. } => self.transpile_array_is_empty(arena, array),
             WriterExpr::StringIsEmpty { string, .. } => {
