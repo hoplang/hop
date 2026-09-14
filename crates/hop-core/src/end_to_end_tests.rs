@@ -6661,6 +6661,52 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn int_to_float_on_a_loop_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    for i in [3] {
+                      <>{i.to_float().to_int().to_string()}</>
+                    }
+                  }
+                }
+            "#},
+            "3",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in [3] {
+                    write_string(v0.to_float().to_int().to_string())
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [3] {
+                    write_string(v0.to_float().to_int().to_string())
+                  }
+                }
+                -- expected output --
+                3
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn float_to_int_whole_number() {
         check(
             indoc! {r#"
@@ -10307,6 +10353,687 @@ mod tests {
                 }
                 -- expected output --
                 a@b.cwork
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rebuilding_an_enum_from_a_boxed_option_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Tree {
+                  Node {
+                    label: String,
+                    kid: Option[Tree],
+                  },
+                  Leaf,
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    for t in [Tree::Node {label: "a", kid: None}] {
+                      match t {
+                        Tree::Node {label: l, kid: k} => {
+                          match (Tree::Node {label: "b", kid: k}) {
+                            Tree::Node {label: l2, kid: k2} => <>
+                              {l}
+                              {l2}
+                              {match k2 {
+                                Some(_) => <>s</>,
+                                None => <>n</>,
+                              }}
+                            </>,
+                            Tree::Leaf => <>x</>,
+                          }
+                        },
+                        Tree::Leaf => <>empty</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "abn",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in [
+                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                  ] {
+                    match v0 {
+                      Tree::Node(label: v1, kid: v2) => {
+                        let v3 = v1 in {
+                          let v4 = v2 in {
+                            let v5 = Tree::Node {label: "b", kid: v4} in {
+                              match v5 {
+                                Tree::Node(label: v6, kid: v7) => {
+                                  let v8 = v6 in {
+                                    let v9 = v7 in {
+                                      write_string(v3)
+                                      write_string(v8)
+                                      match v9 {
+                                        Some(_) => {
+                                          write("s")
+                                        }
+                                        None => {
+                                          write("n")
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                Tree::Leaf => {
+                                  write("x")
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [
+                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                  ] {
+                    match v0 {
+                      Tree::Node(label: v1, kid: v2) => {
+                        let v3 = v1 in {
+                          let v4 = v2 in {
+                            let v5 = Tree::Node {label: "b", kid: v4} in {
+                              match v5 {
+                                Tree::Node(label: v6, kid: v7) => {
+                                  let v8 = v6 in {
+                                    let v9 = v7 in {
+                                      write_string(v3)
+                                      write_string(v8)
+                                      match v9 {
+                                        Some(_) => {
+                                          write("s")
+                                        }
+                                        None => {
+                                          write("n")
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                Tree::Leaf => {
+                                  write("x")
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                abn
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rebuilding_an_enum_from_a_directly_boxed_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Tree {
+                  Node {
+                    label: String,
+                    kid: Tree,
+                  },
+                  Leaf,
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    for t in [Tree::Node {label: "a", kid: Tree::Leaf}] {
+                      match t {
+                        Tree::Node {label: l, kid: k} => {
+                          match (Tree::Node {label: "b", kid: k}) {
+                            Tree::Node {label: l2, kid: _} => <>
+                              {l}
+                              {l2}
+                            </>,
+                            Tree::Leaf => <>x</>,
+                          }
+                        },
+                        Tree::Leaf => <>empty</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "ab",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in [Tree::Node {label: "a", kid: Tree::Leaf}] {
+                    match v0 {
+                      Tree::Node(label: v1, kid: v2) => {
+                        let v3 = v1 in {
+                          let v4 = v2 in {
+                            let v5 = Tree::Node {label: "b", kid: v4} in {
+                              match v5 {
+                                Tree::Node(label: v6) => {
+                                  let v7 = v6 in {
+                                    write_string(v3)
+                                    write_string(v7)
+                                  }
+                                }
+                                Tree::Leaf => {
+                                  write("x")
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [Tree::Node {label: "a", kid: Tree::Leaf}] {
+                    match v0 {
+                      Tree::Node(label: v1, kid: v2) => {
+                        let v3 = v1 in {
+                          let v4 = v2 in {
+                            let v5 = Tree::Node {label: "b", kid: v4} in {
+                              match v5 {
+                                Tree::Node(label: v6) => {
+                                  let v7 = v6 in {
+                                    write_string(v3)
+                                    write_string(v7)
+                                  }
+                                }
+                                Tree::Leaf => {
+                                  write("x")
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                ab
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rebuilding_an_enum_from_a_nested_option_boxed_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Tree {
+                  Node {
+                    label: String,
+                    kid: Option[Option[Tree]],
+                  },
+                  Leaf,
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    for t in [Tree::Node {label: "a", kid: None}] {
+                      match t {
+                        Tree::Node {label: l, kid: k} => {
+                          match (Tree::Node {label: "b", kid: k}) {
+                            Tree::Node {label: l2, kid: _} => <>
+                              {l}
+                              {l2}
+                            </>,
+                            Tree::Leaf => <>x</>,
+                          }
+                        },
+                        Tree::Leaf => <>empty</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "ab",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in [
+                    Tree::Node {label: "a", kid: Option[Option[main::Tree]]::None},
+                  ] {
+                    match v0 {
+                      Tree::Node(label: v1, kid: v2) => {
+                        let v3 = v1 in {
+                          let v4 = v2 in {
+                            let v5 = Tree::Node {label: "b", kid: v4} in {
+                              match v5 {
+                                Tree::Node(label: v6) => {
+                                  let v7 = v6 in {
+                                    write_string(v3)
+                                    write_string(v7)
+                                  }
+                                }
+                                Tree::Leaf => {
+                                  write("x")
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [
+                    Tree::Node {label: "a", kid: Option[Option[main::Tree]]::None},
+                  ] {
+                    match v0 {
+                      Tree::Node(label: v1, kid: v2) => {
+                        let v3 = v1 in {
+                          let v4 = v2 in {
+                            let v5 = Tree::Node {label: "b", kid: v4} in {
+                              match v5 {
+                                Tree::Node(label: v6) => {
+                                  let v7 = v6 in {
+                                    write_string(v3)
+                                    write_string(v7)
+                                  }
+                                }
+                                Tree::Leaf => {
+                                  write("x")
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                ab
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rebuilding_an_enum_from_a_boxed_record_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record Holder {
+                  tag: String,
+                  e: Option[Wrap],
+                }
+
+                enum Wrap {
+                  Full {
+                    h: Option[Holder],
+                  },
+                  Empty,
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    for w in [Wrap::Full {h: None}] {
+                      match w {
+                        Wrap::Full {h: hh} => {
+                          match (Wrap::Full {h: hh}) {
+                            Wrap::Full {h: h2} => <>
+                              {match h2 {
+                                Some(x) => <>{x.tag}</>,
+                                None => <>re</>,
+                              }}
+                            </>,
+                            Wrap::Empty => <>x</>,
+                          }
+                        },
+                        Wrap::Empty => <>empty</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "re",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in [Wrap::Full {h: Option[main::Holder]::None}] {
+                    match v0 {
+                      Wrap::Full(h: v1) => {
+                        let v2 = v1 in {
+                          let v3 = Wrap::Full {h: v2} in {
+                            match v3 {
+                              Wrap::Full(h: v4) => {
+                                let v5 = v4 in {
+                                  match v5 {
+                                    Some(v6) => {
+                                      let v7 = v6 in {
+                                        write_string(v7.tag)
+                                      }
+                                    }
+                                    None => {
+                                      write("re")
+                                    }
+                                  }
+                                }
+                              }
+                              Wrap::Empty => {
+                                write("x")
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Wrap::Empty => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [Wrap::Full {h: Option[main::Holder]::None}] {
+                    match v0 {
+                      Wrap::Full(h: v1) => {
+                        let v2 = v1 in {
+                          let v3 = Wrap::Full {h: v2} in {
+                            match v3 {
+                              Wrap::Full(h: v4) => {
+                                let v5 = v4 in {
+                                  match v5 {
+                                    Some(v6) => {
+                                      let v7 = v6 in {
+                                        write_string(v7.tag)
+                                      }
+                                    }
+                                    None => {
+                                      write("re")
+                                    }
+                                  }
+                                }
+                              }
+                              Wrap::Empty => {
+                                write("x")
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Wrap::Empty => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                re
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn boxed_binding_returned_from_a_match_arm() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Tree {
+                  Node {
+                    label: String,
+                    kid: Option[Tree],
+                  },
+                  Leaf,
+                }
+
+                fn pick(t: Tree) -> Option[Tree] {
+                  match t {
+                    Tree::Node {label: _, kid: k} => k,
+                    Tree::Leaf => None,
+                  }
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    for t in [Tree::Node {label: "a", kid: None}] {
+                      match pick(t) {
+                        Some(_) => <>some</>,
+                        None => <>none</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "none",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn pick@f0(t@v2: main::Tree) -> Option[main::Tree] {
+                  match v2 {
+                    Tree::Node {kid: v3} => { let v4 = v3 in { v4 } }
+                    Tree::Leaf => { Option[main::Tree]::None }
+                  }
+                }
+                page Test() {
+                  for v0 in [
+                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                  ] {
+                    let v1 = call pick@f0(t = v0) in {
+                      match v1 {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [
+                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                  ] {
+                    let v1 = match v0 {
+                      Tree::Node {kid: v6} => { let v7 = v6 in { v7 } }
+                      Tree::Leaf => { Option[main::Tree]::None }
+                    } in {
+                      match v1 {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                none
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn boxed_binding_passed_as_a_function_argument() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Tree {
+                  Node {
+                    label: String,
+                    kid: Option[Tree],
+                  },
+                  Leaf,
+                }
+
+                fn depth(t: Option[Tree]) -> Int {
+                  match t {
+                    Some(_) => 1,
+                    None => 0,
+                  }
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    for t in [Tree::Node {label: "a", kid: None}] {
+                      match t {
+                        Tree::Node {label: _, kid: k} => <>{depth(k).to_string()}</>,
+                        Tree::Leaf => <>empty</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "0",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn depth@f0(t@v3: Option[main::Tree]) -> Int {
+                  match v3 { Some(_) => { 1 } None => { 0 } }
+                }
+                page Test() {
+                  for v0 in [
+                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                  ] {
+                    match v0 {
+                      Tree::Node(kid: v1) => {
+                        let v2 = v1 in {
+                          write_string(call depth@f0(t = v2).to_string())
+                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [
+                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                  ] {
+                    match v0 {
+                      Tree::Node(kid: v1) => {
+                        let v2 = v1 in {
+                          write_string(match v2 {
+                            Some(_) => { 1 }
+                            None => { 0 }
+                          }.to_string())
+                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                0
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
