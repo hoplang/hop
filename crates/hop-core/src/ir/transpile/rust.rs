@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use pretty::{Arena, DocAllocator};
 
@@ -9,6 +9,7 @@ use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_var::IrVar;
+use crate::ir::var_id::VarId;
 use crate::ir::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
     WriterModule, WriterPageDeclaration, WriterStatement,
@@ -30,6 +31,32 @@ fn function_ident(function: &IrFunction) -> String {
     format!("render_{}_{}", function.name.to_snake_case(), function.id)
 }
 
+/// What a variable's Rust binding holds.
+///
+/// Function parameters and pattern bindings are references into a value the
+/// generated code does not own, so holding the value is not the common case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Binding {
+    /// Bound to the value.
+    Owned,
+    /// Bound to a reference to the value, or to an unsized view of it.
+    Borrowed,
+    /// Bound to a reference to a `Box` holding the value, which is how a
+    /// pattern binds a field that carries `Box` indirection.
+    BorrowedBoxed,
+}
+
+/// What an expression transpiles to, before any demand is placed on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NaturalForm {
+    /// A reference to the value: a string literal, a borrowed binding.
+    Reference,
+    /// A place holding the value: an owned binding, a field read.
+    Place,
+    /// A temporary: a fresh value, which nothing else holds.
+    Temporary,
+}
+
 pub struct RustTranspiler {
     /// Tracks whether escape_html function is used during transpilation
     needs_escape_html: bool,
@@ -40,6 +67,9 @@ pub struct RustTranspiler {
     boxed_edges: HashSet<(TypeName, TypeName)>,
     /// Registry used to resolve named type structure.
     registry: TypeRegistry,
+    /// What the Rust binding for every bound variable holds.
+    /// Every binder must insert one entry to this map before it is referenced.
+    bindings: HashMap<VarId, Binding>,
 }
 
 impl RustTranspiler {
@@ -49,56 +79,40 @@ impl RustTranspiler {
             needs_html: false,
             boxed_edges: HashSet::new(),
             registry: TypeRegistry::default(),
+            bindings: HashMap::new(),
         }
     }
 
-    /// Rebind pattern bindings, which are references into the matched value, to
-    /// owned values of the type the IR expects. Each entry is the variable and
-    /// the expression to bind it to.
-    fn stmts_with_rebinds<'a>(
+    /// Render a bool subject as an `if` condition, parenthesizing a
+    /// non-variable subject so the parser does not read its braces as the
+    /// branch body.
+    fn transpile_condition<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        rebinds: &[(String, String)],
-        body: &'a [WriterStatement],
+        subject: &'a WriterExpr,
     ) -> Doc<'a> {
-        let mut doc = arena.nil();
-        for (var, value) in rebinds {
-            doc = doc
-                .append(arena.text(format!("let {var} = {value};")))
-                .append(arena.hardline());
+        match subject {
+            WriterExpr::VariableReference { .. } => self.transpile_expr_place(arena, subject),
+            _ => arena
+                .text("(")
+                .append(self.transpile_expr_place(arena, subject))
+                .append(arena.text(")")),
         }
-        doc.append(self.transpile_statements(arena, body))
     }
 
-    fn expr_with_rebinds<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        rebinds: &[(String, String)],
-        body: &'a WriterExpr,
-    ) -> Doc<'a> {
-        if rebinds.is_empty() {
-            return self.transpile_expr_owned(arena, body);
-        }
-        let mut doc = arena.text("{ ");
-        for (var, value) in rebinds {
-            doc = doc.append(arena.text(format!("let {var} = {value}; ")));
-        }
-        doc.append(self.transpile_expr_owned(arena, body))
-            .append(arena.text(" }"))
-    }
-
-    /// Render a match subject in head position, parenthesizing a non-variable
-    /// subject so the parser does not read its braces as the match body.
+    /// Render a match subject in head position. Matching reads the subject
+    /// through a reference, and a non-variable subject is parenthesized so the
+    /// parser does not read its braces as the match body.
     fn transpile_match_subject<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         subject: &'a WriterExpr,
     ) -> Doc<'a> {
         match subject {
-            WriterExpr::VariableReference { .. } => self.transpile_expr(arena, subject),
+            WriterExpr::VariableReference { .. } => self.transpile_expr_ref(arena, subject),
             _ => arena
                 .text("(")
-                .append(self.transpile_expr(arena, subject))
+                .append(self.transpile_expr_ref(arena, subject))
                 .append(arena.text(")")),
         }
     }
@@ -125,26 +139,28 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
-    fn transpile_expr_owned<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a WriterExpr) -> Doc<'a> {
+    fn binding(&self, var: &IrVar) -> Binding {
+        self.bindings.get(&var.id).copied().unwrap_or_else(|| {
+            unreachable!(
+                "every binder records a binding, and {} has none",
+                var_ident(var)
+            )
+        })
+    }
+
+    fn natural_form(&self, expr: &WriterExpr) -> NaturalForm {
         match expr {
-            // Unboxing a field read already produces an owned value.
-            WriterExpr::FieldAccess { record, field, .. }
-                if self.field_access_is_boxed(record, field) =>
-            {
-                self.transpile_expr(arena, expr)
+            WriterExpr::StringLiteral { .. } => NaturalForm::Reference,
+            WriterExpr::VariableReference { value, .. } => {
+                let binding = self.binding(value);
+                match binding {
+                    Binding::Borrowed => NaturalForm::Reference,
+                    // The deref past a `Box` lands on a place either way.
+                    Binding::Owned | Binding::BorrowedBoxed => NaturalForm::Place,
+                }
             }
-            WriterExpr::FieldAccess { .. } | WriterExpr::VariableReference { .. } => {
-                let method = match expr.typ() {
-                    Type::Array(_) => ".to_vec()",
-                    Type::String => ".to_string()",
-                    _ => ".clone()",
-                };
-                self.transpile_expr(arena, expr).append(arena.text(method))
-            }
-            // Every other variant constructs a fresh value, so it is already
-            // owned.
-            WriterExpr::StringLiteral { .. }
-            | WriterExpr::HtmlLiteral { .. }
+            WriterExpr::FieldAccess { .. } => NaturalForm::Place,
+            WriterExpr::HtmlLiteral { .. }
             | WriterExpr::FunctionCall { .. }
             | WriterExpr::BooleanLiteral { .. }
             | WriterExpr::FloatLiteral { .. }
@@ -173,7 +189,75 @@ impl RustTranspiler {
             | WriterExpr::OptionIsNone { .. }
             | WriterExpr::IntToString { .. }
             | WriterExpr::FloatToInt { .. }
-            | WriterExpr::IntToFloat { .. } => self.transpile_expr(arena, expr),
+            | WriterExpr::IntToFloat { .. } => NaturalForm::Temporary,
+        }
+    }
+
+    /// Transpile the value a `let` binds, and record how it binds it.
+    ///
+    /// A value something else already holds is bound by reference. Nothing
+    /// mutates it, so the body can read through the binding, and a use that
+    /// wants it owned copies at that use instead of here.
+    fn transpile_let_value<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        var: &'a IrVar,
+        value: &'a WriterExpr,
+    ) -> Doc<'a> {
+        match self.natural_form(value) {
+            NaturalForm::Reference | NaturalForm::Place => {
+                let doc = self.transpile_expr_ref(arena, value);
+                self.bindings.insert(var.id, Binding::Borrowed);
+                doc
+            }
+            NaturalForm::Temporary => {
+                self.bindings.insert(var.id, Binding::Owned);
+                self.transpile_expr_owned(arena, value)
+            }
+        }
+    }
+
+    /// Transpile an expression where a reference to its value is wanted.
+    fn transpile_expr_ref<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a WriterExpr) -> Doc<'a> {
+        match self.natural_form(expr) {
+            NaturalForm::Reference => self.transpile_expr(arena, expr),
+            NaturalForm::Place | NaturalForm::Temporary => {
+                arena.text("&").append(self.transpile_expr(arena, expr))
+            }
+        }
+    }
+
+    /// Transpile an expression where the place holding its value is wanted:
+    /// a method receiver, the object of a field read, an operand.
+    ///
+    /// Operands are why this is not left to auto-dereferencing, which covers
+    /// receivers and field reads but not operators: `&i32 < i32` does not
+    /// typecheck.
+    fn transpile_expr_place<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a WriterExpr) -> Doc<'a> {
+        match self.natural_form(expr) {
+            NaturalForm::Reference if Self::is_scalar(&expr.typ()) => arena
+                .text("(*")
+                .append(self.transpile_expr(arena, expr))
+                .append(arena.text(")")),
+            NaturalForm::Reference | NaturalForm::Place | NaturalForm::Temporary => {
+                self.transpile_expr(arena, expr)
+            }
+        }
+    }
+
+    /// Transpile an expression where an owned value is wanted.
+    fn transpile_expr_owned<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a WriterExpr) -> Doc<'a> {
+        match self.natural_form(expr) {
+            // Something else holds the value, so owning it copies.
+            NaturalForm::Reference | NaturalForm::Place => {
+                let method = match expr.typ() {
+                    Type::Array(_) => ".to_vec()",
+                    Type::String => ".to_string()",
+                    _ => ".clone()",
+                };
+                self.transpile_expr(arena, expr).append(arena.text(method))
+            }
+            NaturalForm::Temporary => self.transpile_expr(arena, expr),
         }
     }
 
@@ -287,14 +371,15 @@ impl RustTranspiler {
         self.field_type_is_boxed(field_type, name.as_str())
     }
 
-    fn arm_rebind_value(
+    /// What a variant arm's binding of `field` holds. Matching is on a
+    /// reference, so a binding is a reference into the subject, one `Box`
+    /// deeper when the field carries indirection.
+    fn arm_binding(
         &self,
         variants: &[EnumVariant],
         pattern: &EnumPattern,
         field: &FieldName,
-        var: &IrVar,
-    ) -> String {
-        let var = var_ident(var);
+    ) -> Binding {
         let EnumPattern::Variant {
             enum_name,
             variant_name,
@@ -305,17 +390,18 @@ impl RustTranspiler {
             .and_then(|v| v.fields.iter().find(|f| f.name == *field))
             .map(|f| &f.typ);
         if field_type.is_some_and(|t| self.field_type_is_boxed(t, enum_name.as_str())) {
-            format!("(**{var}).clone()")
+            Binding::BorrowedBoxed
         } else {
-            format!("{var}.clone()")
+            Binding::Borrowed
         }
     }
 
-    fn passed_by_ref(t: &Type) -> bool {
+    /// Whether `t` is one of hop's scalar types.
+    fn is_scalar(t: &Type) -> bool {
         match t {
-            Type::Bool | Type::Int | Type::Float => false,
+            Type::Bool | Type::Int | Type::Float => true,
             Type::String | Type::Html | Type::Array(_) | Type::Named { .. } | Type::Option(_) => {
-                true
+                false
             }
             Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
         }
@@ -396,6 +482,7 @@ impl Transpiler for RustTranspiler {
         self.needs_html = false;
         self.boxed_edges = Self::compute_boxed_edges(registry);
         self.registry = registry.clone();
+        self.bindings.clear();
 
         let arena = &Arena::new();
 
@@ -608,6 +695,9 @@ impl Transpiler for RustTranspiler {
                 }),
                 arena.text(", "),
             );
+            for param in &page.parameters {
+                self.bindings.insert(param.var.id, Binding::Owned);
+            }
             write_body = write_body
                 .append(arena.text("let "))
                 .append(arena.text(struct_name))
@@ -641,7 +731,6 @@ impl Transpiler for RustTranspiler {
             .append(arena.hardline())
             .append(arena.text("}"));
 
-        // impl View for StructName
         arena
             .text("impl View for ")
             .append(arena.text(struct_name))
@@ -669,14 +758,10 @@ impl Transpiler for RustTranspiler {
         all_args.push(arena.text("output"));
 
         for arg in args {
-            if Self::passed_by_ref(&arg.expr.typ()) {
-                all_args.push(
-                    arena
-                        .text("&")
-                        .append(self.transpile_expr(arena, &arg.expr)),
-                );
-            } else {
+            if Self::is_scalar(&arg.expr.typ()) {
                 all_args.push(self.transpile_expr_owned(arena, &arg.expr));
+            } else {
+                all_args.push(self.transpile_expr_ref(arena, &arg.expr));
             }
         }
 
@@ -699,6 +784,12 @@ impl Transpiler for RustTranspiler {
                 let mut params: Vec<Doc<'a>> = Vec::new();
                 params.push(arena.text("output: &mut String"));
                 for param in &function.parameters {
+                    let binding = if Self::is_scalar(&param.typ) {
+                        Binding::Owned
+                    } else {
+                        Binding::Borrowed
+                    };
+                    self.bindings.insert(param.var.id, binding);
                     params.push(
                         arena
                             .text(var_ident(&param.var))
@@ -725,6 +816,12 @@ impl Transpiler for RustTranspiler {
                     .parameters
                     .iter()
                     .map(|param| {
+                        let binding = if Self::is_scalar(&param.typ) {
+                            Binding::Owned
+                        } else {
+                            Binding::Borrowed
+                        };
+                        self.bindings.insert(param.var.id, binding);
                         arena
                             .text(var_ident(&param.var))
                             .append(arena.text(": "))
@@ -761,12 +858,10 @@ impl Transpiler for RustTranspiler {
         let all_args: Vec<Doc<'a>> = args
             .iter()
             .map(|arg| {
-                if Self::passed_by_ref(&arg.expr.typ()) {
-                    arena
-                        .text("&")
-                        .append(self.transpile_expr(arena, &arg.expr))
-                } else {
+                if Self::is_scalar(&arg.expr.typ()) {
                     self.transpile_expr_owned(arena, &arg.expr)
+                } else {
+                    self.transpile_expr_ref(arena, &arg.expr)
                 }
             })
             .collect();
@@ -790,8 +885,8 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         self.needs_escape_html = true;
         arena
-            .text("write_escaped_html(&")
-            .append(self.transpile_expr(arena, expr))
+            .text("write_escaped_html(")
+            .append(self.transpile_expr_ref(arena, expr))
             .append(arena.text(", output);"))
     }
 
@@ -802,7 +897,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("output.push_str(&")
-            .append(self.transpile_expr(arena, expr))
+            .append(self.transpile_expr_place(arena, expr))
             .append(arena.text(".0"))
             .append(arena.text(");"))
     }
@@ -821,30 +916,29 @@ impl Transpiler for RustTranspiler {
                 .text("for ")
                 .append(arena.text(var_name))
                 .append(arena.text(" in "))
-                .append(self.transpile_expr(arena, array))
+                .append(self.transpile_expr_place(arena, array))
                 .append(arena.text(".iter() {")),
             WriterForSource::RangeInclusive { start, end } => arena
                 .text("for ")
                 .append(arena.text(var_name))
                 .append(arena.text(" in "))
-                .append(self.transpile_expr(arena, start))
+                .append(self.transpile_expr_place(arena, start))
                 .append(arena.text("..="))
-                .append(self.transpile_expr(arena, end))
+                .append(self.transpile_expr_place(arena, end))
                 .append(arena.text(" {")),
         };
 
-        let rebinds: Vec<(String, String)> = match source {
-            WriterForSource::Array(_) => var
-                .into_iter()
-                .map(var_ident)
-                .map(|v| (v.clone(), format!("{}.clone()", v)))
-                .collect(),
-            WriterForSource::RangeInclusive { .. } => Vec::new(),
-        };
+        if let Some(var) = var {
+            let binding = match source {
+                WriterForSource::Array(_) => Binding::Borrowed,
+                WriterForSource::RangeInclusive { .. } => Binding::Owned,
+            };
+            self.bindings.insert(var.id, binding);
+        }
         doc.append(
             arena
                 .hardline()
-                .append(self.stmts_with_rebinds(arena, &rebinds, body))
+                .append(self.transpile_statements(arena, body))
                 .nest(4),
         )
         .append(arena.hardline())
@@ -862,7 +956,7 @@ impl Transpiler for RustTranspiler {
             .text("let ")
             .append(arena.text(var_ident(var)))
             .append(arena.text(" = "))
-            .append(self.transpile_expr_owned(arena, value))
+            .append(self.transpile_let_value(arena, var, value))
             .append(arena.text(";"));
         let body = if body.is_empty() {
             arena.nil()
@@ -887,7 +981,7 @@ impl Transpiler for RustTranspiler {
             } => {
                 let if_doc = arena
                     .text("if ")
-                    .append(self.transpile_match_subject(arena, subject))
+                    .append(self.transpile_condition(arena, subject))
                     .append(arena.text(" {"))
                     .append(
                         arena
@@ -923,11 +1017,9 @@ impl Transpiler for RustTranspiler {
                     Some(var) => format!("Some({})", var_ident(var)),
                     None => "Some(_)".to_string(),
                 };
-                let some_rebind: Vec<(String, String)> = some_arm_binding
-                    .iter()
-                    .map(var_ident)
-                    .map(|v| (v.clone(), format!("{}.clone()", v)))
-                    .collect();
+                if let Some(var) = some_arm_binding {
+                    self.bindings.insert(var.id, Binding::Borrowed);
+                }
 
                 let some_arm = arena
                     .text(some_pattern)
@@ -935,7 +1027,7 @@ impl Transpiler for RustTranspiler {
                     .append(
                         arena
                             .hardline()
-                            .append(self.stmts_with_rebinds(arena, &some_rebind, some_arm_body))
+                            .append(self.transpile_statements(arena, some_arm_body))
                             .nest(4),
                     )
                     .append(arena.hardline())
@@ -953,7 +1045,7 @@ impl Transpiler for RustTranspiler {
                     .append(arena.text("}"));
 
                 arena
-                    .text("match &")
+                    .text("match ")
                     .append(self.transpile_match_subject(arena, subject))
                     .append(arena.text(" {"))
                     .append(
@@ -1029,16 +1121,10 @@ impl Transpiler for RustTranspiler {
                                 }
                             }
                         };
-                        let arm_rebind: Vec<(String, String)> = arm
-                            .bindings
-                            .iter()
-                            .map(|(field, var)| {
-                                (
-                                    var_ident(var),
-                                    self.arm_rebind_value(&variants, &arm.pattern, field, var),
-                                )
-                            })
-                            .collect();
+                        for (field, var) in &arm.bindings {
+                            let binding = self.arm_binding(&variants, &arm.pattern, field);
+                            self.bindings.insert(var.id, binding);
+                        }
 
                         arena
                             .text(pattern)
@@ -1046,7 +1132,7 @@ impl Transpiler for RustTranspiler {
                             .append(
                                 arena
                                     .hardline()
-                                    .append(self.stmts_with_rebinds(arena, &arm_rebind, &arm.body))
+                                    .append(self.transpile_statements(arena, &arm.body))
                                     .nest(4),
                             )
                             .append(arena.hardline())
@@ -1056,7 +1142,7 @@ impl Transpiler for RustTranspiler {
                 );
 
                 arena
-                    .text("match &")
+                    .text("match ")
                     .append(self.transpile_match_subject(arena, subject))
                     .append(arena.text(" {"))
                     .append(arena.hardline().append(arms_doc).nest(4))
@@ -1122,7 +1208,17 @@ impl Transpiler for RustTranspiler {
     }
 
     fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, var: &'a IrVar) -> Doc<'a> {
-        arena.text(var_ident(var))
+        let binding = self.binding(var);
+        match binding {
+            // The binding itself. Whether that is the value or a reference to
+            // it is what its natural form records.
+            Binding::Owned | Binding::Borrowed => arena.text(var_ident(var)),
+            // The `Box` is stripped at the use rather than recorded: patterns
+            // do not auto-dereference, so a match would not see past it, and
+            // `Clone` resolves on the `Box` itself, handing back a `Box` where
+            // the value is wanted.
+            Binding::BorrowedBoxed => arena.text(format!("(**{})", var_ident(var))),
+        }
     }
 
     fn transpile_field_access<'a>(
@@ -1135,7 +1231,7 @@ impl Transpiler for RustTranspiler {
         let object_doc = match object {
             WriterExpr::RecordLiteral { .. } => arena
                 .text("(")
-                .append(self.transpile_expr(arena, object))
+                .append(self.transpile_expr_place(arena, object))
                 .append(arena.text(")")),
             WriterExpr::VariableReference { .. }
             | WriterExpr::FieldAccess { .. }
@@ -1168,17 +1264,14 @@ impl Transpiler for RustTranspiler {
             | WriterExpr::OptionIsNone { .. }
             | WriterExpr::IntToString { .. }
             | WriterExpr::FloatToInt { .. }
-            | WriterExpr::IntToFloat { .. } => self.transpile_expr(arena, object),
+            | WriterExpr::IntToFloat { .. } => self.transpile_expr_place(arena, object),
         };
         let access = object_doc
             .append(arena.text("."))
             .append(arena.text(Self::escape_ident(field.as_str())));
 
         if boxed {
-            arena
-                .text("(*")
-                .append(access)
-                .append(arena.text(").clone()"))
+            arena.text("(*").append(access).append(arena.text(")"))
         } else {
             access
         }
@@ -1188,7 +1281,7 @@ impl Transpiler for RustTranspiler {
         arena
             .text("\"")
             .append(arena.text(self.escape_string(value)))
-            .append(arena.text("\".to_string()"))
+            .append(arena.text("\""))
     }
 
     /// The fragment body renders into its own `output` buffer, so it is
@@ -1272,11 +1365,14 @@ impl Transpiler for RustTranspiler {
         left: &'a WriterExpr,
         right: &'a WriterExpr,
     ) -> Doc<'a> {
+        // Strings compare by reference. The operands arrive as a mix of
+        // `String`, `str` and `&str`, and `str` compares with neither `&str`
+        // nor itself behind a reference, but `&_` compares across all of them.
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_ref(arena, left))
             .append(arena.text(" == "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_ref(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1288,9 +1384,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" == "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1302,9 +1398,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" == "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1316,9 +1412,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" == "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1330,9 +1426,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" < "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1344,9 +1440,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" < "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1358,9 +1454,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" <= "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1372,14 +1468,16 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" <= "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
     fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a WriterExpr) -> Doc<'a> {
-        arena.text("!").append(self.transpile_expr(arena, operand))
+        arena
+            .text("!")
+            .append(self.transpile_expr_place(arena, operand))
     }
 
     fn transpile_int_negation<'a>(
@@ -1389,7 +1487,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, operand))
+            .append(self.transpile_expr_place(arena, operand))
             .append(arena.text(").wrapping_neg()"))
     }
 
@@ -1400,7 +1498,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(-")
-            .append(self.transpile_expr(arena, operand))
+            .append(self.transpile_expr_place(arena, operand))
             .append(arena.text(")"))
     }
 
@@ -1412,16 +1510,26 @@ impl Transpiler for RustTranspiler {
         if parts.is_empty() {
             return arena.text("String::new()");
         }
-        let format_string: String = std::iter::repeat_n("{}", parts.len()).collect();
+        let mut body = arena
+            .nil()
+            .append(arena.hardline())
+            .append(arena.text("let mut s = String::new();"));
+        for part in parts {
+            body = body
+                .append(arena.hardline())
+                .append(arena.text("s.push_str("))
+                .append(self.transpile_expr_ref(arena, part))
+                .append(arena.text(");"));
+        }
         arena
-            .text("format!(\"")
-            .append(arena.text(format_string))
-            .append(arena.text("\", "))
-            .append(arena.intersperse(
-                parts.iter().map(|part| self.transpile_expr(arena, part)),
-                arena.text(", "),
-            ))
-            .append(arena.text(")"))
+            .text("{")
+            .append(
+                body.append(arena.hardline())
+                    .append(arena.text("s"))
+                    .nest(4),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}"))
     }
 
     fn transpile_logical_and<'a>(
@@ -1432,9 +1540,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" && "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1446,9 +1554,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" || "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1460,9 +1568,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(").wrapping_add("))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1474,9 +1582,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" + "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1488,9 +1596,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(").wrapping_sub("))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1502,9 +1610,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" - "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1516,9 +1624,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(").wrapping_mul("))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1530,9 +1638,9 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, left))
+            .append(self.transpile_expr_place(arena, left))
             .append(arena.text(" * "))
-            .append(self.transpile_expr(arena, right))
+            .append(self.transpile_expr_place(arena, right))
             .append(arena.text(")"))
     }
 
@@ -1626,7 +1734,7 @@ impl Transpiler for RustTranspiler {
                 false_body,
             } => arena
                 .text("if ")
-                .append(self.transpile_match_subject(arena, subject))
+                .append(self.transpile_condition(arena, subject))
                 .append(arena.text(" { "))
                 .append(self.transpile_expr_owned(arena, true_body))
                 .append(arena.text(" } else { "))
@@ -1642,14 +1750,12 @@ impl Transpiler for RustTranspiler {
                     Some(var) => format!("Some({})", var_ident(var)),
                     None => "Some(_)".to_string(),
                 };
-                let some_rebind: Vec<(String, String)> = some_arm_binding
-                    .iter()
-                    .map(var_ident)
-                    .map(|v| (v.clone(), format!("{}.clone()", v)))
-                    .collect();
-                let some_arm_doc = self.expr_with_rebinds(arena, &some_rebind, some_arm_body);
+                if let Some(var) = some_arm_binding {
+                    self.bindings.insert(var.id, Binding::Borrowed);
+                }
+                let some_arm_doc = self.transpile_expr_owned(arena, some_arm_body);
                 arena
-                    .text("match &")
+                    .text("match ")
                     .append(self.transpile_match_subject(arena, subject))
                     .append(arena.text(" { "))
                     .append(arena.text(some_pattern))
@@ -1670,7 +1776,7 @@ impl Transpiler for RustTranspiler {
                 let variants = variants.to_vec();
 
                 let mut doc = arena
-                    .text("match &")
+                    .text("match ")
                     .append(self.transpile_match_subject(arena, subject))
                     .append(arena.text(" { "));
 
@@ -1726,17 +1832,11 @@ impl Transpiler for RustTranspiler {
                         }
                     };
 
-                    let arm_rebind: Vec<(String, String)> = arm
-                        .bindings
-                        .iter()
-                        .map(|(field, var)| {
-                            (
-                                var_ident(var),
-                                self.arm_rebind_value(&variants, &arm.pattern, field, var),
-                            )
-                        })
-                        .collect();
-                    let arm_body_doc = self.expr_with_rebinds(arena, &arm_rebind, &arm.body);
+                    for (field, var) in &arm.bindings {
+                        let binding = self.arm_binding(&variants, &arm.pattern, field);
+                        self.bindings.insert(var.id, binding);
+                    }
+                    let arm_body_doc = self.transpile_expr_owned(arena, &arm.body);
 
                     doc = doc
                         .append(arena.text(pattern))
@@ -1764,7 +1864,7 @@ impl Transpiler for RustTranspiler {
             .text("{ let ")
             .append(arena.text(var_ident(var)))
             .append(arena.text(" = "))
-            .append(self.transpile_expr_owned(arena, value))
+            .append(self.transpile_let_value(arena, var, value))
             .append(arena.text("; "))
             .append(self.transpile_expr_owned(arena, body))
             .append(arena.text(" }"))
@@ -1777,7 +1877,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, array))
+            .append(self.transpile_expr_place(arena, array))
             .append(arena.text(".len() as i32)"))
     }
 
@@ -1786,7 +1886,7 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         array: &'a WriterExpr,
     ) -> Doc<'a> {
-        self.transpile_expr(arena, array)
+        self.transpile_expr_place(arena, array)
             .append(arena.text(".is_empty()"))
     }
 
@@ -1795,7 +1895,7 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         string: &'a WriterExpr,
     ) -> Doc<'a> {
-        self.transpile_expr(arena, string)
+        self.transpile_expr_place(arena, string)
             .append(arena.text(".is_empty()"))
     }
 
@@ -1804,7 +1904,7 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         option: &'a WriterExpr,
     ) -> Doc<'a> {
-        self.transpile_expr(arena, option)
+        self.transpile_expr_place(arena, option)
             .append(arena.text(".is_some()"))
     }
 
@@ -1813,7 +1913,7 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         option: &'a WriterExpr,
     ) -> Doc<'a> {
-        self.transpile_expr(arena, option)
+        self.transpile_expr_place(arena, option)
             .append(arena.text(".is_none()"))
     }
 
@@ -1824,7 +1924,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, value))
+            .append(self.transpile_expr_place(arena, value))
             .append(arena.text(").to_string()"))
     }
 
@@ -1835,7 +1935,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, value))
+            .append(self.transpile_expr_place(arena, value))
             .append(arena.text(" as i32)"))
     }
 
@@ -1846,7 +1946,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("(")
-            .append(self.transpile_expr(arena, value))
+            .append(self.transpile_expr_place(arena, value))
             .append(arena.text(" as f64)"))
     }
 }
@@ -2144,11 +2244,10 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        match &(Some("x".to_string())) {
+                        match (&Some("x".to_string())) {
                             Some(v_0) => {
-                                let v_0 = v_0.clone();
                                 output.push_str("some: ");
-                                write_escaped_html(&v_0, output);
+                                write_escaped_html(v_0, output);
                             }
                             None => {
                                 output.push_str("none");
@@ -2223,9 +2322,8 @@ mod tests {
                         let Test { opt: v_0 } = self;
                         match &v_0 {
                             Some(v_1) => {
-                                let v_1 = v_1.clone();
                                 output.push_str("some: ");
-                                write_escaped_html(&v_1, output);
+                                write_escaped_html(v_1, output);
                             }
                             None => {
                                 output.push_str("none");
@@ -2426,6 +2524,279 @@ mod tests {
     }
 
     #[test]
+    fn matching_a_boxed_enum_field_derefs_past_the_box() {
+        check(
+            PureModuleBuilder::new()
+                .enum_(
+                    "Expr",
+                    [
+                        ("Literal", vec![("value", "String")]),
+                        ("Neg", vec![("inner", "Expr")]),
+                    ],
+                )
+                .page("Test", [("e", "Expr")], |t| {
+                    t.enum_match_expr(t.var("e"), |m| {
+                        m.arm_bound("Neg", [("inner", "i")], |t| {
+                            t.enum_match_expr(t.var("i"), |m| {
+                                m.arm_bound("Literal", [("value", "v")], |t| t.escape(t.var("v")));
+                                m.arm("Neg", |t| t.raw("nested"));
+                            })
+                        });
+                        m.arm("Literal", |t| t.raw("lit"));
+                    })
+                }),
+            expect![[r#"
+                -- before --
+                page Test(e@v0: test::Expr) {
+                  match v0 {
+                    Expr::Neg(inner: v1) => {
+                      match v1 {
+                        Expr::Literal(value: v2) => {
+                          write_string(v2)
+                        }
+                        Expr::Neg => {
+                          write("nested")
+                        }
+                      }
+                    }
+                    Expr::Literal => {
+                      write("lit")
+                    }
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                pub enum Expr {
+                    Literal { value: String },
+                    Neg { inner: Box<Expr> },
+                }
+
+                pub struct Test {
+                    pub e: Expr,
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { e: v_0 } = self;
+                        match &v_0 {
+                            Expr::Neg { inner: v_1 } => {
+                                match &(**v_1) {
+                                    Expr::Literal { value: v_2 } => {
+                                        write_escaped_html(v_2, output);
+                                    }
+                                    Expr::Neg { .. } => {
+                                        output.push_str("nested");
+                                    }
+                                }
+                            }
+                            Expr::Literal { .. } => {
+                                output.push_str("lit");
+                            }
+                        }
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn matching_a_boxed_option_field_derefs_past_the_box() {
+        check(
+            PureModuleBuilder::new()
+                .record("Node", [("value", "String"), ("next", "Option[Node]")])
+                .page("Test", [("node", "Node")], |t| {
+                    t.option_match_expr_with_binding(
+                        t.field_access(t.var("node"), "next"),
+                        "n",
+                        |t| t.escape(t.field_access(t.var("n"), "value")),
+                        t.raw("end"),
+                    )
+                }),
+            expect![[r#"
+                -- before --
+                page Test(node@v0: test::Node) {
+                  match v0.next {
+                    Some(v1) => {
+                      write_string(v1.value)
+                    }
+                    None => {
+                      write("end")
+                    }
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct Node {
+                    pub value: String,
+                    pub next: Box<Option<Node>>,
+                }
+
+                pub struct Test {
+                    pub node: Node,
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { node: v_0 } = self;
+                        match (&(*v_0.next)) {
+                            Some(v_1) => {
+                                write_escaped_html(&v_1.value, output);
+                            }
+                            None => {
+                                output.push_str("end");
+                            }
+                        }
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn matching_an_option_bound_from_a_boxed_enum_field() {
+        check(
+            PureModuleBuilder::new()
+                .enum_(
+                    "Chain",
+                    [("Link", vec![("next", "Option[Chain]")]), ("End", vec![])],
+                )
+                .page("Test", [("c", "Chain")], |t| {
+                    t.enum_match_expr(t.var("c"), |m| {
+                        m.arm_bound("Link", [("next", "n")], |t| {
+                            t.option_match_expr(t.var("n"), t.raw("more"), t.raw("last"))
+                        });
+                        m.arm("End", |t| t.raw("end"));
+                    })
+                }),
+            expect![[r#"
+                -- before --
+                page Test(c@v0: test::Chain) {
+                  match v0 {
+                    Chain::Link(next: v1) => {
+                      match v1 {
+                        Some(_) => {
+                          write("more")
+                        }
+                        None => {
+                          write("last")
+                        }
+                      }
+                    }
+                    Chain::End => {
+                      write("end")
+                    }
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                #[derive(Clone, Debug)]
+                pub enum Chain {
+                    Link { next: Box<Option<Chain>> },
+                    End,
+                }
+
+                pub struct Test {
+                    pub c: Chain,
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { c: v_0 } = self;
+                        match &v_0 {
+                            Chain::Link { next: v_1 } => {
+                                match &(**v_1) {
+                                    Some(_) => {
+                                        output.push_str("more");
+                                    }
+                                    None => {
+                                        output.push_str("last");
+                                    }
+                                }
+                            }
+                            Chain::End => {
+                                output.push_str("end");
+                            }
+                        }
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn recursive_enum_literal_boxes_field_values() {
         check(
             PureModuleBuilder::new()
@@ -2605,7 +2976,7 @@ mod tests {
                 pub struct Test {}
 
                 fn render_badge_0(output: &mut String, v_0: &Color) {
-                    match &v_0 {
+                    match v_0 {
                         Color::Red => {
                             output.push_str("red");
                         }
@@ -2627,6 +2998,451 @@ mod tests {
 
                     fn write(self, output: &mut String) {
                         render_badge_0(output, &Color::Green);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn a_borrowed_scalar_is_dereferenced_to_be_an_operand() {
+        check(
+            PureModuleBuilder::new()
+                .record("Post", [("views", "Int")])
+                .page("Test", [("post", "Post")], |b| {
+                    b.let_expr("n", b.field_access(b.var("post"), "views"), |b| {
+                        b.escape(b.int_to_string(b.add(b.var("n"), b.int(1))))
+                    })
+                }),
+            expect![[r#"
+                -- before --
+                page Test(post@v0: test::Post) {
+                  let v1 = v0.views in {
+                    write_string((v1 + 1).to_string())
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct Post {
+                    pub views: i32,
+                }
+
+                pub struct Test {
+                    pub post: Post,
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { post: v_0 } = self;
+                        let v_1 = &v_0.views;
+                        write_escaped_html(&(((*v_1)).wrapping_add(1_i32)).to_string(), output);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn borrowed_params_are_read_through_the_reference() {
+        check(
+            PureModuleBuilder::new()
+                .record("Post", [("title", "String"), ("views", "Int")])
+                .function(
+                    "Card",
+                    [("p", "Post"), ("tags", "Array[String]")],
+                    "Html",
+                    |b| {
+                        b.concat(vec![
+                            b.escape(b.field_access(b.var("p"), "title")),
+                            b.escape(b.int_to_string(b.field_access(b.var("p"), "views"))),
+                            b.escape(b.int_to_string(b.array_length(b.var("tags")))),
+                        ])
+                    },
+                )
+                .page("Test", [("post", "Post"), ("tags", "Array[String]")], |b| {
+                    b.call("Card", vec![("p", b.var("post")), ("tags", b.var("tags"))])
+                }),
+            expect![[r#"
+                -- before --
+                fn Card@f0(
+                  p@v0: test::Post,
+                  tags@v1: Array[String],
+                ) -> Html {
+                  write_string(v0.title)
+                  write_string(v0.views.to_string())
+                  write_string(v1.len().to_string())
+                }
+                page Test(post@v2: test::Post, tags@v3: Array[String]) {
+                  call Card@f0(p = v2, tags = v3)
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct Post {
+                    pub title: String,
+                    pub views: i32,
+                }
+
+                pub struct Test {
+                    pub post: Post,
+                    pub tags: Vec<String>,
+                }
+
+                fn render_card_0(output: &mut String, v_0: &Post, v_1: &[String]) {
+                    write_escaped_html(&v_0.title, output);
+                    write_escaped_html(&(v_0.views).to_string(), output);
+                    write_escaped_html(&((v_1.len() as i32)).to_string(), output);
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { post: v_2, tags: v_3 } = self;
+                        render_card_0(output, &v_2, &v_3);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn borrowed_binding_is_cloned_where_a_value_is_stored() {
+        check(
+            PureModuleBuilder::new()
+                .record("Tag", [("name", "String")])
+                .record("Wrap", [("tag", "Tag")])
+                .function("Show", [("t", "Tag")], "Html", |b| {
+                    b.escape(b.field_access(
+                        b.field_access(b.record("Wrap", vec![("tag", b.var("t"))]), "tag"),
+                        "name",
+                    ))
+                })
+                .page("Test", [("tag", "Tag")], |b| {
+                    b.call("Show", vec![("t", b.var("tag"))])
+                }),
+            expect![[r#"
+                -- before --
+                fn Show@f0(t@v0: test::Tag) -> Html {
+                  write_string(Wrap {tag: v0}.tag.name)
+                }
+                page Test(tag@v1: test::Tag) {
+                  call Show@f0(t = v1)
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct Tag {
+                    pub name: String,
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct Wrap {
+                    pub tag: Tag,
+                }
+
+                pub struct Test {
+                    pub tag: Tag,
+                }
+
+                fn render_show_0(output: &mut String, v_0: &Tag) {
+                    write_escaped_html(&(Wrap { tag: v_0.clone() }).tag.name, output);
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { tag: v_1 } = self;
+                        render_show_0(output, &v_1);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_binding_a_place_borrows_it() {
+        check(
+            PureModuleBuilder::new()
+                .record("Post", [("title", "String"), ("body", "String")])
+                .page("Test", [("post", "Post")], |t| {
+                    t.let_expr("title", t.field_access(t.var("post"), "title"), |t| {
+                        t.escape(t.var("title"))
+                    })
+                }),
+            expect![[r#"
+                -- before --
+                page Test(post@v0: test::Post) {
+                  let v1 = v0.title in {
+                    write_string(v1)
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct Post {
+                    pub title: String,
+                    pub body: String,
+                }
+
+                pub struct Test {
+                    pub post: Post,
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { post: v_0 } = self;
+                        let v_1 = &v_0.title;
+                        write_escaped_html(v_1, output);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn string_equality_compares_references() {
+        check(
+            PureModuleBuilder::new()
+                .function("Role", [("role", "String")], "Html", |t| {
+                    t.bool_match_expr(
+                        t.eq(t.var("role"), t.str("admin")),
+                        t.raw("yes"),
+                        t.raw("no"),
+                    )
+                })
+                .page("Test", [("role", "String")], |t| {
+                    t.call("Role", vec![("role", t.var("role"))])
+                }),
+            expect![[r#"
+                -- before --
+                fn Role@f0(role@v0: String) -> Html {
+                  match (v0 == "admin") {
+                    true => {
+                      write("yes")
+                    }
+                    false => {
+                      write("no")
+                    }
+                  }
+                }
+                page Test(role@v1: String) {
+                  call Role@f0(role = v1)
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                pub struct Test {
+                    pub role: String,
+                }
+
+                fn render_role_0(output: &mut String, v_0: &str) {
+                    if ((v_0 == "admin")) {
+                        output.push_str("yes");
+                    } else {
+                        output.push_str("no");
+                    }
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { role: v_1 } = self;
+                        render_role_0(output, &v_1);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn string_concat_pushes_each_part_into_a_string() {
+        check(
+            PureModuleBuilder::new()
+                .function("Greet", [("name", "String")], "Html", |t| {
+                    t.escape(t.string_concat(vec![t.str("hello "), t.var("name")]))
+                })
+                .page("Test", [("who", "String")], |t| {
+                    t.call("Greet", vec![("name", t.var("who"))])
+                }),
+            expect![[r#"
+                -- before --
+                fn Greet@f0(name@v0: String) -> Html {
+                  write_string(("hello " + v0))
+                }
+                page Test(who@v1: String) {
+                  call Greet@f0(name = v1)
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                pub struct Test {
+                    pub who: String,
+                }
+
+                fn render_greet_0(output: &mut String, v_0: &str) {
+                    write_escaped_html(&{
+                        let mut s = String::new();
+                        s.push_str("hello ");
+                        s.push_str(v_0);
+                        s
+                    }, output);
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { who: v_1 } = self;
+                        render_greet_0(output, &v_1);
                     }
                 }
             "#]],
@@ -2692,10 +3508,9 @@ mod tests {
                 }
 
                 fn render_label_0(output: &mut String, v_0: &Option<String>) {
-                    match &v_0 {
+                    match v_0 {
                         Some(v_1) => {
-                            let v_1 = v_1.clone();
-                            write_escaped_html(&v_1, output);
+                            write_escaped_html(v_1, output);
                         }
                         None => {
                             output.push_str("none");
