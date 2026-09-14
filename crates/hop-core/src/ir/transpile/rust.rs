@@ -42,17 +42,6 @@ pub struct RustTranspiler {
     registry: TypeRegistry,
 }
 
-/// How a field value converts between the IR representation of its type and
-/// the boxed representation the field's declared type carries.
-enum BoxConversion {
-    /// The value itself is the boxed occurrence.
-    /// Wrap in `Box::new` to store, dereference to read.
-    Direct,
-    /// The `Box` sits under `Option` layers.
-    /// Map this closure over the value.
-    Mapped(String),
-}
-
 impl RustTranspiler {
     pub fn new() -> Self {
         Self {
@@ -140,7 +129,7 @@ impl RustTranspiler {
         match expr {
             // Unboxing a field read already produces an owned value.
             WriterExpr::FieldAccess { record, field, .. }
-                if self.field_unboxing(record, field).is_some() =>
+                if self.field_access_is_boxed(record, field) =>
             {
                 self.transpile_expr(arena, expr)
             }
@@ -233,38 +222,18 @@ impl RustTranspiler {
         edges
     }
 
-    /// Whether fields of `owner` box their inline references to `target`.
-    fn boxes(&self, owner: &str, target: &TypeName) -> bool {
-        self.boxed_edges
-            .iter()
-            .any(|(o, t)| o.as_str() == owner && t == target)
-    }
-
-    /// The conversion between values of `t` and the representation a field of
-    /// `owner` declares, built around `leaf` as the innermost step. `None`
-    /// when the two representations agree.
-    fn conversion(&self, t: &Type, owner: &str, leaf: &str) -> Option<BoxConversion> {
+    /// Whether a field of `owner` declaring type `t` carries a `Box`, which is
+    /// the case when the field stores an inline reference to a type `owner`
+    /// boxes. Mirrors `inline_refs`: descend `Option`, stop at `Array`.
+    fn field_type_is_boxed(&self, t: &Type, owner: &str) -> bool {
         match t {
-            Type::Named { name, .. } if self.boxes(owner, name) => Some(BoxConversion::Direct),
-            Type::Option(inner) => self.conversion(inner, owner, leaf).map(|c| {
-                BoxConversion::Mapped(match c {
-                    BoxConversion::Direct => leaf.to_string(),
-                    BoxConversion::Mapped(inner) => format!("|v| v.map({inner})"),
-                })
-            }),
-            _ => None,
+            Type::Named { name, .. } => self
+                .boxed_edges
+                .iter()
+                .any(|(o, target)| o.as_str() == owner && target == name),
+            Type::Option(inner) => self.field_type_is_boxed(inner, owner),
+            _ => false,
         }
-    }
-
-    /// The conversion adding the `Box` wrapping a field of `owner` expects
-    /// when a value of type `t` is stored into it.
-    fn boxing(&self, t: &Type, owner: &str) -> Option<BoxConversion> {
-        self.conversion(t, owner, "Box::new")
-    }
-
-    /// The inverse of boxing, read a field back out.
-    fn unboxing(&self, t: &Type, owner: &str) -> Option<BoxConversion> {
-        self.conversion(t, owner, "|v| *v")
     }
 
     /// Transpile a field type, inserting `Box` where the field needs it.
@@ -274,16 +243,13 @@ impl RustTranspiler {
         t: &'a Type,
         owner: &str,
     ) -> Doc<'a> {
-        match t {
-            Type::Named { name, .. } if self.boxes(owner, name) => arena
+        if self.field_type_is_boxed(t, owner) {
+            arena
                 .text("Box<")
-                .append(arena.text(name.as_str()))
-                .append(arena.text(">")),
-            Type::Option(inner) if self.boxing(inner, owner).is_some() => arena
-                .text("Option<")
-                .append(self.transpile_field_type(arena, inner, owner))
-                .append(arena.text(">")),
-            _ => self.transpile_type(arena, t),
+                .append(self.transpile_type(arena, t))
+                .append(arena.text(">"))
+        } else {
+            self.transpile_type(arena, t)
         }
     }
 
@@ -296,20 +262,18 @@ impl RustTranspiler {
         owner: &str,
         value: &'a WriterExpr,
     ) -> Doc<'a> {
-        match self.boxing(&value.typ(), owner) {
-            Some(BoxConversion::Direct) => arena
+        if self.field_type_is_boxed(&value.typ(), owner) {
+            arena
                 .text("Box::new(")
                 .append(self.transpile_expr_owned(arena, value))
-                .append(arena.text(")")),
-            Some(BoxConversion::Mapped(mapper)) => self
-                .transpile_expr_owned(arena, value)
-                .append(arena.text(format!(".map({mapper})"))),
-            None => self.transpile_expr_owned(arena, value),
+                .append(arena.text(")"))
+        } else {
+            self.transpile_expr_owned(arena, value)
         }
     }
 
-    /// The conversion undoing the `Box` on reads of `field` off `object`.
-    fn field_unboxing(&self, object: &WriterExpr, field: &FieldName) -> Option<BoxConversion> {
+    /// Whether reads of `field` off `object` have to strip a `Box`.
+    fn field_access_is_boxed(&self, object: &WriterExpr, field: &FieldName) -> bool {
         let object_type = object.typ();
         let Some(ResolvedType::Record { name, fields, .. }) = self.registry.resolve(&object_type)
         else {
@@ -320,7 +284,7 @@ impl RustTranspiler {
             .find(|f| f.name == *field)
             .map(|f| &f.typ)
             .expect("field access fields exist on the record");
-        self.unboxing(field_type, name.as_str())
+        self.field_type_is_boxed(field_type, name.as_str())
     }
 
     fn arm_rebind_value(
@@ -340,10 +304,10 @@ impl RustTranspiler {
             .find(|v| v.name == *variant_name)
             .and_then(|v| v.fields.iter().find(|f| f.name == *field))
             .map(|f| &f.typ);
-        match field_type.and_then(|t| self.unboxing(t, enum_name.as_str())) {
-            Some(BoxConversion::Direct) => format!("(**{var}).clone()"),
-            Some(BoxConversion::Mapped(mapper)) => format!("{var}.clone().map({mapper})"),
-            None => format!("{var}.clone()"),
+        if field_type.is_some_and(|t| self.field_type_is_boxed(t, enum_name.as_str())) {
+            format!("(**{var}).clone()")
+        } else {
+            format!("{var}.clone()")
         }
     }
 
@@ -1165,7 +1129,7 @@ impl Transpiler for RustTranspiler {
         object: &'a WriterExpr,
         field: &'a FieldName,
     ) -> Doc<'a> {
-        let boxed = self.field_unboxing(object, field);
+        let boxed = self.field_access_is_boxed(object, field);
         let object_doc = match object {
             WriterExpr::RecordLiteral { .. } => arena
                 .text("(")
@@ -1208,15 +1172,13 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("."))
             .append(arena.text(Self::escape_ident(field.as_str())));
 
-        match boxed {
-            None => access,
-            Some(BoxConversion::Direct) => arena
+        if boxed {
+            arena
                 .text("(*")
                 .append(access)
-                .append(arena.text(").clone()")),
-            Some(BoxConversion::Mapped(mapper)) => {
-                access.append(arena.text(format!(".clone().map({mapper})")))
-            }
+                .append(arena.text(").clone()"))
+        } else {
+            access
         }
     }
 
@@ -2313,7 +2275,7 @@ mod tests {
                 #[derive(Clone, Debug)]
                 pub struct Node {
                     pub value: i32,
-                    pub next: Option<Box<Node>>,
+                    pub next: Box<Option<Node>>,
                 }
 
                 pub struct Test {
@@ -2440,7 +2402,7 @@ mod tests {
                 #[derive(Clone, Debug)]
                 pub struct Node {
                     pub value: i32,
-                    pub next: Option<Box<Node>>,
+                    pub next: Box<Option<Node>>,
                 }
 
                 pub struct Test {}
@@ -2453,7 +2415,7 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_0 = Node { value: 2_i32, next: Some(Node { value: 1_i32, next: None::<Node>.map(Box::new) }).map(Box::new) };
+                        let v_0 = Node { value: 2_i32, next: Box::new(Some(Node { value: 1_i32, next: Box::new(None::<Node>) })) };
                         write_escaped_html(&(v_0.value).to_string(), output);
                     }
                 }
@@ -2566,7 +2528,7 @@ mod tests {
 
                 #[derive(Clone, Debug)]
                 pub struct B {
-                    pub a: Option<Box<A>>,
+                    pub a: Box<Option<A>>,
                 }
 
                 pub struct Test {}
@@ -2579,7 +2541,7 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_0 = B { a: Some(A { b: Box::new(B { a: None::<A>.map(Box::new) }) }).map(Box::new) };
+                        let v_0 = B { a: Box::new(Some(A { b: Box::new(B { a: Box::new(None::<A>) }) })) };
                         output.push_str("done");
                     }
                 }
