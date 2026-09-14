@@ -483,14 +483,12 @@ mod tests {
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
-                      let v2 = v1 in {
-                        let v3 = (v2 || false) in {
-                          match v3 {
-                            true => {
-                              write("yes")
-                            }
-                            false => {
-                            }
+                      let v3 = (v1 || false) in {
+                        match v3 {
+                          true => {
+                            write("yes")
+                          }
+                          false => {
                           }
                         }
                       }
@@ -690,14 +688,12 @@ mod tests {
                 page Test() {
                   for v0 in [Count {n: 57}] {
                     let v1 = v0.n in {
-                      let v2 = v1 in {
-                        let v3 = (v2 == 57) in {
-                          match v3 {
-                            true => {
-                              write("eq")
-                            }
-                            false => {
-                            }
+                      let v3 = (v1 == 57) in {
+                        match v3 {
+                          true => {
+                            write("eq")
+                          }
+                          false => {
                           }
                         }
                       }
@@ -761,12 +757,10 @@ mod tests {
                 page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
-                      let v2 = v1 in {
-                        write_string(match v2 {
-                          true => { "yes" }
-                          false => { "no" }
-                        })
-                      }
+                      write_string(match v1 {
+                        true => { "yes" }
+                        false => { "no" }
+                      })
                     }
                   }
                 }
@@ -1811,10 +1805,8 @@ mod tests {
                 page Test() {
                   for v1 in [Flag {value: "x"}] {
                     let v2 = v1.value in {
-                      let v3 = v2 in {
-                        write("outer")
-                        write_string(v3)
-                      }
+                      write("outer")
+                      write_string(v2)
                     }
                   }
                 }
@@ -5576,11 +5568,9 @@ mod tests {
                   ] {
                     match v0 {
                       Some(v1) => {
-                        let v2 = v1 in {
-                          write("[")
-                          write_string(v2)
-                          write("]")
-                        }
+                        write("[")
+                        write_string(v1)
+                        write("]")
                       }
                       None => {
                         write("[_]")
@@ -8972,11 +8962,9 @@ mod tests {
                     let v2 = Option[String]::Some(v1.name) in {
                       match v2 {
                         Some(v3) => {
-                          let v4 = v3 in {
-                            write("[")
-                            write_string(v4)
-                            write("]")
-                          }
+                          write("[")
+                          write_string(v3)
+                          write("]")
                         }
                         None => {
                           write("[-]")
@@ -10456,30 +10444,22 @@ mod tests {
                   ] {
                     match v0 {
                       Tree::Node(label: v1, kid: v2) => {
-                        let v3 = v1 in {
-                          let v4 = v2 in {
-                            let v5 = Tree::Node {label: "b", kid: v4} in {
-                              match v5 {
-                                Tree::Node(label: v6, kid: v7) => {
-                                  let v8 = v6 in {
-                                    let v9 = v7 in {
-                                      write_string(v3)
-                                      write_string(v8)
-                                      match v9 {
-                                        Some(_) => {
-                                          write("s")
-                                        }
-                                        None => {
-                                          write("n")
-                                        }
-                                      }
-                                    }
-                                  }
+                        let v5 = Tree::Node {label: "b", kid: v2} in {
+                          match v5 {
+                            Tree::Node(label: v6, kid: v7) => {
+                              write_string(v1)
+                              write_string(v6)
+                              match v7 {
+                                Some(_) => {
+                                  write("s")
                                 }
-                                Tree::Leaf => {
-                                  write("x")
+                                None => {
+                                  write("n")
                                 }
                               }
+                            }
+                            Tree::Leaf => {
+                              write("x")
                             }
                           }
                         }
@@ -10577,20 +10557,14 @@ mod tests {
                   for v0 in [Tree::Node {label: "a", kid: Tree::Leaf}] {
                     match v0 {
                       Tree::Node(label: v1, kid: v2) => {
-                        let v3 = v1 in {
-                          let v4 = v2 in {
-                            let v5 = Tree::Node {label: "b", kid: v4} in {
-                              match v5 {
-                                Tree::Node(label: v6) => {
-                                  let v7 = v6 in {
-                                    write_string(v3)
-                                    write_string(v7)
-                                  }
-                                }
-                                Tree::Leaf => {
-                                  write("x")
-                                }
-                              }
+                        let v5 = Tree::Node {label: "b", kid: v2} in {
+                          match v5 {
+                            Tree::Node(label: v6) => {
+                              write_string(v1)
+                              write_string(v6)
+                            }
+                            Tree::Leaf => {
+                              write("x")
                             }
                           }
                         }
@@ -10692,20 +10666,14 @@ mod tests {
                   ] {
                     match v0 {
                       Tree::Node(label: v1, kid: v2) => {
-                        let v3 = v1 in {
-                          let v4 = v2 in {
-                            let v5 = Tree::Node {label: "b", kid: v4} in {
-                              match v5 {
-                                Tree::Node(label: v6) => {
-                                  let v7 = v6 in {
-                                    write_string(v3)
-                                    write_string(v7)
-                                  }
-                                }
-                                Tree::Leaf => {
-                                  write("x")
-                                }
-                              }
+                        let v5 = Tree::Node {label: "b", kid: v2} in {
+                          match v5 {
+                            Tree::Node(label: v6) => {
+                              write_string(v1)
+                              write_string(v6)
+                            }
+                            Tree::Leaf => {
+                              write("x")
                             }
                           }
                         }
@@ -10815,26 +10783,20 @@ mod tests {
                   for v0 in [Wrap::Full {h: Option[main::Holder]::None}] {
                     match v0 {
                       Wrap::Full(h: v1) => {
-                        let v2 = v1 in {
-                          let v3 = Wrap::Full {h: v2} in {
-                            match v3 {
-                              Wrap::Full(h: v4) => {
-                                let v5 = v4 in {
-                                  match v5 {
-                                    Some(v6) => {
-                                      let v7 = v6 in {
-                                        write_string(v7.tag)
-                                      }
-                                    }
-                                    None => {
-                                      write("re")
-                                    }
-                                  }
+                        let v3 = Wrap::Full {h: v1} in {
+                          match v3 {
+                            Wrap::Full(h: v4) => {
+                              match v4 {
+                                Some(v6) => {
+                                  write_string(v6.tag)
+                                }
+                                None => {
+                                  write("re")
                                 }
                               }
-                              Wrap::Empty => {
-                                write("x")
-                              }
+                            }
+                            Wrap::Empty => {
+                              write("x")
                             }
                           }
                         }
@@ -10926,7 +10888,7 @@ mod tests {
                     Tree::Node {label: "a", kid: Option[main::Tree]::None},
                   ] {
                     let v1 = match v0 {
-                      Tree::Node {kid: v6} => { let v7 = v6 in { v7 } }
+                      Tree::Node {kid: v6} => { v6 }
                       Tree::Leaf => { Option[main::Tree]::None }
                     } in {
                       match v1 {
@@ -11019,12 +10981,10 @@ mod tests {
                   ] {
                     match v0 {
                       Tree::Node(kid: v1) => {
-                        let v2 = v1 in {
-                          write_string(match v2 {
-                            Some(_) => { 1 }
-                            None => { 0 }
-                          }.to_string())
-                        }
+                        write_string(match v1 {
+                          Some(_) => { 1 }
+                          None => { 0 }
+                        }.to_string())
                       }
                       Tree::Leaf => {
                         write("empty")
@@ -11519,9 +11479,7 @@ mod tests {
                   let v3 = v2.next in {
                     match v3 {
                       Some(v4) => {
-                        let v5 = v4 in {
-                          call NodeView@f1(node = v5)
-                        }
+                        call NodeView@f1(node = v4)
                       }
                       None => {
                       }
@@ -11637,9 +11595,7 @@ mod tests {
                   let v2 = v1.next in {
                     match v2 {
                       Some(v3) => {
-                        let v4 = v3 in {
-                          call NodeView@f0(node = v4)
-                        }
+                        call NodeView@f0(node = v3)
                       }
                       None => {
                       }
@@ -13085,11 +13041,9 @@ mod tests {
                   for v4 in [Option[String]::Some("hello")] {
                     match v4 {
                       Some(v5) => {
-                        let v6 = v5 in {
-                          write("[")
-                          write_string(v6)
-                          write("]")
-                        }
+                        write("[")
+                        write_string(v5)
+                        write("]")
                       }
                       None => {
                       }
@@ -13671,9 +13625,7 @@ mod tests {
                 fn Loop@f0(n@v0: Int, label@v1: Option[String]) -> Html {
                   match v1 {
                     Some(v2) => {
-                      let v3 = v2 in {
-                        write_string(v3)
-                      }
+                      write_string(v2)
                     }
                     None => {
                       write("x")
