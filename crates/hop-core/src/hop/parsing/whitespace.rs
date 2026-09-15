@@ -16,7 +16,9 @@ use crate::html::HtmlElementKind;
 /// - Keep a Newline only between two Text nodes. A newline beside anything
 ///   else, a tag or an interpolation, emits nothing.
 ///
-/// The children of raw text elements (`<script>`, `<style>`) are left alone.
+/// A raw text element (`<script>`, `<style>`) may only hold whitespace, which
+/// carries no meaning and is dropped. Content it is not allowed to hold is
+/// passed through verbatim.
 fn normalize(nodes: &mut Vec<ParsedNode>) {
     trim_text(nodes);
     drop_newlines(nodes);
@@ -28,11 +30,17 @@ fn normalize(nodes: &mut Vec<ParsedNode>) {
 /// Normalize whitespace inside a single node.
 pub fn normalize_node(node: &mut ParsedNode) {
     match node {
-        // The content of a raw text element is passed through verbatim.
+        // Whitespace between a raw text element's tags is not content, so it is
+        // dropped. Anything else there has already been rejected by the parser,
+        // and is kept as written so that normalizing never discards code.
         ParsedNode::HtmlElement {
             kind: HtmlElementKind::Script | HtmlElementKind::Style,
+            children,
             ..
-        } => {}
+        } => children.retain(|child| match child {
+            ParsedNode::Text { range } => !range.as_str().trim().is_empty(),
+            _ => true,
+        }),
         ParsedNode::HtmlElement { children, .. } | ParsedNode::Fragment { children, .. } => {
             normalize(children);
         }
@@ -285,18 +293,17 @@ mod tests {
     }
 
     #[test]
-    fn preserves_script_content_verbatim() {
+    fn strips_whitespace_between_a_script_tags() {
         check(
-            indoc! {"
+            indoc! {r#"
                 page Test() {
                   fn body() -> Html {
-                    <script>
-                      let x = 1;
+                    <script src="/app.js">
                     </script>
                   }
                 }
-            "},
-            "<script>\n      let x = 1;\n    </script>",
+            "#},
+            "<script src=\"/app.js\"></script>",
         );
     }
 
@@ -341,22 +348,6 @@ mod tests {
                 }
             "},
             "this looks <b>great</b>",
-        );
-    }
-
-    #[test]
-    fn preserves_style_content_verbatim() {
-        check(
-            indoc! {"
-                page Test() {
-                  fn body() -> Html {
-                    <style>
-                      .a { color: red; }
-                    </style>
-                  }
-                }
-            "},
-            "<style>\n      .a { color: red; }\n    </style>",
         );
     }
 
@@ -705,16 +696,16 @@ mod tests {
     }
 
     #[test]
-    fn leaves_raw_text_content_in_expression_position_alone() {
+    fn strips_whitespace_between_script_tags_in_expression_position() {
         check(
-            indoc! {"
+            indoc! {r#"
                 page Test() {
                   fn body() -> Html {
-                    <div>{<style>  a  </style>}</div>
+                    <div>{<script src="/app.js">  </script>}</div>
                   }
                 }
-            "},
-            "<div><style>  a  </style></div>",
+            "#},
+            "<div><script src=\"/app.js\"></script></div>",
         );
     }
 

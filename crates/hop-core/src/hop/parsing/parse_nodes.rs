@@ -387,6 +387,16 @@ fn parse_opening_tag(
         }
     }
 
+    // Styling goes through the project stylesheet, so a <style> element is
+    // rejected whatever it holds. Its content is still read below, to keep the
+    // rest of the markup parsing as it would otherwise.
+    if tag_name_range.as_str() == "style" {
+        let _ = errors.emit(
+            ParseErrorKind::StyleElementNotAllowed,
+            tag_name_range.clone(),
+        );
+    }
+
     // A raw text element holds text rather than markup, so its content and
     // closing tag are read here.
     let raw_text = !self_closing && is_raw_content_tag(tag_name_range.as_str());
@@ -397,6 +407,14 @@ fn parse_opening_tag(
             content,
             closing_tag_end,
         } = tokenize_markup::next_raw_text_token(iter, &tag_name_range);
+        // A <script> may only reference an external file, so anything but
+        // whitespace between its tags is rejected.
+        if tag_name_range.as_str() == "script"
+            && let Some(content) = content.as_ref().map(DocumentRange::trim)
+            && !content.is_empty()
+        {
+            let _ = errors.emit(ParseErrorKind::InlineScriptNotAllowed, content);
+        }
         children.extend(content.map(|range| ParsedNode::Text { range }));
         // Without a closing tag the element stays open, and is reported as
         // unclosed with everything else still open when the markup ends.

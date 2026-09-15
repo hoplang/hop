@@ -104,6 +104,16 @@ pub(crate) enum ParseErrorKind {
     #[error("<!doctype> declarations are not allowed: one is inserted automatically")]
     DoctypeNotAllowed,
 
+    #[error(
+        "Inline <script> content is not allowed: move the code to a file and reference it with <script src=\"...\">"
+    )]
+    InlineScriptNotAllowed,
+
+    #[error(
+        "<style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel=\"stylesheet\">"
+    )]
+    StyleElementNotAllowed,
+
     #[error("Unterminated comment")]
     UnterminatedComment,
 

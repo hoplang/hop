@@ -2658,40 +2658,17 @@ mod tests {
     }
 
     #[test]
-    fn script_content_is_not_reindented() {
+    fn whitespace_between_script_tags_is_stripped() {
         check(
-            indoc! {"
+            indoc! {r#"
                 fn Main() -> Html {
-                  <script>
-                    let x = 1;
-                  </script>
+                  <script src="/app.js">
+                        </script>
                 }
-            "},
+            "#},
             expect![[r#"
                 fn Main() -> Html {
-                  <script>
-                    let x = 1;
-                  </script>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn style_content_is_not_reindented() {
-        check(
-            indoc! {"
-                fn Main() -> Html {
-                  <style>
-                    .a { color: red; }
-                  </style>
-                }
-            "},
-            expect![[r#"
-                fn Main() -> Html {
-                  <style>
-                    .a { color: red; }
-                  </style>
+                  <script src="/app.js"></script>
                 }
             "#]],
         );

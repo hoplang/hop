@@ -1538,19 +1538,172 @@ mod tests {
     }
 
     #[test]
-    fn accepts_fragment_in_raw_text_as_text() {
-        accept(
+    fn reads_a_fragment_in_raw_text_as_text() {
+        reject(
             indoc! {"
                 fn Main() -> Html {
                     <script><></script>
                 }
             "},
             expect![[r#"
+                -- errors --
+                error: Inline <script> content is not allowed: move the code to a file and reference it with <script src="...">
+                1 | fn Main() -> Html {
+                2 |     <script><></script>
+                  |             ^^
+                -- ast --
                 fn Main() -> Html {
                   html(
                     tag: "script",
                     attrs: [],
                     children: [text("<>")],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_script_referencing_an_external_file() {
+        accept(
+            indoc! {r#"
+                fn Main() -> Html {
+                    <script src="/app.js"></script>
+                }
+            "#},
+            expect![[r#"
+                fn Main() -> Html {
+                  html(
+                    tag: "script",
+                    attrs: [src: "/app.js"],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_whitespace_between_script_tags() {
+        accept(
+            indoc! {r#"
+                fn Main() -> Html {
+                    <script src="/app.js">
+                    </script>
+                }
+            "#},
+            expect![[r#"
+                fn Main() -> Html {
+                  html(
+                    tag: "script",
+                    attrs: [src: "/app.js"],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_inline_script_content() {
+        reject(
+            indoc! {"
+                fn Main() -> Html {
+                    <script>alert(1)</script>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Inline <script> content is not allowed: move the code to a file and reference it with <script src="...">
+                1 | fn Main() -> Html {
+                2 |     <script>alert(1)</script>
+                  |             ^^^^^^^^
+                -- ast --
+                fn Main() -> Html {
+                  html(
+                    tag: "script",
+                    attrs: [],
+                    children: [text("alert(1)")],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_style_element() {
+        reject(
+            indoc! {"
+                fn Main() -> Html {
+                    <style>.a { color: red; }</style>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet">
+                1 | fn Main() -> Html {
+                2 |     <style>.a { color: red; }</style>
+                  |      ^^^^^
+                -- ast --
+                fn Main() -> Html {
+                  html(
+                    tag: "style",
+                    attrs: [],
+                    children: [
+                      text(".a { color: red; }"),
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_empty_style_element() {
+        reject(
+            indoc! {"
+                fn Main() -> Html {
+                    <style></style>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet">
+                1 | fn Main() -> Html {
+                2 |     <style></style>
+                  |      ^^^^^
+                -- ast --
+                fn Main() -> Html {
+                  html(
+                    tag: "style",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_self_closing_style_element() {
+        reject(
+            indoc! {"
+                fn Main() -> Html {
+                    <style />
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet">
+                1 | fn Main() -> Html {
+                2 |     <style />
+                  |      ^^^^^
+                -- ast --
+                fn Main() -> Html {
+                  html(
+                    tag: "style",
+                    attrs: [],
+                    children: [],
                   )
                 }
             "#]],
@@ -6561,6 +6714,11 @@ mod tests {
                 1 | fn Main() -> Html {
                 2 |   <script>alert(1)
                   |    ^^^^^^
+
+                error: Inline <script> content is not allowed: move the code to a file and reference it with <script src="...">
+                1 | fn Main() -> Html {
+                2 |   <script>alert(1)
+                  |           ^^^^^^^^
                 -- ast --
             "#]],
         );
@@ -6577,6 +6735,10 @@ mod tests {
                   |                   ^
 
                 error: Unterminated opening tag
+                1 | fn Main() -> Html {<style
+                  |                     ^^^^^
+
+                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet">
                 1 | fn Main() -> Html {<style
                   |                     ^^^^^
 

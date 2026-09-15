@@ -52,12 +52,9 @@ const ELEMENT_TAGS: &[&str] = &["div", "span", "p", "a", "ul", "li", "title", "m
 
 const VOID_TAGS: &[&str] = &["br", "hr", "img", "input"];
 
-const RAW_TEXT: &[&str] = &[
-    "",
-    "let x = 1;",
-    "if (a < b) { x = {}; }",
-    "a { color: red; }",
-];
+/// The only content a <script> may hold: <style> is rejected outright, and a
+/// <script> may only reference an external file.
+const RAW_TEXT: &[&str] = &["", " ", "\n", "\n  "];
 
 const ATTRIBUTE_NAMES: &[&str] = &["class", "id", "data-x", "aria:label", "x.y", "on_click"];
 
@@ -624,15 +621,11 @@ fn markup(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()
             }
         }
         P::Raw => {
-            let tag = u.choose(&["script", "style"])?;
-            out.push('<');
-            out.push_str(tag);
+            out.push_str("<script");
             attributes(u, depth, out)?;
             out.push('>');
             out.push_str(u.choose(RAW_TEXT)?);
-            out.push_str("</");
-            out.push_str(tag);
-            out.push('>');
+            out.push_str("</script>");
         }
         P::Fragment => {
             out.push_str("<>");
