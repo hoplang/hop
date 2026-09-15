@@ -1,12 +1,8 @@
 use std::collections::VecDeque;
 use std::iter::Peekable;
 
-use crate::document::{DocumentCursor, DocumentRange};
+use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
-use crate::symbols::field_name::FieldName;
-use crate::symbols::function_name::FunctionName;
-use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 
 use super::token::LangToken;
 use super::tokenize_expr::{next, peek};
@@ -126,95 +122,26 @@ pub fn expect_right_delimiter(
         ),
     })
 }
-pub fn expect_variable_name(
+
+pub fn expect_identifier(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     eof_range: &DocumentRange,
-) -> Result<(VarName, DocumentRange), ErrorEmitted> {
-    if let Some((name, name_range)) = next_if_map(iter, comments, errors, LangToken::identifier) {
-        return VarName::from_cheap_string(name.clone())
-            .map(|var_name| (var_name, name_range.clone()))
-            .map_err(|error| {
-                errors.emit(
-                    ParseErrorKind::InvalidVariableName { name, error },
-                    name_range,
-                )
-            });
-    }
-    Err(match peek(iter) {
-        Some((actual, actual_range)) => errors.emit(
-            ParseErrorKind::ExpectedVariableNameButGot { actual },
+) -> Result<(CheapString, DocumentRange), ErrorEmitted> {
+    match peek(iter) {
+        Some((LangToken::Identifier(name), name_range)) => {
+            next(iter, comments, errors);
+            Ok((name, name_range))
+        }
+        Some((actual, actual_range)) => Err(errors.emit(
+            ParseErrorKind::ExpectedIdentifierButGot { actual },
             actual_range,
-        ),
-        None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
-    })
-}
-pub fn expect_field_name(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
-) -> Result<(FieldName, DocumentRange), ErrorEmitted> {
-    if let Some((name, name_range)) = next_if_map(iter, comments, errors, LangToken::identifier) {
-        return FieldName::from_cheap_string(name.clone())
-            .map(|field_name| (field_name, name_range.clone()))
-            .map_err(|error| {
-                errors.emit(ParseErrorKind::InvalidFieldName { name, error }, name_range)
-            });
+        )),
+        None => Err(errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone())),
     }
-    Err(match peek(iter) {
-        Some((actual, actual_range)) => errors.emit(
-            ParseErrorKind::ExpectedFieldNameButGot { actual },
-            actual_range,
-        ),
-        None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
-    })
-}
-pub fn expect_function_name(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
-) -> Result<(FunctionName, DocumentRange), ErrorEmitted> {
-    if let Some((name, name_range)) = next_if_map(iter, comments, errors, LangToken::identifier) {
-        return FunctionName::from_cheap_string(name)
-            .map(|function_name| (function_name, name_range.clone()))
-            .map_err(|error| {
-                errors.emit(ParseErrorKind::InvalidFunctionName { error }, name_range)
-            });
-    }
-    Err(match peek(iter) {
-        Some((actual, actual_range)) => errors.emit(
-            ParseErrorKind::ExpectedFunctionNameButGot { actual },
-            actual_range,
-        ),
-        None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
-    })
 }
 
-pub fn expect_type_name(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
-) -> Result<(TypeName, DocumentRange), ErrorEmitted> {
-    if let Some((name, name_range)) = next_if_map(iter, comments, errors, LangToken::identifier) {
-        return TypeName::from_cheap_string(name)
-            .map(|type_name| (type_name, name_range.clone()))
-            .map_err(|error| errors.emit(ParseErrorKind::InvalidTypeName { error }, name_range));
-    }
-    Err(match peek(iter) {
-        Some((actual, actual_range)) => errors.emit(
-            ParseErrorKind::ExpectedTypeNameButGot { actual },
-            actual_range,
-        ),
-        None => errors.emit(
-            ParseErrorKind::ExpectedTypeNameButGotEof {},
-            eof_range.clone(),
-        ),
-    })
-}
 /// Parse one item after a left delimiter the caller has already consumed,
 /// then the right delimiter that matches it. Returns the item with the range
 /// from the left delimiter through the right.

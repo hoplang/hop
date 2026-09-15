@@ -13,7 +13,7 @@ use crate::hop::parsing::token::MarkupToken;
 use crate::hop::parsing::token::RawTextToken;
 use crate::hop::parsing::token::TagToken;
 use crate::html::{HtmlElementKind, is_raw_content_tag, is_void_element_tag};
-use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
+use crate::parse_error::{ErrorEmitted, OrEmit, ParseErrorKind, ParseErrors};
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
@@ -379,25 +379,18 @@ fn parse_opening_tag(
                 }
             }
 
-            TagToken::Spread { name, range } => match VarName::new(name.as_str()) {
-                Ok(var_name) => push_attribute(
-                    &mut attributes,
-                    ParsedAttribute::Spread {
-                        name: var_name,
-                        range,
-                    },
-                    errors,
-                ),
-                Err(error) => {
-                    let _ = errors.emit(
-                        ParseErrorKind::InvalidVariableName {
-                            name: name.to_cheap_string(),
-                            error,
+            TagToken::Spread { name, range } => {
+                if let Ok(var_name) = VarName::new(name.to_cheap_string()).or_emit(errors, &name) {
+                    push_attribute(
+                        &mut attributes,
+                        ParsedAttribute::Spread {
+                            name: var_name,
+                            range,
                         },
-                        name,
+                        errors,
                     );
                 }
-            },
+            }
 
             TagToken::ExpressionStart { left_brace } => {
                 let range = match parse_helpers::parse_delimited(
@@ -446,12 +439,8 @@ fn parse_opening_tag(
     let header = match tag_name_range.as_str() {
         name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
             ElementHeader::Function {
-                name: FunctionName::new(name).map_err(|error| {
-                    errors.emit(
-                        ParseErrorKind::InvalidFunctionName { error },
-                        tag_name_range.clone(),
-                    )
-                }),
+                name: FunctionName::new(tag_name_range.to_cheap_string())
+                    .or_emit(errors, &tag_name_range),
                 attributes,
             }
         }

@@ -16,9 +16,11 @@ use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_ast::ParsedParameter;
 use crate::hop::parsing::token::LangToken;
 use crate::hop::parsing::token::LangTokenPair;
-use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
+use crate::parse_error::{ErrorEmitted, OrEmit, ParseErrorKind, ParseErrors};
+use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
+use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
@@ -179,29 +181,12 @@ fn parse_import_declaration(
     let name = last_token
         .identifier()
         .expect("import path segments are identifiers");
-    if let Err(error) = FunctionName::from_cheap_string(name.clone()) {
-        return Err(errors.emit(ParseErrorKind::InvalidFunctionName { error }, name_range));
-    }
-    let module_path = module_segments
-        .iter()
-        .map(|segment| segment.as_str())
-        .collect::<Vec<_>>()
-        .join("::");
-    let module_name = match ModuleName::new(&module_path) {
-        Ok(name) => name,
-        Err(e) => {
-            return Err(errors.emit(
-                ParseErrorKind::InvalidModuleName { error: e },
-                module_path_range,
-            ));
-        }
-    };
     Ok(ParsedImportDeclaration {
-        name,
-        path_range: module_path_range.to(name_range.clone()),
+        name: FunctionName::new(name).or_emit(errors, &name_range)?,
         import_range: keyword_range.to(name_range.clone()),
+        module_name: ModuleName::new(module_segments).or_emit(errors, &module_path_range)?,
+        path_range: module_path_range.to(name_range.clone()),
         name_range,
-        module_name,
     })
 }
 
@@ -213,12 +198,12 @@ fn parse_record_declaration(
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedRecordDeclaration, ErrorEmitted> {
-    let (name, name_range) = parse_helpers::expect_type_name(iter, comments, errors, eof_range)?;
+    let (name, name_range) = parse_helpers::expect_identifier(iter, comments, errors, eof_range)?;
     let left_brace =
         parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let (fields, braces) = parse_field_declarations(iter, comments, errors, &left_brace)?;
     Ok(ParsedRecordDeclaration {
-        name,
+        name: TypeName::new(name).or_emit(errors, &name_range)?,
         name_range,
         range: pub_range
             .clone()
@@ -237,7 +222,7 @@ fn parse_enum_declaration(
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedEnumDeclaration, ErrorEmitted> {
-    let (name, name_range) = parse_helpers::expect_type_name(iter, comments, errors, eof_range)?;
+    let (name, name_range) = parse_helpers::expect_identifier(iter, comments, errors, eof_range)?;
     let left_brace =
         parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let mut seen_names = HashSet::new();
@@ -251,7 +236,7 @@ fn parse_enum_declaration(
         &[],
         |iter, comments, errors, range| {
             let (variant_name, variant_range) =
-                parse_helpers::expect_type_name(iter, comments, errors, range)?;
+                parse_helpers::expect_identifier(iter, comments, errors, range)?;
             if !seen_names.insert(variant_range.to_cheap_string()) {
                 return Err(errors.emit(
                     ParseErrorKind::DuplicateVariant {
@@ -260,25 +245,18 @@ fn parse_enum_declaration(
                     variant_range,
                 ));
             }
-            let fields =
-                match parse_helpers::advance_if(iter, comments, errors, LangToken::LeftBrace) {
-                    Some(left_brace) => Some(parse_field_declarations(
-                        iter,
-                        comments,
-                        errors,
-                        &left_brace,
-                    )?),
-                    None => None,
-                };
+            let fields = parse_helpers::advance_if(iter, comments, errors, LangToken::LeftBrace)
+                .map(|left_brace| parse_field_declarations(iter, comments, errors, &left_brace))
+                .transpose()?;
             Ok(ParsedEnumDeclarationVariant {
-                name: variant_name,
+                name: TypeName::new(variant_name).or_emit(errors, &variant_range)?,
                 name_range: variant_range,
                 fields: fields.map(|(f, _)| f).unwrap_or_else(Vec::new),
             })
         },
     )?;
     Ok(ParsedEnumDeclaration {
-        name,
+        name: TypeName::new(name).or_emit(errors, &name_range)?,
         name_range,
         range: pub_range
             .clone()
@@ -306,16 +284,14 @@ fn parse_field_declarations(
         &[],
         |iter, comments, errors, range| {
             let examples =
-                match parse_helpers::advance_if(iter, comments, errors, LangToken::HashBracket) {
-                    Some(hash_bracket) => {
-                        let (examples, _) =
-                            parse_examples_annotation(iter, comments, errors, range, hash_bracket)?;
-                        Some(examples)
-                    }
-                    None => None,
-                };
+                parse_helpers::advance_if(iter, comments, errors, LangToken::HashBracket)
+                    .map(|hash_bracket| {
+                        parse_examples_annotation(iter, comments, errors, range, hash_bracket)
+                    })
+                    .transpose()?
+                    .map(|(examples, _)| examples);
             let (name, name_range) =
-                parse_helpers::expect_field_name(iter, comments, errors, range)?;
+                parse_helpers::expect_identifier(iter, comments, errors, range)?;
             parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Colon)?;
             let field_type = parse_type(iter, comments, errors, range)?;
             if !seen_names.insert(name_range.to_cheap_string()) {
@@ -327,7 +303,7 @@ fn parse_field_declarations(
                 ));
             }
             Ok(ParsedFieldDeclaration {
-                name,
+                name: FieldName::new(name).or_emit(errors, &name_range)?,
                 name_range,
                 field_type,
                 examples,
@@ -345,7 +321,7 @@ fn parse_page_declaration(
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedPageDeclaration, ErrorEmitted> {
     let mut gate = Gate::default();
-    let name = gate.run(|| parse_helpers::expect_type_name(iter, comments, errors, eof_range));
+    let name = gate.run(|| parse_helpers::expect_identifier(iter, comments, errors, eof_range));
     let params = gate.run(|| {
         if let Some((LangToken::LeftBrace, _)) = tokenize_expr::peek(iter) {
             return Ok((Vec::new(), None));
@@ -490,7 +466,7 @@ fn parse_page_declaration(
     let (name, name_range) = name?;
     let (params, _) = params?;
     Ok(ParsedPageDeclaration {
-        name,
+        name: TypeName::new(name).or_emit(errors, &name_range)?,
         name_range,
         params,
         head,
@@ -512,7 +488,7 @@ fn parse_function_declaration(
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedFunctionDeclaration, ErrorEmitted> {
     let mut gate = Gate::default();
-    let name = gate.run(|| parse_helpers::expect_function_name(iter, comments, errors, eof_range));
+    let name = gate.run(|| parse_helpers::expect_identifier(iter, comments, errors, eof_range));
     let params = gate.run(|| {
         let left_paren =
             parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
@@ -523,9 +499,7 @@ fn parse_function_declaration(
         if let Some((LangToken::LeftBrace, _)) = tokenize_expr::peek(iter) {
             let (name, name_range) = name.as_ref().map_err(|reported| *reported)?;
             return Err(errors.emit(
-                ParseErrorKind::FunctionMissingReturnTypeAnnotation {
-                    name: name.to_cheap_string(),
-                },
+                ParseErrorKind::FunctionMissingReturnTypeAnnotation { name: name.clone() },
                 name_range.clone(),
             ));
         }
@@ -564,9 +538,7 @@ fn parse_function_declaration(
                 && let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter)
             {
                 return Err(errors.emit(
-                    ParseErrorKind::EmptyFunctionBody {
-                        name: name.to_cheap_string(),
-                    },
+                    ParseErrorKind::EmptyFunctionBody { name: name.clone() },
                     name_range.clone(),
                 ));
             }
@@ -577,7 +549,7 @@ fn parse_function_declaration(
     let (params, rest_param) = params?;
     let return_type = return_type?;
     Ok(ParsedFunctionDeclaration {
-        name,
+        name: FunctionName::new(name).or_emit(errors, &name_range)?,
         name_range,
         params,
         rest_param,
@@ -659,26 +631,21 @@ fn parse_parameters(
                 parse_helpers::advance_if(iter, comments, errors, LangToken::DotDotDot)
             {
                 let (var_name, var_name_range) =
-                    parse_helpers::expect_variable_name(iter, comments, errors, range)?;
+                    parse_helpers::expect_identifier(iter, comments, errors, range)?;
                 return Ok(ParameterItem::Rest {
+                    var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
                     range: dots_range.to(var_name_range),
-                    var_name,
                 });
             }
             let (examples, examples_range) =
-                match parse_helpers::advance_if(iter, comments, errors, LangToken::HashBracket) {
-                    Some(hash_bracket) => Some(parse_examples_annotation(
-                        iter,
-                        comments,
-                        errors,
-                        range,
-                        hash_bracket,
-                    )?),
-                    None => None,
-                }
-                .unzip();
+                parse_helpers::advance_if(iter, comments, errors, LangToken::HashBracket)
+                    .map(|hash_bracket| {
+                        parse_examples_annotation(iter, comments, errors, range, hash_bracket)
+                    })
+                    .transpose()?
+                    .unzip();
             let (var_name, var_name_range) =
-                parse_helpers::expect_variable_name(iter, comments, errors, range)?;
+                parse_helpers::expect_identifier(iter, comments, errors, range)?;
             parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Colon)?;
             let var_type = parse_type(iter, comments, errors, range)?;
             let default_value =
@@ -688,7 +655,7 @@ fn parse_parameters(
                     None
                 };
             Ok(ParameterItem::Parameter(Box::new(ParsedParameter {
-                var_name,
+                var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
                 var_name_range,
                 var_type,
                 default_value,
@@ -3500,7 +3467,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Expected type name but got 'fn'
+                error: Expected identifier but got 'fn'
                 1 | record
                 2 | fn Main() -> Html {
                   | ^^
@@ -3580,6 +3547,10 @@ mod tests {
                 error: Type name must start with an uppercase letter
                 1 | page foo(x: ) { fn body() -> Html { 1 } }
                   |      ^^^
+
+                error: Expected type name but got ')'
+                1 | page foo(x: ) { fn body() -> Html { 1 } }
+                  |             ^
                 -- ast --
                 fn f() -> Int {
                   1
@@ -3597,7 +3568,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Expected type name but got '123'
+                error: Expected identifier but got '123'
                 1 | page 123 { fn body() -> Html { 1 } }
                   |      ^^^
                 -- ast --
@@ -3709,7 +3680,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Expected function name but got ')'
+                error: Expected identifier but got ')'
                 1 | page P {
                 2 |   fn ) -> Html { 1 }
                   |      ^
@@ -4555,7 +4526,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Invalid variable name 'default': Variable name is a reserved word
+                error: Variable name is a reserved word
                 2 |   fn body() -> Html {
                 3 |     let default: String = "x";
                   |         ^^^^^^^
@@ -5605,7 +5576,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Invalid variable name 'Bar': Variable name must be lowercase (found uppercase: 'B')
+                error: Variable name must be lowercase (found uppercase: 'B')
                 1 | fn Foo() -> Html {
                 2 |   <button ...Bar></button>
                   |              ^^^
@@ -5631,7 +5602,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Invalid variable name '_x': Variable name cannot start with underscore
+                error: Variable name cannot start with underscore
                 1 | fn Foo() -> Html {
                 2 |   <button ..._x></button>
                   |              ^^

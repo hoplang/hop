@@ -216,7 +216,7 @@ pub fn resolve_rest_targets(
                 if let Some(target) = rest_target {
                     errors.push(TypeError::new(
                         TypeErrorKind::RestSpreadCycle {
-                            name: FunctionName::from_cheap_string(name.clone())
+                            name: FunctionName::new(name.clone())
                                 .expect("function names are validated by the parser"),
                         },
                         target.spread_range().clone(),

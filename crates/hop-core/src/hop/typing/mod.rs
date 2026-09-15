@@ -5,6 +5,7 @@ pub mod r#type;
 pub mod type_env;
 pub mod type_registry;
 #[cfg(test)]
+#[cfg(test)]
 pub mod type_registry_builder;
 pub mod typecheck;
 pub mod typecheck_call;

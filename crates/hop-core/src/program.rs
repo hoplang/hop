@@ -606,8 +606,8 @@ impl Program {
         let document_id = self
             .find_module_for_page(page)
             .map_err(anyhow::Error::msg)?;
-        let page_name =
-            TypeName::new(page).map_err(|e| anyhow::anyhow!("Invalid page name: {}", e))?;
+        let page_name = TypeName::new(CheapString::new(page.to_string()))
+            .map_err(|e| anyhow::anyhow!("Invalid page name: {}", e))?;
 
         let typed_ast = self.get_typed_modules().get(&document_id).ok_or_else(|| {
             anyhow::anyhow!("Module '{}' not found in typed modules", document_id)
@@ -2611,12 +2611,12 @@ mod tests {
         // Test evaluating hello-world page with a name parameter
         let mut args = HashMap::new();
         args.insert(
-            VarName::new("name").unwrap(),
+            VarName::parse("name").unwrap(),
             ir::runtime::value::Value::String("Alice".to_string()),
         );
 
         let main_module = DocumentId::new("main.hop").unwrap();
-        let hello_world = TypeName::new("HelloWorld").unwrap();
+        let hello_world = TypeName::parse("HelloWorld").unwrap();
         let result = program
             .evaluate_page_with_values(&main_module, &hello_world, args, None, false, None)
             .expect("Should evaluate successfully");
@@ -2624,7 +2624,7 @@ mod tests {
         assert!(result.contains("<h1>Hello Alice!</h1>"));
 
         // Test evaluating another-comp page without parameters
-        let another_comp = TypeName::new("AnotherComp").unwrap();
+        let another_comp = TypeName::parse("AnotherComp").unwrap();
         let result = program
             .evaluate_page_with_values(
                 &main_module,
@@ -2639,7 +2639,7 @@ mod tests {
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when page doesn't exist
-        let non_existent = TypeName::new("NonExistent").unwrap();
+        let non_existent = TypeName::parse("NonExistent").unwrap();
         let result = program.evaluate_page_with_values(
             &main_module,
             &non_existent,

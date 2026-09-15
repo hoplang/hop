@@ -39,18 +39,17 @@ pub struct FieldName {
 }
 
 impl FieldName {
-    /// Create a new FieldName from a string, validating it
-    pub fn new(name: &str) -> Result<Self, InvalidFieldNameError> {
+    pub fn new(name: CheapString) -> Result<Self, InvalidFieldNameError> {
+        Self::validate(name.as_str())?;
+        Ok(FieldName { value: name })
+    }
+
+    #[cfg(test)]
+    pub fn parse(name: &str) -> Result<Self, InvalidFieldNameError> {
         Self::validate(name)?;
         Ok(FieldName {
             value: CheapString::new(name.to_string()),
         })
-    }
-
-    /// Create a new FieldName from a CheapString, validating it
-    pub fn from_cheap_string(name: CheapString) -> Result<Self, InvalidFieldNameError> {
-        Self::validate(name.as_str())?;
-        Ok(FieldName { value: name })
     }
 
     /// Validate a field name string (snake_case only)
@@ -108,10 +107,6 @@ impl FieldName {
     pub fn as_str(&self) -> &str {
         self.value.as_str()
     }
-
-    pub fn to_cheap_string(&self) -> CheapString {
-        self.value.clone()
-    }
 }
 
 impl Display for FieldName {
@@ -150,7 +145,7 @@ impl TryFrom<String> for FieldName {
     type Error = InvalidFieldNameError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        FieldName::new(&s)
+        FieldName::new(CheapString::new(s))
     }
 }
 
@@ -159,11 +154,11 @@ mod tests {
     use super::*;
 
     fn accept(input: &str) {
-        assert!(FieldName::new(input).is_ok());
+        assert!(FieldName::parse(input).is_ok());
     }
 
     fn reject(input: &str, expected: InvalidFieldNameError) {
-        assert_eq!(FieldName::new(input), Err(expected));
+        assert_eq!(FieldName::parse(input), Err(expected));
     }
 
     #[test]

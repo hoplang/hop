@@ -21,15 +21,15 @@ fn test_module() -> DocumentId {
 }
 
 fn type_name(name: &str) -> TypeName {
-    TypeName::new(name).unwrap_or_else(|e| panic!("invalid type name `{name}`: {e:?}"))
+    TypeName::parse(name).unwrap_or_else(|e| panic!("invalid type name `{name}`: {e:?}"))
 }
 
 fn field_name(name: &str) -> FieldName {
-    FieldName::new(name).unwrap_or_else(|e| panic!("invalid field name `{name}`: {e:?}"))
+    FieldName::parse(name).unwrap_or_else(|e| panic!("invalid field name `{name}`: {e:?}"))
 }
 
 fn var_name(name: &str) -> VarName {
-    VarName::new(name).unwrap_or_else(|e| panic!("invalid var name `{name}`: {e:?}"))
+    VarName::parse(name).unwrap_or_else(|e| panic!("invalid var name `{name}`: {e:?}"))
 }
 
 #[derive(Clone)]

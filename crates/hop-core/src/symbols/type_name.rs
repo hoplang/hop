@@ -27,18 +27,17 @@ pub struct TypeName {
 }
 
 impl TypeName {
-    /// Create a new TypeName from a string, validating it
-    pub fn new(name: &str) -> Result<Self, InvalidTypeNameError> {
+    pub fn new(name: CheapString) -> Result<Self, InvalidTypeNameError> {
+        Self::validate(name.as_str())?;
+        Ok(TypeName { value: name })
+    }
+
+    #[cfg(test)]
+    pub fn parse(name: &str) -> Result<Self, InvalidTypeNameError> {
         Self::validate(name)?;
         Ok(TypeName {
             value: CheapString::new(name.to_string()),
         })
-    }
-
-    /// Create a new TypeName from a CheapString, validating it
-    pub fn from_cheap_string(name: CheapString) -> Result<Self, InvalidTypeNameError> {
-        Self::validate(name.as_str())?;
-        Ok(TypeName { value: name })
     }
 
     /// Validate a type name string (PascalCase)
@@ -106,7 +105,7 @@ impl TryFrom<String> for TypeName {
     type Error = InvalidTypeNameError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        TypeName::new(&s)
+        TypeName::new(CheapString::new(s))
     }
 }
 
@@ -115,11 +114,11 @@ mod tests {
     use super::*;
 
     fn accept(input: &str) {
-        assert!(TypeName::new(input).is_ok());
+        assert!(TypeName::parse(input).is_ok());
     }
 
     fn reject(input: &str, expected: InvalidTypeNameError) {
-        assert_eq!(TypeName::new(input), Err(expected));
+        assert_eq!(TypeName::parse(input), Err(expected));
     }
 
     #[test]

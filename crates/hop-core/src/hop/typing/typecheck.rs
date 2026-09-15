@@ -115,6 +115,7 @@ fn typecheck_module(
                     path_range: import_path_range,
                     import_range,
                 } = import;
+                let imported_name = &imported_name.to_cheap_string();
                 let Some(imported_module_exports) = exports.get(&imported_module.to_document_id())
                 else {
                     errors.push(TypeError::new(
@@ -161,7 +162,7 @@ fn typecheck_module(
                 let kind = match export {
                     Export::Type { .. } => NameKind::Type(Type::Named {
                         module: imported_module.to_document_id(),
-                        name: TypeName::from_cheap_string(imported_name.clone())
+                        name: TypeName::new(imported_name.clone())
                             .expect("an exported type has a valid type name"),
                     }),
                     Export::Function { signature, .. } => {

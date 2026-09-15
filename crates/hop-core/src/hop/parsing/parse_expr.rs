@@ -3,12 +3,13 @@ use std::iter::Peekable;
 
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
+use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 use super::parse_helpers::{
-    advance_if, expect_field_name, expect_right_delimiter, expect_token, expect_type_name,
-    expect_variable_name, next_if_map, parse_delimited, parse_delimited_list,
+    advance_if, expect_identifier, expect_right_delimiter, expect_token, next_if_map,
+    parse_delimited, parse_delimited_list,
 };
 use super::parse_nodes;
 use super::parse_type::parse_type;
@@ -19,7 +20,7 @@ use super::parsed_expr::{
 use super::parsed_node::ParsedLetBinding;
 use super::token::LangToken;
 use super::tokenize_expr::{peek, peek2, peek3};
-use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
+use crate::parse_error::{ErrorEmitted, OrEmit, ParseErrorKind, ParseErrors};
 
 /// Restrictions on an expression that follow from where it sits. Compare
 /// `Restrictions` in rustc and rust-analyzer.
@@ -273,7 +274,7 @@ pub fn parse_block_body(
     let Some(let_range) = advance_if(iter, comments, errors, LangToken::Let) else {
         return parse_expr(iter, comments, errors, eof_range);
     };
-    let (var_name, var_name_range) = expect_variable_name(iter, comments, errors, eof_range)?;
+    let (var_name, var_name_range) = expect_identifier(iter, comments, errors, eof_range)?;
     let var_type = if advance_if(iter, comments, errors, LangToken::Colon).is_some() {
         Some(parse_type(iter, comments, errors, eof_range)?)
     } else {
@@ -289,7 +290,7 @@ pub fn parse_block_body(
     let range = let_range.to(body.range().clone());
     Ok(ParsedExpr::Let {
         binding: Box::new(ParsedLetBinding {
-            var_name,
+            var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
             var_name_range,
             var_type,
             value_expr,
@@ -320,12 +321,6 @@ pub fn parse_primary(
                 name_range.to(bang_range),
             )?
         } else {
-            let var_name = VarName::from_cheap_string(name.clone()).map_err(|error| {
-                errors.emit(
-                    ParseErrorKind::InvalidVariableName { name, error },
-                    name_range.clone(),
-                )
-            })?;
             if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
                 let (args, parens) = parse_delimited_list(
                     iter,
@@ -340,7 +335,8 @@ pub fn parse_primary(
                             && matches!(peek2(iter), Some((LangToken::Colon, _)))
                         {
                             let (name, name_range) =
-                                expect_variable_name(iter, comments, errors, range)?;
+                                expect_identifier(iter, comments, errors, range)?;
+                            let name = VarName::new(name).or_emit(errors, &name_range)?;
                             expect_token(iter, comments, errors, range, &LangToken::Colon)?;
                             Some((name, name_range))
                         } else {
@@ -372,7 +368,7 @@ pub fn parse_primary(
                     }
                 }
                 ParsedExpr::FunctionCall {
-                    name: var_name,
+                    name: VarName::new(name).or_emit(errors, &name_range)?,
                     name_range: name_range.clone(),
                     args: if is_named {
                         ParsedArguments::Named(named)
@@ -383,20 +379,15 @@ pub fn parse_primary(
                 }
             } else {
                 ParsedExpr::VariableReference {
+                    value: VarName::new(name).or_emit(errors, &name_range)?,
                     range: name_range,
-                    value: var_name,
                 }
             }
         }
     } else if let Some((name, name_range)) =
         next_if_map(iter, comments, errors, LangToken::uppercase_identifier)
     {
-        let type_name = TypeName::from_cheap_string(name).map_err(|error| {
-            errors.emit(
-                ParseErrorKind::InvalidTypeName { error },
-                name_range.clone(),
-            )
-        })?;
+        let type_name = TypeName::new(name).or_emit(errors, &name_range)?;
         if let Some(colon_colon) = advance_if(iter, comments, errors, LangToken::ColonColon) {
             parse_enum_literal(
                 iter,
@@ -522,23 +513,22 @@ pub fn parse_primary(
     };
     while let Some(dot) = advance_if(iter, comments, errors, LangToken::Dot) {
         let dot_range = expr.range().clone().to(dot);
-        let (field_name, field_range) = expect_field_name(iter, comments, errors, &dot_range)?;
+        let (field_name, field_range) = expect_identifier(iter, comments, errors, &dot_range)?;
         if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
             let right_paren =
                 expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
             let new_range = expr.range().clone().to(right_paren);
             expr = ParsedExpr::MethodCall {
                 receiver: Box::new(expr),
-                method: field_name,
+                method: FieldName::new(field_name).or_emit(errors, &field_range)?,
                 method_range: field_range,
                 range: new_range,
             };
         } else {
-            let new_range = expr.range().clone().to(field_range);
             expr = ParsedExpr::FieldAccess {
+                range: expr.range().clone().to(field_range.clone()),
                 record: Box::new(expr),
-                field: field_name,
-                range: new_range,
+                field: FieldName::new(field_name).or_emit(errors, &field_range)?,
             };
         }
     }
@@ -610,10 +600,10 @@ fn parse_record_literal(
                 let spread_range = spread_range.to(subject.range().clone());
                 return Ok(Entry::Spread(subject, spread_range));
             }
-            let (field_name, field_name_range) = expect_field_name(iter, comments, errors, range)?;
+            let (field_name, field_name_range) = expect_identifier(iter, comments, errors, range)?;
             expect_token(iter, comments, errors, range, &LangToken::Colon)?;
             Ok(Entry::Field(ParsedFieldInitializer {
-                name: field_name,
+                name: FieldName::new(field_name).or_emit(errors, &field_name_range)?,
                 name_range: field_name_range,
                 value: parse_expr(iter, comments, errors, range)?,
             }))
@@ -660,51 +650,51 @@ fn parse_enum_literal(
     colon_colon: DocumentRange,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let path_range = enum_name_range.clone().to(colon_colon);
-    let (variant_name, variant_range) = expect_type_name(iter, comments, errors, &path_range)?;
-    let constructor_range = enum_name_range.clone().to(variant_range.clone());
-    let (fields, end_range) =
-        if let Some(left_delim) = advance_if_field_list(iter, comments, errors, restrictions) {
-            let (fields, braces) = parse_delimited_list(
-                iter,
-                comments,
-                errors,
-                eof_range,
-                LangTokenPair::Braces,
-                &left_delim,
-                &[],
-                |iter, comments, errors, range| {
-                    if let Some(spread_range) =
-                        advance_if(iter, comments, errors, LangToken::DotDotDot)
-                    {
-                        return Err(errors
-                            .emit(ParseErrorKind::SpreadNotAllowedInEnumLiteral, spread_range));
-                    }
-                    let (field_name, field_name_range) =
-                        expect_field_name(iter, comments, errors, range)?;
-                    expect_token(iter, comments, errors, range, &LangToken::Colon)?;
-                    Ok(ParsedFieldInitializer {
-                        name: field_name,
-                        name_range: field_name_range,
-                        value: parse_expr(iter, comments, errors, range)?,
-                    })
-                },
-            )?;
-            if restrictions.forbid_record_literals {
-                let _ = errors.emit(
-                    ParseErrorKind::RecordLiteralNotAllowedHere {},
-                    enum_name_range.clone().to(braces.clone()),
-                );
-            }
-            (fields, braces)
-        } else {
-            (Vec::new(), variant_range)
-        };
+    let (variant_name, variant_range) = expect_identifier(iter, comments, errors, &colon_colon)?;
+    let (fields, end_range) = if let Some(left_delim) =
+        advance_if_field_list(iter, comments, errors, restrictions)
+    {
+        let (fields, braces) = parse_delimited_list(
+            iter,
+            comments,
+            errors,
+            eof_range,
+            LangTokenPair::Braces,
+            &left_delim,
+            &[],
+            |iter, comments, errors, range| {
+                if let Some(spread_range) = advance_if(iter, comments, errors, LangToken::DotDotDot)
+                {
+                    return Err(
+                        errors.emit(ParseErrorKind::SpreadNotAllowedInEnumLiteral, spread_range)
+                    );
+                }
+                let (field_name, field_name_range) =
+                    expect_identifier(iter, comments, errors, range)?;
+                let field_name = FieldName::new(field_name).or_emit(errors, &field_name_range)?;
+                expect_token(iter, comments, errors, range, &LangToken::Colon)?;
+                Ok(ParsedFieldInitializer {
+                    name: field_name,
+                    name_range: field_name_range,
+                    value: parse_expr(iter, comments, errors, range)?,
+                })
+            },
+        )?;
+        if restrictions.forbid_record_literals {
+            let _ = errors.emit(
+                ParseErrorKind::RecordLiteralNotAllowedHere {},
+                enum_name_range.clone().to(braces.clone()),
+            );
+        }
+        (fields, braces)
+    } else {
+        (Vec::new(), variant_range.clone())
+    };
     Ok(ParsedExpr::EnumLiteral {
         enum_name,
-        variant_name,
+        variant_name: TypeName::new(variant_name).or_emit(errors, &variant_range)?,
         fields,
-        constructor_range,
+        constructor_range: enum_name_range.clone().to(variant_range.clone()),
         enum_name_range: enum_name_range.clone(),
         range: enum_name_range.to(end_range),
     })
@@ -750,7 +740,8 @@ fn parse_for(
         if let Some(underscore_range) = advance_if(iter, comments, errors, LangToken::Underscore) {
             (None, Some(underscore_range))
         } else {
-            let (name, name_range) = expect_variable_name(iter, comments, errors, eof_range)?;
+            let (name, name_range) = expect_identifier(iter, comments, errors, eof_range)?;
+            let name = VarName::new(name).or_emit(errors, &name_range)?;
             (Some(name), Some(name_range))
         };
     expect_token(iter, comments, errors, eof_range, &LangToken::In)?;
@@ -902,15 +893,10 @@ fn parse_match_pattern(
     if let Some((type_name_str, type_name_range)) =
         next_if_map(iter, comments, errors, LangToken::uppercase_identifier)
     {
-        let type_name = match TypeName::from_cheap_string(type_name_str) {
-            Ok(name) => name,
-            Err(error) => {
-                return Err(errors.emit(ParseErrorKind::InvalidTypeName { error }, type_name_range));
-            }
-        };
         if advance_if(iter, comments, errors, LangToken::ColonColon).is_some() {
             let (variant_name, variant_range) =
-                expect_type_name(iter, comments, errors, eof_range)?;
+                expect_identifier(iter, comments, errors, eof_range)?;
+            let variant_name = TypeName::new(variant_name).or_emit(errors, &variant_range)?;
 
             let (fields, end_range) = if let Some(left_brace) =
                 advance_if(iter, comments, errors, LangToken::LeftBrace)
@@ -924,26 +910,16 @@ fn parse_match_pattern(
                     &left_brace,
                     &[],
                     |iter, comments, errors, range| {
-                        let (field_name, field_range) =
-                            expect_field_name(iter, comments, errors, range)?;
+                        let (name, field_range) = expect_identifier(iter, comments, errors, range)?;
+                        let field_name =
+                            FieldName::new(name.clone()).or_emit(errors, &field_range)?;
                         let pattern =
                             if advance_if(iter, comments, errors, LangToken::Colon).is_some() {
                                 parse_match_pattern(iter, comments, errors, range)?
                             } else {
-                                match VarName::from_cheap_string(field_name.to_cheap_string()) {
-                                    Ok(name) => ParsedMatchPattern::Binding {
-                                        name,
-                                        range: field_range.clone(),
-                                    },
-                                    Err(error) => {
-                                        return Err(errors.emit(
-                                            ParseErrorKind::InvalidVariableName {
-                                                name: field_name.to_cheap_string(),
-                                                error,
-                                            },
-                                            field_range,
-                                        ));
-                                    }
+                                ParsedMatchPattern::Binding {
+                                    name: VarName::new(name).or_emit(errors, &field_range)?,
+                                    range: field_range.clone(),
                                 }
                             };
                         Ok((field_name, field_range, pattern))
@@ -956,7 +932,7 @@ fn parse_match_pattern(
             let constructor_range = type_name_range.clone().to(variant_range);
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::EnumVariant {
-                    enum_name: type_name,
+                    enum_name: TypeName::new(type_name_str).or_emit(errors, &type_name_range)?,
                     variant_name,
                 },
                 args: Vec::new(),
@@ -977,33 +953,24 @@ fn parse_match_pattern(
                 &left_brace,
                 &[],
                 |iter, comments, errors, range| {
-                    let (field_name, field_range) =
-                        expect_field_name(iter, comments, errors, range)?;
+                    let (name, field_range) = expect_identifier(iter, comments, errors, range)?;
                     let pattern = if advance_if(iter, comments, errors, LangToken::Colon).is_some()
                     {
                         parse_match_pattern(iter, comments, errors, range)?
                     } else {
-                        match VarName::new(field_name.as_str()) {
-                            Ok(name) => ParsedMatchPattern::Binding {
-                                name,
-                                range: field_range.clone(),
-                            },
-                            Err(error) => {
-                                return Err(errors.emit(
-                                    ParseErrorKind::InvalidVariableName {
-                                        name: field_name.to_cheap_string(),
-                                        error,
-                                    },
-                                    field_range,
-                                ));
-                            }
+                        ParsedMatchPattern::Binding {
+                            name: VarName::new(name.clone()).or_emit(errors, &field_range)?,
+                            range: field_range.clone(),
                         }
                     };
+                    let field_name = FieldName::new(name).or_emit(errors, &field_range)?;
                     Ok((field_name, field_range, pattern))
                 },
             )?;
             return Ok(ParsedMatchPattern::Constructor {
-                constructor: Constructor::Record { type_name },
+                constructor: Constructor::Record {
+                    type_name: TypeName::new(type_name_str).or_emit(errors, &type_name_range)?,
+                },
                 args: Vec::new(),
                 fields,
                 constructor_range: type_name_range.clone(),
@@ -1012,9 +979,9 @@ fn parse_match_pattern(
             });
         }
     }
-    let (var_name, var_range) = expect_variable_name(iter, comments, errors, eof_range)?;
+    let (var_name, var_range) = expect_identifier(iter, comments, errors, eof_range)?;
     Ok(ParsedMatchPattern::Binding {
-        name: var_name,
+        name: VarName::new(var_name).or_emit(errors, &var_range)?,
         range: var_range,
     })
 }
@@ -1294,7 +1261,7 @@ mod tests {
             r#"match x {User {...y} => "a"}"#,
             expect![[r#"
                 -- errors --
-                error: Expected field name but got '...'
+                error: Expected identifier but got '...'
                 match x {User {...y} => "a"}
                                ^^^
                 -- ast --
@@ -1445,7 +1412,7 @@ mod tests {
             "user.123",
             expect![[r#"
                 -- errors --
-                error: Expected field name but got '123'
+                error: Expected identifier but got '123'
                 user.123
                      ^^^
             "#]],
@@ -1523,7 +1490,7 @@ mod tests {
             "user..name",
             expect![[r#"
                 -- errors --
-                error: Expected field name but got '.'
+                error: Expected identifier but got '.'
                 user..name
                      ^
             "#]],
@@ -2423,9 +2390,9 @@ mod tests {
             "Color::",
             expect![[r#"
                 -- errors --
-                error: Expected type name but got end of file
+                error: Unexpected end of expression
                 Color::
-                ^^^^^^^
+                     ^^
             "#]],
         );
     }

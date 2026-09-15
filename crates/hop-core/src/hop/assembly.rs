@@ -245,7 +245,7 @@ mod tests {
 
     fn page(page_name: &str, head: Vec<TypedExpr>, body: Vec<TypedExpr>) -> TypedPageDeclaration {
         TypedPageDeclaration {
-            name: TypeName::new(page_name).unwrap(),
+            name: TypeName::parse(page_name).unwrap(),
             head: TypedExpr::HtmlConcat { nodes: head },
             body: TypedExpr::HtmlConcat { nodes: body },
             params: Vec::new(),

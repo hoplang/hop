@@ -465,7 +465,7 @@ fn typecheck_arguments(
 
     if synthesize_children_arg {
         supplied.push((
-            VarName::new("children").unwrap(),
+            VarName::new(CheapString::new("children".to_string())).unwrap(),
             Argument::Implied(TypedExpr::HtmlConcat {
                 nodes: children.unwrap_or_default(),
             }),

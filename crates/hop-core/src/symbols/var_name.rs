@@ -38,18 +38,17 @@ pub struct VarName {
 }
 
 impl VarName {
-    /// Create a new VarName from a string, validating it
-    pub fn new(name: &str) -> Result<Self, InvalidVarNameError> {
+    pub fn new(name: CheapString) -> Result<Self, InvalidVarNameError> {
+        Self::validate(name.as_str())?;
+        Ok(VarName { value: name })
+    }
+
+    #[cfg(test)]
+    pub fn parse(name: &str) -> Result<Self, InvalidVarNameError> {
         Self::validate(name)?;
         Ok(VarName {
             value: CheapString::new(name.to_string()),
         })
-    }
-
-    /// Create a new VarName from a CheapString, validating it
-    pub fn from_cheap_string(name: CheapString) -> Result<Self, InvalidVarNameError> {
-        Self::validate(name.as_str())?;
-        Ok(VarName { value: name })
     }
 
     /// Mint a compiler-internal variable name `{prefix}__{i}`.
@@ -136,7 +135,7 @@ impl TryFrom<String> for VarName {
     type Error = InvalidVarNameError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        VarName::new(&s)
+        VarName::new(CheapString::new(s))
     }
 }
 
@@ -145,11 +144,11 @@ mod tests {
     use super::*;
 
     fn accept(input: &str) {
-        assert!(VarName::new(input).is_ok());
+        assert!(VarName::parse(input).is_ok());
     }
 
     fn reject(input: &str, expected: InvalidVarNameError) {
-        assert_eq!(VarName::new(input), Err(expected));
+        assert_eq!(VarName::parse(input), Err(expected));
     }
 
     #[test]

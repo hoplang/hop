@@ -2200,7 +2200,7 @@ mod tests {
         let mut env = VariableScope::new();
         for (var_name, type_str) in env_vars {
             let typ = types.resolve(type_str);
-            let _ = env.push(VarName::new(var_name).unwrap(), typ, decl_range.clone());
+            let _ = env.push(VarName::parse(var_name).unwrap(), typ, decl_range.clone());
         }
 
         let mut asset_references = Vec::new();

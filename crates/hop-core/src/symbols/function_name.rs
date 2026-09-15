@@ -26,18 +26,17 @@ pub struct FunctionName {
 }
 
 impl FunctionName {
-    /// Create a new FunctionName from a string, validating it
-    pub fn new(name: &str) -> Result<Self, InvalidFunctionNameError> {
+    pub fn new(name: CheapString) -> Result<Self, InvalidFunctionNameError> {
+        Self::validate(name.as_str())?;
+        Ok(FunctionName { value: name })
+    }
+
+    #[cfg(test)]
+    pub fn parse(name: &str) -> Result<Self, InvalidFunctionNameError> {
         Self::validate(name)?;
         Ok(FunctionName {
             value: CheapString::new(name.to_string()),
         })
-    }
-
-    /// Create a new FunctionName from a CheapString, validating it
-    pub fn from_cheap_string(name: CheapString) -> Result<Self, InvalidFunctionNameError> {
-        Self::validate(name.as_str())?;
-        Ok(FunctionName { value: name })
     }
 
     /// Validate a function name string: PascalCase when it starts with an
@@ -127,14 +126,14 @@ impl AsRef<str> for FunctionName {
 
 impl From<TypeName> for FunctionName {
     fn from(name: TypeName) -> Self {
-        FunctionName::new(name.as_str())
+        FunctionName::new(name.to_cheap_string())
             .expect("every valid TypeName should be a valid FunctionName")
     }
 }
 
 impl From<VarName> for FunctionName {
     fn from(name: VarName) -> Self {
-        FunctionName::new(name.as_str())
+        FunctionName::new(name.to_cheap_string())
             .expect("every valid VarName should be a valid FunctionName")
     }
 }
@@ -144,11 +143,11 @@ mod tests {
     use super::*;
 
     fn accept(input: &str) {
-        assert!(FunctionName::new(input).is_ok());
+        assert!(FunctionName::parse(input).is_ok());
     }
 
     fn reject(input: &str, expected: InvalidFunctionNameError) {
-        assert_eq!(FunctionName::new(input), Err(expected));
+        assert_eq!(FunctionName::parse(input), Err(expected));
     }
 
     #[test]
@@ -232,7 +231,7 @@ mod tests {
     #[test]
     fn to_snake_case_is_identity_for_snake_case_input() {
         assert_eq!(
-            FunctionName::new("format_price").unwrap().to_snake_case(),
+            FunctionName::parse("format_price").unwrap().to_snake_case(),
             "format_price"
         );
     }
@@ -240,7 +239,7 @@ mod tests {
     #[test]
     fn to_snake_case_converts_pascal_case_input() {
         assert_eq!(
-            FunctionName::new("FormatPrice").unwrap().to_snake_case(),
+            FunctionName::parse("FormatPrice").unwrap().to_snake_case(),
             "format_price"
         );
     }
@@ -248,7 +247,7 @@ mod tests {
     #[test]
     fn to_pascal_case_is_identity_for_pascal_case_input() {
         assert_eq!(
-            FunctionName::new("FormatPrice").unwrap().to_pascal_case(),
+            FunctionName::parse("FormatPrice").unwrap().to_pascal_case(),
             "FormatPrice"
         );
     }
@@ -256,20 +255,22 @@ mod tests {
     #[test]
     fn to_pascal_case_converts_snake_case_input() {
         assert_eq!(
-            FunctionName::new("format_price").unwrap().to_pascal_case(),
+            FunctionName::parse("format_price")
+                .unwrap()
+                .to_pascal_case(),
             "FormatPrice"
         );
     }
 
     #[test]
     fn from_type_name() {
-        let type_name = TypeName::new("Counter").unwrap();
+        let type_name = TypeName::parse("Counter").unwrap();
         assert_eq!(FunctionName::from(type_name).as_str(), "Counter");
     }
 
     #[test]
     fn from_var_name() {
-        let var_name = VarName::new("format_price").unwrap();
+        let var_name = VarName::parse("format_price").unwrap();
         assert_eq!(FunctionName::from(var_name).as_str(), "format_price");
     }
 }

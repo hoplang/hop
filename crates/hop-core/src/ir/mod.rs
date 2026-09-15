@@ -11,7 +11,9 @@ mod var_id;
 mod writer_module;
 
 #[cfg(test)]
+#[cfg(test)]
 pub mod pure_module_builder;
+#[cfg(test)]
 #[cfg(test)]
 pub mod pure_module_generator;
 

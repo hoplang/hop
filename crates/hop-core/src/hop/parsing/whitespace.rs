@@ -152,7 +152,7 @@ mod tests {
         );
 
         let typed_asts = program.get_typed_modules().clone();
-        let page_name = TypeName::new("Test").unwrap();
+        let page_name = TypeName::parse("Test").unwrap();
         let module = orchestrate_pure(
             &typed_asts,
             OrchestrateOptions {

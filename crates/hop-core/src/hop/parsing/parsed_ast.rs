@@ -1,4 +1,4 @@
-use crate::document::{CheapString, DocumentRange};
+use crate::document::DocumentRange;
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedExpr;
@@ -95,7 +95,7 @@ impl ParsedPageDeclaration {
 #[derive(Debug, Clone)]
 pub struct ParsedImportDeclaration {
     /// The imported name as written.
-    pub name: CheapString,
+    pub name: FunctionName,
     /// The range of the imported name in the source (for error reporting)
     pub name_range: DocumentRange,
     /// The full path range for error reporting (covers module::name)

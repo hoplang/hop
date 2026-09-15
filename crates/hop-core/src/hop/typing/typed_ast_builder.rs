@@ -68,7 +68,7 @@ impl TypedAstBuilder {
 
     fn build(self, page_name: &str) -> AssembledPageDeclaration {
         AssembledPageDeclaration {
-            name: TypeName::new(page_name).unwrap(),
+            name: TypeName::parse(page_name).unwrap(),
             params: self.params,
             body: TypedExpr::HtmlConcat {
                 nodes: self.children,

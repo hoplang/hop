@@ -682,7 +682,7 @@ mod tests {
         let before = module.to_string();
         let args_map: HashMap<VarName, Value> = args
             .into_iter()
-            .map(|(k, v)| (VarName::new(k).unwrap(), v))
+            .map(|(k, v)| (VarName::parse(k).unwrap(), v))
             .collect();
         let page_name = module.pages[0].name.clone();
         let after =
@@ -964,7 +964,7 @@ mod tests {
             .build();
 
         // Call without providing the required argument
-        let page_name = TypeName::new("Test").unwrap();
+        let page_name = TypeName::parse("Test").unwrap();
         let result = evaluate_page(&module, &page_name, HashMap::new());
         assert!(result.is_err());
         let err = result.unwrap_err();

@@ -1,15 +1,13 @@
 use std::{collections::VecDeque, iter::Peekable};
 
-use super::parse_helpers::{
-    advance_if, expect_token, next_if_map, parse_delimited, parse_delimited_list,
-};
-use super::tokenize_expr::{peek, peek2};
+use super::parse_helpers::{advance_if, expect_token, parse_delimited, parse_delimited_list};
+use super::tokenize_expr::{next, peek, peek2};
 
 use super::parsed_type::ParsedType;
 use super::token::LangToken;
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
-use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
+use crate::parse_error::{ErrorEmitted, OrEmit, ParseErrorKind, ParseErrors};
 use crate::symbols::type_name::TypeName;
 
 pub fn parse_type(
@@ -92,19 +90,18 @@ pub fn parse_type(
             range: tuple_range,
         });
     }
-    if let Some((name, type_range)) = next_if_map(iter, comments, errors, LangToken::identifier) {
-        return TypeName::from_cheap_string(name)
-            .map(|name| ParsedType::Named {
-                name,
-                range: type_range.clone(),
+    match peek(iter) {
+        Some((LangToken::Identifier(name), type_range)) => {
+            next(iter, comments, errors);
+            Ok(ParsedType::Named {
+                name: TypeName::new(name).or_emit(errors, &type_range)?,
+                range: type_range,
             })
-            .map_err(|error| errors.emit(ParseErrorKind::InvalidTypeName { error }, type_range));
-    }
-    Err(match peek(iter) {
-        Some((actual, actual_range)) => errors.emit(
+        }
+        Some((actual, actual_range)) => Err(errors.emit(
             ParseErrorKind::ExpectedTypeNameButGot { actual },
             actual_range,
-        ),
-        None => errors.emit(ParseErrorKind::ExpectedTypeNameButGotEof {}, range.clone()),
-    })
+        )),
+        None => Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGotEof {}, range.clone())),
+    }
 }

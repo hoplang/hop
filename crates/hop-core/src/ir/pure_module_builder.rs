@@ -154,7 +154,7 @@ impl PureModuleBodiesBuilder {
     {
         let (parameters, body) = self.declaration(params, Type::Html, body_fn);
         self.pages.push(PurePageDeclaration {
-            name: TypeName::new(name).expect("Test page name should be valid"),
+            name: TypeName::parse(name).expect("Test page name should be valid"),
             parameters,
             body,
         });
@@ -175,7 +175,7 @@ impl PureModuleBodiesBuilder {
         let (parameters, body) = self.declaration(params, return_type.clone(), body_fn);
         let function = IrFunction::new(
             self.function_ids.borrow_mut().next(),
-            FunctionName::new(name).expect("Test function name should be valid"),
+            FunctionName::parse(name).expect("Test function name should be valid"),
         );
         self.callees.borrow_mut().insert(
             name.to_string(),
@@ -204,7 +204,7 @@ impl PureModuleBodiesBuilder {
             .map(|(name, typ)| {
                 let id = self.var_ids.borrow_mut().next();
                 WriterParameter {
-                    name: VarName::new(name).unwrap(),
+                    name: VarName::parse(name).unwrap(),
                     var: IrVar::new(id),
                     typ: self.types.resolve(typ),
                 }
@@ -595,7 +595,7 @@ impl PureBuilder {
     }
 
     pub fn record(&self, record_name: &str, fields: Vec<(&str, PureExpr)>) -> PureExpr {
-        let name = TypeName::new(record_name).unwrap();
+        let name = TypeName::parse(record_name).unwrap();
         let record_fields = self.types.record_fields(record_name);
 
         for (field_name, value) in &fields {
@@ -635,7 +635,7 @@ impl PureBuilder {
             record_name: name,
             fields: fields
                 .into_iter()
-                .map(|(k, v)| (FieldName::new(k).unwrap(), v))
+                .map(|(k, v)| (FieldName::parse(k).unwrap(), v))
                 .collect(),
             typ: self.types.named(record_name),
             id: self.next_expr_id(),
@@ -652,7 +652,7 @@ impl PureBuilder {
         variant_name: &str,
         field_values: Vec<(&str, PureExpr)>,
     ) -> PureExpr {
-        let name = TypeName::new(enum_name).unwrap();
+        let name = TypeName::parse(enum_name).unwrap();
         let variants = self.types.enum_variants(enum_name);
 
         let variant_fields = variants
@@ -708,10 +708,10 @@ impl PureBuilder {
 
         PureExpr::EnumLiteral {
             enum_name: name,
-            variant_name: TypeName::new(variant_name).unwrap(),
+            variant_name: TypeName::parse(variant_name).unwrap(),
             fields: field_values
                 .into_iter()
-                .map(|(k, v)| (FieldName::new(k).unwrap(), v))
+                .map(|(k, v)| (FieldName::parse(k).unwrap(), v))
                 .collect(),
             typ: self.types.named(enum_name),
             id: self.next_expr_id(),
@@ -874,7 +874,7 @@ impl PureBuilder {
     }
 
     pub fn field_access(&self, object: PureExpr, field_str: &str) -> PureExpr {
-        let field_name = FieldName::new(field_str).unwrap();
+        let field_name = FieldName::parse(field_str).unwrap();
         let object_type = object.typ();
         let field_type = match self.types.registry().resolve(&object_type) {
             Some(ResolvedType::Record {
@@ -1149,7 +1149,7 @@ impl PureBuilder {
         let pure_args: Vec<PureArgument> = args
             .into_iter()
             .map(|(k, expr)| PureArgument {
-                name: VarName::new(k).unwrap(),
+                name: VarName::parse(k).unwrap(),
                 expr,
             })
             .collect();
@@ -1210,7 +1210,7 @@ impl EnumMatchExprArms<'_> {
         self.arms.push(EnumMatchArm {
             pattern: EnumPattern::Variant {
                 enum_name: self.enum_name.clone(),
-                variant_name: TypeName::new(variant).unwrap(),
+                variant_name: TypeName::parse(variant).unwrap(),
             },
             bindings,
             body,
@@ -1251,7 +1251,7 @@ fn resolve_arm_bindings<'s>(
                 )
             });
         let binding = builder.bind();
-        bindings.push((FieldName::new(field_name).unwrap(), binding));
+        bindings.push((FieldName::parse(field_name).unwrap(), binding));
         scoped_vars.push((binding_name.to_string(), binding, field_type));
     }
     (bindings, scoped_vars)

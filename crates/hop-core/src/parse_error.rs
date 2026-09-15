@@ -50,6 +50,16 @@ impl ParseErrors {
     }
 }
 
+pub(crate) trait OrEmit<T> {
+    fn or_emit(self, errors: &mut ParseErrors, range: &DocumentRange) -> Result<T, ErrorEmitted>;
+}
+
+impl<T, E: Into<ParseErrorKind>> OrEmit<T> for Result<T, E> {
+    fn or_emit(self, errors: &mut ParseErrors, range: &DocumentRange) -> Result<T, ErrorEmitted> {
+        self.map_err(|error| errors.emit(error.into(), range.clone()))
+    }
+}
+
 impl<'a> IntoIterator for &'a ParseErrors {
     type Item = &'a ParseError;
     type IntoIter = std::slice::Iter<'a, ParseError>;
@@ -168,17 +178,11 @@ pub(crate) enum ParseErrorKind {
     #[error("Unmatched '{token}'")]
     UnmatchedToken { token: LangToken },
 
-    #[error("Invalid variable name '{name}': {error}")]
-    InvalidVariableName {
-        name: CheapString,
-        error: InvalidVarNameError,
-    },
+    #[error("{0}")]
+    InvalidVariableName(#[from] InvalidVarNameError),
 
-    #[error("Invalid field name '{name}': {error}")]
-    InvalidFieldName {
-        name: CheapString,
-        error: InvalidFieldNameError,
-    },
+    #[error("{0}")]
+    InvalidFieldName(#[from] InvalidFieldNameError),
 
     #[error("Expected token '{expected}' but got '{actual}'")]
     ExpectedTokenButGot {
@@ -195,20 +199,14 @@ pub(crate) enum ParseErrorKind {
     #[error("Unexpected character: '{ch}'")]
     UnexpectedCharacter { ch: char },
 
-    #[error("Expected variable name but got '{actual}'")]
-    ExpectedVariableNameButGot { actual: LangToken },
-
-    #[error("Expected field name but got '{actual}'")]
-    ExpectedFieldNameButGot { actual: LangToken },
+    #[error("Expected identifier but got '{actual}'")]
+    ExpectedIdentifierButGot { actual: LangToken },
 
     #[error("Duplicate field '{name}'")]
     DuplicateField { name: CheapString },
 
     #[error("Duplicate variant '{name}'")]
     DuplicateVariant { name: CheapString },
-
-    #[error("Expected function name but got '{actual}'")]
-    ExpectedFunctionNameButGot { actual: LangToken },
 
     #[error("Expected type name but got '{actual}'")]
     ExpectedTypeNameButGot { actual: LangToken },
@@ -222,14 +220,14 @@ pub(crate) enum ParseErrorKind {
     #[error("Integer literal is too large for Int (maximum is 2147483647)")]
     IntLiteralOutOfRange,
 
-    #[error("{error}")]
-    InvalidTypeName { error: InvalidTypeNameError },
+    #[error("{0}")]
+    InvalidTypeName(#[from] InvalidTypeNameError),
 
-    #[error("{error}")]
-    InvalidFunctionName { error: InvalidFunctionNameError },
+    #[error("{0}")]
+    InvalidFunctionName(#[from] InvalidFunctionNameError),
 
-    #[error("{error}")]
-    InvalidModuleName { error: InvalidModuleNameError },
+    #[error("{0}")]
+    InvalidModuleName(#[from] InvalidModuleNameError),
 
     #[error("Expected identifier after '::'")]
     ExpectedIdentifierAfterColonColon,

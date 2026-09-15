@@ -152,7 +152,7 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
 }
 
 fn execute_evaluator(module: &PureModule) -> Result<String, String> {
-    let page_name = TypeName::new("Test").unwrap();
+    let page_name = TypeName::parse("Test").unwrap();
     evaluator::evaluate_page(module, &page_name, HashMap::new())
         .map_err(|e| format!("Evaluator failed: {}", e))
 }
@@ -385,7 +385,7 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
-            let page_name = TypeName::new("Test").unwrap();
+            let page_name = TypeName::parse("Test").unwrap();
             let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new())
                 .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
                 .trim()
@@ -415,7 +415,7 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
-            let page_name = TypeName::new("Test").unwrap();
+            let page_name = TypeName::parse("Test").unwrap();
             let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new())
                 .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
                 .trim()
