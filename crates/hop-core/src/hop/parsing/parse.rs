@@ -709,103 +709,119 @@ fn parse_examples_annotation(
     eof_range: &DocumentRange,
     hash_bracket: DocumentRange,
 ) -> Result<(ExamplesAnnotation, DocumentRange), ErrorEmitted> {
-    let Some((name, name_range)) =
-        parse_helpers::next_if_map(iter, comments, errors, LangToken::identifier)
-    else {
-        return Err(match tokenize_expr::peek(iter) {
-            Some((token, range)) => errors.emit(ParseErrorKind::UnexpectedToken { token }, range),
-            None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
-        });
-    };
-    if name.as_str() != "examples" {
-        let reported = errors.emit(ParseErrorKind::UnknownAnnotation { name }, name_range);
-        // Skip the whole annotation, whatever it holds, so that the parse
-        // resumes after its `]` rather than inside it.
-        parse_helpers::skip_to(iter, reported, |token| {
-            *token == LangToken::RightBracket || parse_helpers::DECLARATION_KEYWORDS.contains(token)
-        });
-        parse_helpers::advance_if(iter, comments, errors, LangToken::RightBracket);
-        return Err(reported);
-    }
-    let left_paren =
-        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
-    let mut annotation = ExamplesAnnotation::default();
-    parse_helpers::parse_delimited_list(
+    parse_helpers::parse_delimited(
         iter,
         comments,
         errors,
         eof_range,
-        LangTokenPair::Parens,
-        &left_paren,
-        &[],
-        |iter, comments, errors, range| {
-            let Some((key, key_range)) =
+        LangTokenPair::HashBrackets,
+        &hash_bracket,
+        |iter, comments, errors, eof_range| {
+            let Some((name, name_range)) =
                 parse_helpers::next_if_map(iter, comments, errors, LangToken::identifier)
             else {
                 return Err(match tokenize_expr::peek(iter) {
                     Some((token, range)) => {
                         errors.emit(ParseErrorKind::UnexpectedToken { token }, range)
                     }
-                    None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
+                    None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
                 });
             };
-            parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Assign)?;
-            if key.as_str() == "pattern" {
-                let Some((value, _)) =
-                    parse_helpers::next_if_map(iter, comments, errors, |token| match token {
-                        LangToken::StringLiteral(value) => Some(value),
-                        _ => None,
-                    })
-                else {
-                    return Err(match tokenize_expr::peek(iter) {
-                        Some((actual, range)) => errors.emit(
-                            ParseErrorKind::ExpectedStringLiteralButGot { actual },
-                            range,
-                        ),
-                        None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
-                    });
-                };
-                annotation.pattern = Some(value);
-                return Ok(());
+            if name.as_str() != "examples" {
+                let reported = errors.emit(ParseErrorKind::UnknownAnnotation { name }, name_range);
+                // Skip the whole annotation, whatever it holds, so that the
+                // caller's skip stops at the `]` rather than at a `)` inside.
+                parse_helpers::skip_to(iter, reported, |token| {
+                    *token == LangToken::RightBracket
+                        || parse_helpers::DECLARATION_KEYWORDS.contains(token)
+                });
+                return Err(reported);
             }
-            let slot = match key.as_str() {
-                "min" => &mut annotation.min,
-                "max" => &mut annotation.max,
-                "min_len" => &mut annotation.min_len,
-                "max_len" => &mut annotation.max_len,
-                _ => {
-                    return Err(
-                        errors.emit(ParseErrorKind::UnknownExamplesKey { name: key }, key_range)
-                    );
-                }
-            };
-            let negative =
-                parse_helpers::advance_if(iter, comments, errors, LangToken::Minus).is_some();
-            let Some((value, _)) =
-                parse_helpers::next_if_map(iter, comments, errors, |token| match token {
-                    LangToken::IntLiteral(value) => Some(value),
-                    _ => None,
-                })
-            else {
-                return Err(match tokenize_expr::peek(iter) {
-                    Some((actual, range)) => {
-                        errors.emit(ParseErrorKind::ExpectedIntLiteralButGot { actual }, range)
+            let left_paren = parse_helpers::expect_token(
+                iter,
+                comments,
+                errors,
+                eof_range,
+                &LangToken::LeftParen,
+            )?;
+            let mut annotation = ExamplesAnnotation::default();
+            parse_helpers::parse_delimited_list(
+                iter,
+                comments,
+                errors,
+                eof_range,
+                LangTokenPair::Parens,
+                &left_paren,
+                &[],
+                |iter, comments, errors, range| {
+                    let Some((key, key_range)) =
+                        parse_helpers::next_if_map(iter, comments, errors, LangToken::identifier)
+                    else {
+                        return Err(match tokenize_expr::peek(iter) {
+                            Some((token, range)) => {
+                                errors.emit(ParseErrorKind::UnexpectedToken { token }, range)
+                            }
+                            None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
+                        });
+                    };
+                    parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Assign)?;
+                    if key.as_str() == "pattern" {
+                        let Some((value, _)) = parse_helpers::next_if_map(
+                            iter,
+                            comments,
+                            errors,
+                            |token| match token {
+                                LangToken::StringLiteral(value) => Some(value),
+                                _ => None,
+                            },
+                        ) else {
+                            return Err(match tokenize_expr::peek(iter) {
+                                Some((actual, range)) => errors.emit(
+                                    ParseErrorKind::ExpectedStringLiteralButGot { actual },
+                                    range,
+                                ),
+                                None => {
+                                    errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone())
+                                }
+                            });
+                        };
+                        annotation.pattern = Some(value);
+                        return Ok(());
                     }
-                    None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
-                });
-            };
-            *slot = Some(if negative { -value } else { value });
-            Ok(())
+                    let slot = match key.as_str() {
+                        "min" => &mut annotation.min,
+                        "max" => &mut annotation.max,
+                        "min_len" => &mut annotation.min_len,
+                        "max_len" => &mut annotation.max_len,
+                        _ => {
+                            return Err(errors.emit(
+                                ParseErrorKind::UnknownExamplesKey { name: key },
+                                key_range,
+                            ));
+                        }
+                    };
+                    let negative =
+                        parse_helpers::advance_if(iter, comments, errors, LangToken::Minus)
+                            .is_some();
+                    let Some((value, _)) =
+                        parse_helpers::next_if_map(iter, comments, errors, |token| match token {
+                            LangToken::IntLiteral(value) => Some(value),
+                            _ => None,
+                        })
+                    else {
+                        return Err(match tokenize_expr::peek(iter) {
+                            Some((actual, range)) => errors
+                                .emit(ParseErrorKind::ExpectedIntLiteralButGot { actual }, range),
+                            None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
+                        });
+                    };
+                    *slot = Some(if negative { -value } else { value });
+                    Ok(())
+                },
+            )?;
+            Ok(annotation)
         },
-    )?;
-    let right_bracket = parse_helpers::expect_right_delimiter(
-        iter,
-        comments,
-        errors,
-        LangTokenPair::Brackets,
-        &hash_bracket,
-    )?;
-    Ok((annotation, hash_bracket.to(right_bracket)))
+    )
 }
 
 #[cfg(test)]
@@ -6429,6 +6445,48 @@ mod tests {
                 record User {
                   #[examples()] age: Int,
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_annotation_missing_right_paren() {
+        reject(
+            indoc! {"
+                record User {
+                  #[examples(min = 1]
+                  age: Int,
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token ')' but got ']'
+                1 | record User {
+                2 |   #[examples(min = 1]
+                  |                     ^
+                -- ast --
+                record User {}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_annotation_missing_right_bracket() {
+        reject(
+            indoc! {"
+                record User {
+                  #[examples(min = 1)
+                  age: Int,
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token ']' but got 'age'
+                2 |   #[examples(min = 1)
+                3 |   age: Int,
+                  |   ^^^
+                -- ast --
+                record User {}
             "#]],
         );
     }
