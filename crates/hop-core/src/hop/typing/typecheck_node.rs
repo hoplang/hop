@@ -1,10 +1,7 @@
-use std::borrow::Cow;
-
 use super::{ParamEntry, Tail, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parsed_node::{ParsedAttribute, ParsedNode};
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::TypeRegistry;
@@ -433,27 +430,30 @@ fn typecheck_arguments(
             continue;
         };
 
-        let value = match arg {
-            ParsedAttribute::Expression { value, .. } => Cow::Borrowed(value),
+        let argument = match arg {
+            ParsedAttribute::Expression { value, .. } => Argument::Expression(value),
             ParsedAttribute::String {
                 content,
                 quoted_range,
                 ..
-            } => Cow::Owned(ParsedExpr::StringLiteral {
-                value: content
-                    .as_ref()
-                    .map(|r| r.to_cheap_string())
-                    .unwrap_or_else(|| CheapString::new(String::new())),
-                range: quoted_range.clone(),
-            }),
-            ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => {
-                Cow::Owned(ParsedExpr::BooleanLiteral {
-                    value: true,
-                    range: arg_name_range.clone(),
-                })
-            }
+            } => Argument::Desugared(
+                TypedExpr::StringLiteral {
+                    value: content
+                        .as_ref()
+                        .map(|r| r.to_cheap_string())
+                        .unwrap_or_else(|| CheapString::new(String::new())),
+                },
+                quoted_range.clone(),
+            ),
+            ParsedAttribute::KeyOnly { .. } => Argument::Desugared(
+                TypedExpr::BooleanLiteral { value: true },
+                arg_name_range.clone(),
+            ),
+            // A spread has no attribute name, so the `name_range()` guard at
+            // the top of the loop skipped it long before here.
+            ParsedAttribute::Spread { .. } => unreachable!("a spread has no attribute name"),
         };
-        supplied.push((param.name.clone(), Argument::Written(value)));
+        supplied.push((param.name.clone(), argument));
     }
 
     if has_body && has_explicit_children_arg {

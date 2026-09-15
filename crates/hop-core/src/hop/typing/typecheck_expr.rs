@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use super::resolve_type::resolve_type;
@@ -2103,9 +2102,7 @@ pub fn typecheck_expr(
                         .params
                         .iter()
                         .zip(values)
-                        .map(|(param, value)| {
-                            (param.name.clone(), Argument::Written(Cow::Borrowed(value)))
-                        })
+                        .map(|(param, value)| (param.name.clone(), Argument::Expression(value)))
                         .collect()
                 }
                 ParsedArguments::Named(named) => {
@@ -2129,10 +2126,7 @@ pub fn typecheck_expr(
                             ));
                             failed = true;
                         } else {
-                            supplied.push((
-                                arg.name.clone(),
-                                Argument::Written(Cow::Borrowed(&arg.value)),
-                            ));
+                            supplied.push((arg.name.clone(), Argument::Expression(&arg.value)));
                         }
                     }
                     supplied

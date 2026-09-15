@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use super::type_env::{ParamEntry, TypeEnv};
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
@@ -16,17 +14,21 @@ use crate::type_error::{TypeError, TypeErrorKind};
 
 /// An argument supplied for a parameter at a call site.
 pub enum Argument<'a> {
-    /// Written at the call site, still to be checked against the parameter.
-    Written(Cow<'a, ParsedExpr>),
+    /// Written at the call site as an expression, still to be checked
+    /// against the parameter.
+    Expression(&'a ParsedExpr),
+    /// Written at the call site in shorthand rather than as an expression: an
+    /// attribute's quoted text, or a bare key meaning `true`.
+    Desugared(TypedExpr, DocumentRange),
     /// Supplied by the call site itself: the content between a tag's opening
-    /// and closing, or a parameter the caller's rest carries. Already typed.
+    /// and closing, or a parameter the caller's rest carries.
     Implied(TypedExpr),
 }
 
 /// Check the arguments supplied for `callee` against its parameters.
 ///
 /// Every supplied name must be a parameter, the caller reports the ones that
-/// are not. Written arguments are checked in the order they were supplied.
+/// are not. Expression arguments are checked in the order they were supplied.
 /// Returns the arguments in parameter order with defaults filled in, or None
 /// once an argument was missing or mistyped.
 pub fn typecheck_call_arguments(
@@ -67,11 +69,15 @@ pub fn typecheck_call_arguments(
             .iter()
             .find(|param| param.name == name)
             .expect("the caller reports arguments that name no parameter");
-        let value = match argument {
-            Argument::Implied(value) => value,
-            Argument::Written(expr) => {
+        let (value, range) = match argument {
+            Argument::Implied(value) => {
+                typed.push((name, value));
+                continue;
+            }
+            Argument::Desugared(value, range) => (value, range),
+            Argument::Expression(expr) => {
                 let Some(value) = typecheck_expr(
-                    &expr,
+                    expr,
                     Some(&param.typ),
                     forwarded_params,
                     var_env,
@@ -85,23 +91,23 @@ pub fn typecheck_call_arguments(
                     failed = true;
                     continue;
                 };
-                let found = value.typ();
-                if found != param.typ {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::FunctionArgumentTypeMismatch {
-                            name: callee.clone(),
-                            param_name: param.name.clone(),
-                            expected: param.typ.clone(),
-                            found,
-                        },
-                        expr.range().clone(),
-                    ));
-                    failed = true;
-                    continue;
-                }
-                value
+                (value, expr.range().clone())
             }
         };
+        let found = value.typ();
+        if found != param.typ {
+            errors.push(TypeError::new(
+                TypeErrorKind::FunctionArgumentTypeMismatch {
+                    name: callee.clone(),
+                    param_name: param.name.clone(),
+                    expected: param.typ.clone(),
+                    found,
+                },
+                range,
+            ));
+            failed = true;
+            continue;
+        }
         typed.push((name, value));
     }
     if failed {
