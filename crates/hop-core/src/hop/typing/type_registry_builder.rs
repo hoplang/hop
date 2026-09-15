@@ -273,12 +273,10 @@ impl TestTypes {
     }
 
     pub fn resolve(&self, type_str: &str) -> Type {
-        let cursor = DocumentCursor::new(self.module.clone(), type_str.to_string());
-        let range = cursor.range();
-        let mut iter = cursor.peekable();
+        let mut iter = DocumentCursor::new(self.module.clone(), type_str.to_string());
         let mut comments = VecDeque::new();
         let mut errors = ParseErrors::new();
-        let parsed = parse_type(&mut iter, &mut comments, &mut errors, &range);
+        let parsed = parse_type(&mut iter, &mut comments, &mut errors);
         let Ok(parsed) = parsed else {
             panic!("failed to parse type `{type_str}`: {errors:?}");
         };
@@ -325,7 +323,7 @@ impl TestTypes {
     }
 
     pub fn type_env(&self) -> TypeEnv {
-        let decl_range = DocumentCursor::new(self.module.clone(), String::new()).range();
+        let decl_range = DocumentCursor::new(self.module.clone(), String::new()).eof_range();
         let types = self.named.iter().map(|(name, typ)| {
             (
                 name.to_cheap_string(),

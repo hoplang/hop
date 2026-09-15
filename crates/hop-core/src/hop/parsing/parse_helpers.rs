@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::iter::Peekable;
 
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
@@ -26,7 +25,7 @@ const RIGHT_DELIMITERS: &[LangToken] = &[
 ];
 
 pub fn advance_if(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     token: LangToken,
@@ -44,7 +43,7 @@ pub fn advance_if(
 /// proof that whatever made the tokens unparseable was reported, and lexes
 /// into a discard buffer, so that skipping reports nothing itself.
 pub fn skip_to(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     _reported: ErrorEmitted,
     stop: impl Fn(&LangToken) -> bool,
 ) {
@@ -61,7 +60,7 @@ pub fn skip_to(
 /// Consume the next token if `map` accepts it, returning what it mapped to
 /// along with the token's range.
 pub fn next_if_map<T>(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     map: impl FnOnce(LangToken) -> Option<T>,
@@ -73,10 +72,9 @@ pub fn next_if_map<T>(
 }
 
 pub fn expect_token(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
     expected: &LangToken,
 ) -> Result<DocumentRange, ErrorEmitted> {
     if let Some(token_range) = advance_if(iter, comments, errors, expected.clone()) {
@@ -94,12 +92,12 @@ pub fn expect_token(
             ParseErrorKind::ExpectedTokenButGotEof {
                 expected: expected.clone(),
             },
-            eof_range.clone(),
+            iter.eof_range(),
         ),
     })
 }
 pub fn expect_right_delimiter(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     pair: LangTokenPair,
@@ -124,10 +122,9 @@ pub fn expect_right_delimiter(
 }
 
 pub fn expect_identifier(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
 ) -> Result<(CheapString, DocumentRange), ErrorEmitted> {
     match peek(iter) {
         Some((LangToken::Identifier(name), name_range)) => {
@@ -138,7 +135,7 @@ pub fn expect_identifier(
             ParseErrorKind::ExpectedIdentifierButGot { actual },
             actual_range,
         )),
-        None => Err(errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone())),
+        None => Err(errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range())),
     }
 }
 
@@ -146,23 +143,21 @@ pub fn expect_identifier(
 /// then the right delimiter that matches it. Returns the item with the range
 /// from the left delimiter through the right.
 pub fn parse_delimited<T, F>(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
     pair: LangTokenPair,
     left_delimiter_range: &DocumentRange,
     parse: F,
 ) -> Result<(T, DocumentRange), ErrorEmitted>
 where
     F: FnOnce(
-        &mut Peekable<DocumentCursor>,
+        &mut DocumentCursor,
         &mut VecDeque<DocumentRange>,
         &mut ParseErrors,
-        &DocumentRange,
     ) -> Result<T, ErrorEmitted>,
 {
-    let delimited = parse(iter, comments, errors, eof_range).and_then(|item| {
+    let delimited = parse(iter, comments, errors).and_then(|item| {
         let closing_range =
             expect_right_delimiter(iter, comments, errors, pair, left_delimiter_range)?;
         Ok((item, left_delimiter_range.clone().to(closing_range)))
@@ -188,10 +183,9 @@ where
 /// follow the list, so that a missing right delimiter never swallows what
 /// comes after.
 pub fn parse_delimited_list<T, F>(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
     pair: LangTokenPair,
     left_delimiter_range: &DocumentRange,
     stops: &[LangToken],
@@ -199,10 +193,9 @@ pub fn parse_delimited_list<T, F>(
 ) -> Result<(Vec<T>, DocumentRange), ErrorEmitted>
 where
     F: FnMut(
-        &mut Peekable<DocumentCursor>,
+        &mut DocumentCursor,
         &mut VecDeque<DocumentRange>,
         &mut ParseErrors,
-        &DocumentRange,
     ) -> Result<T, ErrorEmitted>,
 {
     let ends_list = |token: &LangToken| {
@@ -221,7 +214,7 @@ where
         if peek(iter).is_none_or(|(token, _)| ends_list(&token)) {
             break;
         }
-        let failed = match parse(iter, comments, errors, eof_range) {
+        let failed = match parse(iter, comments, errors) {
             Ok(item) => {
                 items.push(item);
                 None

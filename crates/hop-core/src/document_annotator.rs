@@ -174,8 +174,21 @@ impl DocumentAnnotator {
     ) {
         let max_line_col_width = lines.len().to_string().len();
 
-        let first_line = range.start_utf32().line().saturating_sub(self.lines_before);
-        let last_line = cmp::min(lines.len() - 1, range.end_utf32().line() + self.lines_after);
+        // The end-of-input range is empty, so it marks a position rather than
+        // a span: it is drawn as a single caret, clamped onto the last line
+        // that exists when the input ends with a newline.
+        let anchor_line = cmp::min(range.start_utf32().line(), lines.len() - 1);
+        let (first_line, last_line) = if range.is_empty() {
+            (
+                anchor_line.saturating_sub(self.lines_before),
+                cmp::min(lines.len() - 1, anchor_line + self.lines_after),
+            )
+        } else {
+            (
+                range.start_utf32().line().saturating_sub(self.lines_before),
+                cmp::min(lines.len() - 1, range.end_utf32().line() + self.lines_after),
+            )
+        };
 
         for (i, line) in lines.iter().enumerate() {
             if i < first_line || i > last_line {
@@ -191,7 +204,22 @@ impl DocumentAnnotator {
             }
             output.push('\n');
             // Write annotation line
-            if let Some(line) = line {
+            if range.is_empty() {
+                if i == anchor_line {
+                    if self.show_line_numbers {
+                        output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
+                    }
+                    let indent: usize = line
+                        .iter()
+                        .flat_map(|line| line.cursor())
+                        .take_while(|ch_range| ch_range.start() < range.start())
+                        .map(|ch_range| self.char_display_width(ch_range.ch()))
+                        .sum();
+                    output.push_str(&" ".repeat(indent));
+                    output.push(self.underline_char);
+                    output.push('\n');
+                }
+            } else if let Some(line) = line {
                 if let Some(intersection) = line.intersection(range) {
                     let mut has_written_annotation = false;
                     if self.show_line_numbers {
@@ -295,6 +323,46 @@ mod tests {
             error: line four
             4 | line four
               | ^^^^^^^^^
+        "#]]
+        .assert_eq(&actual);
+    }
+
+    #[test]
+    fn end_of_input_range_is_a_single_caret() {
+        let doc_id = DocumentId::new("test.hop").unwrap();
+        let annotation = SimpleAnnotation {
+            message: "unexpected end of file".to_string(),
+            range: DocumentCursor::new(doc_id.clone(), "fn main(".to_string()).eof_range(),
+        };
+
+        let actual = DocumentAnnotator::new()
+            .annotate(&doc_id, [annotation])
+            .render();
+
+        expect![[r#"
+            unexpected end of file
+            1 | fn main(
+              |         ^
+        "#]]
+        .assert_eq(&actual);
+    }
+
+    #[test]
+    fn end_of_input_range_after_trailing_newline_clamps_to_the_last_line() {
+        let doc_id = DocumentId::new("test.hop").unwrap();
+        let annotation = SimpleAnnotation {
+            message: "unexpected end of file".to_string(),
+            range: DocumentCursor::new(doc_id.clone(), "fn main() {\n".to_string()).eof_range(),
+        };
+
+        let actual = DocumentAnnotator::new()
+            .annotate(&doc_id, [annotation])
+            .render();
+
+        expect![[r#"
+            unexpected end of file
+            1 | fn main() {
+              |            ^
         "#]]
         .assert_eq(&actual);
     }

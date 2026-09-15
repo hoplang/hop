@@ -118,12 +118,77 @@ impl DocumentCursor {
             source: Arc::new(DocumentInfo::new(document_id, source)),
         }
     }
-    pub fn range(&self) -> DocumentRange {
+
+    /// The empty range one past the last character the cursor can reach.
+    pub fn eof_range(&self) -> DocumentRange {
         DocumentRange {
             source: self.source.clone(),
-            start: self.offset,
+            start: self.end,
             end: self.end,
         }
+    }
+
+    /// Returns the next range without consuming it.
+    pub fn peek(&self) -> Option<DocumentRange> {
+        if self.offset >= self.end {
+            return None;
+        }
+        self.source.text[self.offset..self.end]
+            .chars()
+            .next()
+            .map(|ch| DocumentRange {
+                source: self.source.clone(),
+                start: self.offset,
+                end: self.offset + ch.len_utf8(),
+            })
+    }
+
+    /// Consumes and returns the next range if `predicate` accepts it.
+    pub fn next_if(
+        &mut self,
+        predicate: impl FnOnce(&DocumentRange) -> bool,
+    ) -> Option<DocumentRange> {
+        let range = self.peek()?;
+        if !predicate(&range) {
+            return None;
+        }
+        self.offset = range.end;
+        Some(range)
+    }
+
+    /// Consumes ranges for as long as `predicate` accepts them. Unlike
+    /// `take_while`, the range that stops iteration is left unconsumed.
+    pub fn peeking_take_while<F>(&mut self, predicate: F) -> PeekingTakeWhile<'_, F>
+    where
+        F: FnMut(&DocumentRange) -> bool,
+    {
+        PeekingTakeWhile {
+            cursor: self,
+            predicate,
+        }
+    }
+
+    /// Run `f` on a copy of the cursor, and keep the copy's progress only
+    /// if `f` returns `Some`. On `None` the cursor is left where it was,
+    /// so a lookahead that fails part-way through consumes nothing.
+    pub fn speculate<T>(&mut self, f: impl FnOnce(&mut Self) -> Option<T>) -> Option<T> {
+        let mut ahead = self.clone();
+        let result = f(&mut ahead)?;
+        *self = ahead;
+        Some(result)
+    }
+}
+
+pub(crate) struct PeekingTakeWhile<'a, F> {
+    cursor: &'a mut DocumentCursor,
+    predicate: F,
+}
+
+impl<F: FnMut(&DocumentRange) -> bool> Iterator for PeekingTakeWhile<'_, F> {
+    type Item = DocumentRange;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.cursor.next_if(&mut self.predicate)
     }
 }
 
@@ -160,9 +225,19 @@ pub struct DocumentRange {
 }
 
 impl DocumentRange {
-    /// Get the first char from the range.
+    /// Get the first char from the range. Returns '\0' for an empty range.
     pub fn ch(&self) -> char {
-        self.source.text[self.start..].chars().next().unwrap()
+        if self.start == self.end {
+            return '\0';
+        }
+        self.source.text[self.start..self.end]
+            .chars()
+            .next()
+            .unwrap()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.start == self.end
     }
 
     /// Extend a range to encompass another range that occurs

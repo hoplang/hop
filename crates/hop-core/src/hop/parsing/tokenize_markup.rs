@@ -1,7 +1,4 @@
-use std::iter::Peekable;
-
 use crate::hop::parsing::token::{AttributeString, MarkupToken, RawTextToken, TagToken};
-use crate::itertools::PeekingExt as _;
 
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
@@ -11,7 +8,7 @@ use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
 /// Returns `None` at end of input or at a `}`, which is left for the
 /// enclosing expression to close. A `<` that starts nothing is reported and
 /// skipped over.
-pub fn next(iter: &mut Peekable<DocumentCursor>, errors: &mut ParseErrors) -> Option<MarkupToken> {
+pub fn next(iter: &mut DocumentCursor, errors: &mut ParseErrors) -> Option<MarkupToken> {
     loop {
         if let Some(left_angle) = iter.next_if(|s| s.ch() == '<') {
             match lex_tag(iter, errors, left_angle) {
@@ -46,7 +43,7 @@ pub fn next(iter: &mut Peekable<DocumentCursor>, errors: &mut ParseErrors) -> Op
 /// Anything else that does not belong in a tag is reported and skipped over,
 /// so that the rest of the tag is still read.
 pub fn next_tag_token(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     errors: &mut ParseErrors,
     tag_name: &DocumentRange,
 ) -> Result<TagToken, ErrorEmitted> {
@@ -124,10 +121,7 @@ pub fn next_tag_token(
 /// ```
 /// The closing tag is `None` when the input ends before one is found; the
 /// content then runs to the end of input.
-pub fn next_raw_text_token(
-    iter: &mut Peekable<DocumentCursor>,
-    tag_name: &DocumentRange,
-) -> RawTextToken {
+pub fn next_raw_text_token(iter: &mut DocumentCursor, tag_name: &DocumentRange) -> RawTextToken {
     let mut content: Option<DocumentRange> = None;
     loop {
         // Consume the closing tag if the input is on it, keeping the '>'.
@@ -163,7 +157,7 @@ pub fn next_raw_text_token(
     }
 }
 
-fn skip_whitespace(iter: &mut Peekable<DocumentCursor>) {
+fn skip_whitespace(iter: &mut DocumentCursor) {
     while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
         iter.next();
     }
@@ -177,7 +171,7 @@ fn skip_whitespace(iter: &mut Peekable<DocumentCursor>) {
 /// ^^^^
 /// ```
 pub fn lex_tag(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     errors: &mut ParseErrors,
     left_angle: DocumentRange,
 ) -> Result<MarkupToken, ErrorEmitted> {
@@ -210,7 +204,7 @@ pub fn lex_tag(
 /// ^^^^^^^^^^^^^^
 /// ```
 fn lex_markup_declaration(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     errors: &mut ParseErrors,
     left_angle_to_bang: DocumentRange,
 ) -> Result<MarkupToken, ErrorEmitted> {
@@ -229,7 +223,7 @@ fn lex_markup_declaration(
 /// ^^^^^^^^^^^^^^
 /// ```
 fn lex_comment(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     errors: &mut ParseErrors,
     left_angle_to_first_dash: DocumentRange,
 ) -> Result<MarkupToken, ErrorEmitted> {
@@ -279,7 +273,7 @@ fn lex_comment(
 /// Always fails: a doctype is reported, since one is inserted for every
 /// page, and anything else after the `<!` is not a declaration we know.
 fn lex_doctype(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     errors: &mut ParseErrors,
     left_angle_to_bang: DocumentRange,
 ) -> ErrorEmitted {
@@ -317,7 +311,7 @@ fn lex_doctype(
 /// ^^^^
 /// ```
 fn lex_opening_tag_start(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     left_angle: DocumentRange,
     initial: DocumentRange,
 ) -> MarkupToken {
@@ -338,7 +332,7 @@ fn lex_opening_tag_start(
 ///      ^^^^^^
 /// ```
 fn lex_closing_tag(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     errors: &mut ParseErrors,
     left_angle_to_slash: DocumentRange,
 ) -> Result<MarkupToken, ErrorEmitted> {
@@ -381,7 +375,7 @@ fn lex_closing_tag(
 ///      ^^^^^
 /// ```
 /// Stops at '<', '{', '}', or '\n' (newlines are emitted as separate tokens).
-fn lex_text(iter: &mut Peekable<DocumentCursor>, initial: DocumentRange) -> MarkupToken {
+fn lex_text(iter: &mut DocumentCursor, initial: DocumentRange) -> MarkupToken {
     MarkupToken::Text {
         range: initial.extend(iter.peeking_take_while(|s| {
             s.ch() != '<' && s.ch() != '{' && s.ch() != '\n' && s.ch() != '}'
@@ -399,7 +393,7 @@ fn lex_text(iter: &mut Peekable<DocumentCursor>, initial: DocumentRange) -> Mark
 /// ```
 /// Fails, after reporting, if what follows the name is not a value.
 fn lex_attribute(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     errors: &mut ParseErrors,
     initial: DocumentRange,
 ) -> Result<TagToken, ErrorEmitted> {

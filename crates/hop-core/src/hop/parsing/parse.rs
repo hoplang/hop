@@ -23,12 +23,9 @@ use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashSet, VecDeque};
-use std::iter::Peekable;
 
 pub fn parse(document_id: DocumentId, document: Document, errors: &mut ParseErrors) -> ParsedAst {
-    let cursor = document.cursor();
-    let document_range = cursor.range();
-    let mut iter = cursor.peekable();
+    let mut iter = document.cursor();
     let mut declarations = Vec::new();
     let mut comments = VecDeque::new();
 
@@ -37,63 +34,28 @@ pub fn parse(document_id: DocumentId, document: Document, errors: &mut ParseErro
         let declaration = if let Some(keyword) =
             parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Import)
         {
-            parse_import_declaration(
-                &mut iter,
-                &mut comments,
-                errors,
-                &document_range,
-                keyword,
-                pub_range,
-            )
-            .map(ParsedDeclaration::Import)
+            parse_import_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
+                .map(ParsedDeclaration::Import)
         } else if let Some(keyword) =
             parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Record)
         {
-            parse_record_declaration(
-                &mut iter,
-                &mut comments,
-                errors,
-                &document_range,
-                keyword,
-                pub_range,
-            )
-            .map(ParsedDeclaration::Record)
+            parse_record_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
+                .map(ParsedDeclaration::Record)
         } else if let Some(keyword) =
             parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Enum)
         {
-            parse_enum_declaration(
-                &mut iter,
-                &mut comments,
-                errors,
-                &document_range,
-                keyword,
-                pub_range,
-            )
-            .map(ParsedDeclaration::Enum)
+            parse_enum_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
+                .map(ParsedDeclaration::Enum)
         } else if let Some(keyword) =
             parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Page)
         {
-            parse_page_declaration(
-                &mut iter,
-                &mut comments,
-                errors,
-                &document_range,
-                keyword,
-                pub_range,
-            )
-            .map(|page| ParsedDeclaration::Page(Box::new(page)))
+            parse_page_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
+                .map(|page| ParsedDeclaration::Page(Box::new(page)))
         } else if let Some(keyword) =
             parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Fn)
         {
-            parse_function_declaration(
-                &mut iter,
-                &mut comments,
-                errors,
-                &document_range,
-                keyword,
-                pub_range,
-            )
-            .map(|function| ParsedDeclaration::Function(Box::new(function)))
+            parse_function_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
+                .map(|function| ParsedDeclaration::Function(Box::new(function)))
         } else {
             if let Some(pub_range) = pub_range {
                 let _ = errors.emit(ParseErrorKind::UnexpectedPubKeyword {}, pub_range);
@@ -126,10 +88,9 @@ pub fn parse(document_id: DocumentId, document: Document, errors: &mut ParseErro
 }
 
 fn parse_import_declaration(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedImportDeclaration, ErrorEmitted> {
@@ -142,7 +103,7 @@ fn parse_import_declaration(
             return Err(errors.emit(ParseErrorKind::ExpectedModulePath {}, range));
         }
         None => {
-            return Err(errors.emit(ParseErrorKind::ExpectedModulePath {}, eof_range.clone()));
+            return Err(errors.emit(ParseErrorKind::ExpectedModulePath {}, iter.eof_range()));
         }
     };
     let mut module_segments: Vec<CheapString> = Vec::new();
@@ -158,7 +119,7 @@ fn parse_import_declaration(
             None => {
                 return Err(errors.emit(
                     ParseErrorKind::ExpectedIdentifierAfterColonColon {},
-                    eof_range.clone(),
+                    iter.eof_range(),
                 ));
             }
         };
@@ -191,16 +152,14 @@ fn parse_import_declaration(
 }
 
 fn parse_record_declaration(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedRecordDeclaration, ErrorEmitted> {
-    let (name, name_range) = parse_helpers::expect_identifier(iter, comments, errors, eof_range)?;
-    let left_brace =
-        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
+    let (name, name_range) = parse_helpers::expect_identifier(iter, comments, errors)?;
+    let left_brace = parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
     let (fields, braces) = parse_field_declarations(iter, comments, errors, &left_brace)?;
     Ok(ParsedRecordDeclaration {
         name: TypeName::new(name).or_emit(errors, &name_range)?,
@@ -215,28 +174,25 @@ fn parse_record_declaration(
 }
 
 fn parse_enum_declaration(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedEnumDeclaration, ErrorEmitted> {
-    let (name, name_range) = parse_helpers::expect_identifier(iter, comments, errors, eof_range)?;
-    let left_brace =
-        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
+    let (name, name_range) = parse_helpers::expect_identifier(iter, comments, errors)?;
+    let left_brace = parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
     let mut seen_names = HashSet::new();
     let (variants, braces) = parse_helpers::parse_delimited_list(
         iter,
         comments,
         errors,
-        eof_range,
         LangTokenPair::Braces,
         &left_brace,
         &[],
-        |iter, comments, errors, range| {
+        |iter, comments, errors| {
             let (variant_name, variant_range) =
-                parse_helpers::expect_identifier(iter, comments, errors, range)?;
+                parse_helpers::expect_identifier(iter, comments, errors)?;
             if !seen_names.insert(variant_range.to_cheap_string()) {
                 return Err(errors.emit(
                     ParseErrorKind::DuplicateVariant {
@@ -268,7 +224,7 @@ fn parse_enum_declaration(
 }
 
 fn parse_field_declarations(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     left_brace: &DocumentRange,
@@ -278,22 +234,20 @@ fn parse_field_declarations(
         iter,
         comments,
         errors,
-        left_brace,
         LangTokenPair::Braces,
         left_brace,
         &[],
-        |iter, comments, errors, range| {
+        |iter, comments, errors| {
             let examples =
                 parse_helpers::advance_if(iter, comments, errors, LangToken::HashBracket)
                     .map(|hash_bracket| {
-                        parse_examples_annotation(iter, comments, errors, range, hash_bracket)
+                        parse_examples_annotation(iter, comments, errors, hash_bracket)
                     })
                     .transpose()?
                     .map(|(examples, _)| examples);
-            let (name, name_range) =
-                parse_helpers::expect_identifier(iter, comments, errors, range)?;
-            parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Colon)?;
-            let field_type = parse_type(iter, comments, errors, range)?;
+            let (name, name_range) = parse_helpers::expect_identifier(iter, comments, errors)?;
+            parse_helpers::expect_token(iter, comments, errors, &LangToken::Colon)?;
+            let field_type = parse_type(iter, comments, errors)?;
             if !seen_names.insert(name_range.to_cheap_string()) {
                 return Err(errors.emit(
                     ParseErrorKind::DuplicateField {
@@ -313,21 +267,20 @@ fn parse_field_declarations(
 }
 
 fn parse_page_declaration(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedPageDeclaration, ErrorEmitted> {
     let mut gate = Gate::default();
-    let name = gate.run(|| parse_helpers::expect_identifier(iter, comments, errors, eof_range));
+    let name = gate.run(|| parse_helpers::expect_identifier(iter, comments, errors));
     let params = gate.run(|| {
         if let Some((LangToken::LeftBrace, _)) = tokenize_expr::peek(iter) {
             return Ok((Vec::new(), None));
         }
         let left_paren =
-            parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
+            parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftParen)?;
         let (items, parens) = parse_parameters(iter, comments, errors, &left_paren)?;
         let mut params = Vec::new();
         for item in items {
@@ -348,20 +301,8 @@ fn parse_page_declaration(
         }
         Ok((params, Some(parens)))
     });
-    let header_eof_range = match (&name, &params) {
-        (_, Ok((_, Some(parens)))) => parens,
-        (Ok((_, name_range)), _) => name_range,
-        _ => &keyword_range,
-    };
-    let left_brace = gate.run(|| {
-        parse_helpers::expect_token(
-            iter,
-            comments,
-            errors,
-            header_eof_range,
-            &LangToken::LeftBrace,
-        )
-    });
+    let left_brace =
+        gate.run(|| parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftBrace));
     // Synchronize at left brace
     let left_brace = match left_brace {
         Ok(left_brace) => left_brace,
@@ -407,14 +348,13 @@ fn parse_page_declaration(
         };
         // A member that fails to parse has already skipped past its body,
         // so the next member can still be parsed and reported.
-        let member =
-            match parse_function_declaration(iter, comments, errors, eof_range, fn_keyword, None) {
-                Ok(member) => member,
-                Err(reported) => {
-                    failed_member = Some(reported);
-                    continue;
-                }
-            };
+        let member = match parse_function_declaration(iter, comments, errors, fn_keyword, None) {
+            Ok(member) => member,
+            Err(reported) => {
+                failed_member = Some(reported);
+                continue;
+            }
+        };
         let member_name = member.name.to_cheap_string();
         let slot = match member.name.as_str() {
             "head" => &mut head,
@@ -480,18 +420,17 @@ fn parse_page_declaration(
 }
 
 fn parse_function_declaration(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedFunctionDeclaration, ErrorEmitted> {
     let mut gate = Gate::default();
-    let name = gate.run(|| parse_helpers::expect_identifier(iter, comments, errors, eof_range));
+    let name = gate.run(|| parse_helpers::expect_identifier(iter, comments, errors));
     let params = gate.run(|| {
         let left_paren =
-            parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
+            parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftParen)?;
         let (items, _) = parse_parameters(iter, comments, errors, &left_paren)?;
         Ok(build_function_parameters(items, errors))
     });
@@ -503,12 +442,11 @@ fn parse_function_declaration(
                 name_range.clone(),
             ));
         }
-        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::Arrow)?;
-        parse_type(iter, comments, errors, eof_range)
+        parse_helpers::expect_token(iter, comments, errors, &LangToken::Arrow)?;
+        parse_type(iter, comments, errors)
     });
-    let left_brace = gate.run(|| {
-        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)
-    });
+    let left_brace =
+        gate.run(|| parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftBrace));
     // Synchronize at left brace
     let left_brace = match left_brace {
         Ok(left_brace) => left_brace,
@@ -529,10 +467,9 @@ fn parse_function_declaration(
         iter,
         comments,
         errors,
-        eof_range,
         LangTokenPair::Braces,
         &left_brace,
-        |iter, comments, errors, eof_range| {
+        |iter, comments, errors| {
             // Provide a dedicated error message for empty bodies
             if let Ok((name, name_range)) = &name
                 && let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter)
@@ -542,7 +479,7 @@ fn parse_function_declaration(
                     name_range.clone(),
                 ));
             }
-            parse_expr::parse_block_body(iter, comments, errors, eof_range)
+            parse_expr::parse_block_body(iter, comments, errors)
         },
     )?;
     let (name, name_range) = name?;
@@ -613,7 +550,7 @@ enum ParameterItem {
 /// through the `)` that closes it. Returns the items with the range of the
 /// parentheses.
 fn parse_parameters(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     left_paren: &DocumentRange,
@@ -622,16 +559,15 @@ fn parse_parameters(
         iter,
         comments,
         errors,
-        left_paren,
         LangTokenPair::Parens,
         left_paren,
         &[LangToken::LeftBrace, LangToken::Arrow],
-        |iter, comments, errors, range| {
+        |iter, comments, errors| {
             if let Some(dots_range) =
                 parse_helpers::advance_if(iter, comments, errors, LangToken::DotDotDot)
             {
                 let (var_name, var_name_range) =
-                    parse_helpers::expect_identifier(iter, comments, errors, range)?;
+                    parse_helpers::expect_identifier(iter, comments, errors)?;
                 return Ok(ParameterItem::Rest {
                     var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
                     range: dots_range.to(var_name_range),
@@ -640,17 +576,17 @@ fn parse_parameters(
             let (examples, examples_range) =
                 parse_helpers::advance_if(iter, comments, errors, LangToken::HashBracket)
                     .map(|hash_bracket| {
-                        parse_examples_annotation(iter, comments, errors, range, hash_bracket)
+                        parse_examples_annotation(iter, comments, errors, hash_bracket)
                     })
                     .transpose()?
                     .unzip();
             let (var_name, var_name_range) =
-                parse_helpers::expect_identifier(iter, comments, errors, range)?;
-            parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Colon)?;
-            let var_type = parse_type(iter, comments, errors, range)?;
+                parse_helpers::expect_identifier(iter, comments, errors)?;
+            parse_helpers::expect_token(iter, comments, errors, &LangToken::Colon)?;
+            let var_type = parse_type(iter, comments, errors)?;
             let default_value =
                 if parse_helpers::advance_if(iter, comments, errors, LangToken::Assign).is_some() {
-                    Some(parse_expr::parse_expr(iter, comments, errors, range)?)
+                    Some(parse_expr::parse_expr(iter, comments, errors)?)
                 } else {
                     None
                 };
@@ -670,20 +606,18 @@ fn parse_parameters(
 /// already consumed. Returns the annotation with the range from `#[`
 /// through `]`.
 fn parse_examples_annotation(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    eof_range: &DocumentRange,
     hash_bracket: DocumentRange,
 ) -> Result<(ExamplesAnnotation, DocumentRange), ErrorEmitted> {
     parse_helpers::parse_delimited(
         iter,
         comments,
         errors,
-        eof_range,
         LangTokenPair::HashBrackets,
         &hash_bracket,
-        |iter, comments, errors, eof_range| {
+        |iter, comments, errors| {
             let Some((name, name_range)) =
                 parse_helpers::next_if_map(iter, comments, errors, LangToken::identifier)
             else {
@@ -691,7 +625,7 @@ fn parse_examples_annotation(
                     Some((token, range)) => {
                         errors.emit(ParseErrorKind::UnexpectedToken { token }, range)
                     }
-                    None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
+                    None => errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range()),
                 });
             };
             if name.as_str() != "examples" {
@@ -704,23 +638,17 @@ fn parse_examples_annotation(
                 });
                 return Err(reported);
             }
-            let left_paren = parse_helpers::expect_token(
-                iter,
-                comments,
-                errors,
-                eof_range,
-                &LangToken::LeftParen,
-            )?;
+            let left_paren =
+                parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftParen)?;
             let mut annotation = ExamplesAnnotation::default();
             parse_helpers::parse_delimited_list(
                 iter,
                 comments,
                 errors,
-                eof_range,
                 LangTokenPair::Parens,
                 &left_paren,
                 &[],
-                |iter, comments, errors, range| {
+                |iter, comments, errors| {
                     let Some((key, key_range)) =
                         parse_helpers::next_if_map(iter, comments, errors, LangToken::identifier)
                     else {
@@ -728,10 +656,10 @@ fn parse_examples_annotation(
                             Some((token, range)) => {
                                 errors.emit(ParseErrorKind::UnexpectedToken { token }, range)
                             }
-                            None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
+                            None => errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range()),
                         });
                     };
-                    parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Assign)?;
+                    parse_helpers::expect_token(iter, comments, errors, &LangToken::Assign)?;
                     if key.as_str() == "pattern" {
                         let Some((value, _)) = parse_helpers::next_if_map(
                             iter,
@@ -748,7 +676,7 @@ fn parse_examples_annotation(
                                     range,
                                 ),
                                 None => {
-                                    errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone())
+                                    errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range())
                                 }
                             });
                         };
@@ -779,7 +707,7 @@ fn parse_examples_annotation(
                         return Err(match tokenize_expr::peek(iter) {
                             Some((actual, range)) => errors
                                 .emit(ParseErrorKind::ExpectedIntLiteralButGot { actual }, range),
-                            None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
+                            None => errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range()),
                         });
                     };
                     *slot = Some(if negative { -value } else { value });

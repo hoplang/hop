@@ -1,5 +1,3 @@
-use std::iter::Peekable;
-
 pub struct ChunkBy<T, K> {
     groups: Vec<(K, Vec<T>)>,
 }
@@ -47,57 +45,3 @@ pub trait ChunkByExt: Iterator + Sized {
 }
 
 impl<T: Iterator> ChunkByExt for T {}
-
-pub struct PeekingTakeWhile<'a, I: Iterator, F> {
-    iter: &'a mut Peekable<I>,
-    predicate: F,
-}
-
-impl<I: Iterator, F: FnMut(&I::Item) -> bool> Iterator for PeekingTakeWhile<'_, I, F> {
-    type Item = I::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.iter.peek().is_some_and(|item| (self.predicate)(item)) {
-            self.iter.next()
-        } else {
-            None
-        }
-    }
-}
-
-pub trait PeekingExt<I: Iterator> {
-    fn peeking_take_while<F>(&mut self, predicate: F) -> PeekingTakeWhile<'_, I, F>
-    where
-        F: FnMut(&I::Item) -> bool;
-
-    /// Run `f` on a copy of the iterator, and keep the copy's progress only
-    /// if `f` returns `Some`. On `None` the iterator is left where it was,
-    /// so a lookahead that fails part-way through consumes nothing.
-    fn speculate<T, F>(&mut self, f: F) -> Option<T>
-    where
-        Self: Clone,
-        F: FnOnce(&mut Self) -> Option<T>;
-}
-
-impl<I: Iterator> PeekingExt<I> for Peekable<I> {
-    fn peeking_take_while<F>(&mut self, predicate: F) -> PeekingTakeWhile<'_, I, F>
-    where
-        F: FnMut(&I::Item) -> bool,
-    {
-        PeekingTakeWhile {
-            iter: self,
-            predicate,
-        }
-    }
-
-    fn speculate<T, F>(&mut self, f: F) -> Option<T>
-    where
-        Self: Clone,
-        F: FnOnce(&mut Self) -> Option<T>,
-    {
-        let mut ahead = self.clone();
-        let result = f(&mut ahead)?;
-        *self = ahead;
-        Some(result)
-    }
-}

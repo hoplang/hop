@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, iter::Peekable};
+use std::collections::VecDeque;
 
 use super::parse_helpers::{advance_if, expect_token, parse_delimited, parse_delimited_list};
 use super::tokenize_expr::{next, peek, peek2};
@@ -11,10 +11,9 @@ use crate::parse_error::{ErrorEmitted, OrEmit, ParseErrorKind, ParseErrors};
 use crate::symbols::type_name::TypeName;
 
 pub fn parse_type(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
-    range: &DocumentRange,
 ) -> Result<ParsedType, ErrorEmitted> {
     if let Some(type_range) = advance_if(iter, comments, errors, LangToken::TypeString) {
         return Ok(ParsedType::String { range: type_range });
@@ -32,12 +31,11 @@ pub fn parse_type(
         return Ok(ParsedType::Html { range: type_range });
     }
     if let Some(type_array) = advance_if(iter, comments, errors, LangToken::TypeArray) {
-        let left_bracket = expect_token(iter, comments, errors, range, &LangToken::LeftBracket)?;
+        let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;
         let (element, brackets) = parse_delimited(
             iter,
             comments,
             errors,
-            range,
             LangTokenPair::Brackets,
             &left_bracket,
             parse_type,
@@ -48,12 +46,11 @@ pub fn parse_type(
         });
     }
     if let Some(type_option) = advance_if(iter, comments, errors, LangToken::TypeOption) {
-        let left_bracket = expect_token(iter, comments, errors, range, &LangToken::LeftBracket)?;
+        let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;
         let (element, brackets) = parse_delimited(
             iter,
             comments,
             errors,
-            range,
             LangTokenPair::Brackets,
             &left_bracket,
             parse_type,
@@ -69,12 +66,11 @@ pub fn parse_type(
             iter,
             comments,
             errors,
-            range,
             LangTokenPair::Parens,
             &left_paren,
             &[],
-            |iter, comments, errors, range| {
-                let element = parse_type(iter, comments, errors, range)?;
+            |iter, comments, errors| {
+                let element = parse_type(iter, comments, errors)?;
                 trailing_comma = matches!(peek(iter), Some((LangToken::Comma, _)))
                     && matches!(peek2(iter), Some((LangToken::RightParen, _)));
                 Ok(element)
@@ -102,6 +98,9 @@ pub fn parse_type(
             ParseErrorKind::ExpectedTypeNameButGot { actual },
             actual_range,
         )),
-        None => Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGotEof {}, range.clone())),
+        None => Err(errors.emit(
+            ParseErrorKind::ExpectedTypeNameButGotEof {},
+            iter.eof_range(),
+        )),
     }
 }

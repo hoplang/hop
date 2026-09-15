@@ -393,12 +393,10 @@ mod tests {
     fn run_check(types: TypeRegistryBuilder, subject: &str, expr_str: &str) -> (String, bool) {
         let types = types.build();
         let subject_type = types.resolve(subject);
-        let cursor = DocumentCursor::new(types.module().clone(), expr_str.to_string());
-        let range = cursor.range();
-        let mut iter = cursor.peekable();
+        let mut iter = DocumentCursor::new(types.module().clone(), expr_str.to_string());
         let mut comments = VecDeque::new();
         let mut errors = ParseErrors::new();
-        let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors, &range)
+        let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors)
             .expect("Failed to parse expression");
 
         let patterns = match expr {

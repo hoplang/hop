@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::iter::Peekable;
 
 use super::parse_expr;
 use super::parse_helpers;
@@ -207,7 +206,7 @@ impl MarkupBuilder {
 /// We do our best here to build as much markup as possible even when we
 /// encounter errors.
 fn parse_node(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     left_angle: DocumentRange,
@@ -226,7 +225,6 @@ fn parse_node(
                     iter,
                     comments,
                     errors,
-                    &left_brace,
                     LangTokenPair::Braces,
                     &left_brace,
                     parse_expr::parse_block_body,
@@ -301,7 +299,7 @@ fn parse_node(
 /// Parse markup in expression position, from a '<' the caller has
 /// already consumed.
 pub fn parse_markup(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
     left_angle: DocumentRange,
@@ -326,7 +324,7 @@ enum TagEnd {
 fn parse_opening_tag(
     tag_name_range: DocumentRange,
     tag_start_range: DocumentRange,
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
 ) -> (OpenElement, TagEnd) {
@@ -366,7 +364,6 @@ fn parse_opening_tag(
                     iter,
                     comments,
                     errors,
-                    &left_brace,
                     LangTokenPair::Braces,
                     &left_brace,
                     parse_expr::parse_block_body,
@@ -397,7 +394,6 @@ fn parse_opening_tag(
                     iter,
                     comments,
                     errors,
-                    &left_brace,
                     LangTokenPair::Braces,
                     &left_brace,
                     parse_expr::parse_block_body,

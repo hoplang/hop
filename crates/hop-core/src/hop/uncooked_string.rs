@@ -96,13 +96,13 @@ impl fmt::Display for UncookedString {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::DocumentCursor;
+    use crate::document::{DocumentCursor, DocumentRange};
     use crate::document_id::DocumentId;
 
     /// Cooks `content`, the text a literal has between its quotes.
     fn cook(content: &str) -> (String, Vec<char>) {
         let cursor = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), content.to_string());
-        let range = (!content.is_empty()).then(|| cursor.range());
+        let range: Option<DocumentRange> = cursor.collect();
         let mut invalid = Vec::new();
         let cooked = UncookedString::new(range).cook(&mut |ch, _range| invalid.push(ch));
         (cooked.as_str().to_string(), invalid)

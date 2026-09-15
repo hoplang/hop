@@ -1,7 +1,4 @@
 use std::collections::VecDeque;
-use std::iter::Peekable;
-
-use crate::itertools::PeekingExt as _;
 
 use crate::document::{DocumentCursor, DocumentRange};
 
@@ -19,7 +16,7 @@ pub enum LexStep {
 /// Advances the cursor past one token, comment, or lexical error.
 ///
 /// Returns `None` if the cursor is exhausted or only has whitespace left.
-pub fn step(iter: &mut Peekable<DocumentCursor>) -> Option<LexStep> {
+pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
     while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
         iter.next();
     }
@@ -207,24 +204,24 @@ pub fn step(iter: &mut Peekable<DocumentCursor>) -> Option<LexStep> {
 }
 
 /// Peeks at the next token without consuming it.
-pub fn peek(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange)> {
+pub fn peek(iter: &DocumentCursor) -> Option<(LangToken, DocumentRange)> {
     next_ignoring_trivia(&mut iter.clone())
 }
 
-pub fn peek2(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange)> {
+pub fn peek2(iter: &DocumentCursor) -> Option<(LangToken, DocumentRange)> {
     let mut cloned = iter.clone();
     next_ignoring_trivia(&mut cloned)?;
     next_ignoring_trivia(&mut cloned)
 }
 
-pub fn peek3(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange)> {
+pub fn peek3(iter: &DocumentCursor) -> Option<(LangToken, DocumentRange)> {
     let mut cloned = iter.clone();
     next_ignoring_trivia(&mut cloned)?;
     next_ignoring_trivia(&mut cloned)?;
     next_ignoring_trivia(&mut cloned)
 }
 
-fn next_ignoring_trivia(iter: &mut Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange)> {
+fn next_ignoring_trivia(iter: &mut DocumentCursor) -> Option<(LangToken, DocumentRange)> {
     loop {
         match step(iter)? {
             LexStep::Token(token, range) => return Some((token, range)),
@@ -236,7 +233,7 @@ fn next_ignoring_trivia(iter: &mut Peekable<DocumentCursor>) -> Option<(LangToke
 /// Returns the next token, collecting any comments encountered along the way
 /// into the provided deque.
 pub fn next(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ParseErrors,
 ) -> Option<(LangToken, DocumentRange)> {
@@ -261,7 +258,7 @@ mod tests {
 
     fn run_tokenizer(input: &str) -> (String, bool) {
         let mut cursor =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
+            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string());
         let mut errors = ParseErrors::new();
         let mut comments = VecDeque::new();
         let mut annotations = Vec::new();

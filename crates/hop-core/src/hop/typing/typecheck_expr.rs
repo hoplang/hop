@@ -1811,7 +1811,7 @@ pub fn typecheck_expr(
                 let mut piece: Option<DocumentRange> = None;
                 // A string literal range includes the surrounding quotes, so we
                 // skip the first character and stop at the last one.
-                let mut chars = template_range.cursor().peekable();
+                let mut chars = template_range.cursor();
                 chars.next();
                 while let Some(ch) = chars.next() {
                     let Some(next) = chars.peek() else {
@@ -2196,7 +2196,7 @@ mod tests {
 
         let type_env = types.type_env();
 
-        let decl_range = DocumentCursor::new(types.module().clone(), String::new()).range();
+        let decl_range = DocumentCursor::new(types.module().clone(), String::new()).eof_range();
         let mut env = VariableScope::new();
         for (var_name, type_str) in env_vars {
             let typ = types.resolve(type_str);
@@ -2205,12 +2205,10 @@ mod tests {
 
         let mut asset_references = Vec::new();
 
-        let cursor = DocumentCursor::new(types.module().clone(), expr_str.to_string());
-        let range = cursor.range();
-        let mut iter = cursor.peekable();
+        let mut iter = DocumentCursor::new(types.module().clone(), expr_str.to_string());
         let mut comments = VecDeque::new();
         let mut errors = ParseErrors::new();
-        let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors, &range)
+        let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors)
             .expect("Failed to parse expression");
 
         let mut annotations = Vec::new();

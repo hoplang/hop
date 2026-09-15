@@ -1,4 +1,3 @@
-use std::iter::Peekable;
 use std::sync::Arc;
 
 use crate::asset_reference::AssetReference;
@@ -13,7 +12,7 @@ pub fn scan_for_asset_references(
     asset_references: &mut Vec<AssetReference>,
     errors: &mut Vec<CssError>,
 ) {
-    let mut iter = document.cursor().peekable();
+    let mut iter = document.cursor();
     let mut prev_was_ident = false;
 
     while let Some(ch_range) = iter.next() {
@@ -79,7 +78,7 @@ fn is_css_whitespace(ch: char) -> bool {
 /// On success, returns a `DocumentRange` covering `--asset(` and advances the iterator.
 /// On failure, returns `None` and does NOT advance the iterator.
 fn try_match_asset_marker(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     first_dash: DocumentRange,
 ) -> Option<DocumentRange> {
     let mut peek = iter.clone();
@@ -127,10 +126,7 @@ enum ArgumentParseResult {
 /// Parse the argument and closing `)` of a `--asset(...)` call.
 /// The iterator is positioned at the first byte after `--asset(`.
 /// `marker_range` covers `--asset(`, used as fallback for error ranges on EOF.
-fn parse_argument(
-    iter: &mut Peekable<DocumentCursor>,
-    marker_range: DocumentRange,
-) -> ArgumentParseResult {
+fn parse_argument(iter: &mut DocumentCursor, marker_range: DocumentRange) -> ArgumentParseResult {
     // Skip leading whitespace
     skip_css_whitespace(iter);
 
@@ -151,7 +147,7 @@ fn parse_argument(
             let end_range = collected
                 .close_paren
                 .clone()
-                .unwrap_or_else(|| iter.peek().cloned().unwrap_or(first_clone));
+                .unwrap_or_else(|| iter.peek().unwrap_or(first_clone));
 
             ArgumentParseResult::Error {
                 kind: if collected.close_paren.is_some() {
@@ -169,7 +165,7 @@ fn parse_argument(
 
 /// Parse a quoted string argument. `open_quote` is the opening `"` or `'` range.
 fn parse_quoted_argument(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     open_quote: DocumentRange,
 ) -> ArgumentParseResult {
     let quote = open_quote.ch();
@@ -209,7 +205,7 @@ fn parse_quoted_argument(
                             format!("{}{}{}{}", quote, content_str, quote, collected.text);
                         let last_range = collected
                             .close_paren
-                            .unwrap_or_else(|| iter.peek().cloned().unwrap_or(other_clone));
+                            .unwrap_or_else(|| iter.peek().unwrap_or(other_clone));
                         return ArgumentParseResult::Error {
                             kind: ArgumentErrorKind::NonStringLiteral {
                                 argument: full_arg.trim().to_string(),
@@ -261,7 +257,7 @@ struct RawCollectResult {
 /// Collect raw argument text from the cursor, starting from the given first range
 /// (or the current position if None), scanning until matching `)` or EOF.
 fn collect_raw_from_cursor(
-    iter: &mut Peekable<DocumentCursor>,
+    iter: &mut DocumentCursor,
     first: Option<DocumentRange>,
 ) -> RawCollectResult {
     let mut raw = String::new();
@@ -321,7 +317,7 @@ fn collect_raw_from_cursor(
 }
 
 /// Advance the iterator past CSS whitespace characters.
-fn skip_css_whitespace(iter: &mut Peekable<DocumentCursor>) {
+fn skip_css_whitespace(iter: &mut DocumentCursor) {
     while iter.peek().is_some_and(|s| is_css_whitespace(s.ch())) {
         iter.next();
     }
