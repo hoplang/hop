@@ -383,10 +383,8 @@ mod tests {
     use crate::hop::parsing::parse_expr;
     use crate::hop::parsing::parsed_expr::ParsedExpr;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
-    use crate::parse_error::ParseErrors;
     use expect_test::{Expect, expect};
     use indoc::indoc;
-    use std::collections::VecDeque;
 
     // Parse a match expression and run `typecheck_pattern` on each arm pattern.
     // Returns the rendered typed patterns on success, or the rendered error.
@@ -394,8 +392,8 @@ mod tests {
         let types = types.build();
         let subject_type = types.resolve(subject);
         let mut iter = DocumentCursor::new(types.module().clone(), expr_str.to_string());
-        let mut comments = VecDeque::new();
-        let mut errors = ParseErrors::new();
+        let mut comments = Vec::new();
+        let mut errors = Vec::new();
         let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors)
             .expect("Failed to parse expression");
 

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 
 use crate::document::DocumentCursor;
 use crate::document_annotator::DocumentAnnotator;
@@ -10,7 +10,6 @@ use crate::hop::typing::type_env::{FunctionSignature, Name, NameKind, ParamEntry
 use crate::hop::typing::type_registry::{
     EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
 };
-use crate::parse_error::ParseErrors;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -274,8 +273,8 @@ impl TestTypes {
 
     pub fn resolve(&self, type_str: &str) -> Type {
         let mut iter = DocumentCursor::new(self.module.clone(), type_str.to_string());
-        let mut comments = VecDeque::new();
-        let mut errors = ParseErrors::new();
+        let mut comments = Vec::new();
+        let mut errors = Vec::new();
         let parsed = parse_type(&mut iter, &mut comments, &mut errors);
         let Ok(parsed) = parsed else {
             panic!("failed to parse type `{type_str}`: {errors:?}");

@@ -1373,10 +1373,9 @@ mod tests {
     use crate::document_id::DocumentId;
     use crate::hop::parsing::parse;
     use crate::hop::parsing::source_generator;
-    use crate::parse_error::ParseErrors;
 
     fn check(source: &str, expected: Expect) {
-        let mut errors = ParseErrors::new();
+        let mut errors = Vec::new();
         let document_id = DocumentId::new("test.hop").unwrap();
         let ast = parse::parse(
             document_id.clone(),
@@ -1406,7 +1405,7 @@ mod tests {
         arbtest::arbtest(|u| {
             let source = source_generator::random_source(u)?;
             let document_id = DocumentId::new("test.hop").unwrap();
-            let mut errors = ParseErrors::new();
+            let mut errors = Vec::new();
             let ast = parse::parse(
                 document_id.clone(),
                 Document::new(document_id.clone(), source.clone()),

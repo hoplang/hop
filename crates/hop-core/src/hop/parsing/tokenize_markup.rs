@@ -1,14 +1,14 @@
 use crate::hop::parsing::token::{AttributeString, MarkupToken, RawTextToken, TagToken};
 
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
+use crate::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
 
 /// Lex the next token in text position.
 ///
 /// Returns `None` at end of input or at a `}`, which is left for the
 /// enclosing expression to close. A `<` that starts nothing is reported and
 /// skipped over.
-pub fn next(iter: &mut DocumentCursor, errors: &mut ParseErrors) -> Option<MarkupToken> {
+pub fn next(iter: &mut DocumentCursor, errors: &mut Vec<ParseError>) -> Option<MarkupToken> {
     loop {
         if let Some(left_angle) = iter.next_if(|s| s.ch() == '<') {
             match lex_tag(iter, errors, left_angle) {
@@ -44,7 +44,7 @@ pub fn next(iter: &mut DocumentCursor, errors: &mut ParseErrors) -> Option<Marku
 /// so that the rest of the tag is still read.
 pub fn next_tag_token(
     iter: &mut DocumentCursor,
-    errors: &mut ParseErrors,
+    errors: &mut Vec<ParseError>,
     tag_name: &DocumentRange,
 ) -> Result<TagToken, ErrorEmitted> {
     loop {
@@ -172,7 +172,7 @@ fn skip_whitespace(iter: &mut DocumentCursor) {
 /// ```
 pub fn lex_tag(
     iter: &mut DocumentCursor,
-    errors: &mut ParseErrors,
+    errors: &mut Vec<ParseError>,
     left_angle: DocumentRange,
 ) -> Result<MarkupToken, ErrorEmitted> {
     // consume: '!'
@@ -205,7 +205,7 @@ pub fn lex_tag(
 /// ```
 fn lex_markup_declaration(
     iter: &mut DocumentCursor,
-    errors: &mut ParseErrors,
+    errors: &mut Vec<ParseError>,
     left_angle_to_bang: DocumentRange,
 ) -> Result<MarkupToken, ErrorEmitted> {
     // consume: '-'
@@ -224,7 +224,7 @@ fn lex_markup_declaration(
 /// ```
 fn lex_comment(
     iter: &mut DocumentCursor,
-    errors: &mut ParseErrors,
+    errors: &mut Vec<ParseError>,
     left_angle_to_first_dash: DocumentRange,
 ) -> Result<MarkupToken, ErrorEmitted> {
     // consume: '-'
@@ -274,7 +274,7 @@ fn lex_comment(
 /// page, and anything else after the `<!` is not a declaration we know.
 fn lex_doctype(
     iter: &mut DocumentCursor,
-    errors: &mut ParseErrors,
+    errors: &mut Vec<ParseError>,
     left_angle_to_bang: DocumentRange,
 ) -> ErrorEmitted {
     let doctype = iter.speculate(|iter| {
@@ -333,7 +333,7 @@ fn lex_opening_tag_start(
 /// ```
 fn lex_closing_tag(
     iter: &mut DocumentCursor,
-    errors: &mut ParseErrors,
+    errors: &mut Vec<ParseError>,
     left_angle_to_slash: DocumentRange,
 ) -> Result<MarkupToken, ErrorEmitted> {
     // consume: whitespace
@@ -394,7 +394,7 @@ fn lex_text(iter: &mut DocumentCursor, initial: DocumentRange) -> MarkupToken {
 /// Fails, after reporting, if what follows the name is not a value.
 fn lex_attribute(
     iter: &mut DocumentCursor,
-    errors: &mut ParseErrors,
+    errors: &mut Vec<ParseError>,
     initial: DocumentRange,
 ) -> Result<TagToken, ErrorEmitted> {
     // consume: ('-' | '_' | ':' | '.' | [a-zA-Z0-9])*

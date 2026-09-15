@@ -24,7 +24,7 @@ use crate::ir;
 use crate::ir::Transpiler;
 use crate::ir::runtime::random::random_value;
 use crate::orchestrator::{OrchestrateOptions, orchestrate, orchestrate_pure};
-use crate::parse_error::ParseErrors;
+use crate::parse_error::ParseError;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
@@ -82,7 +82,7 @@ pub struct Program {
     documents: HashMap<DocumentId, Document>,
     css_documents: HashMap<DocumentId, Document>,
     css_errors: HashMap<DocumentId, Vec<CssError>>,
-    parse_errors: HashMap<DocumentId, ParseErrors>,
+    parse_errors: HashMap<DocumentId, Vec<ParseError>>,
     parsed_asts: HashMap<DocumentId, ParsedAst>,
     exports: HashMap<DocumentId, HashMap<CheapString, Export>>,
     type_registry: TypeRegistry,
@@ -211,7 +211,7 @@ impl Program {
         self.css_documents.insert(document_id.clone(), document);
     }
 
-    pub fn get_parse_errors(&self) -> &HashMap<DocumentId, ParseErrors> {
+    pub fn get_parse_errors(&self) -> &HashMap<DocumentId, Vec<ParseError>> {
         &self.parse_errors
     }
 

@@ -1,18 +1,14 @@
-use std::collections::VecDeque;
-
 use super::parse_expr;
-use super::parse_helpers;
 use super::parsed_expr::ParsedExpr;
 use super::parsed_node::{ParsedAttribute, ParsedNode};
 use super::tokenize_markup;
 use super::whitespace;
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::hop::parsing::token::LangTokenPair;
 use crate::hop::parsing::token::MarkupToken;
 use crate::hop::parsing::token::RawTextToken;
 use crate::hop::parsing::token::TagToken;
 use crate::html::{HtmlElementKind, is_raw_content_tag, is_void_element_tag};
-use crate::parse_error::{ErrorEmitted, OrEmit, ParseErrorKind, ParseErrors};
+use crate::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
@@ -65,7 +61,7 @@ impl OpenElement {
 
     /// Build the element without a closing tag, reporting that it never got
     /// one.
-    fn close_unclosed(self, errors: &mut ParseErrors) -> Result<ParsedNode, ErrorEmitted> {
+    fn close_unclosed(self, errors: &mut Vec<ParseError>) -> Result<ParsedNode, ErrorEmitted> {
         let kind = match self.header {
             ElementHeader::Fragment => ParseErrorKind::UnclosedFragment {},
             ElementHeader::Function { .. } | ElementHeader::Html { .. } => {
@@ -154,7 +150,7 @@ impl MarkupBuilder {
     fn close(
         &mut self,
         closing: ClosingTag,
-        errors: &mut ParseErrors,
+        errors: &mut Vec<ParseError>,
     ) -> Option<Result<ParsedNode, ErrorEmitted>> {
         let Some(depth) = self
             .open
@@ -189,7 +185,7 @@ impl MarkupBuilder {
 
     /// Take the markup, closing everything left open. Something is open:
     /// the markup would otherwise have finished with its last item.
-    fn finish(mut self, errors: &mut ParseErrors) -> Result<ParsedNode, ErrorEmitted> {
+    fn finish(mut self, errors: &mut Vec<ParseError>) -> Result<ParsedNode, ErrorEmitted> {
         loop {
             let element = self.open.pop().expect("an element is open");
             if let Some(item) = self.append(element.close_unclosed(errors)) {
@@ -207,8 +203,8 @@ impl MarkupBuilder {
 /// encounter errors.
 fn parse_node(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     left_angle: DocumentRange,
 ) -> Result<ParsedNode, ErrorEmitted> {
     let mut builder = MarkupBuilder::default();
@@ -221,14 +217,7 @@ fn parse_node(
             MarkupToken::Comment { range } => builder.append_node(ParsedNode::Comment { range }),
 
             MarkupToken::ExpressionStart { left_brace } => {
-                match parse_helpers::parse_delimited(
-                    iter,
-                    comments,
-                    errors,
-                    LangTokenPair::Braces,
-                    &left_brace,
-                    parse_expr::parse_block_body,
-                ) {
+                match parse_expr::parse_block(iter, comments, errors, &left_brace) {
                     Ok((expression, range)) => {
                         builder.append_node(ParsedNode::Interpolation { expression, range })
                     }
@@ -300,8 +289,8 @@ fn parse_node(
 /// already consumed.
 pub fn parse_markup(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     left_angle: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut node = parse_node(iter, comments, errors, left_angle)?;
@@ -325,8 +314,8 @@ fn parse_opening_tag(
     tag_name_range: DocumentRange,
     tag_start_range: DocumentRange,
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
 ) -> (OpenElement, TagEnd) {
     let mut attributes = Vec::new();
     let mut self_closing = false;
@@ -360,14 +349,8 @@ fn parse_opening_tag(
             }
 
             TagToken::AttributeExpressionStart { name, left_brace } => {
-                if let Ok((value, _)) = parse_helpers::parse_delimited(
-                    iter,
-                    comments,
-                    errors,
-                    LangTokenPair::Braces,
-                    &left_brace,
-                    parse_expr::parse_block_body,
-                ) {
+                if let Ok((value, _)) = parse_expr::parse_block(iter, comments, errors, &left_brace)
+                {
                     push_attribute(
                         &mut attributes,
                         ParsedAttribute::Expression { name, value },
@@ -390,14 +373,7 @@ fn parse_opening_tag(
             }
 
             TagToken::ExpressionStart { left_brace } => {
-                let range = match parse_helpers::parse_delimited(
-                    iter,
-                    comments,
-                    errors,
-                    LangTokenPair::Braces,
-                    &left_brace,
-                    parse_expr::parse_block_body,
-                ) {
+                let range = match parse_expr::parse_block(iter, comments, errors, &left_brace) {
                     Ok((_, braces)) => braces,
                     Err(_) => left_brace,
                 };
@@ -470,7 +446,7 @@ fn parse_opening_tag(
 fn push_attribute(
     attributes: &mut Vec<ParsedAttribute>,
     attribute: ParsedAttribute,
-    errors: &mut ParseErrors,
+    errors: &mut Vec<ParseError>,
 ) {
     if let Some(name) = attribute.name_range()
         && attributes.iter().any(|existing| {

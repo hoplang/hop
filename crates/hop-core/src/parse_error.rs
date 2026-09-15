@@ -13,68 +13,35 @@ use thiserror::Error;
 #[must_use]
 pub struct ErrorEmitted(());
 
-/// A container for parse errors.
-///
-/// Recording an error in this container is the only way to obtain an
-/// [`ErrorEmitted`].
-#[derive(Debug, Clone, Default)]
-pub struct ParseErrors {
-    errors: Vec<ParseError>,
+pub(crate) trait Emit {
+    /// Record a parse error, and return the proof that it was recorded.
+    ///
+    /// Calling this is the only way to obtain an [`ErrorEmitted`].
+    fn emit(&mut self, kind: ParseErrorKind, range: DocumentRange) -> ErrorEmitted;
 }
 
-impl ParseErrors {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Record an error, and return the proof that it was recorded.
-    pub(crate) fn emit(&mut self, kind: ParseErrorKind, range: DocumentRange) -> ErrorEmitted {
-        self.errors.push(ParseError { kind, range });
+impl Emit for Vec<ParseError> {
+    fn emit(&mut self, kind: ParseErrorKind, range: DocumentRange) -> ErrorEmitted {
+        self.push(ParseError { kind, range });
         ErrorEmitted(())
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.errors.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.errors.len()
-    }
-
-    pub fn clear(&mut self) {
-        self.errors.clear();
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<'_, ParseError> {
-        self.errors.iter()
     }
 }
 
 pub(crate) trait OrEmit<T> {
-    fn or_emit(self, errors: &mut ParseErrors, range: &DocumentRange) -> Result<T, ErrorEmitted>;
+    fn or_emit(
+        self,
+        errors: &mut Vec<ParseError>,
+        range: &DocumentRange,
+    ) -> Result<T, ErrorEmitted>;
 }
 
 impl<T, E: Into<ParseErrorKind>> OrEmit<T> for Result<T, E> {
-    fn or_emit(self, errors: &mut ParseErrors, range: &DocumentRange) -> Result<T, ErrorEmitted> {
+    fn or_emit(
+        self,
+        errors: &mut Vec<ParseError>,
+        range: &DocumentRange,
+    ) -> Result<T, ErrorEmitted> {
         self.map_err(|error| errors.emit(error.into(), range.clone()))
-    }
-}
-
-impl<'a> IntoIterator for &'a ParseErrors {
-    type Item = &'a ParseError;
-    type IntoIter = std::slice::Iter<'a, ParseError>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.errors.iter()
-    }
-}
-
-impl IntoIterator for ParseErrors {
-    type Item = ParseError;
-    type IntoIter = std::vec::IntoIter<ParseError>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.errors.into_iter()
     }
 }
 
@@ -162,9 +129,6 @@ pub(crate) enum ParseErrorKind {
         "Unexpected expression on <{tag_name}>: use attribute syntax instead (e.g. attr={{value}})"
     )]
     UnexpectedTagExpression { tag_name: CheapString },
-
-    #[error("Unexpected text at top level")]
-    UnexpectedTopLevelText,
 
     #[error("'pub' is not allowed here")]
     UnexpectedPubKeyword,

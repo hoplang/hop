@@ -1,11 +1,9 @@
-use std::collections::VecDeque;
-
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
 
 use super::token::LangToken;
 use super::tokenize_expr::{next, peek};
-use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
+use crate::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
 
 /// The tokens that start a declaration, at which skipping over unexpected
 /// tokens at the top level stops.
@@ -24,10 +22,11 @@ const RIGHT_DELIMITERS: &[LangToken] = &[
     LangToken::RightBrace,
 ];
 
-pub fn advance_if(
+/// Consume the next token if it is `token`, returning its range.
+pub fn next_if_eq(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     token: LangToken,
 ) -> Option<DocumentRange> {
     match peek(iter) {
@@ -47,8 +46,8 @@ pub fn skip_to(
     _reported: ErrorEmitted,
     stop: impl Fn(&LangToken) -> bool,
 ) {
-    let mut comments = VecDeque::new();
-    let mut errors = ParseErrors::new();
+    let mut comments = Vec::new();
+    let mut errors = Vec::new();
     while let Some((token, _)) = peek(iter) {
         if stop(&token) {
             break;
@@ -61,8 +60,8 @@ pub fn skip_to(
 /// along with the token's range.
 pub fn next_if_map<T>(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     map: impl FnOnce(LangToken) -> Option<T>,
 ) -> Option<(T, DocumentRange)> {
     let (token, range) = peek(iter)?;
@@ -73,11 +72,11 @@ pub fn next_if_map<T>(
 
 pub fn expect_token(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     expected: &LangToken,
 ) -> Result<DocumentRange, ErrorEmitted> {
-    if let Some(token_range) = advance_if(iter, comments, errors, expected.clone()) {
+    if let Some(token_range) = next_if_eq(iter, comments, errors, expected.clone()) {
         return Ok(token_range);
     }
     Err(match peek(iter) {
@@ -98,13 +97,13 @@ pub fn expect_token(
 }
 pub fn expect_right_delimiter(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     pair: LangTokenPair,
     left_delimiter_range: &DocumentRange,
 ) -> Result<DocumentRange, ErrorEmitted> {
     let expected = pair.right_delimiter();
-    if let Some(actual_range) = advance_if(iter, comments, errors, expected.clone()) {
+    if let Some(actual_range) = next_if_eq(iter, comments, errors, expected.clone()) {
         return Ok(actual_range);
     }
     Err(match peek(iter) {
@@ -123,8 +122,8 @@ pub fn expect_right_delimiter(
 
 pub fn expect_identifier(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
 ) -> Result<(CheapString, DocumentRange), ErrorEmitted> {
     match peek(iter) {
         Some((LangToken::Identifier(name), name_range)) => {
@@ -144,8 +143,8 @@ pub fn expect_identifier(
 /// from the left delimiter through the right.
 pub fn parse_delimited<T, F>(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     pair: LangTokenPair,
     left_delimiter_range: &DocumentRange,
     parse: F,
@@ -153,8 +152,8 @@ pub fn parse_delimited<T, F>(
 where
     F: FnOnce(
         &mut DocumentCursor,
-        &mut VecDeque<DocumentRange>,
-        &mut ParseErrors,
+        &mut Vec<DocumentRange>,
+        &mut Vec<ParseError>,
     ) -> Result<T, ErrorEmitted>,
 {
     let delimited = parse(iter, comments, errors).and_then(|item| {
@@ -168,7 +167,7 @@ where
         skip_to(iter, reported, |token| {
             RIGHT_DELIMITERS.contains(token) || DECLARATION_KEYWORDS.contains(token)
         });
-        advance_if(iter, comments, errors, pair.right_delimiter());
+        next_if_eq(iter, comments, errors, pair.right_delimiter());
     }
     delimited
 }
@@ -184,8 +183,8 @@ where
 /// comes after.
 pub fn parse_delimited_list<T, F>(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     pair: LangTokenPair,
     left_delimiter_range: &DocumentRange,
     stops: &[LangToken],
@@ -194,8 +193,8 @@ pub fn parse_delimited_list<T, F>(
 where
     F: FnMut(
         &mut DocumentCursor,
-        &mut VecDeque<DocumentRange>,
-        &mut ParseErrors,
+        &mut Vec<DocumentRange>,
+        &mut Vec<ParseError>,
     ) -> Result<T, ErrorEmitted>,
 {
     let ends_list = |token: &LangToken| {
@@ -221,7 +220,7 @@ where
             }
             Err(reported) => Some(reported),
         };
-        if advance_if(iter, comments, errors, LangToken::Comma).is_some() {
+        if next_if_eq(iter, comments, errors, LangToken::Comma).is_some() {
             continue;
         }
         let Some((actual, actual_range)) = peek(iter) else {
@@ -245,7 +244,7 @@ where
         skip_to(iter, reported, |token| {
             *token == LangToken::Comma || ends_list(token)
         });
-        if advance_if(iter, comments, errors, LangToken::Comma).is_some() {
+        if next_if_eq(iter, comments, errors, LangToken::Comma).is_some() {
             continue;
         }
         // Skipping stopped on a token that ends the list rather than on a

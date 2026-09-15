@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
 use crate::symbols::field_name::FieldName;
@@ -7,7 +5,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 use super::parse_helpers::{
-    advance_if, expect_identifier, expect_right_delimiter, expect_token, next_if_map,
+    expect_identifier, expect_right_delimiter, expect_token, next_if_eq, next_if_map,
     parse_delimited, parse_delimited_list,
 };
 use super::parse_nodes;
@@ -19,7 +17,7 @@ use super::parsed_expr::{
 use super::parsed_node::ParsedLetBinding;
 use super::token::LangToken;
 use super::tokenize_expr::{peek, peek2, peek3};
-use crate::parse_error::{ErrorEmitted, OrEmit, ParseErrorKind, ParseErrors};
+use crate::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 
 /// Restrictions on an expression that follow from where it sits. Compare
 /// `Restrictions` in rustc and rust-analyzer.
@@ -30,8 +28,8 @@ pub struct Restrictions {
 
 pub fn parse_expr(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     parse_expr_with(
         iter,
@@ -45,12 +43,12 @@ pub fn parse_expr(
 
 pub fn parse_expr_with(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = parse_logical_and(iter, comments, errors, restrictions)?;
-    while advance_if(iter, comments, errors, LangToken::LogicalOr).is_some() {
+    while next_if_eq(iter, comments, errors, LangToken::LogicalOr).is_some() {
         let right = parse_logical_and(iter, comments, errors, restrictions)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
@@ -64,12 +62,12 @@ pub fn parse_expr_with(
 
 fn parse_logical_and(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = parse_equality(iter, comments, errors, restrictions)?;
-    while advance_if(iter, comments, errors, LangToken::LogicalAnd).is_some() {
+    while next_if_eq(iter, comments, errors, LangToken::LogicalAnd).is_some() {
         let right = parse_equality(iter, comments, errors, restrictions)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
@@ -83,121 +81,83 @@ fn parse_logical_and(
 
 fn parse_equality(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = parse_relational(iter, comments, errors, restrictions)?;
-    loop {
-        if advance_if(iter, comments, errors, LangToken::Eq).is_some() {
-            let right = parse_relational(iter, comments, errors, restrictions)?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::Eq,
-                right: Box::new(right),
-            };
-        } else if advance_if(iter, comments, errors, LangToken::NotEq).is_some() {
-            let right = parse_relational(iter, comments, errors, restrictions)?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::NotEq,
-                right: Box::new(right),
-            };
-        } else {
-            break;
-        }
+    while let Some((operator, _)) = next_if_map(iter, comments, errors, |token| match token {
+        LangToken::Eq => Some(ParsedBinaryOp::Eq),
+        LangToken::NotEq => Some(ParsedBinaryOp::NotEq),
+        _ => None,
+    }) {
+        let right = parse_relational(iter, comments, errors, restrictions)?;
+        expr = ParsedExpr::BinaryOp {
+            range: expr.range().clone().to(right.range().clone()),
+            left: Box::new(expr),
+            operator,
+            right: Box::new(right),
+        };
     }
     Ok(expr)
 }
 
 fn parse_relational(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = parse_additive(iter, comments, errors, restrictions)?;
-    loop {
-        if advance_if(iter, comments, errors, LangToken::LessThan).is_some() {
-            let right = parse_additive(iter, comments, errors, restrictions)?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::LessThan,
-                right: Box::new(right),
-            };
-        } else if advance_if(iter, comments, errors, LangToken::GreaterThan).is_some() {
-            let right = parse_additive(iter, comments, errors, restrictions)?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::GreaterThan,
-                right: Box::new(right),
-            };
-        } else if advance_if(iter, comments, errors, LangToken::LessThanOrEqual).is_some() {
-            let right = parse_additive(iter, comments, errors, restrictions)?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::LessThanOrEqual,
-                right: Box::new(right),
-            };
-        } else if advance_if(iter, comments, errors, LangToken::GreaterThanOrEqual).is_some() {
-            let right = parse_additive(iter, comments, errors, restrictions)?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::GreaterThanOrEqual,
-                right: Box::new(right),
-            };
-        } else {
-            break;
-        }
+    while let Some((operator, _)) = next_if_map(iter, comments, errors, |token| match token {
+        LangToken::LessThan => Some(ParsedBinaryOp::LessThan),
+        LangToken::GreaterThan => Some(ParsedBinaryOp::GreaterThan),
+        LangToken::LessThanOrEqual => Some(ParsedBinaryOp::LessThanOrEqual),
+        LangToken::GreaterThanOrEqual => Some(ParsedBinaryOp::GreaterThanOrEqual),
+        _ => None,
+    }) {
+        let right = parse_additive(iter, comments, errors, restrictions)?;
+        expr = ParsedExpr::BinaryOp {
+            range: expr.range().clone().to(right.range().clone()),
+            left: Box::new(expr),
+            operator,
+            right: Box::new(right),
+        };
     }
     Ok(expr)
 }
 
 fn parse_additive(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = parse_multiplicative(iter, comments, errors, restrictions)?;
-    loop {
-        if advance_if(iter, comments, errors, LangToken::Plus).is_some() {
-            let right = parse_multiplicative(iter, comments, errors, restrictions)?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::Plus,
-                right: Box::new(right),
-            };
-        } else if advance_if(iter, comments, errors, LangToken::Minus).is_some() {
-            let right = parse_multiplicative(iter, comments, errors, restrictions)?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::Minus,
-                right: Box::new(right),
-            };
-        } else {
-            break;
-        }
+    while let Some((operator, _)) = next_if_map(iter, comments, errors, |token| match token {
+        LangToken::Plus => Some(ParsedBinaryOp::Plus),
+        LangToken::Minus => Some(ParsedBinaryOp::Minus),
+        _ => None,
+    }) {
+        let right = parse_multiplicative(iter, comments, errors, restrictions)?;
+        expr = ParsedExpr::BinaryOp {
+            range: expr.range().clone().to(right.range().clone()),
+            left: Box::new(expr),
+            operator,
+            right: Box::new(right),
+        };
     }
     Ok(expr)
 }
 
 fn parse_multiplicative(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = parse_unary(iter, comments, errors, restrictions)?;
-    while advance_if(iter, comments, errors, LangToken::Asterisk).is_some() {
+    while next_if_eq(iter, comments, errors, LangToken::Asterisk).is_some() {
         let right = parse_unary(iter, comments, errors, restrictions)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
@@ -211,17 +171,17 @@ fn parse_multiplicative(
 
 fn parse_unary(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    if let Some(operator_range) = advance_if(iter, comments, errors, LangToken::Not) {
+    if let Some(operator_range) = next_if_eq(iter, comments, errors, LangToken::Not) {
         let expr = parse_unary(iter, comments, errors, restrictions)?; // Right associative for multiple !
         Ok(ParsedExpr::BooleanNegation {
             range: operator_range.to(expr.range().clone()),
             operand: Box::new(expr),
         })
-    } else if let Some(operator_range) = advance_if(iter, comments, errors, LangToken::Minus) {
+    } else if let Some(operator_range) = next_if_eq(iter, comments, errors, LangToken::Minus) {
         let expr = parse_unary(iter, comments, errors, restrictions)?; // Right associative for multiple -
         Ok(ParsedExpr::NumericNegation {
             range: operator_range.to(expr.range().clone()),
@@ -232,140 +192,86 @@ fn parse_unary(
     }
 }
 
-fn parse_array_literal(
+/// Parse a braced block after a left brace the caller has already consumed:
+/// any number of `let` statements followed by a tail expression, then the
+/// right brace. Returns the expression with the range from the left brace
+/// through the right.
+pub fn parse_block(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-    left_bracket: DocumentRange,
-) -> Result<ParsedExpr, ErrorEmitted> {
-    let (elements, range) = parse_delimited_list(
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    left_brace: &DocumentRange,
+) -> Result<(ParsedExpr, DocumentRange), ErrorEmitted> {
+    parse_delimited(
         iter,
         comments,
         errors,
-        LangTokenPair::Brackets,
-        &left_bracket,
-        &[],
-        parse_expr,
-    )?;
-    Ok(ParsedExpr::ArrayLiteral { elements, range })
-}
-
-/// Parse the inside of a block: any number of `let` statements followed by a
-/// tail expression. Without a leading `let` this is just `parse_expr`, so
-/// sites that always have braces around an expression can call this instead.
-pub fn parse_block_body(
-    iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
-) -> Result<ParsedExpr, ErrorEmitted> {
-    let Some(let_range) = advance_if(iter, comments, errors, LangToken::Let) else {
-        return parse_expr(iter, comments, errors);
-    };
-    let (var_name, var_name_range) = expect_identifier(iter, comments, errors)?;
-    let var_type = if advance_if(iter, comments, errors, LangToken::Colon).is_some() {
-        Some(parse_type(iter, comments, errors)?)
-    } else {
-        None
-    };
-    expect_token(iter, comments, errors, &LangToken::Assign)?;
-    let value_expr = parse_expr(iter, comments, errors)?;
-    let semicolon = expect_token(iter, comments, errors, &LangToken::Semicolon)?;
-    if let Some((LangToken::RightBrace, _)) = peek(iter) {
-        return Err(errors.emit(ParseErrorKind::BlockMissingTailExpression {}, semicolon));
-    }
-    let body = parse_block_body(iter, comments, errors)?;
-    let range = let_range.to(body.range().clone());
-    Ok(ParsedExpr::Let {
-        binding: Box::new(ParsedLetBinding {
-            var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
-            var_name_range,
-            var_type,
-            value_expr,
-        }),
-        body: Box::new(body),
-        range,
-    })
+        LangTokenPair::Braces,
+        left_brace,
+        |iter, comments, errors| {
+            let mut bindings = Vec::new();
+            while let Some(let_range) = next_if_eq(iter, comments, errors, LangToken::Let) {
+                let (var_name, var_name_range) = expect_identifier(iter, comments, errors)?;
+                let var_type = if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
+                    Some(parse_type(iter, comments, errors)?)
+                } else {
+                    None
+                };
+                expect_token(iter, comments, errors, &LangToken::Assign)?;
+                let value_expr = parse_expr(iter, comments, errors)?;
+                let semicolon = expect_token(iter, comments, errors, &LangToken::Semicolon)?;
+                if let Some((LangToken::RightBrace, _)) = peek(iter) {
+                    return Err(
+                        errors.emit(ParseErrorKind::BlockMissingTailExpression {}, semicolon)
+                    );
+                }
+                bindings.push((let_range, var_name, var_name_range, var_type, value_expr));
+            }
+            let mut expr = parse_expr(iter, comments, errors)?;
+            for (let_range, var_name, var_name_range, var_type, value_expr) in
+                bindings.into_iter().rev()
+            {
+                let range = let_range.to(expr.range().clone());
+                expr = ParsedExpr::Let {
+                    binding: Box::new(ParsedLetBinding {
+                        var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
+                        var_name_range,
+                        var_type,
+                        value_expr,
+                    }),
+                    body: Box::new(expr),
+                    range,
+                };
+            }
+            Ok(expr)
+        },
+    )
 }
 
 pub fn parse_primary(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = if let Some((name, name_range)) =
         next_if_map(iter, comments, errors, LangToken::not_uppercase_identifier)
     {
-        // A macro invocation, a function call, or a variable reference.
-        if let Some(bang_range) = advance_if(iter, comments, errors, LangToken::Not) {
+        if let Some(bang_range) = next_if_eq(iter, comments, errors, LangToken::Not) {
             parse_macro_invocation(iter, comments, errors, name, name_range.to(bang_range))?
+        } else if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
+            parse_function_call(iter, comments, errors, name, name_range, left_paren)?
         } else {
-            if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
-                let (args, parens) = parse_delimited_list(
-                    iter,
-                    comments,
-                    errors,
-                    LangTokenPair::Parens,
-                    &left_paren,
-                    &[],
-                    |iter, comments, errors| {
-                        let name = if matches!(peek(iter), Some((LangToken::Identifier(_), _)))
-                            && matches!(peek2(iter), Some((LangToken::Colon, _)))
-                        {
-                            let (name, name_range) = expect_identifier(iter, comments, errors)?;
-                            let name = VarName::new(name).or_emit(errors, &name_range)?;
-                            expect_token(iter, comments, errors, &LangToken::Colon)?;
-                            Some((name, name_range))
-                        } else {
-                            None
-                        };
-                        Ok((name, parse_expr(iter, comments, errors)?))
-                    },
-                )?;
-                let is_named = args.first().is_some_and(|(name, _)| name.is_some());
-                let mut positional = Vec::new();
-                let mut named = Vec::new();
-                for (name, value) in args {
-                    match (is_named, name) {
-                        (false, None) => positional.push(value),
-                        (true, Some((name, name_range))) => named.push(ParsedNamedArgument {
-                            name,
-                            name_range,
-                            value,
-                        }),
-                        (_, name) => {
-                            let _ = errors.emit(
-                                ParseErrorKind::MixedNamedAndPositionalArguments {},
-                                match name {
-                                    Some((_, name_range)) => name_range.to(value.range().clone()),
-                                    None => value.range().clone(),
-                                },
-                            );
-                        }
-                    }
-                }
-                ParsedExpr::FunctionCall {
-                    name: VarName::new(name).or_emit(errors, &name_range)?,
-                    name_range: name_range.clone(),
-                    args: if is_named {
-                        ParsedArguments::Named(named)
-                    } else {
-                        ParsedArguments::Positional(positional)
-                    },
-                    range: name_range.to(parens),
-                }
-            } else {
-                ParsedExpr::VariableReference {
-                    value: VarName::new(name).or_emit(errors, &name_range)?,
-                    range: name_range,
-                }
+            ParsedExpr::VariableReference {
+                value: VarName::new(name).or_emit(errors, &name_range)?,
+                range: name_range,
             }
         }
     } else if let Some((name, name_range)) =
         next_if_map(iter, comments, errors, LangToken::uppercase_identifier)
     {
         let type_name = TypeName::new(name).or_emit(errors, &name_range)?;
-        if advance_if(iter, comments, errors, LangToken::ColonColon).is_some() {
+        if next_if_eq(iter, comments, errors, LangToken::ColonColon).is_some() {
             parse_enum_literal(iter, comments, errors, type_name, name_range, restrictions)?
         } else {
             parse_record_literal(iter, comments, errors, type_name, name_range, restrictions)?
@@ -380,14 +286,15 @@ pub fn parse_primary(
             value,
             range: lit_range,
         }
-    } else if let Some(lit_range) = advance_if(iter, comments, errors, LangToken::True) {
+    } else if let Some((value, lit_range)) =
+        next_if_map(iter, comments, errors, |token| match token {
+            LangToken::True => Some(true),
+            LangToken::False => Some(false),
+            _ => None,
+        })
+    {
         ParsedExpr::BooleanLiteral {
-            value: true,
-            range: lit_range,
-        }
-    } else if let Some(lit_range) = advance_if(iter, comments, errors, LangToken::False) {
-        ParsedExpr::BooleanLiteral {
-            value: false,
+            value,
             range: lit_range,
         }
     } else if let Some((value, lit_range)) =
@@ -410,9 +317,18 @@ pub fn parse_primary(
             value,
             range: lit_range,
         }
-    } else if let Some(left_bracket) = advance_if(iter, comments, errors, LangToken::LeftBracket) {
-        parse_array_literal(iter, comments, errors, left_bracket)?
-    } else if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
+    } else if let Some(left_bracket) = next_if_eq(iter, comments, errors, LangToken::LeftBracket) {
+        let (elements, range) = parse_delimited_list(
+            iter,
+            comments,
+            errors,
+            LangTokenPair::Brackets,
+            &left_bracket,
+            &[],
+            parse_expr,
+        )?;
+        ParsedExpr::ArrayLiteral { elements, range }
+    } else if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
         let (inner, _) = parse_delimited(
             iter,
             comments,
@@ -422,11 +338,11 @@ pub fn parse_primary(
             parse_expr,
         )?;
         inner
-    } else if let Some(match_range) = advance_if(iter, comments, errors, LangToken::Match) {
+    } else if let Some(match_range) = next_if_eq(iter, comments, errors, LangToken::Match) {
         parse_match(iter, comments, errors, match_range)?
-    } else if let Some(for_range) = advance_if(iter, comments, errors, LangToken::For) {
+    } else if let Some(for_range) = next_if_eq(iter, comments, errors, LangToken::For) {
         parse_for(iter, comments, errors, for_range)?
-    } else if let Some(some_range) = advance_if(iter, comments, errors, LangToken::Some) {
+    } else if let Some(some_range) = next_if_eq(iter, comments, errors, LangToken::Some) {
         let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
         let (value, parens) = parse_delimited(
             iter,
@@ -440,22 +356,15 @@ pub fn parse_primary(
             value: Some(Box::new(value)),
             range: some_range.to(parens),
         }
-    } else if let Some(none_range) = advance_if(iter, comments, errors, LangToken::None) {
+    } else if let Some(none_range) = next_if_eq(iter, comments, errors, LangToken::None) {
         ParsedExpr::OptionLiteral {
             value: None,
             range: none_range,
         }
-    } else if let Some(left_brace) = advance_if(iter, comments, errors, LangToken::LeftBrace) {
-        let (inner, _) = parse_delimited(
-            iter,
-            comments,
-            errors,
-            LangTokenPair::Braces,
-            &left_brace,
-            parse_block_body,
-        )?;
+    } else if let Some(left_brace) = next_if_eq(iter, comments, errors, LangToken::LeftBrace) {
+        let (inner, _) = parse_block(iter, comments, errors, &left_brace)?;
         inner
-    } else if let Some(left_angle) = advance_if(iter, comments, errors, LangToken::LessThan) {
+    } else if let Some(left_angle) = next_if_eq(iter, comments, errors, LangToken::LessThan) {
         parse_nodes::parse_markup(iter, comments, errors, left_angle)?
     } else {
         return Err(match peek(iter) {
@@ -468,17 +377,16 @@ pub fn parse_primary(
             None => errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range()),
         });
     };
-    while advance_if(iter, comments, errors, LangToken::Dot).is_some() {
+    while next_if_eq(iter, comments, errors, LangToken::Dot).is_some() {
         let (field_name, field_range) = expect_identifier(iter, comments, errors)?;
-        if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
+        if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
             let right_paren =
                 expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
-            let new_range = expr.range().clone().to(right_paren);
             expr = ParsedExpr::MethodCall {
+                range: expr.range().clone().to(right_paren),
                 receiver: Box::new(expr),
                 method: FieldName::new(field_name).or_emit(errors, &field_range)?,
                 method_range: field_range,
-                range: new_range,
             };
         } else {
             expr = ParsedExpr::FieldAccess {
@@ -491,10 +399,74 @@ pub fn parse_primary(
     Ok(expr)
 }
 
+/// Parse a call's argument list from a `(` the caller has already consumed.
+fn parse_function_call(
+    iter: &mut DocumentCursor,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    name: CheapString,
+    name_range: DocumentRange,
+    left_paren: DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let (args, parens) = parse_delimited_list(
+        iter,
+        comments,
+        errors,
+        LangTokenPair::Parens,
+        &left_paren,
+        &[],
+        |iter, comments, errors| {
+            let name = if matches!(peek(iter), Some((LangToken::Identifier(_), _)))
+                && matches!(peek2(iter), Some((LangToken::Colon, _)))
+            {
+                let (name, name_range) = expect_identifier(iter, comments, errors)?;
+                let name = VarName::new(name).or_emit(errors, &name_range)?;
+                expect_token(iter, comments, errors, &LangToken::Colon)?;
+                Some((name, name_range))
+            } else {
+                None
+            };
+            Ok((name, parse_expr(iter, comments, errors)?))
+        },
+    )?;
+    let is_named = args.first().is_some_and(|(name, _)| name.is_some());
+    let mut positional = Vec::new();
+    let mut named = Vec::new();
+    for (name, value) in args {
+        match (is_named, name) {
+            (false, None) => positional.push(value),
+            (true, Some((name, name_range))) => named.push(ParsedNamedArgument {
+                name,
+                name_range,
+                value,
+            }),
+            (_, name) => {
+                let _ = errors.emit(
+                    ParseErrorKind::MixedNamedAndPositionalArguments {},
+                    match name {
+                        Some((_, name_range)) => name_range.to(value.range().clone()),
+                        None => value.range().clone(),
+                    },
+                );
+            }
+        }
+    }
+    Ok(ParsedExpr::FunctionCall {
+        name: VarName::new(name).or_emit(errors, &name_range)?,
+        name_range: name_range.clone(),
+        args: if is_named {
+            ParsedArguments::Named(named)
+        } else {
+            ParsedArguments::Positional(positional)
+        },
+        range: name_range.to(parens),
+    })
+}
+
 fn parse_macro_invocation(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     macro_name: CheapString,
     subject_range: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
@@ -518,8 +490,8 @@ fn parse_macro_invocation(
 
 fn parse_record_literal(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     name: TypeName,
     name_range: DocumentRange,
     restrictions: Restrictions,
@@ -528,7 +500,7 @@ fn parse_record_literal(
         Field(ParsedFieldInitializer),
         Spread(ParsedExpr, DocumentRange),
     }
-    let left_brace = match advance_if_field_list(iter, comments, errors, restrictions) {
+    let left_brace = match next_if_field_list(iter, comments, errors, restrictions) {
         Some(left_brace) => left_brace,
         // A bare type name is not an expression, so the literal is the
         // problem rather than the `{` that was left for the block.
@@ -547,7 +519,7 @@ fn parse_record_literal(
         &left_brace,
         &[],
         |iter, comments, errors| {
-            if let Some(spread_range) = advance_if(iter, comments, errors, LangToken::DotDotDot) {
+            if let Some(spread_range) = next_if_eq(iter, comments, errors, LangToken::DotDotDot) {
                 let subject = parse_expr(iter, comments, errors)?;
                 let spread_range = spread_range.to(subject.range().clone());
                 return Ok(Entry::Spread(subject, spread_range));
@@ -594,15 +566,15 @@ fn parse_record_literal(
 
 fn parse_enum_literal(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     enum_name: TypeName,
     enum_name_range: DocumentRange,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let (variant_name, variant_range) = expect_identifier(iter, comments, errors)?;
     let (fields, end_range) = if let Some(left_delim) =
-        advance_if_field_list(iter, comments, errors, restrictions)
+        next_if_field_list(iter, comments, errors, restrictions)
     {
         let (fields, braces) = parse_delimited_list(
             iter,
@@ -612,7 +584,7 @@ fn parse_enum_literal(
             &left_delim,
             &[],
             |iter, comments, errors| {
-                if let Some(spread_range) = advance_if(iter, comments, errors, LangToken::DotDotDot)
+                if let Some(spread_range) = next_if_eq(iter, comments, errors, LangToken::DotDotDot)
                 {
                     return Err(
                         errors.emit(ParseErrorKind::SpreadNotAllowedInEnumLiteral, spread_range)
@@ -655,10 +627,10 @@ fn parse_enum_literal(
 /// only be a field list: `{ x,`, `{ x:`, or `{ ...`. The caller then
 /// parses the literal anyway, so that the parse resumes after it, and
 /// reports it.
-fn advance_if_field_list(
+fn next_if_field_list(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Option<DocumentRange> {
     if restrictions.forbid_record_literals {
@@ -674,17 +646,17 @@ fn advance_if_field_list(
             return None;
         }
     }
-    advance_if(iter, comments, errors, LangToken::LeftBrace)
+    next_if_eq(iter, comments, errors, LangToken::LeftBrace)
 }
 
 fn parse_for(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     for_range: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let (var_name, var_name_range) =
-        if let Some(underscore_range) = advance_if(iter, comments, errors, LangToken::Underscore) {
+        if let Some(underscore_range) = next_if_eq(iter, comments, errors, LangToken::Underscore) {
             (None, Some(underscore_range))
         } else {
             let (name, name_range) = expect_identifier(iter, comments, errors)?;
@@ -700,7 +672,7 @@ fn parse_for(
             forbid_record_literals: true,
         },
     )?;
-    let source = if advance_if(iter, comments, errors, LangToken::DotDotEq).is_some() {
+    let source = if next_if_eq(iter, comments, errors, LangToken::DotDotEq).is_some() {
         let end_expr = parse_expr_with(
             iter,
             comments,
@@ -717,14 +689,7 @@ fn parse_for(
         ParsedLoopSource::Array(start_expr)
     };
     let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
-    let (body, braces) = parse_delimited(
-        iter,
-        comments,
-        errors,
-        LangTokenPair::Braces,
-        &left_brace,
-        parse_block_body,
-    )?;
+    let (body, braces) = parse_block(iter, comments, errors, &left_brace)?;
     Ok(ParsedExpr::For {
         var_name,
         var_name_range,
@@ -736,8 +701,8 @@ fn parse_for(
 
 fn parse_match(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
     match_range: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let subject = parse_expr_with(
@@ -772,17 +737,24 @@ fn parse_match(
 
 fn parse_match_pattern(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
 ) -> Result<ParsedMatchPattern, ErrorEmitted> {
-    if let Some(pattern_range) = advance_if(iter, comments, errors, LangToken::Underscore) {
+    if let Some(pattern_range) = next_if_eq(iter, comments, errors, LangToken::Underscore) {
         return Ok(ParsedMatchPattern::Wildcard {
             range: pattern_range,
         });
     }
-    if let Some(pattern_range) = advance_if(iter, comments, errors, LangToken::True) {
+    if let Some((constructor, pattern_range)) =
+        next_if_map(iter, comments, errors, |token| match token {
+            LangToken::True => Some(Constructor::BooleanTrue),
+            LangToken::False => Some(Constructor::BooleanFalse),
+            LangToken::None => Some(Constructor::OptionNone),
+            _ => None,
+        })
+    {
         return Ok(ParsedMatchPattern::Constructor {
-            constructor: Constructor::BooleanTrue,
+            constructor,
             args: Vec::new(),
             fields: Vec::new(),
             constructor_range: pattern_range.clone(),
@@ -790,17 +762,7 @@ fn parse_match_pattern(
             range: pattern_range,
         });
     }
-    if let Some(pattern_range) = advance_if(iter, comments, errors, LangToken::False) {
-        return Ok(ParsedMatchPattern::Constructor {
-            constructor: Constructor::BooleanFalse,
-            args: Vec::new(),
-            fields: Vec::new(),
-            constructor_range: pattern_range.clone(),
-            enum_name_range: None,
-            range: pattern_range,
-        });
-    }
-    if let Some(some_range) = advance_if(iter, comments, errors, LangToken::Some) {
+    if let Some(some_range) = next_if_eq(iter, comments, errors, LangToken::Some) {
         let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
         let (inner_pattern, parens) = parse_delimited(
             iter,
@@ -819,25 +781,15 @@ fn parse_match_pattern(
             range: some_range.to(parens),
         });
     }
-    if let Some(pattern_range) = advance_if(iter, comments, errors, LangToken::None) {
-        return Ok(ParsedMatchPattern::Constructor {
-            constructor: Constructor::OptionNone,
-            args: Vec::new(),
-            fields: Vec::new(),
-            constructor_range: pattern_range.clone(),
-            enum_name_range: None,
-            range: pattern_range,
-        });
-    }
     if let Some((type_name_str, type_name_range)) =
         next_if_map(iter, comments, errors, LangToken::uppercase_identifier)
     {
-        if advance_if(iter, comments, errors, LangToken::ColonColon).is_some() {
+        if next_if_eq(iter, comments, errors, LangToken::ColonColon).is_some() {
             let (variant_name, variant_range) = expect_identifier(iter, comments, errors)?;
             let variant_name = TypeName::new(variant_name).or_emit(errors, &variant_range)?;
 
             let (fields, end_range) = if let Some(left_brace) =
-                advance_if(iter, comments, errors, LangToken::LeftBrace)
+                next_if_eq(iter, comments, errors, LangToken::LeftBrace)
             {
                 parse_delimited_list(
                     iter,
@@ -851,7 +803,7 @@ fn parse_match_pattern(
                         let field_name =
                             FieldName::new(name.clone()).or_emit(errors, &field_range)?;
                         let pattern =
-                            if advance_if(iter, comments, errors, LangToken::Colon).is_some() {
+                            if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
                                 parse_match_pattern(iter, comments, errors)?
                             } else {
                                 ParsedMatchPattern::Binding {
@@ -878,41 +830,39 @@ fn parse_match_pattern(
                 enum_name_range: Some(type_name_range.clone()),
                 range: type_name_range.to(end_range),
             });
-        } else {
-            let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
-            let (fields, braces) = parse_delimited_list(
-                iter,
-                comments,
-                errors,
-                LangTokenPair::Braces,
-                &left_brace,
-                &[],
-                |iter, comments, errors| {
-                    let (name, field_range) = expect_identifier(iter, comments, errors)?;
-                    let pattern = if advance_if(iter, comments, errors, LangToken::Colon).is_some()
-                    {
-                        parse_match_pattern(iter, comments, errors)?
-                    } else {
-                        ParsedMatchPattern::Binding {
-                            name: VarName::new(name.clone()).or_emit(errors, &field_range)?,
-                            range: field_range.clone(),
-                        }
-                    };
-                    let field_name = FieldName::new(name).or_emit(errors, &field_range)?;
-                    Ok((field_name, field_range, pattern))
-                },
-            )?;
-            return Ok(ParsedMatchPattern::Constructor {
-                constructor: Constructor::Record {
-                    type_name: TypeName::new(type_name_str).or_emit(errors, &type_name_range)?,
-                },
-                args: Vec::new(),
-                fields,
-                constructor_range: type_name_range.clone(),
-                enum_name_range: None,
-                range: type_name_range.to(braces),
-            });
         }
+        let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
+        let (fields, braces) = parse_delimited_list(
+            iter,
+            comments,
+            errors,
+            LangTokenPair::Braces,
+            &left_brace,
+            &[],
+            |iter, comments, errors| {
+                let (name, field_range) = expect_identifier(iter, comments, errors)?;
+                let pattern = if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
+                    parse_match_pattern(iter, comments, errors)?
+                } else {
+                    ParsedMatchPattern::Binding {
+                        name: VarName::new(name.clone()).or_emit(errors, &field_range)?,
+                        range: field_range.clone(),
+                    }
+                };
+                let field_name = FieldName::new(name).or_emit(errors, &field_range)?;
+                Ok((field_name, field_range, pattern))
+            },
+        )?;
+        return Ok(ParsedMatchPattern::Constructor {
+            constructor: Constructor::Record {
+                type_name: TypeName::new(type_name_str).or_emit(errors, &type_name_range)?,
+            },
+            args: Vec::new(),
+            fields,
+            constructor_range: type_name_range.clone(),
+            enum_name_range: None,
+            range: type_name_range.to(braces),
+        });
     }
     let (var_name, var_range) = expect_identifier(iter, comments, errors)?;
     Ok(ParsedMatchPattern::Binding {
@@ -932,8 +882,8 @@ mod tests {
     fn accept(input: &str, expected: Expect) {
         let document_id = DocumentId::new("test.hop").unwrap();
         let mut iter = DocumentCursor::new(document_id, input.to_string());
-        let mut comments = VecDeque::new();
-        let mut errors = ParseErrors::new();
+        let mut comments = Vec::new();
+        let mut errors = Vec::new();
         let Ok(result) = parse_expr(&mut iter, &mut comments, &mut errors) else {
             panic!("expected expression to parse, got errors: {errors:?}");
         };
@@ -943,8 +893,8 @@ mod tests {
     fn reject(input: &str, expected: Expect) {
         let document_id = DocumentId::new("test.hop").unwrap();
         let mut iter = DocumentCursor::new(document_id.clone(), input.to_string());
-        let mut comments = VecDeque::new();
-        let mut errors = ParseErrors::new();
+        let mut comments = Vec::new();
+        let mut errors = Vec::new();
         let result = parse_expr(&mut iter, &mut comments, &mut errors);
         if errors.is_empty() {
             panic!("expected parse errors but got none");

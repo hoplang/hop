@@ -750,17 +750,15 @@ mod tests {
     use crate::hop::parsing::parsed_expr::ParsedExpr;
     use crate::hop::patterns::typed::typecheck_pattern;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
-    use crate::parse_error::ParseErrors;
     use expect_test::{Expect, expect};
     use indoc::indoc;
-    use std::collections::VecDeque;
 
     fn run_check(types: TypeRegistryBuilder, subject: &str, expr_str: &str) -> (String, bool) {
         let types = types.build();
         let subject_type = types.resolve(subject);
         let mut iter = DocumentCursor::new(types.module().clone(), expr_str.to_string());
-        let mut comments = VecDeque::new();
-        let mut errors = ParseErrors::new();
+        let mut comments = Vec::new();
+        let mut errors = Vec::new();
         let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors)
             .expect("Failed to parse expression");
 

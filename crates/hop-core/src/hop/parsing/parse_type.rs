@@ -1,36 +1,34 @@
-use std::collections::VecDeque;
-
-use super::parse_helpers::{advance_if, expect_token, parse_delimited, parse_delimited_list};
+use super::parse_helpers::{expect_token, next_if_eq, parse_delimited, parse_delimited_list};
 use super::tokenize_expr::{next, peek, peek2};
 
 use super::parsed_type::ParsedType;
 use super::token::LangToken;
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
-use crate::parse_error::{ErrorEmitted, OrEmit, ParseErrorKind, ParseErrors};
+use crate::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use crate::symbols::type_name::TypeName;
 
 pub fn parse_type(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
 ) -> Result<ParsedType, ErrorEmitted> {
-    if let Some(type_range) = advance_if(iter, comments, errors, LangToken::TypeString) {
+    if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeString) {
         return Ok(ParsedType::String { range: type_range });
     }
-    if let Some(type_range) = advance_if(iter, comments, errors, LangToken::TypeInt) {
+    if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeInt) {
         return Ok(ParsedType::Int { range: type_range });
     }
-    if let Some(type_range) = advance_if(iter, comments, errors, LangToken::TypeFloat) {
+    if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeFloat) {
         return Ok(ParsedType::Float { range: type_range });
     }
-    if let Some(type_range) = advance_if(iter, comments, errors, LangToken::TypeBoolean) {
+    if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeBoolean) {
         return Ok(ParsedType::Bool { range: type_range });
     }
-    if let Some(type_range) = advance_if(iter, comments, errors, LangToken::TypeHtml) {
+    if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeHtml) {
         return Ok(ParsedType::Html { range: type_range });
     }
-    if let Some(type_array) = advance_if(iter, comments, errors, LangToken::TypeArray) {
+    if let Some(type_array) = next_if_eq(iter, comments, errors, LangToken::TypeArray) {
         let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;
         let (element, brackets) = parse_delimited(
             iter,
@@ -45,7 +43,7 @@ pub fn parse_type(
             range: type_array.to(brackets),
         });
     }
-    if let Some(type_option) = advance_if(iter, comments, errors, LangToken::TypeOption) {
+    if let Some(type_option) = next_if_eq(iter, comments, errors, LangToken::TypeOption) {
         let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;
         let (element, brackets) = parse_delimited(
             iter,
@@ -60,7 +58,7 @@ pub fn parse_type(
             range: type_option.to(brackets),
         });
     }
-    if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
+    if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
         let mut trailing_comma = false;
         let (elements, parens) = parse_delimited_list(
             iter,

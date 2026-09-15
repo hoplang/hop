@@ -1,10 +1,8 @@
-use std::collections::VecDeque;
-
 use crate::document::{DocumentCursor, DocumentRange};
 
 use super::token::LangToken;
 use crate::hop::uncooked_string::UncookedString;
-use crate::parse_error::{ParseErrorKind, ParseErrors};
+use crate::parse_error::{Emit, ParseError, ParseErrorKind};
 
 /// A single outcome of advancing the tokenizer.
 pub enum LexStep {
@@ -231,16 +229,16 @@ fn next_ignoring_trivia(iter: &mut DocumentCursor) -> Option<(LangToken, Documen
 }
 
 /// Returns the next token, collecting any comments encountered along the way
-/// into the provided deque.
+/// into the provided vec.
 pub fn next(
     iter: &mut DocumentCursor,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut ParseErrors,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
 ) -> Option<(LangToken, DocumentRange)> {
     loop {
         match step(iter)? {
             LexStep::Token(token, range) => return Some((token, range)),
-            LexStep::Comment(range) => comments.push_back(range),
+            LexStep::Comment(range) => comments.push(range),
             LexStep::Error(kind, range) => {
                 let _ = errors.emit(kind, range);
             }
@@ -259,8 +257,8 @@ mod tests {
     fn run_tokenizer(input: &str) -> (String, bool) {
         let mut cursor =
             DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string());
-        let mut errors = ParseErrors::new();
-        let mut comments = VecDeque::new();
+        let mut errors = Vec::new();
+        let mut comments = Vec::new();
         let mut annotations = Vec::new();
         while let Some((tok, range)) = next(&mut cursor, &mut comments, &mut errors) {
             annotations.push(SimpleAnnotation {

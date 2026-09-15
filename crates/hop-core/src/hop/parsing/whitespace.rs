@@ -102,7 +102,6 @@ mod tests {
     use crate::hop::parsing::parse;
     use crate::ir::runtime::evaluator;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
-    use crate::parse_error::ParseErrors;
     use crate::program::Program;
     use crate::symbols::type_name::TypeName;
     use indoc::indoc;
@@ -122,7 +121,7 @@ mod tests {
 
     fn reformat(source: &str) -> String {
         let document_id = DocumentId::new("test.hop").unwrap();
-        let mut errors = ParseErrors::new();
+        let mut errors = Vec::new();
         let ast = parse::parse(
             document_id.clone(),
             Document::new(document_id, source.to_string()),

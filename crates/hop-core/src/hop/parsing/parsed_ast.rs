@@ -9,7 +9,6 @@ use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
-use std::collections::VecDeque;
 use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
@@ -18,7 +17,7 @@ pub struct ParsedAst {
     // We use a Vec of enum to store the declarations so that the declaration
     // order is consistent when formatting.
     declarations: Vec<ParsedDeclaration>,
-    comments: VecDeque<DocumentRange>,
+    comments: Vec<DocumentRange>,
 }
 
 #[derive(Debug, Clone)]
@@ -222,7 +221,7 @@ impl ParsedAst {
     pub fn new(
         document_id: DocumentId,
         declarations: Vec<ParsedDeclaration>,
-        comments: VecDeque<DocumentRange>,
+        comments: Vec<DocumentRange>,
     ) -> Self {
         Self {
             document_id,
@@ -231,7 +230,7 @@ impl ParsedAst {
         }
     }
 
-    pub fn comments(&self) -> &VecDeque<DocumentRange> {
+    pub fn comments(&self) -> &[DocumentRange] {
         &self.comments
     }
 
