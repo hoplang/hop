@@ -5598,6 +5598,48 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn enum_without_variants() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Empty {}
+
+                page Test() {
+                  fn body() -> Html {
+                    <>hi</>
+                  }
+                }
+            "#},
+            "hi",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  write("hi")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("hi")
+                }
+                -- expected output --
+                hi
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn enum_match_expr() {
         check(
             indoc! {r#"
