@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::asset_rewriter::AssetRewriter;
@@ -264,23 +263,17 @@ impl<'a> Compiler<'a> {
                 id: expr_id,
             },
             TypedExpr::StringLiteral { value, .. } => PureExpr::StringLiteral {
-                value: match process_escape_sequences(value.as_str()) {
-                    Cow::Borrowed(_) => value.clone(),
-                    Cow::Owned(unescaped) => CheapString::new(unescaped),
-                },
+                value: value.clone(),
                 id: expr_id,
             },
             TypedExpr::Asset { path } => {
-                let rewritten = match &self.asset_rewriter {
-                    Some(rewriter) => {
-                        rewriter.rewrite(&DocumentId::new(path.trim_start_matches('/')).unwrap())
-                    }
-                    None => path.to_string(),
+                let value = match &self.asset_rewriter {
+                    Some(rewriter) => CheapString::new(
+                        rewriter.rewrite(&DocumentId::new(path.trim_start_matches('/')).unwrap()),
+                    ),
+                    None => path.clone(),
                 };
-                PureExpr::StringLiteral {
-                    value: CheapString::new(process_escape_sequences(&rewritten).into_owned()),
-                    id: expr_id,
-                }
+                PureExpr::StringLiteral { value, id: expr_id }
             }
             TypedExpr::BooleanLiteral { value, .. } => PureExpr::BooleanLiteral {
                 value: *value,
@@ -661,52 +654,6 @@ impl<'a> Compiler<'a> {
             },
         }
     }
-}
-
-/// Processes escape sequences in a string, converting raw escape sequences
-/// like `\n` to their actual character values.
-///
-/// Supported escape sequences:
-/// - `\n` → newline
-/// - `\t` → tab
-/// - `\r` → carriage return
-/// - `\\` → backslash
-/// - `\"` → double quote
-fn process_escape_sequences(s: &str) -> Cow<'_, str> {
-    // Without a backslash there is nothing to unescape, so the caller can keep
-    // whatever allocation it already has instead of copying the text out.
-    if !s.contains('\\') {
-        return Cow::Borrowed(s);
-    }
-
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if ch == '\\' {
-            match chars.next() {
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('r') => result.push('\r'),
-                Some('\\') => result.push('\\'),
-                Some('"') => result.push('"'),
-                Some(other) => {
-                    // Invalid escape sequence - keep as-is
-                    // (tokenizer already reported the error)
-                    result.push('\\');
-                    result.push(other);
-                }
-                None => {
-                    // Trailing backslash - keep as-is
-                    result.push('\\');
-                }
-            }
-        } else {
-            result.push(ch);
-        }
-    }
-
-    Cow::Owned(result)
 }
 
 #[cfg(test)]

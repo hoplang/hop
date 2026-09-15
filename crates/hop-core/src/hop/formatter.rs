@@ -956,7 +956,7 @@ fn format_expr<'a>(
             .append(arena.text("()")),
         ParsedExpr::StringLiteral { value, .. } => arena
             .text("\"")
-            .append(arena.text(value.as_str()))
+            .append(arena.text(value.as_raw_str()))
             .append(arena.text("\"")),
         ParsedExpr::BooleanLiteral { range, .. } => arena.text(range.as_str()),
         ParsedExpr::IntLiteral { range, .. } => arena.text(range.as_str()),
@@ -1133,7 +1133,7 @@ fn format_expr<'a>(
                         drain_comments_before(arena, comments, e.range().start());
                     match e {
                         ParsedExpr::StringLiteral { value, .. } => {
-                            let parts: Vec<_> = value.split_whitespace().collect();
+                            let parts: Vec<_> = value.as_raw_str().split_whitespace().collect();
                             for (i, part) in parts.iter().enumerate() {
                                 let quoted = arena
                                     .text("\"")
@@ -3410,6 +3410,44 @@ mod tests {
                     )
                   }>
                   </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn join_macro_splits_on_written_spaces_not_escaped_ones() {
+        check(
+            indoc! {r#"
+                fn Card() -> Html {
+                  <div class={join!("foo\nbar baz")}></div>
+                }
+            "#},
+            expect![[r#"
+                fn Card() -> Html {
+                  <div class={
+                    join!(
+                      "foo\nbar",
+                      "baz",
+                    )
+                  }>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn preserves_escape_sequences_in_string_literals() {
+        check(
+            indoc! {r#"
+                fn Greeting() -> String {
+                  "tab\there, \"quoted\", back\\slash, newline\n"
+                }
+            "#},
+            expect![[r#"
+                fn Greeting() -> String {
+                  "tab\there, \"quoted\", back\\slash, newline\n"
                 }
             "#]],
         );

@@ -116,8 +116,13 @@ fn generate(
     visiting: &mut Vec<(DocumentId, TypeName)>,
 ) -> Value {
     match registry.resolve(ty).expect("named type must be registered") {
-        ResolvedType::String => match examples.and_then(|e| e.pattern.as_deref()) {
-            Some(p) => random_string_from_pattern(rng, p),
+        ResolvedType::String => match examples.and_then(|e| e.pattern.as_ref()) {
+            Some(p) => {
+                let cooked = p.cook(&mut |_, _| {
+                    unreachable!("escape sequences were resolved during typechecking")
+                });
+                random_string_from_pattern(rng, cooked.as_str())
+            }
             None => random_word(rng),
         },
         ResolvedType::Bool => Value::Bool(rng.random_bool(0.5)),

@@ -86,9 +86,15 @@ pub fn typecheck_expr(
         ParsedExpr::BooleanLiteral { value, .. } => {
             Some(TypedExpr::BooleanLiteral { value: *value })
         }
-        ParsedExpr::StringLiteral { value, .. } => Some(TypedExpr::StringLiteral {
-            value: value.clone(),
-        }),
+        ParsedExpr::StringLiteral { value, .. } => {
+            let value = value.cook(&mut |ch, range| {
+                errors.push(TypeError::new(
+                    TypeErrorKind::InvalidEscapeSequence { ch },
+                    range,
+                ));
+            });
+            Some(TypedExpr::StringLiteral { value })
+        }
         ParsedExpr::IntLiteral { value, .. } => Some(TypedExpr::IntLiteral { value: *value }),
         ParsedExpr::FloatLiteral { value, .. } => Some(TypedExpr::FloatLiteral { value: *value }),
         ParsedExpr::FieldAccess {
@@ -1915,7 +1921,15 @@ pub fn typecheck_expr(
                 }
                 // Must be a string literal
                 let (path, path_range) = match &args[0] {
-                    ParsedExpr::StringLiteral { value, range } => (value.clone(), range.clone()),
+                    ParsedExpr::StringLiteral { value, range } => {
+                        let path = value.cook(&mut |ch, range| {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::InvalidEscapeSequence { ch },
+                                range,
+                            ));
+                        });
+                        (path, range.clone())
+                    }
                     other => {
                         errors.push(TypeError::new(
                             TypeErrorKind::AssetMacroNonLiteralArg {},

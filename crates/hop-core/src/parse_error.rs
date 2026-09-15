@@ -165,12 +165,6 @@ pub(crate) enum ParseErrorKind {
     #[error("Unterminated string literal")]
     UnterminatedStringLiteral,
 
-    #[error("Invalid escape sequence '\\{ch}'")]
-    InvalidEscapeSequence { ch: char },
-
-    #[error("Invalid escape sequence at end of string")]
-    InvalidEscapeSequenceAtEndOfString,
-
     #[error("Unmatched '{token}'")]
     UnmatchedToken { token: LangToken },
 

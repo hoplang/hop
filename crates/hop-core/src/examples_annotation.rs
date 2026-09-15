@@ -1,8 +1,10 @@
+use crate::hop::uncooked_string::UncookedString;
+
 /// Metadata from `#[examples(...)]` annotations on fields/parameters.
 #[derive(Debug, Clone, Default)]
 pub struct ExamplesAnnotation {
     /// Regex pattern for String fields.
-    pub pattern: Option<String>,
+    pub pattern: Option<UncookedString>,
     /// Minimum value for Int fields.
     pub min: Option<i32>,
     /// Maximum value for Int fields.

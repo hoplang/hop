@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::document::{CheapString, DocumentRange};
+use crate::hop::uncooked_string::UncookedString;
 
 #[derive(Clone, Copy)]
 pub enum LangTokenPair {
@@ -51,7 +52,7 @@ impl LangTokenPair {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LangToken {
     Identifier(CheapString),
-    StringLiteral(CheapString),
+    StringLiteral(UncookedString),
     IntLiteral(i32),
     FloatLiteral(f64),
     Underscore,

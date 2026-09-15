@@ -879,13 +879,21 @@ fn validate_examples_annotation(
                 },
                 range.clone(),
             ));
-        } else if let Err(e) = regex_syntax::parse(pattern) {
-            errors.push(TypeError::new(
-                TypeErrorKind::InvalidPatternRegex {
-                    message: e.to_string(),
-                },
-                range.clone(),
-            ));
+        } else {
+            let pattern = pattern.cook(&mut |ch, range| {
+                errors.push(TypeError::new(
+                    TypeErrorKind::InvalidEscapeSequence { ch },
+                    range,
+                ));
+            });
+            if let Err(e) = regex_syntax::parse(pattern.as_str()) {
+                errors.push(TypeError::new(
+                    TypeErrorKind::InvalidPatternRegex {
+                        message: e.to_string(),
+                    },
+                    range.clone(),
+                ));
+            }
         }
     }
     if examples.min.is_some() || examples.max.is_some() {
@@ -1208,6 +1216,88 @@ mod tests {
                   only: (Int,),
                   nothing: (),
                   plain: Int,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_escape_sequence_in_examples_pattern() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record User {
+                  #[examples(pattern = "\d+")]
+                  name: String,
+                }
+            "#},
+            expect![[r#"
+                error: Invalid escape sequence '\d'
+                  --> main.hop (line 2, col 25)
+                1 | record User {
+                2 |   #[examples(pattern = "\d+")]
+                  |                         ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_doubled_backslash_in_an_examples_pattern() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record User {
+                  #[examples(pattern = "\\d+")]
+                  name: String,
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+
+                -- type registry --
+                record main::User {
+                  name: String,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_escape_sequence_in_string_literal() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Foo() -> Html {
+                  <div>{"bad\qescape"}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Invalid escape sequence '\q'
+                  --> main.hop (line 2, col 13)
+                1 | fn Foo() -> Html {
+                2 |   <div>{"bad\qescape"}</div>
+                  |             ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_known_escape_sequences_in_string_literal() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Foo() -> Html {
+                  <div>{"tab\there and \"quotes\" and back\\slash"}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Foo() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape("tab	here and "quotes" and back\slash")),
+                  )
                 }
             "#]],
         );

@@ -353,6 +353,9 @@ pub(crate) enum TypeErrorKind {
     #[error("Invalid regex in #[examples(pattern = ...)]: {message}")]
     InvalidPatternRegex { message: String },
 
+    #[error("Invalid escape sequence '\\{ch}'")]
+    InvalidEscapeSequence { ch: char },
+
     #[error("#[examples(min = ..., max = ...)] is only valid on Int fields, found {found}")]
     MinMaxOnNonInt { found: Type },
 

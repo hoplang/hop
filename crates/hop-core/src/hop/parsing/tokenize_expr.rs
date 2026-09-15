@@ -3,9 +3,10 @@ use std::iter::Peekable;
 
 use crate::itertools::PeekingExt as _;
 
-use crate::document::{CheapString, DocumentCursor, DocumentRange};
+use crate::document::{DocumentCursor, DocumentRange};
 
 use super::token::LangToken;
+use crate::hop::uncooked_string::UncookedString;
 use crate::parse_error::{ParseErrorKind, ParseErrors};
 
 /// Peeks at the next token without consuming it.
@@ -153,30 +154,20 @@ pub fn next(
                     };
                     match ch.ch() {
                         '"' => {
-                            let value = content
-                                .map(|c| c.to_cheap_string())
-                                .unwrap_or_else(|| CheapString::new(String::new()));
-                            break (LangToken::StringLiteral(value), start.to(ch));
+                            break (
+                                LangToken::StringLiteral(UncookedString::new(content)),
+                                start.to(ch),
+                            );
                         }
                         '\\' => {
                             let backslash = ch;
                             let Some(escaped) = iter.next() else {
-                                let _ = errors.emit(
-                                    ParseErrorKind::InvalidEscapeSequenceAtEndOfString {},
-                                    backslash.clone(),
-                                );
                                 let _ = errors.emit(
                                     ParseErrorKind::UnterminatedStringLiteral {},
                                     start.to(backslash),
                                 );
                                 return None;
                             };
-                            if !matches!(escaped.ch(), 'n' | 't' | 'r' | '\\' | '"') {
-                                let _ = errors.emit(
-                                    ParseErrorKind::InvalidEscapeSequence { ch: escaped.ch() },
-                                    backslash.clone().to(escaped.clone()),
-                                );
-                            }
                             content = content.into_iter().chain([backslash, escaped]).collect();
                         }
                         _ => content = content.into_iter().chain(Some(ch)).collect(),
@@ -1872,26 +1863,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_escape_sequences_in_strings() {
-        // Note: tokens appear first, then errors at the end
-        reject(
+    fn accepts_unknown_escape_sequences() {
+        accept(
             r#""invalid\q" "also\xinvalid""#,
             expect![[r#"
                 token: StringLiteral("invalid\\q")
                 "invalid\q" "also\xinvalid"
                 ^^^^^^^^^^^
 
-                error: Invalid escape sequence '\q'
-                "invalid\q" "also\xinvalid"
-                        ^^
-
                 token: StringLiteral("also\\xinvalid")
                 "invalid\q" "also\xinvalid"
                             ^^^^^^^^^^^^^^^
-
-                error: Invalid escape sequence '\x'
-                "invalid\q" "also\xinvalid"
-                                 ^^
             "#]],
         );
     }
@@ -1904,10 +1886,6 @@ mod tests {
                 error: Unterminated string literal
                 "trailing\
                 ^^^^^^^^^^
-
-                error: Invalid escape sequence at end of string
-                "trailing\
-                         ^
             "#]],
         );
     }

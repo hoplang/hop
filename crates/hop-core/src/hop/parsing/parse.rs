@@ -765,7 +765,7 @@ fn parse_examples_annotation(
                         None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
                     });
                 };
-                annotation.pattern = Some(value.to_string());
+                annotation.pattern = Some(value);
                 return Ok(());
             }
             let slot = match key.as_str() {
@@ -5457,15 +5457,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_escape_sequences_in_strings() {
-        reject(
+    fn accepts_unknown_escape_sequences() {
+        // Reported when the literal is cooked, not while parsing.
+        accept(
             r#"fn test() -> String {"invalid\q"}"#,
             expect![[r#"
-                -- errors --
-                error: Invalid escape sequence '\q'
-                1 | fn test() -> String {"invalid\q"}
-                  |                              ^^
-                -- ast --
                 fn test() -> String {
                   "invalid\q"
                 }
@@ -6455,6 +6451,23 @@ mod tests {
                 -- ast --
                 record User {
                   #[examples(max = 5)] age: Int,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn preserves_the_spelling_of_an_examples_pattern() {
+        accept(
+            indoc! {r#"
+                record User {
+                  #[examples(pattern = "\\d+\\s\\w")]
+                  name: String,
+                }
+            "#},
+            expect![[r#"
+                record User {
+                  #[examples(pattern = "\\d+\\s\\w")] name: String,
                 }
             "#]],
         );
