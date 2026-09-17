@@ -1,0 +1,170 @@
+================================================================================
+binary operator precedence
+================================================================================
+
+fn f() -> Bool {
+  a || b && c == d + e * g
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (binary_expression
+        (identifier)
+        (binary_expression
+          (identifier)
+          (binary_expression
+            (identifier)
+            (binary_expression
+              (identifier)
+              (binary_expression
+                (identifier)
+                (identifier)))))))))
+
+================================================================================
+unary and postfix chains bind tighter than arithmetic
+================================================================================
+
+fn f() -> Int {
+  -a.b().c + x!(1)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (binary_expression
+        (unary_expression
+          (field_expression
+            (call_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (argument_list))
+            (identifier)))
+        (macro_expression
+          (identifier)
+          (argument_list
+            (integer_literal)))))))
+
+================================================================================
+match subject is not a record literal when the block holds arms
+================================================================================
+
+fn f() -> Int {
+  match Color::Red { Color::Red => 1, _ => 0 }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (match_expression
+        (scoped_identifier
+          (type_identifier)
+          (type_identifier))
+        (match_arm
+          (scoped_identifier
+            (type_identifier)
+            (type_identifier))
+          (integer_literal))
+        (match_arm
+          (wildcard_pattern)
+          (integer_literal))))))
+
+================================================================================
+match subject is a record literal when the block holds fields
+================================================================================
+
+fn f() -> Int {
+  match Point { x: 1 } { _ => 0 }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (match_expression
+        (record_literal
+          (type_identifier)
+          (field_initializer_list
+            (field_initializer
+              (identifier)
+              (integer_literal))))
+        (match_arm
+          (wildcard_pattern)
+          (integer_literal))))))
+
+================================================================================
+for over a range, and record literal with spread
+================================================================================
+
+fn f() -> Int {
+  for _ in 1..=n { Point { ...base, x: 1 } }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (for_expression
+        (wildcard_pattern)
+        (integer_literal)
+        (identifier)
+        (block
+          (record_literal
+            (type_identifier)
+            (field_initializer_list
+              (spread_element
+                (identifier))
+              (field_initializer
+                (identifier)
+                (integer_literal)))))))))
+
+================================================================================
+named call arguments and array literal
+================================================================================
+
+fn f() -> Int {
+  label(count: 2, prefix: "n\"q")
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (call_expression
+        (identifier)
+        (argument_list
+          (named_argument
+            (identifier)
+            (integer_literal))
+          (named_argument
+            (identifier)
+            (string_literal
+              (escape_sequence))))))))

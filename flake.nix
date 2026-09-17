@@ -32,6 +32,8 @@
             pkgs.esbuild
             pkgs.bun
             pkgs.typescript-go
+            pkgs.tree-sitter
+            pkgs.nodejs
           ];
         };
 

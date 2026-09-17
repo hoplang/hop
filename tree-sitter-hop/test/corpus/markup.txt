@@ -1,0 +1,185 @@
+================================================================================
+elements, components, void elements and fragments
+================================================================================
+
+fn f() -> Html {
+  <div>
+    <br>
+    <img src="a"/>
+    <Card/>
+    <>frag</>
+  </div>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name))
+        (text)
+        (void_element
+          (void_tag_name))
+        (text)
+        (void_element
+          (void_tag_name)
+          (attribute
+            (attribute_name)
+            (quoted_attribute_value
+              (attribute_value))))
+        (text)
+        (element
+          (self_closing_tag
+            (type_identifier)))
+        (text)
+        (fragment
+          (fragment_start)
+          (text)
+          (fragment_end))
+        (text)
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+attributes: quoted, valueless, spread and interpolated
+================================================================================
+
+fn f() -> Html {
+  <div class="a b" data-x aria:label="c" ...attrs id={user.name}></div>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name)
+          (attribute
+            (attribute_name)
+            (quoted_attribute_value
+              (attribute_value)))
+          (attribute
+            (attribute_name))
+          (attribute
+            (attribute_name)
+            (quoted_attribute_value
+              (attribute_value)))
+          (spread_attribute
+            (identifier))
+          (attribute
+            (attribute_name)
+            (interpolation
+              (field_expression
+                (identifier)
+                (identifier)))))
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+text keeps greater-than and apostrophes, and markup comments
+================================================================================
+
+fn f() -> Html {
+  <p>it's x > y <!-- a-b -- c --></p>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name))
+        (text)
+        (markup_comment)
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+interpolation may hold statements
+================================================================================
+
+fn f() -> Html {
+  <div>{let x = 1; x}</div>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name))
+        (interpolation
+          (let_statement
+            (identifier)
+            (integer_literal))
+          (identifier))
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+permissive: closing tag need not match the opening tag
+================================================================================
+
+fn f() -> Html {
+  <div></span>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name))
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+script with no content
+================================================================================
+
+fn f() -> Html {
+  <script src="a.js"></script>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name)
+          (attribute
+            (attribute_name)
+            (quoted_attribute_value
+              (attribute_value))))
+        (end_tag
+          (tag_name))))))

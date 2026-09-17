@@ -1,0 +1,13 @@
+[language-server.hop]
+command = "hop"
+args = ["lsp"]
+
+[[language]]
+name = "hop"
+scope = "source.hop"
+file-types = ["hop"]
+roots = ["hop.toml"]
+comment-token = "//"
+indent = { tab-width = 2, unit = "  " }
+language-servers = ["hop"]
+auto-format = true

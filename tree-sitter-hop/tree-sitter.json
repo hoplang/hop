@@ -1,0 +1,19 @@
+{
+  "grammars": [
+    {
+      "name": "hop",
+      "camelcase": "Hop",
+      "scope": "source.hop",
+      "path": ".",
+      "file-types": [
+        "hop"
+      ],
+      "injection-regex": "^hop$"
+    }
+  ],
+  "metadata": {
+    "version": "0.0.1",
+    "license": "MIT",
+    "description": "Hop grammar for tree-sitter"
+  }
+}

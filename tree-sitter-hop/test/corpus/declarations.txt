@@ -1,0 +1,183 @@
+================================================================================
+record and enum declarations
+================================================================================
+
+pub record User {
+  name: String,
+  tags: Array[String],
+}
+
+enum Color { Red, Rgb { r: Int } }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (record_declaration
+    (visibility_modifier)
+    (type_identifier)
+    (field_declaration_list
+      (field_declaration
+        (identifier)
+        (type_identifier))
+      (field_declaration
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_identifier)))))
+  (enum_declaration
+    (type_identifier)
+    (enum_variant
+      (type_identifier))
+    (enum_variant
+      (type_identifier)
+      (field_declaration_list
+        (field_declaration
+          (identifier)
+          (type_identifier))))))
+
+================================================================================
+function with default, rest parameter and tuple type
+================================================================================
+
+pub fn label(prefix: String, count: Int = 2, ...rest) -> (String, Int) {
+  let x: Int = 1;
+  prefix
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (visibility_modifier)
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier)
+        (integer_literal))
+      (rest_parameter
+        (identifier)))
+    (tuple_type
+      (type_identifier)
+      (type_identifier))
+    (block
+      (let_statement
+        (identifier)
+        (type_identifier)
+        (integer_literal))
+      (identifier))))
+
+================================================================================
+permissive: return type may be omitted and the body may be empty
+================================================================================
+
+fn f() {
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block)))
+
+================================================================================
+page with parameters and members
+================================================================================
+
+page Main(user: User) {
+  fn head() -> Html {
+    <title>t</title>
+  }
+  fn body() -> Html {
+    <div>hi</div>
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (page_declaration
+    (type_identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (function_declaration
+      (identifier)
+      (parameter_list)
+      (type_identifier)
+      (block
+        (element
+          (start_tag
+            (tag_name))
+          (text)
+          (end_tag
+            (tag_name)))))
+    (function_declaration
+      (identifier)
+      (parameter_list)
+      (type_identifier)
+      (block
+        (element
+          (start_tag
+            (tag_name))
+          (text)
+          (end_tag
+            (tag_name)))))))
+
+================================================================================
+import path may contain capitalised segments
+================================================================================
+
+import Card::button::f
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (import_declaration
+    (type_identifier)
+    (identifier)
+    (identifier)))
+
+================================================================================
+permissive: a page body may hold any declaration
+================================================================================
+
+page Main {
+  import shared::util
+  record Row { id: Int }
+  fn body() -> Html {
+    <div>hi</div>
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (page_declaration
+    (type_identifier)
+    (import_declaration
+      (identifier)
+      (identifier))
+    (record_declaration
+      (type_identifier)
+      (field_declaration_list
+        (field_declaration
+          (identifier)
+          (type_identifier))))
+    (function_declaration
+      (identifier)
+      (parameter_list)
+      (type_identifier)
+      (block
+        (element
+          (start_tag
+            (tag_name))
+          (text)
+          (end_tag
+            (tag_name)))))))

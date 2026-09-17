@@ -6882,4 +6882,62 @@ mod tests {
             Ok(())
         });
     }
+
+    /// Check that the tree-sitter grammar in `tree-sitter-hop/` accepts every
+    /// source the hand-written parser accepts.
+    ///
+    /// Ignored because it shells out to the `tree-sitter` CLI, which the dev
+    /// shell supplies.
+    #[test]
+    #[ignore]
+    fn fuzz_tree_sitter_grammar_accepts_generated_sources() {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let grammar_dir = workspace.join("tree-sitter-hop");
+
+        let generate = std::process::Command::new("tree-sitter")
+            .arg("generate")
+            .current_dir(&grammar_dir)
+            .output()
+            .expect("`tree-sitter` must be on PATH");
+        assert!(
+            generate.status.success(),
+            "tree-sitter generate failed:\n{}{}",
+            String::from_utf8_lossy(&generate.stdout),
+            String::from_utf8_lossy(&generate.stderr),
+        );
+        let sample_dir = tempfile::TempDir::new().unwrap();
+
+        let mut samples = Vec::new();
+        arbtest::arbtest(|u| {
+            let source = source_generator::random_source(u)?;
+            let path = sample_dir.path().join(format!("{:06}.hop", samples.len()));
+            std::fs::write(&path, &source).unwrap();
+            samples.push(path);
+            Ok(())
+        });
+
+        // Checked in chunks: a long run generates tens of thousands of samples,
+        // and passing them all in one argv exceeds ARG_MAX.
+        let mut report = String::new();
+        for chunk in samples.chunks(400) {
+            let output = std::process::Command::new("tree-sitter")
+                .arg("parse")
+                .arg("--quiet")
+                .args(chunk)
+                .current_dir(&grammar_dir)
+                .output()
+                .expect("`tree-sitter` must be on PATH");
+            if !output.status.success() {
+                report.push_str(&String::from_utf8_lossy(&output.stdout));
+                report.push_str(&String::from_utf8_lossy(&output.stderr));
+            }
+        }
+        if report.is_empty() {
+            return;
+        }
+        panic!(
+            "tree-sitter failed:\n{report}\nsamples kept in {}",
+            sample_dir.keep().display()
+        );
+    }
 }
