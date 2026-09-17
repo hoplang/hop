@@ -1975,6 +1975,7 @@ pub fn typecheck_expr(
             receiver,
             method,
             method_range,
+            args,
             range,
         } => {
             let typed_receiver = typecheck_expr(
@@ -1991,7 +1992,22 @@ pub fn typecheck_expr(
             )?;
             let receiver_type = typed_receiver.typ();
 
-            match (&receiver_type, method.as_str()) {
+            for arg in args {
+                typecheck_expr(
+                    arg,
+                    None,
+                    forwarded_params,
+                    var_env,
+                    type_env,
+                    registry,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                    errors,
+                );
+            }
+
+            let typed = match (&receiver_type, method.as_str()) {
                 (Type::Array(_), "len") => {
                     annotations.push(HoverAnnotation::Description {
                         title: "Array::len() -> Int".to_string(),
@@ -2061,7 +2077,18 @@ pub fn typecheck_expr(
                     ));
                     None
                 }
+            };
+            if let (true, Some(first), Some(last)) = (typed.is_some(), args.first(), args.last()) {
+                errors.push(TypeError::new(
+                    TypeErrorKind::MethodTakesNoArguments {
+                        method: method.clone(),
+                        found: args.len(),
+                    },
+                    first.range().clone().to(last.range().clone()),
+                ));
+                return None;
             }
+            typed
         }
         ParsedExpr::FunctionCall {
             name,
@@ -5566,6 +5593,38 @@ mod tests {
                 error: Method 'len' is not available on type String
                 name.len()
                 ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_arguments_to_method_that_takes_none() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("items", "Array[String]")],
+            "items.len(1)",
+            expect![[r#"
+                error: Method 'len' takes no arguments, got 1
+                items.len(1)
+                          ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_error_inside_method_argument() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("items", "Array[String]")],
+            "items.len(missing)",
+            expect![[r#"
+                error: Undefined variable: missing
+                items.len(missing)
+                          ^^^^^^^
+
+                error: Method 'len' takes no arguments, got 1
+                items.len(missing)
+                          ^^^^^^^
             "#]],
         );
     }

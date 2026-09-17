@@ -949,11 +949,31 @@ fn format_expr<'a>(
             .append(arena.text("."))
             .append(arena.text(field.as_str())),
         ParsedExpr::MethodCall {
-            receiver, method, ..
-        } => format_expr_in_slot(arena, receiver, ParsedExpr::POSTFIX_BINDING_POWER, comments)
-            .append(arena.text("."))
-            .append(arena.text(method.as_str()))
-            .append(arena.text("()")),
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            let callee =
+                format_expr_in_slot(arena, receiver, ParsedExpr::POSTFIX_BINDING_POWER, comments)
+                    .append(arena.text("."))
+                    .append(arena.text(method.as_str()));
+            if args.is_empty() {
+                callee.append(arena.text("()"))
+            } else {
+                let mut args_doc = arena.nil();
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        args_doc = args_doc.append(arena.text(",")).append(arena.line());
+                    }
+                    args_doc = args_doc.append(format_expr(arena, arg, comments));
+                }
+                callee
+                    .append(arena.text("("))
+                    .append(soft_block(arena, args_doc))
+                    .append(arena.text(")"))
+            }
+        }
         ParsedExpr::StringLiteral { value, .. } => arena
             .text("\"")
             .append(arena.text(value.as_raw_str()))
@@ -4220,6 +4240,24 @@ mod tests {
                 fn Main(x: String) -> Html {
                   <div>
                     {x.foo()}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn method_call_with_arguments() {
+        check(
+            indoc! {"
+                fn Main(x: String) -> Html {
+                  <div>{x.foo(1,2 , 3)}</div>
+                }
+            "},
+            expect![[r#"
+                fn Main(x: String) -> Html {
+                  <div>
+                    {x.foo(1, 2, 3)}
                   </div>
                 }
             "#]],

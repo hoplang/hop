@@ -5,8 +5,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 use super::parse_helpers::{
-    expect_identifier, expect_right_delimiter, expect_token, next_if_eq, next_if_map,
-    parse_delimited, parse_delimited_list,
+    expect_identifier, expect_token, next_if_eq, next_if_map, parse_delimited, parse_delimited_list,
 };
 use super::parse_nodes;
 use super::parse_type::parse_type;
@@ -380,13 +379,21 @@ pub fn parse_primary(
     while next_if_eq(iter, comments, errors, LangToken::Dot).is_some() {
         let (field_name, field_range) = expect_identifier(iter, comments, errors)?;
         if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
-            let right_paren =
-                expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
+            let (args, parens) = parse_delimited_list(
+                iter,
+                comments,
+                errors,
+                LangTokenPair::Parens,
+                &left_paren,
+                &[],
+                parse_expr,
+            )?;
             expr = ParsedExpr::MethodCall {
-                range: expr.range().clone().to(right_paren),
+                range: expr.range().clone().to(parens),
                 receiver: Box::new(expr),
                 method: FieldName::new(field_name).or_emit(errors, &field_range)?,
                 method_range: field_range,
+                args,
             };
         } else {
             expr = ParsedExpr::FieldAccess {
@@ -1517,6 +1524,46 @@ mod tests {
             "x.foo().bar().baz()",
             expect![[r#"
                 x.foo().bar().baz()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_method_call_with_one_argument() {
+        accept(
+            "x.foo(1)",
+            expect![[r#"
+                x.foo(1)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_method_call_with_several_arguments() {
+        accept(
+            r#"x.foo(1, y, "s")"#,
+            expect![[r#"
+                x.foo(1, y, "s")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_method_call_with_trailing_comma() {
+        accept(
+            "x.foo(1,)",
+            expect![[r#"
+                x.foo(1)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_method_call_with_method_call_argument() {
+        accept(
+            "x.foo(y.bar(z))",
+            expect![[r#"
+                x.foo(y.bar(z))
             "#]],
         );
     }

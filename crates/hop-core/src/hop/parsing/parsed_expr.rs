@@ -26,6 +26,7 @@ pub enum ParsedExpr {
         receiver: Box<Self>,
         method: FieldName,
         method_range: DocumentRange,
+        args: Vec<Self>,
         range: DocumentRange,
     },
 
@@ -388,11 +389,15 @@ impl ParsedExpr {
     pub fn for_each_child<'a>(&'a self, f: &mut impl FnMut(&'a ParsedExpr)) {
         match self {
             ParsedExpr::FieldAccess { record: inner, .. }
-            | ParsedExpr::MethodCall {
-                receiver: inner, ..
-            }
             | ParsedExpr::BooleanNegation { operand: inner, .. }
             | ParsedExpr::NumericNegation { operand: inner, .. } => f(inner),
+
+            ParsedExpr::MethodCall { receiver, args, .. } => {
+                f(receiver);
+                for arg in args {
+                    f(arg);
+                }
+            }
 
             ParsedExpr::BinaryOp { left, right, .. } => {
                 f(left);
@@ -580,12 +585,34 @@ impl ParsedExpr {
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
             ParsedExpr::MethodCall {
-                receiver, method, ..
-            } => receiver
-                .to_doc_in_slot(Self::POSTFIX_BINDING_POWER)
-                .append(BoxDoc::text("."))
-                .append(BoxDoc::text(method.as_str()))
-                .append(BoxDoc::text("()")),
+                receiver,
+                method,
+                args,
+                ..
+            } => {
+                let callee = receiver
+                    .to_doc_in_slot(Self::POSTFIX_BINDING_POWER)
+                    .append(BoxDoc::text("."))
+                    .append(BoxDoc::text(method.as_str()));
+                if args.is_empty() {
+                    callee.append(BoxDoc::text("()"))
+                } else {
+                    callee
+                        .append(BoxDoc::text("("))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    args.iter().map(|arg| arg.to_doc()),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text(")"))
+                }
+            }
             ParsedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             ParsedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             ParsedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),

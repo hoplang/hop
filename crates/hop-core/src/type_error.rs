@@ -347,6 +347,9 @@ pub(crate) enum TypeErrorKind {
     #[error("Method '{method}' is not available on type {typ}")]
     MethodNotAvailable { method: FieldName, typ: Type },
 
+    #[error("Method '{method}' takes no arguments, got {found}")]
+    MethodTakesNoArguments { method: FieldName, found: usize },
+
     #[error("#[examples(pattern = ...)] is only valid on String fields, found {found}")]
     PatternOnNonString { found: Type },
 
