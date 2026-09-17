@@ -689,6 +689,18 @@ impl Program {
         &self.type_registry
     }
 
+    /// Return the names of every page declared across all modules, sorted.
+    pub fn page_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .typed_asts
+            .values()
+            .flat_map(|ast| ast.page_declarations())
+            .map(|page| page.name.to_string())
+            .collect();
+        names.sort();
+        names
+    }
+
     /// Find which module contains a given page.
     pub fn find_module_for_page(&self, page: &str) -> Result<DocumentId, String> {
         let mut all_pages = Vec::new();
