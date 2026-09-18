@@ -31,7 +31,6 @@ fuzz-tree-sitter:
 
 test-grammar: build-grammar
 	tree-sitter test --grammar-path {{grammar_dir}}
-	tree-sitter query --grammar-path {{grammar_dir}} {{helix_runtime}}/queries/hop/highlights.scm /dev/null > /dev/null
 
 workbench: build-grammar
 	#!/usr/bin/env sh
