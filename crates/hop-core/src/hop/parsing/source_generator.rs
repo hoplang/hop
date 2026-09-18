@@ -45,10 +45,15 @@ const MARKUP_TEXT: &[&str] = &[
     "tab\there",
     "&amp;",
     "a-b_c.d/e",
+    "/",
+    // Inside text `//` is not parsed as a comment
+    "// not a comment",
     "  ",
 ];
 
-const ELEMENT_TAGS: &[&str] = &["div", "span", "p", "a", "ul", "li", "title", "my-el"];
+const ELEMENT_TAGS: &[&str] = &[
+    "div", "span", "p", "a", "ul", "li", "title", "my-el", "colgroup",
+];
 
 const VOID_TAGS: &[&str] = &["br", "hr", "img", "input"];
 

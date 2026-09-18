@@ -6906,38 +6906,26 @@ mod tests {
             String::from_utf8_lossy(&generate.stderr),
         );
         let sample_dir = tempfile::TempDir::new().unwrap();
+        let sample = sample_dir.path().join("sample.hop");
 
-        let mut samples = Vec::new();
         arbtest::arbtest(|u| {
             let source = source_generator::random_source(u)?;
-            let path = sample_dir.path().join(format!("{:06}.hop", samples.len()));
-            std::fs::write(&path, &source).unwrap();
-            samples.push(path);
-            Ok(())
-        });
-
-        // Checked in chunks: a long run generates tens of thousands of samples,
-        // and passing them all in one argv exceeds ARG_MAX.
-        let mut report = String::new();
-        for chunk in samples.chunks(400) {
+            std::fs::write(&sample, &source).unwrap();
             let output = std::process::Command::new("tree-sitter")
                 .arg("parse")
                 .arg("--quiet")
-                .args(chunk)
+                .arg(&sample)
                 .current_dir(&grammar_dir)
                 .output()
                 .expect("`tree-sitter` must be on PATH");
             if !output.status.success() {
-                report.push_str(&String::from_utf8_lossy(&output.stdout));
-                report.push_str(&String::from_utf8_lossy(&output.stderr));
+                panic!(
+                    "tree-sitter failed:\n{}{}\nsource:\n{source}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr),
+                );
             }
-        }
-        if report.is_empty() {
-            return;
-        }
-        panic!(
-            "tree-sitter failed:\n{report}\nsamples kept in {}",
-            sample_dir.keep().display()
-        );
+            Ok(())
+        });
     }
 }

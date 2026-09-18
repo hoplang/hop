@@ -8,6 +8,9 @@
       "file-types": [
         "hop"
       ],
+      "highlights": [
+        "queries/highlights.scm"
+      ],
       "injection-regex": "^hop$"
     }
   ],

@@ -16,7 +16,7 @@ fn f() -> Html {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (element
@@ -24,10 +24,10 @@ fn f() -> Html {
           (tag_name))
         (text)
         (void_element
-          (void_tag_name))
+          (tag_name))
         (text)
         (void_element
-          (void_tag_name)
+          (tag_name)
           (attribute
             (attribute_name)
             (quoted_attribute_value
@@ -35,7 +35,7 @@ fn f() -> Html {
         (text)
         (element
           (self_closing_tag
-            (type_identifier)))
+            (component_name)))
         (text)
         (fragment
           (fragment_start)
@@ -58,7 +58,7 @@ fn f() -> Html {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (element
@@ -81,7 +81,7 @@ fn f() -> Html {
             (interpolation
               (field_expression
                 (identifier)
-                (identifier)))))
+                (field_identifier)))))
         (end_tag
           (tag_name))))))
 
@@ -98,7 +98,7 @@ fn f() -> Html {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (element
@@ -122,7 +122,7 @@ fn f() -> Html {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (element
@@ -149,7 +149,7 @@ fn f() -> Html {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (element
@@ -171,7 +171,7 @@ fn f() -> Html {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (element
@@ -181,5 +181,91 @@ fn f() -> Html {
             (attribute_name)
             (quoted_attribute_value
               (attribute_value))))
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+a tag name that begins with a void element name is an ordinary element
+================================================================================
+
+fn f() -> Html {
+  <table><colgroup><col></colgroup><metadata/></table>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name))
+        (element
+          (start_tag
+            (tag_name))
+          (void_element
+            (tag_name))
+          (end_tag
+            (tag_name)))
+        (element
+          (self_closing_tag
+            (tag_name)))
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+text may be a lone slash
+================================================================================
+
+fn f() -> Html {
+  <p>/</p>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name))
+        (text)
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+text may begin with two slashes
+================================================================================
+
+fn f() -> Html {
+  // a comment
+  <p>// not a comment <b>x</b></p>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (comment)
+      (element
+        (start_tag
+          (tag_name))
+        (text)
+        (element
+          (start_tag
+            (tag_name))
+          (text)
+          (end_tag
+            (tag_name)))
         (end_tag
           (tag_name))))))

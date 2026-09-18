@@ -6,13 +6,15 @@
 ((type_identifier) @type.builtin
   (#any-of? @type.builtin "Int" "String" "Bool" "Float" "Html" "Array" "Option"))
 
+(_expression/type_identifier) @constructor
+(_pattern/type_identifier) @constructor
+(scoped_identifier name: (type_identifier) @constructor)
+(enum_variant name: (type_identifier) @constructor)
+
 ((type_identifier) @constant.builtin
   (#any-of? @constant.builtin "Some" "None"))
 
-(field_declaration name: (identifier) @variable.other.member)
-(field_initializer name: (identifier) @variable.other.member)
-(field_pattern name: (identifier) @variable.other.member)
-(field_expression field: (identifier) @variable.other.member)
+(field_identifier) @variable.other.member
 
 (parameter name: (identifier) @variable.parameter)
 (rest_parameter name: (identifier) @variable.parameter)
@@ -22,11 +24,10 @@
 (function_declaration name: (type_identifier) @constructor)
 
 (call_expression function: (identifier) @function)
-(call_expression function: (type_identifier) @constructor)
 (call_expression
-  function: (field_expression field: (identifier) @function.method))
+  function: (field_expression field: (field_identifier) @function.method))
 
-(macro_expression macro: (identifier) @function.macro)
+(macro_invocation macro: (identifier) @function.macro)
 
 (string_literal) @string
 (escape_sequence) @constant.character.escape
@@ -36,11 +37,8 @@
 (wildcard_pattern) @variable.builtin
 
 (tag_name) @tag
-(void_tag_name) @tag
 
-(start_tag name: (type_identifier) @constructor)
-(end_tag name: (type_identifier) @constructor)
-(self_closing_tag name: (type_identifier) @constructor)
+(component_name) @constructor
 
 (attribute "=" @punctuation.delimiter)
 
@@ -70,6 +68,9 @@
   "..="
   "..."
 ] @operator
+
+; `<` and `>` are operators only inside a binary expression.
+(binary_expression operator: ["<" ">"] @operator)
 
 [
   "->"

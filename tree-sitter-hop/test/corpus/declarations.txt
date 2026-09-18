@@ -17,23 +17,25 @@ enum Color { Red, Rgb { r: Int } }
     (type_identifier)
     (field_declaration_list
       (field_declaration
-        (identifier)
+        (field_identifier)
         (type_identifier))
       (field_declaration
-        (identifier)
+        (field_identifier)
         (generic_type
           (type_identifier)
-          (type_identifier)))))
+          (type_arguments
+            (type_identifier))))))
   (enum_declaration
     (type_identifier)
-    (enum_variant
-      (type_identifier))
-    (enum_variant
-      (type_identifier)
-      (field_declaration_list
-        (field_declaration
-          (identifier)
-          (type_identifier))))))
+    (enum_variant_list
+      (enum_variant
+        (type_identifier))
+      (enum_variant
+        (type_identifier)
+        (field_declaration_list
+          (field_declaration
+            (field_identifier)
+            (type_identifier)))))))
 
 ================================================================================
 function with default, rest parameter and tuple type
@@ -50,7 +52,7 @@ pub fn label(prefix: String, count: Int = 2, ...rest) -> (String, Int) {
   (function_declaration
     (visibility_modifier)
     (identifier)
-    (parameter_list
+    (parameters
       (parameter
         (identifier)
         (type_identifier))
@@ -82,7 +84,7 @@ fn f() {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (block)))
 
 ================================================================================
@@ -103,32 +105,33 @@ page Main(user: User) {
 (source_file
   (page_declaration
     (type_identifier)
-    (parameter_list
+    (parameters
       (parameter
         (identifier)
         (type_identifier)))
-    (function_declaration
-      (identifier)
-      (parameter_list)
-      (type_identifier)
-      (block
-        (element
-          (start_tag
-            (tag_name))
-          (text)
-          (end_tag
-            (tag_name)))))
-    (function_declaration
-      (identifier)
-      (parameter_list)
-      (type_identifier)
-      (block
-        (element
-          (start_tag
-            (tag_name))
-          (text)
-          (end_tag
-            (tag_name)))))))
+    (declaration_list
+      (function_declaration
+        (identifier)
+        (parameters)
+        (type_identifier)
+        (block
+          (element
+            (start_tag
+              (tag_name))
+            (text)
+            (end_tag
+              (tag_name)))))
+      (function_declaration
+        (identifier)
+        (parameters)
+        (type_identifier)
+        (block
+          (element
+            (start_tag
+              (tag_name))
+            (text)
+            (end_tag
+              (tag_name))))))))
 
 ================================================================================
 import path may contain capitalised segments
@@ -140,9 +143,10 @@ import Card::button::f
 
 (source_file
   (import_declaration
-    (type_identifier)
-    (identifier)
-    (identifier)))
+    (module_path
+      (type_identifier)
+      (identifier)
+      (identifier))))
 
 ================================================================================
 permissive: a page body may hold any declaration
@@ -161,23 +165,25 @@ page Main {
 (source_file
   (page_declaration
     (type_identifier)
-    (import_declaration
-      (identifier)
-      (identifier))
-    (record_declaration
-      (type_identifier)
-      (field_declaration_list
-        (field_declaration
+    (declaration_list
+      (import_declaration
+        (module_path
           (identifier)
-          (type_identifier))))
-    (function_declaration
-      (identifier)
-      (parameter_list)
-      (type_identifier)
-      (block
-        (element
-          (start_tag
-            (tag_name))
-          (text)
-          (end_tag
-            (tag_name)))))))
+          (identifier)))
+      (record_declaration
+        (type_identifier)
+        (field_declaration_list
+          (field_declaration
+            (field_identifier)
+            (type_identifier))))
+      (function_declaration
+        (identifier)
+        (parameters)
+        (type_identifier)
+        (block
+          (element
+            (start_tag
+              (tag_name))
+            (text)
+            (end_tag
+              (tag_name))))))))

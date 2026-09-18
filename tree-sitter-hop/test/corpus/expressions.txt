@@ -11,7 +11,7 @@ fn f() -> Bool {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (binary_expression
@@ -39,7 +39,7 @@ fn f() -> Int {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (binary_expression
@@ -48,12 +48,12 @@ fn f() -> Int {
             (call_expression
               (field_expression
                 (identifier)
-                (identifier))
-              (argument_list))
-            (identifier)))
-        (macro_expression
+                (field_identifier))
+              (arguments))
+            (field_identifier)))
+        (macro_invocation
           (identifier)
-          (argument_list
+          (arguments
             (integer_literal)))))))
 
 ================================================================================
@@ -69,21 +69,22 @@ fn f() -> Int {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (match_expression
         (scoped_identifier
           (type_identifier)
           (type_identifier))
-        (match_arm
-          (scoped_identifier
-            (type_identifier)
-            (type_identifier))
-          (integer_literal))
-        (match_arm
-          (wildcard_pattern)
-          (integer_literal))))))
+        (match_block
+          (match_arm
+            (scoped_identifier
+              (type_identifier)
+              (type_identifier))
+            (integer_literal))
+          (match_arm
+            (wildcard_pattern)
+            (integer_literal)))))))
 
 ================================================================================
 match subject is a record literal when the block holds fields
@@ -98,7 +99,7 @@ fn f() -> Int {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (match_expression
@@ -106,11 +107,12 @@ fn f() -> Int {
           (type_identifier)
           (field_initializer_list
             (field_initializer
-              (identifier)
+              (field_identifier)
               (integer_literal))))
-        (match_arm
-          (wildcard_pattern)
-          (integer_literal))))))
+        (match_block
+          (match_arm
+            (wildcard_pattern)
+            (integer_literal)))))))
 
 ================================================================================
 for over a range, and record literal with spread
@@ -125,13 +127,14 @@ fn f() -> Int {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (for_expression
         (wildcard_pattern)
-        (integer_literal)
-        (identifier)
+        (range_expression
+          (integer_literal)
+          (identifier))
         (block
           (record_literal
             (type_identifier)
@@ -139,7 +142,7 @@ fn f() -> Int {
               (spread_element
                 (identifier))
               (field_initializer
-                (identifier)
+                (field_identifier)
                 (integer_literal)))))))))
 
 ================================================================================
@@ -155,16 +158,18 @@ fn f() -> Int {
 (source_file
   (function_declaration
     (identifier)
-    (parameter_list)
+    (parameters)
     (type_identifier)
     (block
       (call_expression
         (identifier)
-        (argument_list
+        (arguments
           (named_argument
             (identifier)
             (integer_literal))
           (named_argument
             (identifier)
             (string_literal
-              (escape_sequence))))))))
+              (string_content)
+              (escape_sequence)
+              (string_content))))))))
