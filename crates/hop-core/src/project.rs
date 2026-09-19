@@ -13,7 +13,20 @@ use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::document::Document;
-use crate::document_id::DocumentId;
+use crate::document_id::{DocumentId, DocumentIdError};
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PathError {
+    #[error("Path {path:?} is not inside the project at {root:?}")]
+    OutsideProject { path: PathBuf, root: PathBuf },
+
+    #[error("Invalid document id for path {path:?}: {source}")]
+    InvalidId {
+        path: PathBuf,
+        #[source]
+        source: DocumentIdError,
+    },
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
@@ -112,24 +125,23 @@ impl Project {
         &self.project_root
     }
 
-    /// Convert a file path to a ModuleId using this project root as reference
-    pub fn path_to_document_id(&self, file_path: &Path) -> anyhow::Result<DocumentId> {
+    /// Convert a file path to a [`DocumentId`] using this project root as reference.
+    pub fn path_to_document_id(&self, file_path: &Path) -> Result<DocumentId, PathError> {
         let canonical = file_path
             .canonicalize()
             .unwrap_or_else(|_| file_path.to_path_buf());
-        let relative_path = canonical
-            .strip_prefix(&self.project_root)
-            .with_context(|| {
-                format!(
-                    "Path {:?} is not inside the project at {:?}",
-                    file_path, self.project_root
-                )
-            })?;
+        let relative_path =
+            canonical
+                .strip_prefix(&self.project_root)
+                .map_err(|_| PathError::OutsideProject {
+                    path: file_path.to_path_buf(),
+                    root: self.project_root.clone(),
+                })?;
 
-        let module_str = relative_path.to_string_lossy().to_string();
-
-        DocumentId::new(&module_str)
-            .map_err(|e| anyhow::anyhow!("Invalid document id for path {:?}: {}", file_path, e))
+        DocumentId::new(&relative_path.to_string_lossy()).map_err(|source| PathError::InvalidId {
+            path: file_path.to_path_buf(),
+            source,
+        })
     }
 
     /// Convert a ModuleId back to a file path
@@ -345,12 +357,39 @@ mod tests {
         let outside_path = PathBuf::from("/some/other/path/file.hop");
         let result = project.path_to_document_id(&outside_path);
 
-        assert!(result.is_err());
-        let error_message = result.unwrap_err().to_string();
         assert!(
-            error_message.contains("is not inside the project"),
-            "Expected error about path not inside project, got: {}",
-            error_message
+            matches!(result, Err(PathError::OutsideProject { .. })),
+            "Expected OutsideProject error, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn path_to_document_id_invalid_name() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
+        "#});
+        let temp_dir = TempDir::new().unwrap();
+        write_archive_to_dir(&archive, temp_dir.path()).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
+
+        // A path inside the project whose name is not a valid document id
+        let path = project.get_project_root().join("my component.hop");
+        let result = project.path_to_document_id(&path);
+
+        assert!(
+            matches!(
+                result,
+                Err(PathError::InvalidId {
+                    source: DocumentIdError::InvalidCharacter(' '),
+                    ..
+                })
+            ),
+            "Expected InvalidId error, got: {:?}",
+            result
         );
     }
 

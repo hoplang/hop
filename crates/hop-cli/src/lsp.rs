@@ -91,11 +91,12 @@ impl HopLanguageServer {
         }
     }
 
-    fn uri_to_document_id(uri: &Uri, project: &Project) -> DocumentId {
-        let path = uri.to_file_path().expect("URI is not a file path");
-        project
-            .path_to_document_id(&path)
-            .expect("Failed to resolve module ID")
+    /// Resolve an editor URI to a DocumentId. Returns `None` for URIs that
+    /// are not file paths, files outside the project, and files whose names
+    /// cannot be represented as a DocumentIds.
+    fn uri_to_document_id(uri: &Uri, project: &Project) -> Option<DocumentId> {
+        let path = uri.to_file_path()?;
+        project.path_to_document_id(&path).ok()
     }
 
     fn document_id_to_uri(document_id: &DocumentId, project: &Project) -> Uri {
@@ -104,7 +105,9 @@ impl HopLanguageServer {
     }
 
     async fn publish_diagnostics(&self, project: &Project, uri: &Uri) {
-        let document_id = Self::uri_to_document_id(uri, project);
+        let Some(document_id) = Self::uri_to_document_id(uri, project) else {
+            return;
+        };
         let program = self.program.read().await;
         let diagnostics = program.get_error_diagnostics(document_id);
 
@@ -211,7 +214,9 @@ impl LanguageServer for HopLanguageServer {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         if let Some(project) = self.project.get() {
-            let document_id = Self::uri_to_document_id(&uri, project);
+            let Some(document_id) = Self::uri_to_document_id(&uri, project) else {
+                return;
+            };
             if let Some(change) = params.content_changes.into_iter().next() {
                 let changed_modules: Vec<DocumentId>;
                 {
@@ -233,7 +238,9 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         if let Some(project) = self.project.get() {
-            let document_id = Self::uri_to_document_id(&uri, project);
+            let Some(document_id) = Self::uri_to_document_id(&uri, project) else {
+                return Ok(None);
+            };
 
             let program = self.program.read().await;
             Ok(program
@@ -254,7 +261,9 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         if let Some(project) = self.project.get() {
-            let document_id = Self::uri_to_document_id(&uri, project);
+            let Some(document_id) = Self::uri_to_document_id(&uri, project) else {
+                return Ok(None);
+            };
 
             let program = self.program.read().await;
 
@@ -278,7 +287,9 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document.uri;
         let position = params.position;
         if let Some(project) = self.project.get() {
-            let document_id = Self::uri_to_document_id(&uri, project);
+            let Some(document_id) = Self::uri_to_document_id(&uri, project) else {
+                return Ok(None);
+            };
 
             let program = self.program.read().await;
 
@@ -302,7 +313,9 @@ impl LanguageServer for HopLanguageServer {
         let position = params.text_document_position.position;
         let new_name = params.new_name;
         if let Some(project) = self.project.get() {
-            let document_id = Self::uri_to_document_id(&uri, project);
+            let Some(document_id) = Self::uri_to_document_id(&uri, project) else {
+                return Ok(None);
+            };
 
             let server = self.program.read().await;
 
@@ -337,7 +350,9 @@ impl LanguageServer for HopLanguageServer {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
         if let Some(project) = self.project.get() {
-            let document_id = Self::uri_to_document_id(&uri, project);
+            let Some(document_id) = Self::uri_to_document_id(&uri, project) else {
+                return Ok(None);
+            };
 
             let program = self.program.read().await;
 
@@ -406,6 +421,50 @@ mod tests {
             project.get_project_root(),
             temp_dir.path().canonicalize().unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn test_hover_on_file_outside_project_is_ignored() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
+            -- main.hop --
+            type User {
+                name: String
+            }
+        "#});
+        let temp_dir = TempDir::new().unwrap();
+        write_archive_to_dir(&archive, temp_dir.path()).unwrap();
+
+        let (tx, _rx) = mpsc::channel(32);
+        let server = HopLanguageServer::new(tx);
+
+        let root_uri = Uri::from_file_path(temp_dir.path()).unwrap();
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            root_uri: Some(root_uri),
+            ..Default::default()
+        };
+        server.initialize(params).await.unwrap();
+
+        // An editor can have files open that live outside the hop project
+        let outside_dir = TempDir::new().unwrap();
+        let outside_uri = Uri::from_file_path(outside_dir.path().join("other.hop")).unwrap();
+        let params = HoverParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: outside_uri },
+                position: Position {
+                    line: 0,
+                    character: 0,
+                },
+            },
+            work_done_progress_params: Default::default(),
+        };
+
+        let result = server.hover(params).await.unwrap();
+        assert!(result.is_none());
     }
 
     #[tokio::test]
