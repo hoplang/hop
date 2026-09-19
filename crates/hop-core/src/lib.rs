@@ -2,7 +2,6 @@ mod css;
 mod definition_link;
 mod dependency_graph;
 mod examples_annotation;
-mod gate;
 mod hop;
 mod hover_annotation;
 mod html;

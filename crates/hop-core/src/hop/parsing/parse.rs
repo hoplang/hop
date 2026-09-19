@@ -9,7 +9,6 @@ use super::tokenize_expr;
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::gate::Gate;
 
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_type::parse_type;
@@ -253,11 +252,10 @@ fn parse_page_declaration(
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedPageDeclaration, ErrorEmitted> {
-    let mut gate = Gate::default();
-    let name = gate.run(|| parse_helpers::expect_identifier(iter, comments, errors));
-    let params = gate.run(|| {
+    let header: Result<_, ErrorEmitted> = (|| {
+        let name = parse_helpers::expect_identifier(iter, comments, errors)?;
         if let Some((LangToken::LeftBrace, _)) = tokenize_expr::peek(iter) {
-            return Ok(Vec::new());
+            return Ok((name, Vec::new()));
         }
         let left_paren =
             parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftParen)?;
@@ -279,10 +277,12 @@ fn parse_page_declaration(
                 }
             }
         }
-        Ok(params)
-    });
-    let left_brace =
-        gate.run(|| parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftBrace));
+        Ok((name, params))
+    })();
+    let left_brace = match &header {
+        Ok(_) => parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftBrace),
+        Err(reported) => Err(*reported),
+    };
     // Synchronize at left brace
     let left_brace = match left_brace {
         Ok(left_brace) => left_brace,
@@ -383,8 +383,7 @@ fn parse_page_declaration(
             None => errors.emit(ParseErrorKind::ExpectedPageBodyBlock {}, right_brace),
         });
     };
-    let (name, name_range) = name?;
-    let params = params?;
+    let ((name, name_range), params) = header?;
     Ok(ParsedPageDeclaration {
         name: TypeName::new(name).or_emit(errors, &name_range)?,
         name_range,
@@ -406,27 +405,27 @@ fn parse_function_declaration(
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedFunctionDeclaration, ErrorEmitted> {
-    let mut gate = Gate::default();
-    let name = gate.run(|| parse_helpers::expect_identifier(iter, comments, errors));
-    let params = gate.run(|| {
+    let name = parse_helpers::expect_identifier(iter, comments, errors);
+    let signature: Result<_, ErrorEmitted> = (|| {
+        let (name, name_range) = name.as_ref().map_err(|reported| *reported)?;
         let left_paren =
             parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftParen)?;
         let items = parse_parameters(iter, comments, errors, &left_paren)?;
-        Ok(build_function_parameters(items, errors))
-    });
-    let return_type = gate.run(|| {
+        let (params, rest_param) = build_function_parameters(items, errors);
         if let Some((LangToken::LeftBrace, _)) = tokenize_expr::peek(iter) {
-            let (name, name_range) = name.as_ref().map_err(|reported| *reported)?;
             return Err(errors.emit(
                 ParseErrorKind::FunctionMissingReturnTypeAnnotation { name: name.clone() },
                 name_range.clone(),
             ));
         }
         parse_helpers::expect_token(iter, comments, errors, &LangToken::Arrow)?;
-        parse_type(iter, comments, errors)
-    });
-    let left_brace =
-        gate.run(|| parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftBrace));
+        let return_type = parse_type(iter, comments, errors)?;
+        Ok((params, rest_param, return_type))
+    })();
+    let left_brace = match &signature {
+        Ok(_) => parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftBrace),
+        Err(reported) => Err(*reported),
+    };
     // Synchronize at left brace
     let left_brace = match left_brace {
         Ok(left_brace) => left_brace,
@@ -455,8 +454,7 @@ fn parse_function_declaration(
     }
     let (body, braces) = parse_expr::parse_block(iter, comments, errors, &left_brace)?;
     let (name, name_range) = name?;
-    let (params, rest_param) = params?;
-    let return_type = return_type?;
+    let (params, rest_param, return_type) = signature?;
     Ok(ParsedFunctionDeclaration {
         name: FunctionName::new(name).or_emit(errors, &name_range)?,
         name_range,
