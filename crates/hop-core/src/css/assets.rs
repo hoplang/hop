@@ -26,7 +26,7 @@ pub fn scan_for_asset_references(
                     ArgumentParseResult::StringLiteral { path, close_paren } => {
                         if !path.starts_with("/") {
                             errors.push(CssError::new(
-                                CssErrorKind::UnclosedAssetCall,
+                                CssErrorKind::AssetPathMustBeAbsolute,
                                 marker_range.to(close_paren),
                             ));
                         } else {
@@ -553,6 +553,19 @@ mod tests {
                 CSS `--asset()` call has a non-string-literal argument: `"a", "b"`
                 --asset("a", "b")
                 ^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn scan_relative_path() {
+        check(
+            indoc! {r#"background: --asset("img/logo.svg")"#},
+            expect![[r#"
+                -- errors --
+                CSS `--asset()` path must start with '/'
+                background: --asset("img/logo.svg")
+                            ^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

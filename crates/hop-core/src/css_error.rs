@@ -32,6 +32,12 @@ pub(crate) enum CssErrorKind {
     #[error("CSS `--asset()` call has a non-string-literal argument: `{argument}`")]
     NonStringLiteralArgument { argument: String },
 
+    /// `--asset("...")` was called with a path that does not start with `/`.
+    /// Asset paths are resolved from the project root, so they must be
+    /// absolute.
+    #[error("CSS `--asset()` path must start with '/'")]
+    AssetPathMustBeAbsolute,
+
     /// `--asset(` appeared but the call was never closed before EOF or
     /// before a hard CSS boundary (newline inside a string literal, etc.).
     #[error("CSS `--asset()` call was not properly closed")]
