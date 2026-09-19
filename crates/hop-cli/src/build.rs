@@ -1,6 +1,8 @@
 use anyhow::Result;
-use hop_core::asset_reference;
+use hop_core::annotation::Annotation;
 use hop_core::asset_rewriter::ReplacingAssetRewriter;
+use hop_core::config_error::ConfigError;
+use hop_core::document::DocumentRange;
 use hop_core::document_annotator::DocumentAnnotator;
 use hop_core::document_id::DocumentId;
 use hop_core::program::Program;
@@ -15,15 +17,39 @@ pub struct CompileResult {
     pub output_path: PathBuf,
 }
 
+/// An asset referenced via `asset!()` (in hop) or `--asset()` (in CSS) that
+/// does not exist on disk.
+struct MissingAsset {
+    document_id: DocumentId,
+    range: DocumentRange,
+}
+
+impl Annotation for MissingAsset {
+    fn message(&self) -> String {
+        format!("asset `{}` does not exist on disk", self.document_id)
+    }
+
+    fn range(&self) -> &DocumentRange {
+        &self.range
+    }
+}
+
+fn annotated_config_error(error: ConfigError) -> anyhow::Error {
+    let document_id = error.range().document_id().clone();
+    let mut annotator = DocumentAnnotator::new()
+        .with_label("error")
+        .with_lines_before(1)
+        .with_location();
+    annotator.annotate(&document_id, [error]);
+    anyhow::anyhow!("Configuration failed:\n{}", annotator.render())
+}
+
 pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResult> {
     let config = project.load_config()?;
-    let resolved = config.get_resolved_config()?;
-
-    let assets_config = config.assets.as_ref().ok_or_else(|| {
-        anyhow::anyhow!(
-            "assets.output_dir is required (e.g. `output_dir = \"dist/public\"` in hop.toml)"
-        )
-    })?;
+    let assets_output_dir = config.assets_output_dir().map_err(annotated_config_error)?;
+    let production_prefix = config
+        .assets_production_prefix()
+        .map_err(annotated_config_error)?;
 
     // Load program
     let mut program = Program::default();
@@ -57,8 +83,19 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         }
 
         for (document_id, refs) in program.get_asset_references() {
-            let errors = asset_reference::validate_asset_existence(refs, project);
-            annotator.annotate(document_id, &errors);
+            let missing: Vec<MissingAsset> = refs
+                .iter()
+                .filter(|asset_ref| {
+                    !project
+                        .document_exists(&asset_ref.document_id)
+                        .unwrap_or(false)
+                })
+                .map(|asset_ref| MissingAsset {
+                    document_id: asset_ref.document_id.clone(),
+                    range: asset_ref.range.clone(),
+                })
+                .collect();
+            annotator.annotate(document_id, &missing);
         }
 
         if !annotator.is_empty() {
@@ -76,11 +113,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         .flatten()
         .map(|r| r.document_id.clone())
         .collect();
-    let (filenames_with_hashes, filename_replacements) = compute_filename_replacements(
-        &asset_document_ids,
-        assets_config.production_prefix.clone(),
-        project,
-    )?;
+    let (filenames_with_hashes, filename_replacements) =
+        compute_filename_replacements(&asset_document_ids, production_prefix.clone(), project)?;
 
     let asset_rewriter = Arc::new(ReplacingAssetRewriter::new(filename_replacements));
 
@@ -89,7 +123,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Run Tailwind on the optimized IR (only classes that survived dead code removal)
     //
     // TODO: Make get_compiled_css_document bundle CSS
-    if let Some(input_path) = project.get_css_input_path()? {
+    if let Some(css_input_path) = config.css_input_path().map_err(annotated_config_error)? {
+        let input_path = project.get_project_root().join(css_input_path);
         let tailwind_input_document_id = project.path_to_document_id(input_path.as_path())?;
         let compiled_css = program
             .get_compiled_css_document(&tailwind_input_document_id, asset_rewriter.clone())?;
@@ -100,7 +135,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Hash the rewritten CSS output and compute a href that mirrors how other
     // assets are rewritten (production_prefix + content-hashed filename).
     let css_filename = format!("styles-{:08x}.css", crc32fast::hash(css_output.as_bytes()));
-    let css_link_href = match assets_config.production_prefix.as_deref() {
+    let css_link_href = match production_prefix.as_deref() {
         Some(prefix) => format!("/{}/{}", prefix.trim_matches('/'), css_filename),
         None => format!("/{}", css_filename),
     };
@@ -109,11 +144,12 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // output is hashed and a src is computed the same way as the CSS link
     // (production_prefix + content-hashed filename), then injected as a
     // `<script type="module">` into every page's <head>.
-    let js_bundle = match project.get_js_input_path()? {
-        Some(input_path) => {
+    let js_bundle = match config.js_input_path().map_err(annotated_config_error)? {
+        Some(js_input_path) => {
+            let input_path = project.get_project_root().join(js_input_path);
             let bundled = esbuild_runner::bundle_script(&input_path, true)?;
             let js_filename = format!("scripts-{:08x}.js", crc32fast::hash(bundled.as_bytes()));
-            let js_src = match assets_config.production_prefix.as_deref() {
+            let js_src = match production_prefix.as_deref() {
                 Some(prefix) => format!("/{}/{}", prefix.trim_matches('/'), js_filename),
                 None => format!("/{}", js_filename),
             };
@@ -124,28 +160,38 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Compile to IR and inject link to the final CSS file (and script to the JS bundle).
     let generated_code = program.transpile(
-        &resolved,
+        config.target().map_err(annotated_config_error)?,
         &css_link_href,
         js_bundle.as_ref().map(|(_, _, src)| src.as_str()),
         skip_optimization,
         Some(asset_rewriter.clone()),
     );
 
-    // Write generated code
-    let output_path = project.write_output_path(&generated_code)?;
+    // Preserve the file's mtime if the content is unchanged, so downstream
+    // build tools (e.g. cargo) don't trigger unnecessary recompiles.
+    let output_path = project
+        .get_project_root()
+        .join(config.output_path().map_err(annotated_config_error)?);
+    if !fs::read(&output_path).is_ok_and(|existing| existing == generated_code.as_bytes()) {
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&output_path, &generated_code)?;
+    }
+    let output_path = output_path.canonicalize()?;
 
     // Copy assets with hashed filenames
     copy_assets(
         asset_document_ids,
         project,
-        &assets_config.output_dir,
+        &assets_output_dir,
         &filenames_with_hashes,
     )?;
 
     // Write CSS file
     let css_dest = project
         .get_project_root()
-        .join(&assets_config.output_dir)
+        .join(&assets_output_dir)
         .join(&css_filename);
     if let Some(parent) = css_dest.parent() {
         fs::create_dir_all(parent).map_err(|err| {
@@ -163,7 +209,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     if let Some((bundled, js_filename, _)) = &js_bundle {
         let js_dest = project
             .get_project_root()
-            .join(&assets_config.output_dir)
+            .join(&assets_output_dir)
             .join(js_filename);
         if let Some(parent) = js_dest.parent() {
             fs::create_dir_all(parent).map_err(|err| {
@@ -311,7 +357,6 @@ mod tests {
                 output_path = "output.ts"
                 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -353,7 +398,6 @@ mod tests {
                 output_path = "output.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -461,7 +505,6 @@ mod tests {
                 output_path = "app.ts"
                 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -505,7 +548,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -540,7 +582,6 @@ mod tests {
                 output_path = "app.ts"
                 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -581,7 +622,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -615,7 +655,6 @@ mod tests {
                 output_path = "app.ts"
                 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -659,7 +698,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -701,9 +739,13 @@ mod tests {
                 -- logo.svg --
                 <svg>logo</svg>
             "#},
-            expect![[
-                r#"assets.output_dir is required (e.g. `output_dir = "dist/public"` in hop.toml)"#
-            ]],
+            expect![[r#"
+                Configuration failed:
+                error: missing field `assets`
+                  --> hop.toml (line 1, col 1)
+                1 | [compile]
+                  | ^
+            "#]],
         )
     }
 
@@ -719,7 +761,6 @@ mod tests {
                 output_path = "app.ts"
                 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -763,7 +804,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -799,7 +839,6 @@ mod tests {
                 output_path = "app.ts"
                 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -843,7 +882,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -878,7 +916,6 @@ mod tests {
                 output_path = "app.ts"
                 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -910,7 +947,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -938,7 +974,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -973,7 +1008,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -1004,7 +1038,6 @@ mod tests {
                 output_path = "app.ts"
                 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -1038,7 +1071,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -1070,7 +1102,6 @@ mod tests {
                 -- style.css --
                 -- hop.toml --
                 [js]
-                bundler = "esbuild"
                 input_path = "app.ts"
 
                 [compile]
@@ -1078,7 +1109,6 @@ mod tests {
                 output_path = "app.rs"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -1129,7 +1159,6 @@ mod tests {
                 -- dist/public/styles-00000000.css --
                 -- hop.toml --
                 [js]
-                bundler = "esbuild"
                 input_path = "app.ts"
 
                 [compile]
@@ -1137,7 +1166,6 @@ mod tests {
                 output_path = "app.rs"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -1165,7 +1193,6 @@ mod tests {
                 -- style.css --
                 -- hop.toml --
                 [js]
-                bundler = "esbuild"
                 input_path = "app.ts"
 
                 [compile]
@@ -1173,7 +1200,6 @@ mod tests {
                 output_path = "out.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -1194,7 +1220,6 @@ mod tests {
                 -- dist/public/styles-00000000.css --
                 -- hop.toml --
                 [js]
-                bundler = "esbuild"
                 input_path = "app.ts"
 
                 [compile]
@@ -1202,7 +1227,6 @@ mod tests {
                 output_path = "out.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -1243,7 +1267,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "input.css"
 
                 [assets]
@@ -1287,7 +1310,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "input.css"
 
                 [assets]
@@ -1318,7 +1340,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "input.css"
 
                 [assets]
@@ -1363,7 +1384,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "input.css"
 
                 [assets]
@@ -1395,7 +1415,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "input.css"
 
                 [assets]
@@ -1433,7 +1452,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "input.css"
 
                 [assets]
@@ -1471,7 +1489,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "input.css"
 
                 [assets]
@@ -1507,7 +1524,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "input.css"
 
                 [assets]
@@ -1536,7 +1552,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]
@@ -1574,7 +1589,6 @@ mod tests {
                 output_path = "app.ts"
 
                 [css]
-                bundler = "tailwind_4"
                 input_path = "style.css"
 
                 [assets]

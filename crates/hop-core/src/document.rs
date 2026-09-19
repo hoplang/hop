@@ -89,6 +89,28 @@ impl Document {
         &self.source.text
     }
 
+    pub fn range(&self, span: std::ops::Range<usize>) -> DocumentRange {
+        let text = &self.source.text;
+        assert!(
+            span.start <= span.end,
+            "range {}..{} starts after it ends",
+            span.start,
+            span.end
+        );
+        assert!(
+            text.is_char_boundary(span.start) && text.is_char_boundary(span.end),
+            "range {}..{} is not on char boundaries of a {} byte document",
+            span.start,
+            span.end,
+            text.len()
+        );
+        DocumentRange {
+            source: self.source.clone(),
+            start: span.start,
+            end: span.end,
+        }
+    }
+
     pub(crate) fn cursor(&self) -> DocumentCursor {
         let end = self.source.text.len();
         DocumentCursor {

@@ -1,7 +1,7 @@
 use crate::annotation::Annotation;
 use crate::asset_reference::AssetReference;
 use crate::asset_rewriter::AssetRewriter;
-use crate::config::{ResolvedConfig, TargetLanguage};
+use crate::config::TargetLanguage;
 use crate::css;
 use crate::css_error::CssError;
 use crate::definition_link::DefinitionLink;
@@ -650,7 +650,7 @@ impl Program {
     /// Compile all typed modules to source code for the given target language.
     pub fn transpile(
         &self,
-        resolved_config: &ResolvedConfig,
+        target: TargetLanguage,
         css_link_href: &str,
         js_script_src: Option<&str>,
         skip_optimization: bool,
@@ -669,7 +669,7 @@ impl Program {
             },
         );
 
-        match resolved_config.target {
+        match target {
             TargetLanguage::Typescript => {
                 ir::TsTranspiler::new().transpile_module(&ir_module, &self.type_registry)
             }

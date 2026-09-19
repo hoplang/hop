@@ -174,9 +174,8 @@ impl DocumentAnnotator {
     ) {
         let max_line_col_width = lines.len().to_string().len();
 
-        // The end-of-input range is empty, so it marks a position rather than
-        // a span: it is drawn as a single caret, clamped onto the last line
-        // that exists when the input ends with a newline.
+        // An empty range marks a position between two characters rather than a
+        // span, and is drawn as a single caret at that column.
         let anchor_line = cmp::min(range.start_utf32().line(), lines.len() - 1);
         let (first_line, last_line) = if range.is_empty() {
             (

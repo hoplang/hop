@@ -11,7 +11,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::config::HopConfig;
+use crate::config::Config;
 use crate::document::Document;
 use crate::document_id::DocumentId;
 
@@ -192,8 +192,8 @@ impl Project {
         Ok(document_ids)
     }
 
-    /// Load the hop.toml configuration file from this project root
-    pub fn load_config(&self) -> anyhow::Result<HopConfig> {
+    /// Load the hop.toml configuration file from this project root.
+    pub fn load_config(&self) -> anyhow::Result<Config> {
         let config_path = self.project_root.join("hop.toml");
 
         if !config_path.exists() {
@@ -203,42 +203,9 @@ impl Project {
         let config_str = fs::read_to_string(&config_path)
             .with_context(|| format!("Failed to read hop.toml at {:?}", config_path))?;
 
-        let config = HopConfig::from_toml_str(&config_str)
-            .with_context(|| format!("Failed to parse hop.toml at {:?}", config_path))?;
-
-        Ok(config)
-    }
-
-    pub fn get_css_input_path(&self) -> anyhow::Result<Option<PathBuf>> {
-        let config = self.load_config()?;
-        Ok(config.css.map(|c| self.project_root.join(c.input_path)))
-    }
-
-    pub fn get_js_input_path(&self) -> anyhow::Result<Option<PathBuf>> {
-        let config = self.load_config()?;
-        Ok(config.js.map(|j| self.project_root.join(j.input_path)))
-    }
-
-    pub fn get_output_path(&self) -> anyhow::Result<PathBuf> {
-        let config = self.load_config()?;
-        let resolved = config.get_resolved_config()?;
-        Ok(self.project_root.join(&resolved.output_path))
-    }
-
-    pub fn write_output_path(&self, data: &str) -> anyhow::Result<PathBuf> {
-        let path = self.get_output_path()?;
-        // Preserve the file's mtime if the content is unchanged, so downstream
-        // build tools (e.g. cargo) don't trigger unnecessary recompiles.
-        if let Ok(existing) = fs::read(&path)
-            && existing == data.as_bytes()
-        {
-            return Ok(path.canonicalize()?);
-        }
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&path, data)?;
-        Ok(path.canonicalize()?)
+        let document_id = DocumentId::new("hop.toml")
+            .map_err(|e| anyhow::anyhow!("Invalid document id for hop.toml: {}", e))?;
+        Ok(Config::new(Document::new(document_id, config_str)))
     }
 }
 
@@ -454,39 +421,6 @@ mod tests {
     }
 
     #[test]
-    fn write_output_path_preserves_file_when_unchanged() {
-        let archive = Archive::from(indoc! {r#"
-            -- hop.toml --
-            [compile]
-            target = "ts"
-            output_path = "app.ts"
-        "#});
-        let temp_dir = TempDir::new().unwrap();
-        write_archive_to_dir(&archive, temp_dir.path()).unwrap();
-        let project = Project::from(temp_dir.path()).unwrap();
-
-        let path = project.write_output_path("hello").unwrap();
-        let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
-
-        // Sleep longer than typical filesystem mtime resolution.
-        std::thread::sleep(std::time::Duration::from_millis(5));
-
-        project.write_output_path("hello").unwrap();
-        let mtime_after_same = std::fs::metadata(&path).unwrap().modified().unwrap();
-        assert_eq!(
-            mtime_before, mtime_after_same,
-            "mtime should be preserved when content is unchanged"
-        );
-
-        project.write_output_path("changed").unwrap();
-        let mtime_after_change = std::fs::metadata(&path).unwrap().modified().unwrap();
-        assert_ne!(
-            mtime_before, mtime_after_change,
-            "mtime should update when content changes"
-        );
-    }
-
-    #[test]
     fn find_modules() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
@@ -615,48 +549,6 @@ mod tests {
             result.is_ok(),
             "Config without build section should succeed: {:?}",
             result.err()
-        );
-    }
-
-    #[test]
-    fn get_css_input_path_without_build_section() {
-        let archive = Archive::from(indoc! {r#"
-            -- hop.toml --
-            [css]
-            bundler = "tailwind_4"
-            input_path = "styles/input.css"
-        "#});
-        let temp_dir = TempDir::new().unwrap();
-        write_archive_to_dir(&archive, temp_dir.path()).unwrap();
-        let project = Project::from(temp_dir.path()).unwrap();
-
-        let result = project.get_css_input_path();
-        assert!(
-            result.is_ok(),
-            "get_css_input_path should succeed without build section: {:?}",
-            result.err()
-        );
-
-        let path = result.unwrap();
-        assert!(path.is_some());
-        assert!(path.unwrap().ends_with("styles/input.css"));
-    }
-
-    #[test]
-    fn get_output_path_errors_without_build_config() {
-        let archive = Archive::from(indoc! {r#"
-            -- hop.toml --
-            [css]
-            mode = "tailwind4"
-        "#});
-        let temp_dir = TempDir::new().unwrap();
-        write_archive_to_dir(&archive, temp_dir.path()).unwrap();
-        let project = Project::from(temp_dir.path()).unwrap();
-
-        let result = project.get_output_path();
-        assert!(
-            result.is_err(),
-            "get_output_path should fail without build config"
         );
     }
 }

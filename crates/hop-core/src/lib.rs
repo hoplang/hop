@@ -21,10 +21,10 @@ mod simple_annotation;
 mod extract_position;
 
 pub mod annotation;
-pub mod asset_error;
 pub mod asset_reference;
 pub mod asset_rewriter;
 pub mod config;
+pub mod config_error;
 pub mod css_error;
 pub mod document;
 pub mod document_annotator;
