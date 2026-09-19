@@ -32,6 +32,10 @@ impl DocumentId {
                 return Err(DocumentIdError::EmptyComponent);
             }
 
+            if component == "." || component == ".." {
+                return Err(DocumentIdError::RelativeComponent);
+            }
+
             for c in component.chars() {
                 if !c.is_alphanumeric() && c != '-' && c != '_' && c != '.' {
                     return Err(DocumentIdError::InvalidCharacter(c));
@@ -84,6 +88,9 @@ pub enum DocumentIdError {
 
     #[error("Document ID contains empty component")]
     EmptyComponent,
+
+    #[error("Document ID cannot contain '.' or '..' components")]
+    RelativeComponent,
 }
 
 #[cfg(test)]
@@ -147,5 +154,24 @@ mod tests {
     #[test]
     fn rejects_document_id_with_colon_separator() {
         reject("my::component.hop", DocumentIdError::InvalidCharacter(':'));
+    }
+
+    #[test]
+    fn rejects_document_id_with_parent_component() {
+        reject("../secrets.css", DocumentIdError::RelativeComponent);
+        reject("src/../main.hop", DocumentIdError::RelativeComponent);
+    }
+
+    #[test]
+    fn rejects_document_id_with_current_component() {
+        reject("./main.hop", DocumentIdError::RelativeComponent);
+        reject("src/./main.hop", DocumentIdError::RelativeComponent);
+    }
+
+    #[test]
+    fn accepts_dotfiles_and_multiple_dots() {
+        accept(".hidden.hop");
+        accept("...hop");
+        accept("a.b.c.hop");
     }
 }
