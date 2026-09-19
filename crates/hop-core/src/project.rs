@@ -6,7 +6,6 @@
 //! - Converting between file paths and [`ModuleId`]
 //! - Loading modules and configuration
 
-use anyhow::Context;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -28,6 +27,25 @@ pub enum PathError {
     },
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ProjectError {
+    #[error("{path:?} is not a directory")]
+    NotADirectory { path: PathBuf },
+
+    #[error("Failed to locate hop.toml starting from {path:?}")]
+    ConfigNotFound { path: PathBuf },
+
+    #[error("IO error on {path:?}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error(transparent)]
+    InvalidPath(#[from] PathError),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
     // Directory containing the hop.toml file
@@ -38,16 +56,18 @@ impl Project {
     /// Construct the project from a path.
     ///
     /// The path should be a directory and contain the config file.
-    pub fn from(path: &Path) -> anyhow::Result<Project> {
+    pub fn from(path: &Path) -> Result<Project, ProjectError> {
         if !path.is_dir() {
-            anyhow::bail!("{:?} is not a directory", &path)
+            return Err(ProjectError::NotADirectory {
+                path: path.to_path_buf(),
+            });
         }
-        let canonicalized = path
-            .canonicalize()
-            .with_context(|| format!("Failed to canonicalize path {:?}", path))?;
+        let canonicalized = canonicalize(path)?;
         let config_file = canonicalized.join("hop.toml");
         if !config_file.exists() {
-            anyhow::bail!("Expected to find hop.toml in {:?}", &path)
+            return Err(ProjectError::ConfigNotFound {
+                path: path.to_path_buf(),
+            });
         }
         Ok(Project {
             project_root: canonicalized,
@@ -55,14 +75,14 @@ impl Project {
     }
 
     /// Find the project root by traversing into superdirectories.
-    pub fn find_traversing_superdirectories(start_path: &Path) -> anyhow::Result<Project> {
-        let canonicalized = start_path
-            .canonicalize()
-            .with_context(|| format!("Failed to canonicalize path {:?}", start_path))?;
+    pub fn find_traversing_superdirectories(start_path: &Path) -> Result<Project, ProjectError> {
+        let canonicalized = canonicalize(start_path)?;
         let mut current_dir = if canonicalized.is_file() {
             canonicalized
                 .parent()
-                .ok_or_else(|| anyhow::anyhow!("Can't get parent of path {:?}", canonicalized))?
+                .ok_or_else(|| ProjectError::ConfigNotFound {
+                    path: start_path.to_path_buf(),
+                })?
         } else {
             &canonicalized
         };
@@ -74,20 +94,17 @@ impl Project {
                     project_root: current_dir.to_path_buf(),
                 });
             }
-            current_dir = current_dir.parent().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Failed to locate hop.toml file in {:?} or any parent directory",
-                    &start_path
-                )
-            })?;
+            current_dir = current_dir
+                .parent()
+                .ok_or_else(|| ProjectError::ConfigNotFound {
+                    path: start_path.to_path_buf(),
+                })?;
         }
     }
 
     /// Find the project root by traversing into subdirectories.
-    pub fn find_traversing_subdirectories(start_path: &Path) -> anyhow::Result<Project> {
-        let canonicalized = start_path
-            .canonicalize()
-            .with_context(|| format!("Failed to canonicalize path {:?}", start_path))?;
+    pub fn find_traversing_subdirectories(start_path: &Path) -> Result<Project, ProjectError> {
+        let canonicalized = canonicalize(start_path)?;
 
         let mut paths: Vec<PathBuf> = vec![canonicalized];
 
@@ -115,10 +132,9 @@ impl Project {
             }
         }
 
-        anyhow::bail!(
-            "Failed to locate hop.toml file in {:?} or any subdirectory",
-            &start_path
-        )
+        Err(ProjectError::ConfigNotFound {
+            path: start_path.to_path_buf(),
+        })
     }
 
     pub fn get_project_root(&self) -> &Path {
@@ -150,10 +166,10 @@ impl Project {
     }
 
     /// Load a single document from its module ID
-    pub fn load_document(&self, document_id: &DocumentId) -> anyhow::Result<Document> {
+    pub fn load_document(&self, document_id: &DocumentId) -> Result<Document, ProjectError> {
         let path = self.document_id_to_path(document_id);
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read document {:?} at {:?}", document_id, path))?;
+        let content =
+            fs::read_to_string(&path).map_err(|source| ProjectError::Io { path, source })?;
         Ok(Document::new(document_id.clone(), content))
     }
 
@@ -164,15 +180,15 @@ impl Project {
     }
 
     /// Find all hop modules in this project.
-    pub fn find_hop_modules(&self) -> anyhow::Result<Vec<DocumentId>> {
+    pub fn find_hop_modules(&self) -> Result<Vec<DocumentId>, ProjectError> {
         self.find_files_by_extension("hop")
     }
 
-    pub fn find_css_documents(&self) -> anyhow::Result<Vec<DocumentId>> {
+    pub fn find_css_documents(&self) -> Result<Vec<DocumentId>, ProjectError> {
         self.find_files_by_extension("css")
     }
 
-    fn find_files_by_extension(&self, extension: &str) -> anyhow::Result<Vec<DocumentId>> {
+    fn find_files_by_extension(&self, extension: &str) -> Result<Vec<DocumentId>, ProjectError> {
         let mut document_ids = Vec::new();
 
         if !self.project_root.exists() || !self.project_root.is_dir() {
@@ -190,10 +206,17 @@ impl Project {
                     }
                 }
 
-                let entries = std::fs::read_dir(&path)
-                    .with_context(|| format!("Failed to read directory {:?}", path))?;
+                let entries = fs::read_dir(&path).map_err(|source| ProjectError::Io {
+                    path: path.clone(),
+                    source,
+                })?;
                 for entry in entries {
-                    let p = entry.context("Failed to read directory entry")?.path();
+                    let p = entry
+                        .map_err(|source| ProjectError::Io {
+                            path: path.clone(),
+                            source,
+                        })?
+                        .path();
                     paths.push(p);
                 }
             } else if path.extension().and_then(|s| s.to_str()) == Some(extension) {
@@ -205,20 +228,22 @@ impl Project {
     }
 
     /// Load the hop.toml configuration file from this project root.
-    pub fn load_config(&self) -> anyhow::Result<Config> {
+    pub fn load_config(&self) -> Result<Config, ProjectError> {
         let config_path = self.project_root.join("hop.toml");
-
-        if !config_path.exists() {
-            anyhow::bail!("hop.toml not found at {:?}", config_path);
-        }
-
-        let config_str = fs::read_to_string(&config_path)
-            .with_context(|| format!("Failed to read hop.toml at {:?}", config_path))?;
-
-        let document_id = DocumentId::new("hop.toml")
-            .map_err(|e| anyhow::anyhow!("Invalid document id for hop.toml: {}", e))?;
+        let config_str = fs::read_to_string(&config_path).map_err(|source| ProjectError::Io {
+            path: config_path,
+            source,
+        })?;
+        let document_id = DocumentId::new("hop.toml").expect("hop.toml is a valid document id");
         Ok(Config::new(Document::new(document_id, config_str)))
     }
+}
+
+fn canonicalize(path: &Path) -> Result<PathBuf, ProjectError> {
+    path.canonicalize().map_err(|source| ProjectError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 /// Check if a directory should be skipped during file search
@@ -309,10 +334,11 @@ mod tests {
         // Test that find_upwards fails when no hop.toml exists
         let nested_dir = temp_dir.path().join("src").join("components");
         let result = Project::find_traversing_superdirectories(&nested_dir);
-        assert!(result.is_err());
-
-        let error_message = result.unwrap_err().to_string();
-        assert!(error_message.contains("Failed to locate hop.toml"));
+        assert!(
+            matches!(result, Err(ProjectError::ConfigNotFound { .. })),
+            "Expected ConfigNotFound error, got: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -546,12 +572,14 @@ mod tests {
         std::fs::remove_file(temp_dir.path().join("hop.toml")).unwrap();
 
         let result = project.load_config();
-        assert!(result.is_err());
         assert!(
+            matches!(
+                result,
+                Err(ProjectError::Io { ref source, .. })
+                    if source.kind() == io::ErrorKind::NotFound
+            ),
+            "Expected Io/NotFound error, got: {:?}",
             result
-                .unwrap_err()
-                .to_string()
-                .contains("hop.toml not found")
         );
     }
 

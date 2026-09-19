@@ -8,7 +8,6 @@ publish = false
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.9"
 unicode-width = "0.2"
-anyhow = "1.0"
 thiserror = "2.0"
 pretty = "0.12"
 rand = "0.10"

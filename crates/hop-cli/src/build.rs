@@ -127,7 +127,10 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         let input_path = project.get_project_root().join(css_input_path);
         let tailwind_input_document_id = project.path_to_document_id(input_path.as_path())?;
         let compiled_css = program
-            .get_compiled_css_document(&tailwind_input_document_id, asset_rewriter.clone())?;
+            .get_compiled_css_document(&tailwind_input_document_id, asset_rewriter.clone())
+            .ok_or_else(|| {
+                anyhow::anyhow!("CSS document '{}' not found", tailwind_input_document_id)
+            })?;
         let tailwind_runner = TailwindRunner::new();
         let sources = program.get_all_hop_sources();
         css_output = tailwind_runner.compile_once(&compiled_css, &sources)?;

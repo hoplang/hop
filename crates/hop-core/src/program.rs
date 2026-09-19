@@ -22,13 +22,13 @@ use crate::hop::typing::typed_ast::TypedAst;
 use crate::hover_annotation::HoverAnnotation;
 use crate::ir;
 use crate::ir::Transpiler;
+use crate::ir::runtime::evaluator::EvalError;
 use crate::ir::runtime::random::random_value;
 use crate::orchestrator::{OrchestrateOptions, orchestrate, orchestrate_pure};
 use crate::parse_error::ParseError;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
-use anyhow::Result;
 use rand::Rng;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -44,6 +44,36 @@ pub struct HoverInfo {
 /// code. This is the response for a go to definition-query.
 pub struct DefinitionLocation {
     pub range: DocumentRange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum FormatError {
+    #[error("Module '{0}' not found")]
+    ModuleNotFound(DocumentId),
+
+    #[error("Cannot format module '{0}': it has parse errors")]
+    HasParseErrors(DocumentId),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum EvaluatePageError {
+    #[error("Cannot evaluate page: program has parse errors")]
+    ParseErrors,
+
+    #[error("Cannot evaluate page: program has type errors")]
+    TypeErrors,
+
+    #[error("Invalid page name '{page}': {reason}")]
+    InvalidPageName { page: String, reason: String },
+
+    #[error("Page '{page}' not found. Available pages: {}", available.join(", "))]
+    PageNotFound {
+        page: String,
+        available: Vec<String>,
+    },
+
+    #[error("Missing required parameter '{param}' for page '{page}'")]
+    MissingParameter { page: String, param: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,36 +257,32 @@ impl Program {
         &self.asset_references
     }
 
+    /// Returns the CSS document with asset paths rewritten, or `None` if
+    /// there is no CSS document with the given id.
     pub fn get_compiled_css_document(
         &self,
         document_id: &DocumentId,
         asset_rewriter: Arc<dyn AssetRewriter>,
-    ) -> Result<String> {
-        let css = self
-            .css_documents
-            .get(document_id)
-            .ok_or_else(|| anyhow::anyhow!("CSS document '{}' not found", document_id))?;
-        Ok(css::rewrite_asset_paths(css, asset_rewriter))
+    ) -> Option<String> {
+        let css = self.css_documents.get(document_id)?;
+        Some(css::rewrite_asset_paths(css, asset_rewriter))
     }
 
     /// Returns the formatted source code for a module.
     ///
     /// Returns an error if the module doesn't exist or has parse errors.
-    pub fn get_formatted_module(&self, document_id: &DocumentId) -> Result<String> {
-        // Check if module exists
+    pub fn get_formatted_module(&self, document_id: &DocumentId) -> Result<String, FormatError> {
         let ast = self
             .parsed_asts
             .get(document_id)
-            .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", document_id))?;
+            .ok_or_else(|| FormatError::ModuleNotFound(document_id.clone()))?;
 
-        // Check for parse errors
-        if let Some(errors) = self.parse_errors.get(document_id) {
-            if !errors.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "Cannot format module '{}': has parse errors",
-                    document_id
-                ));
-            }
+        if self
+            .parse_errors
+            .get(document_id)
+            .is_some_and(|errors| !errors.is_empty())
+        {
+            return Err(FormatError::HasParseErrors(document_id.clone()));
         }
 
         Ok(format(ast))
@@ -534,46 +560,13 @@ impl Program {
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
-    ) -> Result<String> {
+    ) -> Result<String, EvaluatePageError> {
         // Refuse to evaluate if there are errors in any module
         if self.parse_errors.values().any(|errors| !errors.is_empty()) {
-            anyhow::bail!("Cannot evaluate page: program has parse errors");
+            return Err(EvaluatePageError::ParseErrors);
         }
         if self.type_errors.values().any(|errors| !errors.is_empty()) {
-            anyhow::bail!("Cannot evaluate page: program has type errors");
-        }
-        // Validate that the module exists
-        let module = self.get_typed_modules().get(document_id).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Module '{}' not found. Available modules: {}",
-                document_id,
-                self.get_typed_modules()
-                    .keys()
-                    .map(|m| m.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        })?;
-
-        // Check if the page exists in this module
-        let page_exists = module
-            .page_declarations()
-            .iter()
-            .any(|ep| ep.name.as_str() == page_name.as_str());
-
-        if !page_exists {
-            let available_pages: Vec<_> = module
-                .page_declarations()
-                .iter()
-                .map(|ep| ep.name.as_str())
-                .collect();
-
-            anyhow::bail!(
-                "Page '{}' not found in module '{}'. Available pages: {}",
-                page_name,
-                document_id,
-                available_pages.join(", ")
-            );
+            return Err(EvaluatePageError::TypeErrors);
         }
 
         // Use orchestrate_pure to handle inlining and compilation
@@ -589,9 +582,16 @@ impl Program {
             },
         );
 
-        let str = ir::runtime::evaluator::evaluate_page(&pure_module, page_name, args)?;
-
-        Ok(str)
+        ir::runtime::evaluator::evaluate_page(&pure_module, page_name, args).map_err(|e| match e {
+            EvalError::PageNotFound { page } => EvaluatePageError::PageNotFound {
+                page: page.to_string(),
+                available: self.page_names(),
+            },
+            EvalError::MissingParameter { page, param } => EvaluatePageError::MissingParameter {
+                page: page.to_string(),
+                param: param.to_string(),
+            },
+        })
     }
 
     /// Evaluate a page with randomly generated parameter values using the given RNG.
@@ -602,23 +602,26 @@ impl Program {
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
-    ) -> Result<String> {
-        let document_id = self
-            .find_module_for_page(page)
-            .map_err(anyhow::Error::msg)?;
-        let page_name = TypeName::new(CheapString::new(page.to_string()))
-            .map_err(|e| anyhow::anyhow!("Invalid page name: {}", e))?;
-
-        let typed_ast = self.get_typed_modules().get(&document_id).ok_or_else(|| {
-            anyhow::anyhow!("Module '{}' not found in typed modules", document_id)
+    ) -> Result<String, EvaluatePageError> {
+        let page_name = TypeName::new(CheapString::new(page.to_string())).map_err(|e| {
+            EvaluatePageError::InvalidPageName {
+                page: page.to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
-        let page_decl = typed_ast
-            .page_declarations()
+        let (document_id, page_decl) = self
+            .typed_asts
             .iter()
-            .find(|ep| ep.name.as_str() == page)
-            .ok_or_else(|| {
-                anyhow::anyhow!("Page '{}' not found in module '{}'", page, document_id)
+            .find_map(|(document_id, ast)| {
+                ast.page_declarations()
+                    .iter()
+                    .find(|ep| ep.name == page_name)
+                    .map(|ep| (document_id, ep))
+            })
+            .ok_or_else(|| EvaluatePageError::PageNotFound {
+                page: page.to_string(),
+                available: self.page_names(),
             })?;
 
         let params = page_decl
@@ -638,7 +641,7 @@ impl Program {
             .collect::<HashMap<_, _>>();
 
         self.evaluate_page_with_values(
-            &document_id,
+            document_id,
             &page_name,
             params,
             generated_tailwind_css,
@@ -699,27 +702,6 @@ impl Program {
             .collect();
         names.sort();
         names
-    }
-
-    /// Find which module contains a given page.
-    pub fn find_module_for_page(&self, page: &str) -> Result<DocumentId, String> {
-        let mut all_pages = Vec::new();
-
-        for (document_id, ast) in &self.typed_asts {
-            for ep in ast.page_declarations() {
-                if ep.name.as_str() == page {
-                    return Ok(document_id.clone());
-                }
-                all_pages.push(ep.name.to_string());
-            }
-        }
-
-        all_pages.sort();
-        Err(format!(
-            "Page '{}' not found. Available pages: {}",
-            page,
-            all_pages.join(", ")
-        ))
     }
 }
 
@@ -2660,12 +2642,10 @@ mod tests {
             false,
             None,
         );
-        assert!(result.is_err());
         assert!(
+            matches!(result, Err(EvaluatePageError::PageNotFound { .. })),
+            "Expected PageNotFound error, got: {:?}",
             result
-                .unwrap_err()
-                .to_string()
-                .contains("Page 'NonExistent' not found in module 'main.hop'")
         );
     }
 
