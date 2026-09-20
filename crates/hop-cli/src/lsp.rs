@@ -1,8 +1,9 @@
 use hop_core::document::{Document, DocumentRange};
 use hop_core::document_id::DocumentId;
 use hop_core::document_position::DocumentPosition;
-use hop_core::program::{DefinitionLocation, Program, RenameLocation, Severity};
+use hop_core::program::{DefinitionLocation, Program, RenameLocation};
 use hop_core::project::Project;
+use hop_core::severity::Severity;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::sync::{OnceCell, RwLock};

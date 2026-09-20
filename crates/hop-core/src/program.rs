@@ -26,6 +26,7 @@ use crate::ir::runtime::evaluator::EvalError;
 use crate::ir::runtime::random::random_value;
 use crate::orchestrator::{OrchestrateOptions, orchestrate, orchestrate_pure};
 use crate::parse_error::ParseError;
+use crate::severity::Severity;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
@@ -74,12 +75,6 @@ pub enum EvaluatePageError {
 
     #[error("Missing required parameter '{param}' for page '{page}'")]
     MissingParameter { page: String, param: String },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Severity {
-    Error,
-    Warning,
 }
 
 /// A diagnostic is an error, warning or information that should be displayed

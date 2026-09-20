@@ -2,7 +2,7 @@ use crate::annotation::Annotation;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::patterns::typed::TypedMatchPattern;
 use crate::hop::typing::r#type::Type;
-use crate::program::Severity;
+use crate::severity::Severity;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
@@ -438,7 +438,6 @@ pub(crate) enum TypeErrorKind {
 
 impl TypeErrorKind {
     pub fn severity(&self) -> Severity {
-        use crate::program::Severity;
         match self {
             TypeErrorKind::UnusedVariable { .. }
             | TypeErrorKind::UnusedImport { .. }

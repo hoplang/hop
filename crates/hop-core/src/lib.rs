@@ -32,4 +32,5 @@ pub mod document_position;
 pub mod parse_error;
 pub mod program;
 pub mod project;
+pub mod severity;
 pub mod type_error;
