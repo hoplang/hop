@@ -369,9 +369,10 @@ pub fn rewrite_asset_paths(css: &Document, asset_rewriter: Arc<dyn AssetRewriter
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::annotation::Annotation;
+    use crate::diagnostic::Diagnostic;
+    use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
-    use crate::{document_annotator::DocumentAnnotator, simple_annotation::SimpleAnnotation};
+    use crate::severity::Severity;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -385,17 +386,15 @@ mod tests {
         let mut error_annotations = Vec::new();
 
         for asset_reference in asset_references {
-            asset_reference_annotations.push(SimpleAnnotation {
-                range: asset_reference.range.clone(),
-                message: format!("asset: {}", asset_reference.document_id),
-            });
+            asset_reference_annotations.push(Diagnostic::new(
+                format!("asset: {}", asset_reference.document_id),
+                asset_reference.range.clone(),
+                Severity::Error,
+            ));
         }
 
         for err in errors {
-            error_annotations.push(SimpleAnnotation {
-                range: err.range().clone(),
-                message: err.message(),
-            });
+            error_annotations.push(err.to_diagnostic());
         }
 
         let mut output = String::new();
@@ -405,10 +404,7 @@ mod tests {
             output.push_str(
                 &DocumentAnnotator::new()
                     .without_line_numbers()
-                    .annotate(
-                        &DocumentId::new("input.css").unwrap(),
-                        asset_reference_annotations,
-                    )
+                    .annotate(asset_reference_annotations)
                     .render(),
             );
         }
@@ -420,7 +416,7 @@ mod tests {
             output.push_str(
                 &DocumentAnnotator::new()
                     .without_line_numbers()
-                    .annotate(&DocumentId::new("input.css").unwrap(), error_annotations)
+                    .annotate(error_annotations)
                     .render(),
             );
         }

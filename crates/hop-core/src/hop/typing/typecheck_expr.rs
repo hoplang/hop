@@ -2255,10 +2255,10 @@ mod tests {
             Some(typed_expr) if type_errors.is_empty() => (typed_expr.typ().to_string(), true),
             _ => (
                 DocumentAnnotator::new()
-                    .with_label("error")
+                    .with_severity_label()
                     .without_location()
                     .without_line_numbers()
-                    .annotate(types.module(), type_errors)
+                    .annotate(type_errors.iter().map(|e| e.to_diagnostic()))
                     .render(),
                 false,
             ),
@@ -4989,7 +4989,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unused binding 'x' in match arm
+                warning: Unused binding 'x' in match arm
                     x => 42,
                     ^
             "#]],
@@ -5008,7 +5008,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unused binding 'x' in match arm
+                warning: Unused binding 'x' in match arm
                     Some(x) => 0,
                          ^
             "#]],
@@ -5044,7 +5044,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unused binding 'x' in match arm
+                warning: Unused binding 'x' in match arm
                     Some(Some(x)) => 0,
                               ^
             "#]],
@@ -5212,11 +5212,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unused binding 'n' in match arm
+                warning: Unused binding 'n' in match arm
                     User{name: n, age: a} => "hello",
                                ^
 
-                error: Unused binding 'a' in match arm
+                warning: Unused binding 'a' in match arm
                     User{name: n, age: a} => "hello",
                                        ^
             "#]],

@@ -89,7 +89,7 @@ impl Document {
         &self.source.text
     }
 
-    pub fn range(&self, span: std::ops::Range<usize>) -> DocumentRange {
+    pub(crate) fn range(&self, span: std::ops::Range<usize>) -> DocumentRange {
         let text = &self.source.text;
         assert!(
             span.start <= span.end,
@@ -248,7 +248,7 @@ pub struct DocumentRange {
 
 impl DocumentRange {
     /// Get the first char from the range. Returns '\0' for an empty range.
-    pub fn ch(&self) -> char {
+    pub(crate) fn ch(&self) -> char {
         if self.start == self.end {
             return '\0';
         }
@@ -258,13 +258,13 @@ impl DocumentRange {
             .unwrap()
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.start == self.end
     }
 
     /// Extend a range to encompass another range that occurs
     /// later in the document.
-    pub fn to(self, other: DocumentRange) -> Self {
+    pub(crate) fn to(self, other: DocumentRange) -> Self {
         debug_assert!(other.start >= self.start);
         debug_assert!(other.end >= self.end);
         DocumentRange {
@@ -278,7 +278,7 @@ impl DocumentRange {
     /// producing a single document range.
     ///
     /// The document ranges must occur sequentially in the document.
-    pub fn extend<I>(self, iter: I) -> Self
+    pub(crate) fn extend<I>(self, iter: I) -> Self
     where
         I: IntoIterator<Item = DocumentRange>,
     {
@@ -286,7 +286,7 @@ impl DocumentRange {
     }
 
     /// Get the underlying string slice for this document range.
-    pub fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         &self.source.text[self.start..self.end]
     }
 
@@ -305,11 +305,11 @@ impl DocumentRange {
         }
     }
 
-    pub fn start(&self) -> usize {
+    pub(crate) fn start(&self) -> usize {
         self.start
     }
 
-    pub fn end(&self) -> usize {
+    pub(crate) fn end(&self) -> usize {
         self.end
     }
 
@@ -325,20 +325,20 @@ impl DocumentRange {
         self.source.offset_to_utf16_position(self.end)
     }
 
-    pub fn start_utf32(&self) -> DocumentPosition {
+    pub(crate) fn start_utf32(&self) -> DocumentPosition {
         self.source.offset_to_utf32_position(self.start)
     }
 
-    pub fn end_utf32(&self) -> DocumentPosition {
+    pub(crate) fn end_utf32(&self) -> DocumentPosition {
         self.source.offset_to_utf32_position(self.end)
     }
 
-    pub fn contains(&self, other: &DocumentRange) -> bool {
+    pub(crate) fn contains(&self, other: &DocumentRange) -> bool {
         self.start <= other.start && other.end <= self.end
     }
 
     /// Returns true if the document range contains the given Position.
-    pub fn contains_position(&self, position: DocumentPosition) -> bool {
+    pub(crate) fn contains_position(&self, position: DocumentPosition) -> bool {
         match position {
             DocumentPosition::Utf16 { .. } => {
                 let start = self.start_utf16();
@@ -353,7 +353,7 @@ impl DocumentRange {
         }
     }
 
-    pub fn intersection(&self, other: &DocumentRange) -> Option<DocumentRange> {
+    pub(crate) fn intersection(&self, other: &DocumentRange) -> Option<DocumentRange> {
         let start = self.start.max(other.start);
         let end = self.end.min(other.end);
 
@@ -369,7 +369,7 @@ impl DocumentRange {
     }
 
     /// Convert this DocumentRange into a CheapString.
-    pub fn to_cheap_string(&self) -> CheapString {
+    pub(crate) fn to_cheap_string(&self) -> CheapString {
         CheapString {
             text: self.source.text.clone(),
             start: self.start,
@@ -378,12 +378,12 @@ impl DocumentRange {
     }
 
     /// Returns a new DocumentRange with leading and trailing whitespace removed.
-    pub fn trim(&self) -> DocumentRange {
+    pub(crate) fn trim(&self) -> DocumentRange {
         self.trim_start().trim_end()
     }
 
     /// Returns a new DocumentRange with leading whitespace removed.
-    pub fn trim_start(&self) -> DocumentRange {
+    pub(crate) fn trim_start(&self) -> DocumentRange {
         let s = self.as_str();
         let trimmed = s.trim_start();
         let leading = trimmed.as_ptr() as usize - s.as_ptr() as usize;
@@ -395,7 +395,7 @@ impl DocumentRange {
     }
 
     /// Returns a new DocumentRange with trailing whitespace removed.
-    pub fn trim_end(&self) -> DocumentRange {
+    pub(crate) fn trim_end(&self) -> DocumentRange {
         let s = self.as_str();
         let trimmed = s.trim_end();
         DocumentRange {
@@ -438,7 +438,7 @@ impl fmt::Display for DocumentRange {
 /// It has the same semantics as an owned string but does not require
 /// a heap allocation.
 #[derive(Clone)]
-pub struct CheapString {
+pub(crate) struct CheapString {
     /// The shared underlying text.
     text: Arc<String>,
     /// the start byte offset for this span in the text (inclusive).

@@ -1,7 +1,5 @@
 use anyhow::Result;
-use hop_core::document_annotator::DocumentAnnotator;
-use hop_core::program::Program;
-use hop_core::project::Project;
+use hop_core::{DocumentAnnotator, FormatError, Program, Project};
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -27,28 +25,36 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
         program.update_module(document_id, project.load_document(document_id)?);
     }
 
-    // Check for parse errors
-    let mut annotator = DocumentAnnotator::new()
-        .with_label("error")
-        .with_lines_before(1)
-        .with_location();
-
-    for (document_id, errors) in program.get_parse_errors() {
-        if !errors.is_empty() {
-            annotator.annotate(document_id, errors);
+    // Format every module before writing any, so that a parse error in one
+    // file leaves all files untouched.
+    let mut formatted = Vec::new();
+    let mut unparsable = Vec::new();
+    for document_id in &document_ids {
+        match program.get_formatted_module(document_id) {
+            Ok(source) => formatted.push((document_id, source)),
+            Err(FormatError::HasParseErrors(_)) => unparsable.push(document_id),
+            Err(err) => return Err(err.into()),
         }
     }
 
-    if !annotator.is_empty() {
+    if !unparsable.is_empty() {
+        let mut annotator = DocumentAnnotator::new()
+            .with_severity_label()
+            .with_lines_before(1)
+            .with_location();
+        annotator.annotate(
+            unparsable
+                .iter()
+                .flat_map(|document_id| program.document_diagnostics(document_id)),
+        );
         anyhow::bail!("Formatting failed:\n{}", annotator.render());
     }
 
     let mut files_formatted = 0;
     let mut files_unchanged = 0;
 
-    for document_id in &document_ids {
+    for (document_id, formatted) in formatted {
         let original = project.load_document(document_id)?;
-        let formatted = program.get_formatted_module(document_id)?;
         if formatted != original.as_str() {
             let path = project.document_id_to_path(document_id);
             std::fs::write(&path, &formatted)?;

@@ -707,9 +707,9 @@ mod tests {
         );
         if !errors.is_empty() {
             let rendered = DocumentAnnotator::new()
-                .with_label("error")
+                .with_severity_label()
                 .with_lines_before(1)
-                .annotate(&DocumentId::new("test.hop").unwrap(), errors.clone())
+                .annotate(errors.iter().map(|e| e.to_diagnostic()))
                 .render();
             panic!("expected no parse errors, got:\n{rendered}");
         }
@@ -728,9 +728,9 @@ mod tests {
             panic!("expected parse errors but got none");
         }
         let rendered = DocumentAnnotator::new()
-            .with_label("error")
+            .with_severity_label()
             .with_lines_before(1)
-            .annotate(&DocumentId::new("test.hop").unwrap(), errors.clone())
+            .annotate(errors.iter().map(|e| e.to_diagnostic()))
             .render();
         let actual = format!("-- errors --\n{rendered}-- ast --\n{module}");
         expected.assert_eq(&actual);
@@ -6871,9 +6871,9 @@ mod tests {
             );
             if !errors.is_empty() {
                 let rendered = DocumentAnnotator::new()
-                    .with_label("error")
+                    .with_severity_label()
                     .with_lines_before(1)
-                    .annotate(&DocumentId::new("test.hop").unwrap(), errors.clone())
+                    .annotate(errors.iter().map(|e| e.to_diagnostic()))
                     .render();
                 panic!("expected no parse errors, got:\n{rendered}\nsource:\n{source}");
             }

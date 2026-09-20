@@ -183,34 +183,15 @@ fn check_with_asset_rewriter(
     }
     assert!(modules > 0, "archive declares no modules");
 
-    // Check for parse errors
-    let parse_errors = program.get_parse_errors();
-    let has_parse_errors = parse_errors.values().any(|e| !e.is_empty());
-    if has_parse_errors {
-        for (module, errors) in parse_errors {
-            let rendered = DocumentAnnotator::new()
-                .with_label("error")
-                .with_lines_before(1)
-                .annotate(module, errors.clone())
-                .render();
-            eprintln!("{}", rendered);
-        }
-        panic!("Parse errors found");
-    }
-
-    // Check for type errors
-    let type_errors = program.get_type_errors();
-    let has_type_errors = type_errors.values().any(|e| !e.is_empty());
-    if has_type_errors {
-        for (module, errors) in type_errors {
-            let rendered = DocumentAnnotator::new()
-                .with_label("error")
-                .with_lines_before(1)
-                .annotate(module, errors.clone())
-                .render();
-            eprintln!("{}", rendered);
-        }
-        panic!("Type errors found");
+    let diagnostics = program.diagnostics();
+    if !diagnostics.is_empty() {
+        let rendered = DocumentAnnotator::new()
+            .with_severity_label()
+            .with_lines_before(1)
+            .annotate(diagnostics)
+            .render();
+        eprintln!("{}", rendered);
+        panic!("Diagnostics found");
     }
 
     let typed_asts = program.get_typed_modules().clone();

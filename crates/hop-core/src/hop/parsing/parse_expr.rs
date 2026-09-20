@@ -899,7 +899,7 @@ mod tests {
 
     fn reject(input: &str, expected: Expect) {
         let document_id = DocumentId::new("test.hop").unwrap();
-        let mut iter = DocumentCursor::new(document_id.clone(), input.to_string());
+        let mut iter = DocumentCursor::new(document_id, input.to_string());
         let mut comments = Vec::new();
         let mut errors = Vec::new();
         let result = parse_expr(&mut iter, &mut comments, &mut errors);
@@ -907,10 +907,10 @@ mod tests {
             panic!("expected parse errors but got none");
         }
         let rendered = DocumentAnnotator::new()
-            .with_label("error")
+            .with_severity_label()
             .without_location()
             .without_line_numbers()
-            .annotate(&document_id, errors.clone())
+            .annotate(errors.iter().map(|e| e.to_diagnostic()))
             .render();
         let actual = match result {
             Ok(expr) => format!("-- errors --\n{rendered}-- ast --\n{expr}\n"),

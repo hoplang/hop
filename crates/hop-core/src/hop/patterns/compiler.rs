@@ -809,10 +809,10 @@ mod tests {
             Some(decision) => (format_decision(&decision, 0), true),
             None => (
                 DocumentAnnotator::new()
-                    .with_label("error")
+                    .with_severity_label()
                     .without_location()
                     .without_line_numbers()
-                    .annotate(types.module(), type_errors)
+                    .annotate(type_errors.iter().map(|e| e.to_diagnostic()))
                     .render(),
                 false,
             ),

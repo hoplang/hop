@@ -1,12 +1,8 @@
 use anyhow::Result;
-use hop_core::annotation::Annotation;
-use hop_core::asset_rewriter::ReplacingAssetRewriter;
-use hop_core::config_error::ConfigError;
-use hop_core::document::DocumentRange;
-use hop_core::document_annotator::DocumentAnnotator;
-use hop_core::document_id::DocumentId;
-use hop_core::program::Program;
-use hop_core::project::Project;
+use hop_core::{
+    AssetReference, Diagnostic, DocumentAnnotator, DocumentId, Program, Project,
+    ReplacingAssetRewriter, Severity,
+};
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,30 +13,12 @@ pub struct CompileResult {
     pub output_path: PathBuf,
 }
 
-/// An asset referenced via `asset!()` (in hop) or `--asset()` (in CSS) that
-/// does not exist on disk.
-struct MissingAsset {
-    document_id: DocumentId,
-    range: DocumentRange,
-}
-
-impl Annotation for MissingAsset {
-    fn message(&self) -> String {
-        format!("asset `{}` does not exist on disk", self.document_id)
-    }
-
-    fn range(&self) -> &DocumentRange {
-        &self.range
-    }
-}
-
-fn annotated_config_error(error: ConfigError) -> anyhow::Error {
-    let document_id = error.range().document_id().clone();
+fn annotated_config_error(error: Diagnostic) -> anyhow::Error {
     let mut annotator = DocumentAnnotator::new()
-        .with_label("error")
+        .with_severity_label()
         .with_lines_before(1)
         .with_location();
-    annotator.annotate(&document_id, [error]);
+    annotator.annotate([error]);
     anyhow::anyhow!("Configuration failed:\n{}", annotator.render())
 }
 
@@ -62,43 +40,28 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Print compile errors
     {
-        let mut annotator = DocumentAnnotator::new()
-            .with_label("error")
-            .with_lines_before(1)
-            .with_location();
+        let mut diagnostics = program.diagnostics();
 
-        for (document_id, errors) in program.get_parse_errors() {
-            annotator.annotate(document_id, errors);
+        // An asset referenced via `asset!()` (in hop) or `--asset()` (in CSS)
+        // that does not exist on disk.
+        for refs in program.get_asset_references().values() {
+            diagnostics.extend(
+                refs.iter()
+                    .filter(|asset_ref| {
+                        !project
+                            .document_exists(asset_ref.document_id())
+                            .unwrap_or(false)
+                    })
+                    .map(AssetReference::not_found),
+            );
         }
 
-        // Don't show type errors if parse errors exist
-        if annotator.is_empty() {
-            for (document_id, errors) in program.get_type_errors() {
-                annotator.annotate(document_id, errors);
-            }
-        }
-
-        for (document_id, errors) in program.get_css_errors() {
-            annotator.annotate(document_id, errors);
-        }
-
-        for (document_id, refs) in program.get_asset_references() {
-            let missing: Vec<MissingAsset> = refs
-                .iter()
-                .filter(|asset_ref| {
-                    !project
-                        .document_exists(&asset_ref.document_id)
-                        .unwrap_or(false)
-                })
-                .map(|asset_ref| MissingAsset {
-                    document_id: asset_ref.document_id.clone(),
-                    range: asset_ref.range.clone(),
-                })
-                .collect();
-            annotator.annotate(document_id, &missing);
-        }
-
-        if !annotator.is_empty() {
+        if diagnostics.iter().any(|d| d.severity() == Severity::Error) {
+            let mut annotator = DocumentAnnotator::new()
+                .with_severity_label()
+                .with_lines_before(1)
+                .with_location();
+            annotator.annotate(diagnostics);
             return Err(anyhow::anyhow!(
                 "Compilation failed:\n{}",
                 annotator.render()
@@ -111,7 +74,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         .get_asset_references()
         .values()
         .flatten()
-        .map(|r| r.document_id.clone())
+        .map(|r| r.document_id().clone())
         .collect();
     let (filenames_with_hashes, filename_replacements) =
         compute_filename_replacements(&asset_document_ids, production_prefix.clone(), project)?;
@@ -1435,7 +1398,7 @@ mod tests {
             "#},
             expect![[r#"
                 Compilation failed:
-                error: asset `fonts/missing.woff2` does not exist on disk
+                error: asset `fonts/missing.woff2` was not found
                   --> input.css (line 2, col 10)
                 1 | @font-face {
                 2 |     src: --asset("/fonts/missing.woff2");

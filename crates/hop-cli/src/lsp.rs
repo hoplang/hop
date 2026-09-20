@@ -1,9 +1,4 @@
-use hop_core::document::{Document, DocumentRange};
-use hop_core::document_id::DocumentId;
-use hop_core::document_position::DocumentPosition;
-use hop_core::program::{DefinitionLocation, Program, RenameLocation};
-use hop_core::project::Project;
-use hop_core::severity::Severity;
+use hop_core::{Document, DocumentId, DocumentPosition, DocumentRange, Program, Project, Severity};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::sync::{OnceCell, RwLock};
@@ -110,20 +105,19 @@ impl HopLanguageServer {
             return;
         };
         let program = self.program.read().await;
-        let diagnostics = program.get_error_diagnostics(document_id);
-
-        let lsp_diagnostics: Vec<Diagnostic> = diagnostics
+        let lsp_diagnostics: Vec<Diagnostic> = program
+            .document_diagnostics(&document_id)
             .into_iter()
             .map(|d| Diagnostic {
-                range: doc_range_to_lsp_range(d.range),
-                severity: Some(match d.severity {
+                range: doc_range_to_lsp_range(d.range().clone()),
+                severity: Some(match d.severity() {
                     Severity::Error => DiagnosticSeverity::ERROR,
                     Severity::Warning => DiagnosticSeverity::WARNING,
                 }),
                 code: None,
                 code_description: None,
                 source: Some("hop".to_string()),
-                message: d.message,
+                message: d.message().to_string(),
                 related_information: None,
                 tags: None,
                 data: None,
@@ -246,9 +240,9 @@ impl LanguageServer for HopLanguageServer {
             let program = self.program.read().await;
             Ok(program
                 .get_hover_info(&document_id, lsp_pos_to_doc_pos(position))
-                .map(|hover_info| Hover {
-                    contents: HoverContents::Scalar(MarkedString::String(hover_info.message)),
-                    range: Some(doc_range_to_lsp_range(hover_info.range)),
+                .map(|(range, message)| Hover {
+                    contents: HoverContents::Scalar(MarkedString::String(message)),
+                    range: Some(doc_range_to_lsp_range(range)),
                 }))
         } else {
             Ok(None)
@@ -270,7 +264,7 @@ impl LanguageServer for HopLanguageServer {
 
             Ok(program
                 .get_definition_location(&document_id, lsp_pos_to_doc_pos(position))
-                .map(|DefinitionLocation { range }| {
+                .map(|range| {
                     GotoDefinitionResponse::Scalar(Location {
                         uri: Self::document_id_to_uri(range.document_id(), project),
                         range: doc_range_to_lsp_range(range),
@@ -294,16 +288,14 @@ impl LanguageServer for HopLanguageServer {
 
             let program = self.program.read().await;
 
-            if let Some(renameable_symbol) =
-                program.get_renameable_symbol(&document_id, lsp_pos_to_doc_pos(position))
-            {
-                Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                    range: doc_range_to_lsp_range(renameable_symbol.range.clone()),
-                    placeholder: renameable_symbol.current_name().to_string(),
-                }))
-            } else {
-                Ok(None)
-            }
+            Ok(program
+                .get_renameable_symbol(&document_id, lsp_pos_to_doc_pos(position))
+                .map(
+                    |(range, placeholder)| PrepareRenameResponse::RangeWithPlaceholder {
+                        range: doc_range_to_lsp_range(range),
+                        placeholder,
+                    },
+                ))
         } else {
             Ok(None)
         }
@@ -326,7 +318,7 @@ impl LanguageServer for HopLanguageServer {
                 #[allow(clippy::mutable_key_type)]
                 let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 
-                for RenameLocation { range } in rename_locations {
+                for range in rename_locations {
                     let file_uri = Self::document_id_to_uri(range.document_id(), project);
                     let edit = TextEdit {
                         range: doc_range_to_lsp_range(range),

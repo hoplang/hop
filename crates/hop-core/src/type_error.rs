@@ -1,4 +1,4 @@
-use crate::annotation::Annotation;
+use crate::diagnostic::Diagnostic;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::patterns::typed::TypedMatchPattern;
 use crate::hop::typing::r#type::Type;
@@ -11,7 +11,7 @@ use crate::symbols::var_name::VarName;
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
-pub struct TypeError {
+pub(crate) struct TypeError {
     kind: TypeErrorKind,
     range: DocumentRange,
 }
@@ -47,17 +47,12 @@ impl TypeError {
         self.kind.severity()
     }
 
-    pub(crate) fn range(&self) -> &DocumentRange {
-        &self.range
-    }
-}
-
-impl Annotation for TypeError {
-    fn message(&self) -> String {
-        self.kind.to_string()
-    }
-    fn range(&self) -> &DocumentRange {
-        &self.range
+    pub(crate) fn to_diagnostic(&self) -> Diagnostic {
+        Diagnostic::new(
+            self.kind.to_string(),
+            self.range.clone(),
+            self.kind.severity(),
+        )
     }
 }
 

@@ -147,16 +147,8 @@ mod tests {
             Document::new(document_id.clone(), source.to_string()),
         );
 
-        let parse_errors = program.get_parse_errors();
-        assert!(
-            parse_errors.values().all(|e| e.is_empty()),
-            "parse errors: {parse_errors:?}"
-        );
-        let type_errors = program.get_type_errors();
-        assert!(
-            type_errors.values().all(|e| e.is_empty()),
-            "type errors: {type_errors:?}"
-        );
+        let diagnostics = program.diagnostics();
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
 
         let typed_asts = program.get_typed_modules().clone();
         let page_name = TypeName::parse("Test").unwrap();

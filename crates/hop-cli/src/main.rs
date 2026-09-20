@@ -3,7 +3,7 @@ mod fmt;
 mod lsp;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use hop_core::project::Project;
+use hop_core::Project;
 use std::path::Path;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::format::FmtSpan;

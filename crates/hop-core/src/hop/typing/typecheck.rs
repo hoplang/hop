@@ -1092,11 +1092,11 @@ mod tests {
         let archive = Archive::from(archive_str);
         let mut ast_output = Vec::new();
         let mut error_annotator = DocumentAnnotator::new()
-            .with_label("error")
+            .with_severity_label()
             .with_lines_before(1)
             .with_location();
         let mut warning_annotator = DocumentAnnotator::new()
-            .with_label("warning")
+            .with_severity_label()
             .with_lines_before(1)
             .with_location();
 
@@ -1148,10 +1148,10 @@ mod tests {
                         .partition(|e| e.severity() == Severity::Error);
 
                     if !real_errors.is_empty() {
-                        error_annotator.annotate(&document_id, &real_errors);
+                        error_annotator.annotate(real_errors.iter().map(|e| e.to_diagnostic()));
                     }
                     if !real_warnings.is_empty() {
-                        warning_annotator.annotate(&document_id, &real_warnings);
+                        warning_annotator.annotate(real_warnings.iter().map(|e| e.to_diagnostic()));
                     }
                 }
             }

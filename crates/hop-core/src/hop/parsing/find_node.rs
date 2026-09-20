@@ -79,10 +79,11 @@ fn find_node_at_position_in_node(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagnostic::Diagnostic;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
     use crate::hop::parsing::parse::parse;
-    use crate::simple_annotation::SimpleAnnotation;
+    use crate::severity::Severity;
     use crate::{document::Document, extract_position::extract_position};
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -104,13 +105,11 @@ mod tests {
         let output = if let Some(node) = found_node {
             DocumentAnnotator::new()
                 .without_location()
-                .annotate(
-                    &DocumentId::new("test.hop").unwrap(),
-                    [SimpleAnnotation {
-                        range: node.range().clone(),
-                        message: "range".to_string(),
-                    }],
-                )
+                .annotate([Diagnostic::new(
+                    "range".to_string(),
+                    node.range().clone(),
+                    Severity::Error,
+                )])
                 .render()
         } else {
             "No node found at position".to_string()

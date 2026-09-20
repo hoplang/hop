@@ -1,8 +1,10 @@
-use crate::{annotation::Annotation, document::DocumentRange};
+use crate::diagnostic::Diagnostic;
+use crate::document::DocumentRange;
+use crate::severity::Severity;
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
-pub struct CssError {
+pub(crate) struct CssError {
     kind: CssErrorKind,
     range: DocumentRange,
 }
@@ -11,15 +13,9 @@ impl CssError {
     pub(crate) fn new(kind: CssErrorKind, range: DocumentRange) -> Self {
         CssError { kind, range }
     }
-}
 
-impl Annotation for CssError {
-    fn message(&self) -> String {
-        self.kind.to_string()
-    }
-
-    fn range(&self) -> &DocumentRange {
-        &self.range
+    pub(crate) fn to_diagnostic(&self) -> Diagnostic {
+        Diagnostic::new(self.kind.to_string(), self.range.clone(), Severity::Error)
     }
 }
 

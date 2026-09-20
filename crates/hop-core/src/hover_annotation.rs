@@ -1,4 +1,3 @@
-use crate::annotation::Annotation;
 use crate::document::DocumentRange;
 use crate::hop::typing::Type;
 use crate::symbols::type_name::TypeName;
@@ -31,15 +30,6 @@ impl HoverAnnotation {
             HoverAnnotation::TypeForVarName { range, .. } => range,
             HoverAnnotation::TypeForTypeName { range, .. } => range,
         }
-    }
-}
-
-impl Annotation for HoverAnnotation {
-    fn message(&self) -> String {
-        self.to_string()
-    }
-    fn range(&self) -> &DocumentRange {
-        self.range()
     }
 }
 

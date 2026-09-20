@@ -1,4 +1,3 @@
-use crate::annotation::Annotation;
 use crate::asset_reference::AssetReference;
 use crate::asset_rewriter::AssetRewriter;
 use crate::config::TargetLanguage;
@@ -6,6 +5,7 @@ use crate::css;
 use crate::css_error::CssError;
 use crate::definition_link::DefinitionLink;
 use crate::dependency_graph::DependencyGraph;
+use crate::diagnostic::Diagnostic;
 use crate::document::{CheapString, Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
@@ -33,19 +33,6 @@ use crate::type_error::TypeError;
 use rand::Rng;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
-
-/// HoverInfo is a message that should be displayed when the user hovers
-/// a specific range in the source code.
-pub struct HoverInfo {
-    pub message: String,
-    pub range: DocumentRange,
-}
-
-/// A DefinitionLocation is the definition of a certain symbol in the source
-/// code. This is the response for a go to definition-query.
-pub struct DefinitionLocation {
-    pub range: DocumentRange,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FormatError {
@@ -75,30 +62,6 @@ pub enum EvaluatePageError {
 
     #[error("Missing required parameter '{param}' for page '{page}'")]
     MissingParameter { page: String, param: String },
-}
-
-/// A diagnostic is an error, warning or information that should be displayed
-/// for a specific range in the document.
-#[derive(Debug, Clone)]
-pub struct Diagnostic {
-    pub message: String,
-    pub range: DocumentRange,
-    pub severity: Severity,
-}
-
-pub struct RenameLocation {
-    pub range: DocumentRange,
-}
-
-/// A RenameableSymbol is a range in the document that is renameable.
-pub struct RenameableSymbol {
-    pub range: DocumentRange,
-}
-
-impl RenameableSymbol {
-    pub fn current_name(&self) -> &str {
-        self.range.as_str()
-    }
 }
 
 #[derive(Debug, Default)]
@@ -236,18 +199,6 @@ impl Program {
         self.css_documents.insert(document_id.clone(), document);
     }
 
-    pub fn get_parse_errors(&self) -> &HashMap<DocumentId, Vec<ParseError>> {
-        &self.parse_errors
-    }
-
-    pub fn get_type_errors(&self) -> &HashMap<DocumentId, Vec<TypeError>> {
-        &self.type_errors
-    }
-
-    pub fn get_css_errors(&self) -> &HashMap<DocumentId, Vec<CssError>> {
-        &self.css_errors
-    }
-
     pub fn get_asset_references(&self) -> &HashMap<DocumentId, Vec<AssetReference>> {
         &self.asset_references
     }
@@ -292,46 +243,37 @@ impl Program {
             .join("\n")
     }
 
+    /// Returns the range and the message to display when hovering the
+    /// given position.
     pub fn get_hover_info(
         &self,
         document_id: &DocumentId,
         position: DocumentPosition,
-    ) -> Option<HoverInfo> {
+    ) -> Option<(DocumentRange, String)> {
         self.hover_annotations
             .get(document_id)?
             .iter()
             .find(|a| a.range().contains_position(position))
-            .map(|annotation| {
-                let message = annotation.to_string();
-                HoverInfo {
-                    message,
-                    range: annotation.range().clone(),
-                }
-            })
+            .map(|annotation| (annotation.range().clone(), annotation.to_string()))
     }
 
     pub fn get_definition_location(
         &self,
         document_id: &DocumentId,
         position: DocumentPosition,
-    ) -> Option<DefinitionLocation> {
-        if let Some(links) = self.definition_links.get(document_id) {
-            for link in links {
-                if link.use_range.contains_position(position) {
-                    return Some(DefinitionLocation {
-                        range: link.definition_range.clone(),
-                    });
-                }
-            }
-        }
-        None
+    ) -> Option<DocumentRange> {
+        self.definition_links
+            .get(document_id)?
+            .iter()
+            .find(|link| link.use_range.contains_position(position))
+            .map(|link| link.definition_range.clone())
     }
 
     pub fn get_rename_locations(
         &self,
         document_id: &DocumentId,
         position: DocumentPosition,
-    ) -> Option<Vec<RenameLocation>> {
+    ) -> Option<Vec<DocumentRange>> {
         let ast = self.parsed_asts.get(document_id)?;
 
         // Check if cursor is on a record declaration name
@@ -371,61 +313,35 @@ impl Program {
                     .find(|link| link.use_range.contains_position(position))?;
                 Some(self.collect_function_rename_locations(&link.definition_range))
             }
-            n @ ParsedNode::HtmlElement { .. } => Some(
-                n.tag_names()
-                    .map(|range| RenameLocation {
-                        range: range.clone(),
-                    })
-                    .collect(),
-            ),
+            n @ ParsedNode::HtmlElement { .. } => Some(n.tag_names().cloned().collect()),
             _ => None,
         }
     }
 
-    /// Returns information about a renameable symbol at the given position.
-    ///
-    /// Checks if the position is on a function name, record name (reference or definition)
-    /// and returns the symbol's current name and range if found.
+    /// Returns the range and current name of the renameable symbol at the
+    /// given position: a function, record or enum name, at its declaration
+    /// or at a use.
     pub fn get_renameable_symbol(
         &self,
         document_id: &DocumentId,
         position: DocumentPosition,
-    ) -> Option<RenameableSymbol> {
+    ) -> Option<(DocumentRange, String)> {
         let ast = self.parsed_asts.get(document_id)?;
 
-        // Check if cursor is on a record declaration name
-        for record in ast.record_declarations() {
-            if record.name_range.contains_position(position) {
-                return Some(RenameableSymbol {
-                    range: record.name_range.clone(),
-                });
-            }
-        }
+        let mut declaration_names = ast
+            .record_declarations()
+            .map(|record| &record.name_range)
+            .chain(ast.enum_declarations().map(|e| &e.name_range))
+            .chain(ast.function_declarations().map(|f| &f.name_range));
 
-        // Check if cursor is on an enum declaration name
-        for enum_decl in ast.enum_declarations() {
-            if enum_decl.name_range.contains_position(position) {
-                return Some(RenameableSymbol {
-                    range: enum_decl.name_range.clone(),
-                });
-            }
-        }
+        let range = match declaration_names.find(|r| r.contains_position(position)) {
+            Some(range) => range,
+            None => find_node_at_position(ast, position)?
+                .tag_names()
+                .find(|r| r.contains_position(position))?,
+        };
 
-        for function in ast.function_declarations() {
-            if function.name_range.contains_position(position) {
-                return Some(RenameableSymbol {
-                    range: function.name_range.clone(),
-                });
-            }
-        }
-
-        let node = find_node_at_position(ast, position)?;
-
-        node.tag_names()
-            .find(|r| r.contains_position(position))
-            .map(|range| RenameableSymbol {
-                range: range.clone(),
-            })
+        Some((range.clone(), range.as_str().to_string()))
     }
 
     /// Collects all locations where a function should be renamed, including:
@@ -436,16 +352,14 @@ impl Program {
     fn collect_function_rename_locations(
         &self,
         definition_range: &DocumentRange,
-    ) -> Vec<RenameLocation> {
+    ) -> Vec<DocumentRange> {
         // Collect all use_ranges across all modules whose definition_range
         // matches the function's definition
         self.definition_links
             .values()
             .flatten()
             .filter(|link| link.definition_range == *definition_range)
-            .map(|link| RenameLocation {
-                range: link.use_range.clone(),
-            })
+            .map(|link| link.use_range.clone())
             .collect()
     }
 
@@ -457,7 +371,7 @@ impl Program {
         &self,
         record_name: &TypeName,
         definition_module: &DocumentId,
-    ) -> Vec<RenameLocation> {
+    ) -> Vec<DocumentRange> {
         // Find the definition range (the name_range of the record declaration)
         let definition_range = self
             .parsed_asts
@@ -475,9 +389,7 @@ impl Program {
             .values()
             .flatten()
             .filter(|link| link.definition_range == *definition_range)
-            .map(|link| RenameLocation {
-                range: link.use_range.clone(),
-            })
+            .map(|link| link.use_range.clone())
             .collect()
     }
 
@@ -489,7 +401,7 @@ impl Program {
         &self,
         enum_name: &TypeName,
         definition_module: &DocumentId,
-    ) -> Vec<RenameLocation> {
+    ) -> Vec<DocumentRange> {
         // Find the definition range (the name_range of the enum declaration)
         let definition_range = self
             .parsed_asts
@@ -507,41 +419,67 @@ impl Program {
             .values()
             .flatten()
             .filter(|link| link.definition_range == *definition_range)
-            .map(|link| RenameLocation {
-                range: link.use_range.clone(),
-            })
+            .map(|link| link.use_range.clone())
             .collect()
     }
 
-    pub fn get_error_diagnostics(&self, document_id: DocumentId) -> Vec<Diagnostic> {
-        let mut diagnostics = Vec::new();
+    /// Every diagnostic across all modules and CSS documents, sorted by
+    /// document id and position.
+    ///
+    /// Type errors are not reported for a module that has parse errors,
+    /// since they may be nonsensical when parsing fails.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        self.parse_errors
+            .keys()
+            .chain(self.type_errors.keys())
+            .chain(self.css_errors.keys())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .flat_map(|document_id| self.document_diagnostics(document_id))
+            .collect()
+    }
 
-        let mut found_parse_errors = false;
+    /// Every diagnostic for a single module or CSS document, sorted by
+    /// position. Returns an empty list for a document the program does not
+    /// know about.
+    ///
+    /// Type errors are not reported for a module that has parse errors,
+    /// since they may be nonsensical when parsing fails.
+    pub fn document_diagnostics(&self, document_id: &DocumentId) -> Vec<Diagnostic> {
+        let parse_errors = self
+            .parse_errors
+            .get(document_id)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
 
-        if let Some(errors) = self.parse_errors.get(&document_id) {
-            for error in errors {
-                diagnostics.push(Diagnostic {
-                    message: error.message(),
-                    range: error.range().clone(),
-                    severity: Severity::Error,
-                });
-                found_parse_errors = true;
-            }
-        }
+        let type_errors = if parse_errors.is_empty() {
+            self.type_errors
+                .get(document_id)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+        } else {
+            &[]
+        };
 
-        // If there's parse errors for the file we do not emit the type errors since they may be
-        // non-sensical if parsing fails.
-        if !found_parse_errors {
-            if let Some(errors) = self.type_errors.get(&document_id) {
-                for error in errors {
-                    diagnostics.push(Diagnostic {
-                        message: error.message(),
-                        range: error.range().clone(),
-                        severity: error.severity(),
-                    });
-                }
-            }
-        }
+        let css_errors = self
+            .css_errors
+            .get(document_id)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+
+        let mut diagnostics = parse_errors
+            .iter()
+            .map(|error| error.to_diagnostic())
+            .chain(type_errors.iter().map(|error| error.to_diagnostic()))
+            .chain(css_errors.iter().map(|error| error.to_diagnostic()))
+            .collect::<Vec<_>>();
+
+        diagnostics.sort_by(|a, b| {
+            a.range()
+                .start()
+                .cmp(&b.range().start())
+                .then(a.range().end().cmp(&b.range().end()))
+        });
 
         diagnostics
     }
@@ -560,7 +498,12 @@ impl Program {
         if self.parse_errors.values().any(|errors| !errors.is_empty()) {
             return Err(EvaluatePageError::ParseErrors);
         }
-        if self.type_errors.values().any(|errors| !errors.is_empty()) {
+        if self
+            .type_errors
+            .values()
+            .flatten()
+            .any(|error| error.severity() == Severity::Error)
+        {
             return Err(EvaluatePageError::TypeErrors);
         }
 
@@ -703,10 +646,7 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        document_annotator::DocumentAnnotator, extract_position::extract_position,
-        simple_annotation::SimpleAnnotation,
-    };
+    use crate::{document_annotator::DocumentAnnotator, extract_position::extract_position};
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use txtar::{Archive, Builder, File};
@@ -779,26 +719,15 @@ mod tests {
             .get_rename_locations(&module, marker.position)
             .expect("Expected locations to be defined");
 
-        let mut annotator = DocumentAnnotator::new().with_location();
+        let output = DocumentAnnotator::new()
+            .with_location()
+            .annotate(
+                locs.into_iter()
+                    .map(|range| Diagnostic::new("Rename".to_string(), range, Severity::Error)),
+            )
+            .render();
 
-        for file in archive.iter() {
-            let document_id = DocumentId::new(&file.name).unwrap();
-
-            let annotations = locs
-                .iter()
-                .filter(|l| l.range.document_id() == &document_id)
-                .map(|l| SimpleAnnotation {
-                    message: "Rename".to_string(),
-                    range: l.range.clone(),
-                })
-                .collect::<Vec<_>>();
-
-            if !annotations.is_empty() {
-                annotator.annotate(&document_id, &annotations);
-            }
-        }
-
-        expected.assert_eq(&annotator.render());
+        expected.assert_eq(&output);
     }
 
     fn check_definition_location(input: &str, expected: Expect) {
@@ -816,31 +745,24 @@ mod tests {
 
         let program = program_from_archive(&archive);
 
-        for (document_id, errors) in program.get_parse_errors() {
-            if !errors.is_empty() {
-                panic!("Parse errors in module {}: {:?}", document_id, errors);
-            }
-        }
+        let diagnostics = program.diagnostics();
+        assert!(
+            diagnostics.is_empty(),
+            "Expected no diagnostics, got: {:?}",
+            diagnostics
+        );
 
-        for (document_id, errors) in program.get_type_errors() {
-            if !errors.is_empty() {
-                panic!("Type errors in module {}: {:?}", document_id, errors);
-            }
-        }
-
-        let loc = program
+        let range = program
             .get_definition_location(&module, marker.position)
             .expect("Expected definition location to be defined");
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate(
-                loc.range.clone().document_id(),
-                [SimpleAnnotation {
-                    message: "Definition".to_string(),
-                    range: loc.range,
-                }],
-            )
+            .annotate([Diagnostic::new(
+                "Definition".to_string(),
+                range,
+                Severity::Error,
+            )])
             .render();
 
         expected.assert_eq(&output);
@@ -849,7 +771,7 @@ mod tests {
     fn check_error_diagnostics(input: &str, module: &str, expected: Expect) {
         let program = program_from_txtar(input);
 
-        let diagnostics = program.get_error_diagnostics(DocumentId::new(module).unwrap());
+        let diagnostics = program.document_diagnostics(&DocumentId::new(module).unwrap());
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");
@@ -857,36 +779,19 @@ mod tests {
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate(
-                &DocumentId::new(module).unwrap(),
-                diagnostics.into_iter().map(|d| SimpleAnnotation {
-                    message: d.message,
-                    range: d.range,
-                }),
-            )
+            .annotate(diagnostics)
             .render();
 
         expected.assert_eq(&output);
     }
 
-    fn check_type_errors(program: &Program, expected: Expect) {
-        let mut annotator = DocumentAnnotator::new().with_location();
+    fn check_diagnostics(program: &Program, expected: Expect) {
+        let output = DocumentAnnotator::new()
+            .with_location()
+            .annotate(program.diagnostics())
+            .render();
 
-        // Get all modules that have type errors
-        let type_errors = program.get_type_errors();
-        let mut modules_with_errors: Vec<_> = type_errors
-            .iter()
-            .filter(|(_, errors)| !errors.is_empty())
-            .collect();
-
-        // Sort by module name for consistent output
-        modules_with_errors.sort_by_key(|(document_id, _)| document_id.to_string());
-
-        for (document_id, errors) in modules_with_errors {
-            annotator.annotate(document_id, errors);
-        }
-
-        expected.assert_eq(&annotator.render());
+        expected.assert_eq(&output);
     }
 
     fn check_renameable_symbol(input: &str, expected: Expect) {
@@ -901,19 +806,13 @@ mod tests {
         let marker = &markers[0];
         let module = DocumentId::new(&marker.filename).unwrap();
 
-        let symbol = program_from_archive(&archive)
+        let (range, name) = program_from_archive(&archive)
             .get_renameable_symbol(&module, marker.position)
             .expect("Expected symbol to be defined");
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate(
-                &module,
-                &[SimpleAnnotation {
-                    message: symbol.range.as_str().to_string(),
-                    range: symbol.range,
-                }],
-            )
+            .annotate([Diagnostic::new(name, range, Severity::Error)])
             .render();
 
         expected.assert_eq(&output);
@@ -934,31 +833,20 @@ mod tests {
 
         let program = program_from_archive(&archive);
 
-        for (document_id, errors) in program.get_parse_errors() {
-            if !errors.is_empty() {
-                panic!("Parse errors in module {}: {:?}", document_id, errors);
-            }
-        }
+        let diagnostics = program.diagnostics();
+        assert!(
+            diagnostics.is_empty(),
+            "Expected no diagnostics, got: {:?}",
+            diagnostics
+        );
 
-        for (document_id, errors) in program.get_type_errors() {
-            if !errors.is_empty() {
-                panic!("Type errors in module {}: {:?}", document_id, errors);
-            }
-        }
-
-        let hover_info = program
+        let (range, message) = program
             .get_hover_info(&module, marker.position)
             .expect("Expected hover info to be defined");
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate(
-                &module,
-                &[SimpleAnnotation {
-                    range: hover_info.range,
-                    message: hover_info.message,
-                }],
-            )
+            .annotate([Diagnostic::new(message, range, Severity::Error)])
             .render();
 
         expected.assert_eq(&output);
@@ -2299,10 +2187,10 @@ mod tests {
             }
         "#});
 
-        let diagnostics = program.get_error_diagnostics(DocumentId::new("main.hop").unwrap());
+        let diagnostics = program.diagnostics();
         let warnings: Vec<_> = diagnostics
             .into_iter()
-            .filter(|d| d.severity == Severity::Warning)
+            .filter(|d| d.severity() == Severity::Warning)
             .collect();
         assert!(
             warnings.is_empty(),
@@ -2365,7 +2253,7 @@ mod tests {
               <AComp />
             }
         "#});
-        check_type_errors(
+        check_diagnostics(
             &program,
             expect![[r#"
                 Import cycle: a.hop imports from b which creates a dependency cycle: a.hop → b.hop → a.hop
@@ -2393,7 +2281,7 @@ mod tests {
             ),
         );
         // Type errors should now be empty
-        check_type_errors(&program, expect![""]);
+        check_diagnostics(&program, expect![""]);
     }
 
     #[test]
@@ -2423,7 +2311,7 @@ mod tests {
               <AComp />
             }
         "#});
-        check_type_errors(
+        check_diagnostics(
             &program,
             expect![[r#"
                 Import cycle: a.hop imports from b which creates a dependency cycle: a.hop → b.hop → c.hop → d.hop → a.hop
@@ -2461,7 +2349,7 @@ mod tests {
             ),
         );
         // Type errors should now be empty
-        check_type_errors(&program, expect![""]);
+        check_diagnostics(&program, expect![""]);
         // Introduce new cycle a → b → a
         program.update_module(
             &DocumentId::new("b.hop").unwrap(),
@@ -2476,7 +2364,7 @@ mod tests {
                 .to_string(),
             ),
         );
-        check_type_errors(
+        check_diagnostics(
             &program,
             expect![[r#"
                 Import cycle: a.hop imports from b which creates a dependency cycle: a.hop → b.hop → a.hop
@@ -2504,7 +2392,7 @@ mod tests {
             ),
         );
         // Type errors should now be empty
-        check_type_errors(&program, expect![""]);
+        check_diagnostics(&program, expect![""]);
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -2528,13 +2416,13 @@ mod tests {
         "#});
 
         // No type errors initially
-        check_type_errors(&program, expect![""]);
+        check_diagnostics(&program, expect![""]);
 
         // Remove the components module
         program.remove_module(&DocumentId::new("components.hop").unwrap());
 
         // Now main should have a type error about the missing import
-        check_type_errors(
+        check_diagnostics(
             &program,
             expect![[r#"
                 Module components was not found
@@ -2564,7 +2452,7 @@ mod tests {
         );
 
         // Type errors should now be resolved
-        check_type_errors(
+        check_diagnostics(
             &program,
             expect![[r#"
                 HelloWorld from module components is not public
@@ -2664,7 +2552,7 @@ mod tests {
               }
             }
         "#});
-        check_type_errors(
+        check_diagnostics(
             &program,
             expect![[r#"
                 Type main::Color is not comparable
@@ -2695,7 +2583,7 @@ mod tests {
               }
             }
         "#});
-        check_type_errors(
+        check_diagnostics(
             &program,
             expect![[r#"
                 Type main::Color is not comparable

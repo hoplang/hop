@@ -296,10 +296,10 @@ impl TestTypes {
         )
         .unwrap_or_else(|| {
             let rendered = DocumentAnnotator::new()
-                .with_label("error")
+                .with_severity_label()
                 .without_location()
                 .without_line_numbers()
-                .annotate(&self.module, type_errors)
+                .annotate(type_errors.iter().map(|e| e.to_diagnostic()))
                 .render();
             panic!("failed to resolve type `{type_str}`:\n{rendered}")
         })

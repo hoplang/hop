@@ -1,6 +1,7 @@
-use crate::annotation::Annotation;
+use crate::diagnostic::Diagnostic;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::token::LangToken;
+use crate::severity::Severity;
 use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::function_name::InvalidFunctionNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
@@ -11,7 +12,7 @@ use thiserror::Error;
 /// Proof that a parse error has been recorded.
 #[derive(Clone, Copy, Debug)]
 #[must_use]
-pub struct ErrorEmitted(());
+pub(crate) struct ErrorEmitted(());
 
 pub(crate) trait Emit {
     /// Record a parse error, and return the proof that it was recorded.
@@ -46,23 +47,14 @@ impl<T, E: Into<ParseErrorKind>> OrEmit<T> for Result<T, E> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ParseError {
+pub(crate) struct ParseError {
     kind: ParseErrorKind,
     range: DocumentRange,
 }
 
 impl ParseError {
-    pub(crate) fn range(&self) -> &DocumentRange {
-        &self.range
-    }
-}
-
-impl Annotation for ParseError {
-    fn message(&self) -> String {
-        self.kind.to_string()
-    }
-    fn range(&self) -> &DocumentRange {
-        &self.range
+    pub(crate) fn to_diagnostic(&self) -> Diagnostic {
+        Diagnostic::new(self.kind.to_string(), self.range.clone(), Severity::Error)
     }
 }
 

@@ -1,5 +1,6 @@
-use crate::config_error::ConfigError;
+use crate::diagnostic::Diagnostic;
 use crate::document::Document;
+use crate::severity::Severity;
 use serde::Deserialize;
 
 /// The target language for compilation
@@ -18,42 +19,43 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(document: Document) -> Self {
+    pub(crate) fn new(document: Document) -> Self {
         Config { document }
     }
 
-    fn parse<T: serde::de::DeserializeOwned>(&self) -> Result<T, ConfigError> {
+    fn parse<T: serde::de::DeserializeOwned>(&self) -> Result<T, Diagnostic> {
         toml::from_str(self.document.as_str()).map_err(|err| {
-            ConfigError::new(
+            Diagnostic::new(
                 err.message().to_string(),
                 // A zero-width span is kept as a position marker, toml reports
                 // one for "expected X here" and for a missing top-level section.
                 self.document.range(err.span().unwrap_or(0..0)),
+                Severity::Error,
             )
         })
     }
 
-    pub fn css_input_path(&self) -> Result<Option<String>, ConfigError> {
+    pub fn css_input_path(&self) -> Result<Option<String>, Diagnostic> {
         Ok(self.parse::<CssToml>()?.css.map(|css| css.input_path))
     }
 
-    pub fn js_input_path(&self) -> Result<Option<String>, ConfigError> {
+    pub fn js_input_path(&self) -> Result<Option<String>, Diagnostic> {
         Ok(self.parse::<JsToml>()?.js.map(|js| js.input_path))
     }
 
-    pub fn assets_output_dir(&self) -> Result<String, ConfigError> {
+    pub fn assets_output_dir(&self) -> Result<String, Diagnostic> {
         Ok(self.parse::<AssetsToml>()?.assets.output_dir)
     }
 
-    pub fn assets_production_prefix(&self) -> Result<Option<String>, ConfigError> {
+    pub fn assets_production_prefix(&self) -> Result<Option<String>, Diagnostic> {
         Ok(self.parse::<AssetsToml>()?.assets.production_prefix)
     }
 
-    pub fn target(&self) -> Result<TargetLanguage, ConfigError> {
+    pub fn target(&self) -> Result<TargetLanguage, Diagnostic> {
         Ok(self.parse::<CompileToml>()?.compile.target)
     }
 
-    pub fn output_path(&self) -> Result<String, ConfigError> {
+    pub fn output_path(&self) -> Result<String, Diagnostic> {
         Ok(self.parse::<CompileToml>()?.compile.output_path)
     }
 }
@@ -146,7 +148,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::annotation::Annotation;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
     use expect_test::expect;
@@ -159,13 +160,12 @@ mod tests {
         ))
     }
 
-    fn render(error: ConfigError) -> String {
-        let document_id = error.range().document_id().clone();
+    fn render(error: Diagnostic) -> String {
         DocumentAnnotator::new()
-            .with_label("error")
+            .with_severity_label()
             .with_lines_before(1)
             .with_location()
-            .annotate(&document_id, [error])
+            .annotate([error])
             .render()
     }
 
@@ -467,7 +467,7 @@ mod tests {
             config.css_input_path().unwrap(),
             Some("styles/input.css".to_string())
         );
-        expect!["missing field `output_path`"].assert_eq(&config.target().unwrap_err().message());
+        expect!["missing field `output_path`"].assert_eq(config.target().unwrap_err().message());
     }
 
     #[test]

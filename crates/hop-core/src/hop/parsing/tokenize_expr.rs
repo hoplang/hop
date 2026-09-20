@@ -249,8 +249,8 @@ pub fn next(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::annotation::Annotation;
-    use crate::simple_annotation::SimpleAnnotation;
+    use crate::diagnostic::Diagnostic;
+    use crate::severity::Severity;
     use crate::{document_annotator::DocumentAnnotator, document_id::DocumentId};
     use expect_test::{Expect, expect};
 
@@ -261,26 +261,30 @@ mod tests {
         let mut comments = Vec::new();
         let mut annotations = Vec::new();
         while let Some((tok, range)) = next(&mut cursor, &mut comments, &mut errors) {
-            annotations.push(SimpleAnnotation {
-                message: format!("token: {:?}", tok),
+            annotations.push(Diagnostic::new(
+                format!("token: {:?}", tok),
                 range,
-            });
+                Severity::Error,
+            ));
         }
         for range in comments {
-            annotations.push(SimpleAnnotation {
-                message: format!("comment: {}", range.as_str()),
+            annotations.push(Diagnostic::new(
+                format!("comment: {}", range.as_str()),
                 range,
-            });
+                Severity::Error,
+            ));
         }
         for err in &errors {
-            annotations.push(SimpleAnnotation {
-                message: format!("error: {}", err.message()),
-                range: err.range().clone(),
-            });
+            let diagnostic = err.to_diagnostic();
+            annotations.push(Diagnostic::new(
+                format!("error: {}", diagnostic.message()),
+                diagnostic.range().clone(),
+                diagnostic.severity(),
+            ));
         }
         let actual = DocumentAnnotator::new()
             .without_line_numbers()
-            .annotate(&DocumentId::new("test.hop").unwrap(), &annotations)
+            .annotate(annotations)
             .render();
         (actual, !errors.is_empty())
     }

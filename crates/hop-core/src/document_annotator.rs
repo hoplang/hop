@@ -4,30 +4,26 @@ use std::collections::BTreeMap;
 use crate::itertools::ChunkByExt as _;
 
 use crate::{
-    annotation::Annotation,
+    diagnostic::Diagnostic,
     document::{DocumentCursor, DocumentRange},
     document_id::DocumentId,
+    severity::Severity,
 };
 
-struct StoredAnnotation {
-    message: String,
-    range: DocumentRange,
-}
-
-/// Annotator that can display source code with annotations
+/// Annotator that can display source code with diagnostics
 pub struct DocumentAnnotator {
     // Display options
     show_line_numbers: bool,
     show_location: bool,
+    show_severity_label: bool,
     lines_before: usize,
     lines_after: usize,
 
     // Style options
     underline_char: char,
     tab_width: usize,
-    label: Option<String>,
 
-    annotations: BTreeMap<DocumentId, Vec<StoredAnnotation>>,
+    diagnostics: BTreeMap<DocumentId, Vec<Diagnostic>>,
 }
 
 impl DocumentAnnotator {
@@ -35,17 +31,18 @@ impl DocumentAnnotator {
         Self {
             show_line_numbers: true,
             show_location: false,
+            show_severity_label: false,
             lines_before: 0,
             lines_after: 0,
             underline_char: '^',
             tab_width: 4,
-            label: None,
-            annotations: BTreeMap::new(),
+            diagnostics: BTreeMap::new(),
         }
     }
 
-    pub fn with_label(mut self, label: impl Into<String>) -> Self {
-        self.label = Some(label.into());
+    /// Prefix every message with its severity, as in `error: ...`.
+    pub fn with_severity_label(mut self) -> Self {
+        self.show_severity_label = true;
         self
     }
 
@@ -77,52 +74,28 @@ impl DocumentAnnotator {
         self
     }
 
-    pub fn annotate<A>(
-        &mut self,
-        document_id: &DocumentId,
-        annotations: impl IntoIterator<Item = A>,
-    ) -> &mut Self
-    where
-        A: Annotation,
-    {
-        let stored: Vec<StoredAnnotation> = annotations
-            .into_iter()
-            .map(|a| {
-                debug_assert!(
-                    a.range().document_id() == document_id,
-                    "Annotation's document_id must match the bucket document_id"
-                );
-                StoredAnnotation {
-                    message: a.message(),
-                    range: a.range().clone(),
-                }
-            })
-            .collect();
-
-        if stored.is_empty() {
-            return self;
+    pub fn annotate(&mut self, diagnostics: impl IntoIterator<Item = Diagnostic>) -> &mut Self {
+        for diagnostic in diagnostics {
+            self.diagnostics
+                .entry(diagnostic.range().document_id().clone())
+                .or_default()
+                .push(diagnostic);
         }
-
-        self.annotations
-            .entry(document_id.clone())
-            .or_default()
-            .extend(stored);
-
         self
     }
 
     pub fn is_empty(&self) -> bool {
-        self.annotations.is_empty()
+        self.diagnostics.is_empty()
     }
 
     pub fn render(&self) -> String {
         let mut output = String::new();
         let mut first_annotation = true;
 
-        for (document_id, stored) in &self.annotations {
-            // Build lines vector for this document using the first annotation's source
-            let first_range = match stored.first() {
-                Some(s) => &s.range,
+        for (document_id, diagnostics) in &self.diagnostics {
+            // Build lines vector for this document using the first diagnostic's source
+            let first_range = match diagnostics.first() {
+                Some(d) => d.range(),
                 None => continue,
             };
 
@@ -134,32 +107,36 @@ impl DocumentAnnotator {
                 .map(|(_, group)| group.filter(|s| s.ch() != '\n').collect())
                 .collect();
 
-            // Sort annotations by (start, end) within this document
-            let mut sorted: Vec<&StoredAnnotation> = stored.iter().collect();
-            sorted.sort_by_key(|a| (a.range.start(), a.range.end()));
+            // Sort diagnostics by (start, end) within this document
+            let mut sorted: Vec<&Diagnostic> = diagnostics.iter().collect();
+            sorted.sort_by_key(|d| (d.range().start(), d.range().end()));
 
-            for annotation in sorted {
+            for diagnostic in sorted {
                 if !first_annotation {
                     output.push('\n');
                 }
                 first_annotation = false;
 
-                if let Some(ref label) = self.label {
-                    output.push_str(&format!("{}: {}\n", label, annotation.message));
+                if self.show_severity_label {
+                    let label = match diagnostic.severity() {
+                        Severity::Error => "error",
+                        Severity::Warning => "warning",
+                    };
+                    output.push_str(&format!("{}: {}\n", label, diagnostic.message()));
                 } else {
-                    output.push_str(&format!("{}\n", annotation.message));
+                    output.push_str(&format!("{}\n", diagnostic.message()));
                 }
 
                 if self.show_location {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
                         document_id,
-                        annotation.range.start_utf32().line() + 1,
-                        annotation.range.start_utf32().column() + 1
+                        diagnostic.range().start_utf32().line() + 1,
+                        diagnostic.range().start_utf32().column() + 1
                     ));
                 }
 
-                self.format_annotation(&mut output, &lines, &annotation.range);
+                self.format_annotation(&mut output, &lines, diagnostic.range());
             }
         }
 
@@ -267,23 +244,22 @@ impl Default for DocumentAnnotator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{document_id::DocumentId, simple_annotation::SimpleAnnotation};
+    use crate::document_id::DocumentId;
     use expect_test::expect;
 
     fn create_annotations_from_chunks(
         doc_id: DocumentId,
         source: &str,
         predicate: impl Fn(char) -> bool,
-    ) -> Vec<SimpleAnnotation> {
+    ) -> Vec<Diagnostic> {
         DocumentCursor::new(doc_id, source.to_string())
             .chunk_by(|range| predicate(range.ch()))
             .into_iter()
             .filter_map(|(is_separator, group)| {
                 if !is_separator {
                     let range: Option<DocumentRange> = group.collect();
-                    range.map(|range| SimpleAnnotation {
-                        message: range.as_str().to_string(),
-                        range,
+                    range.map(|range| {
+                        Diagnostic::new(range.as_str().to_string(), range, Severity::Error)
                     })
                 } else {
                     None
@@ -293,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn with_label() {
+    fn with_severity_label() {
         let source = "line one\nline two\nline three\nline four";
 
         let annotations =
@@ -302,8 +278,8 @@ mod tests {
             });
 
         let actual = DocumentAnnotator::new()
-            .with_label("error")
-            .annotate(&DocumentId::new("test.hop").unwrap(), annotations)
+            .with_severity_label()
+            .annotate(annotations)
             .render();
 
         expect![[r#"
@@ -329,14 +305,13 @@ mod tests {
     #[test]
     fn end_of_input_range_is_a_single_caret() {
         let doc_id = DocumentId::new("test.hop").unwrap();
-        let annotation = SimpleAnnotation {
-            message: "unexpected end of file".to_string(),
-            range: DocumentCursor::new(doc_id.clone(), "fn main(".to_string()).eof_range(),
-        };
+        let annotation = Diagnostic::new(
+            "unexpected end of file".to_string(),
+            DocumentCursor::new(doc_id, "fn main(".to_string()).eof_range(),
+            Severity::Error,
+        );
 
-        let actual = DocumentAnnotator::new()
-            .annotate(&doc_id, [annotation])
-            .render();
+        let actual = DocumentAnnotator::new().annotate([annotation]).render();
 
         expect![[r#"
             unexpected end of file
@@ -349,14 +324,13 @@ mod tests {
     #[test]
     fn end_of_input_range_after_trailing_newline_clamps_to_the_last_line() {
         let doc_id = DocumentId::new("test.hop").unwrap();
-        let annotation = SimpleAnnotation {
-            message: "unexpected end of file".to_string(),
-            range: DocumentCursor::new(doc_id.clone(), "fn main() {\n".to_string()).eof_range(),
-        };
+        let annotation = Diagnostic::new(
+            "unexpected end of file".to_string(),
+            DocumentCursor::new(doc_id, "fn main() {\n".to_string()).eof_range(),
+            Severity::Error,
+        );
 
-        let actual = DocumentAnnotator::new()
-            .annotate(&doc_id, [annotation])
-            .render();
+        let actual = DocumentAnnotator::new().annotate([annotation]).render();
 
         expect![[r#"
             unexpected end of file
@@ -371,11 +345,11 @@ mod tests {
         let source = "line one\nline two\nline three\nline four";
         let doc_id = DocumentId::new("main.rs").unwrap();
 
-        let annotations = create_annotations_from_chunks(doc_id.clone(), source, |ch| ch == '\n');
+        let annotations = create_annotations_from_chunks(doc_id, source, |ch| ch == '\n');
 
         let actual = DocumentAnnotator::new()
             .with_location()
-            .annotate(&doc_id, annotations)
+            .annotate(annotations)
             .render();
 
         expect![[r#"
@@ -413,7 +387,7 @@ mod tests {
 
         let actual = DocumentAnnotator::new()
             .with_lines_before(2)
-            .annotate(&DocumentId::new("test.hop").unwrap(), annotations)
+            .annotate(annotations)
             .render();
 
         expect![[r#"
@@ -452,7 +426,7 @@ mod tests {
 
         let actual = DocumentAnnotator::new()
             .with_lines_after(2)
-            .annotate(&DocumentId::new("test.hop").unwrap(), annotations)
+            .annotate(annotations)
             .render();
 
         expect![[r#"
@@ -491,7 +465,7 @@ mod tests {
 
         let actual = DocumentAnnotator::new()
             .with_location()
-            .annotate(&DocumentId::new("test.hop").unwrap(), annotations)
+            .annotate(annotations)
             .render();
 
         expect![[r#"
@@ -524,7 +498,7 @@ mod tests {
 
         let actual = DocumentAnnotator::new()
             .with_location()
-            .annotate(&DocumentId::new("test.hop").unwrap(), annotations)
+            .annotate(annotations)
             .render();
 
         expect![[r#"
@@ -552,7 +526,7 @@ mod tests {
 
         let actual = DocumentAnnotator::new()
             .with_location()
-            .annotate(&DocumentId::new("test.hop").unwrap(), annotations)
+            .annotate(annotations)
             .render();
 
         expect![[r#"
@@ -580,7 +554,7 @@ mod tests {
 
         let actual = DocumentAnnotator::new()
             .with_lines_before(1000)
-            .annotate(&DocumentId::new("test.hop").unwrap(), annotations)
+            .annotate(annotations)
             .render();
 
         expect![[r#"
@@ -635,9 +609,7 @@ mod tests {
                 ch == 'n'
             });
 
-        let actual = DocumentAnnotator::new()
-            .annotate(&DocumentId::new("test.hop").unwrap(), annotations)
-            .render();
+        let actual = DocumentAnnotator::new().annotate(annotations).render();
 
         expect![[r#"
             li
