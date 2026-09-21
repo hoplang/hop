@@ -36,5 +36,5 @@ pub use document::{Document, DocumentPosition, DocumentRange, PositionEncoding};
 pub use document_annotator::DocumentAnnotator;
 pub use document_id::{DocumentId, DocumentIdError};
 pub use program::{EvaluatePageError, FormatError, Program};
-pub use project::{PathError, Project, ProjectError};
+pub use project::{Project, ProjectError};
 pub use severity::Severity;

@@ -14,8 +14,8 @@ use crate::config::Config;
 use crate::document::Document;
 use crate::document_id::{DocumentId, DocumentIdError};
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum PathError {
+#[derive(Debug, thiserror::Error)]
+pub enum ProjectError {
     #[error("Path {path:?} is not inside the project at {root:?}")]
     OutsideProject { path: PathBuf, root: PathBuf },
 
@@ -25,10 +25,7 @@ pub enum PathError {
         #[source]
         source: DocumentIdError,
     },
-}
 
-#[derive(Debug, thiserror::Error)]
-pub enum ProjectError {
     #[error("{path:?} is not a directory")]
     NotADirectory { path: PathBuf },
 
@@ -41,9 +38,6 @@ pub enum ProjectError {
         #[source]
         source: io::Error,
     },
-
-    #[error(transparent)]
-    InvalidPath(#[from] PathError),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -142,21 +136,22 @@ impl Project {
     }
 
     /// Convert a file path to a [`DocumentId`] using this project root as reference.
-    pub fn path_to_document_id(&self, file_path: &Path) -> Result<DocumentId, PathError> {
+    pub fn path_to_document_id(&self, file_path: &Path) -> Result<DocumentId, ProjectError> {
         let canonical = file_path
             .canonicalize()
             .unwrap_or_else(|_| file_path.to_path_buf());
-        let relative_path =
-            canonical
-                .strip_prefix(&self.project_root)
-                .map_err(|_| PathError::OutsideProject {
-                    path: file_path.to_path_buf(),
-                    root: self.project_root.clone(),
-                })?;
+        let relative_path = canonical.strip_prefix(&self.project_root).map_err(|_| {
+            ProjectError::OutsideProject {
+                path: file_path.to_path_buf(),
+                root: self.project_root.clone(),
+            }
+        })?;
 
-        DocumentId::new(&relative_path.to_string_lossy()).map_err(|source| PathError::InvalidId {
-            path: file_path.to_path_buf(),
-            source,
+        DocumentId::new(&relative_path.to_string_lossy()).map_err(|source| {
+            ProjectError::InvalidId {
+                path: file_path.to_path_buf(),
+                source,
+            }
         })
     }
 
@@ -373,7 +368,7 @@ mod tests {
         let result = project.path_to_document_id(&outside_path);
 
         assert!(
-            matches!(result, Err(PathError::OutsideProject { .. })),
+            matches!(result, Err(ProjectError::OutsideProject { .. })),
             "Expected OutsideProject error, got: {:?}",
             result
         );
@@ -398,7 +393,7 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(PathError::InvalidId {
+                Err(ProjectError::InvalidId {
                     source: DocumentIdError::InvalidCharacter(' '),
                     ..
                 })
