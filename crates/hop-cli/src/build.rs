@@ -31,11 +31,13 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Load program
     let mut program = Program::default();
-    for document_id in project.find_hop_modules()? {
-        program.update_module(&document_id, project.load_document(&document_id)?);
-    }
-    for document_id in project.find_css_documents()? {
-        program.update_css_document(&document_id, project.load_document(&document_id)?);
+    for document_id in project.documents()? {
+        let document = project.load_document(&document_id)?;
+        if document_id.extension() == Some("css") {
+            program.update_css_document(&document_id, document);
+        } else {
+            program.update_module(&document_id, document);
+        }
     }
 
     // Print compile errors

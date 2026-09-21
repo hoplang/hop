@@ -15,7 +15,11 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
                 let document_id = project.path_to_document_id(&PathBuf::from(file_path))?;
                 vec![document_id]
             }
-            None => project.find_hop_modules()?,
+            None => project
+                .documents()?
+                .into_iter()
+                .filter(|document_id| document_id.extension() == Some("hop"))
+                .collect(),
         }
     };
 

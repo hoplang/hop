@@ -173,16 +173,8 @@ impl Project {
         Ok(Document::new(document_id.clone(), content))
     }
 
-    /// Find all hop modules in this project.
-    pub fn find_hop_modules(&self) -> Result<Vec<DocumentId>, ProjectError> {
-        self.find_files_by_extension("hop")
-    }
-
-    pub fn find_css_documents(&self) -> Result<Vec<DocumentId>, ProjectError> {
-        self.find_files_by_extension("css")
-    }
-
-    fn find_files_by_extension(&self, extension: &str) -> Result<Vec<DocumentId>, ProjectError> {
+    /// Find every hop module and CSS document in this project.
+    pub fn documents(&self) -> Result<Vec<DocumentId>, ProjectError> {
         let mut document_ids = Vec::new();
 
         if !self.project_root.exists() || !self.project_root.is_dir() {
@@ -213,7 +205,10 @@ impl Project {
                         .path();
                     paths.push(p);
                 }
-            } else if path.extension().and_then(|s| s.to_str()) == Some(extension) {
+            } else if matches!(
+                path.extension().and_then(|s| s.to_str()),
+                Some("hop") | Some("css")
+            ) {
                 document_ids.push(self.path_to_document_id(&path)?);
             }
         }
@@ -480,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    fn find_modules() {
+    fn find_documents() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [compile]
@@ -492,24 +487,28 @@ mod tests {
             <button-comp>Click me!</button-comp>
             -- src/components/header.hop --
             <header-comp>Welcome</header-comp>
+            -- src/styles.css --
+            body { margin: 0; }
+            -- README.md --
+            Not a document.
         "#});
         let temp_dir = TempDir::new().unwrap();
         write_archive_to_dir(&archive, temp_dir.path()).unwrap();
         let project = Project::from(temp_dir.path()).unwrap();
 
-        let mut modules = project.find_hop_modules().unwrap();
-        modules.sort();
+        let mut documents = project.documents().unwrap();
+        documents.sort();
 
-        assert_eq!(modules.len(), 3);
         assert_eq!(
-            modules[0],
-            DocumentId::new("src/components/button.hop").unwrap()
+            documents,
+            [
+                "src/components/button.hop",
+                "src/components/header.hop",
+                "src/main.hop",
+                "src/styles.css",
+            ]
+            .map(|id| DocumentId::new(id).unwrap())
         );
-        assert_eq!(
-            modules[1],
-            DocumentId::new("src/components/header.hop").unwrap()
-        );
-        assert_eq!(modules[2], DocumentId::new("src/main.hop").unwrap());
     }
 
     #[test]
@@ -532,8 +531,8 @@ mod tests {
         write_archive_to_dir(&archive, temp_dir.path()).unwrap();
         let project = Project::from(temp_dir.path()).unwrap();
 
-        // Test that find_modules correctly skips certain directories
-        let modules = project.find_hop_modules().unwrap();
+        // Test that documents correctly skips certain directories
+        let modules = project.documents().unwrap();
 
         // Should only load 1 module (from src/main.hop)
         assert_eq!(modules.len(), 1);

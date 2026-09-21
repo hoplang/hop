@@ -193,7 +193,11 @@ impl LanguageServer for HopLanguageServer {
 
     async fn initialized(&self, _: InitializedParams) {
         if let Some(project) = self.project.get() {
-            if let Ok(document_ids) = project.find_hop_modules() {
+            if let Ok(document_ids) = project.documents() {
+                let document_ids: Vec<DocumentId> = document_ids
+                    .into_iter()
+                    .filter(|document_id| document_id.extension() == Some("hop"))
+                    .collect();
                 {
                     let mut server = self.program.write().await;
                     for document_id in &document_ids {
