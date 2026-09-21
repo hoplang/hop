@@ -1,4 +1,4 @@
-use crate::document_position::DocumentPosition;
+use crate::document::DocumentPosition;
 
 use super::parsed_ast::ParsedAst;
 use super::parsed_node::ParsedNode;
@@ -22,7 +22,10 @@ use crate::hop::parsing::ParsedExpr;
 ///     ^^^^^^^^^^^^^^^^^
 /// </div>
 /// ```
-pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Option<&ParsedNode> {
+pub fn find_node_at_position<'a>(
+    ast: &'a ParsedAst,
+    position: &DocumentPosition,
+) -> Option<&'a ParsedNode> {
     for n in ast.page_declarations() {
         if n.range.contains_position(position) {
             if let Some(head) = &n.head
@@ -43,19 +46,19 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
     None
 }
 
-fn find_node_at_position_in_expr(
-    expr: &ParsedExpr,
-    position: DocumentPosition,
-) -> Option<&ParsedNode> {
+fn find_node_at_position_in_expr<'a>(
+    expr: &'a ParsedExpr,
+    position: &DocumentPosition,
+) -> Option<&'a ParsedNode> {
     expr.nodes()
         .into_iter()
         .find_map(|root| find_node_at_position_in_node(root, position))
 }
 
-fn find_node_at_position_in_node(
-    node: &ParsedNode,
-    position: DocumentPosition,
-) -> Option<&ParsedNode> {
+fn find_node_at_position_in_node<'a>(
+    node: &'a ParsedNode,
+    position: &DocumentPosition,
+) -> Option<&'a ParsedNode> {
     if !node.range().contains_position(position) {
         return None;
     }
@@ -82,25 +85,22 @@ mod tests {
     use crate::diagnostic::Diagnostic;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
+    use crate::extract_position::extract_position;
     use crate::hop::parsing::parse::parse;
     use crate::severity::Severity;
-    use crate::{document::Document, extract_position::extract_position};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check_find_node_at_position(input: &str, expected: Expect) {
-        let (source, position) = extract_position(input).expect("Position marker not found");
-        let mut errors = Vec::new();
         let document_id = DocumentId::new("test.hop").unwrap();
-        let ast = parse(
-            document_id.clone(),
-            Document::new(document_id, source),
-            &mut errors,
-        );
+        let (document, position) =
+            extract_position(document_id.clone(), input).expect("Position marker not found");
+        let mut errors = Vec::new();
+        let ast = parse(document_id, document, &mut errors);
 
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
 
-        let found_node = find_node_at_position(&ast, position);
+        let found_node = find_node_at_position(&ast, &position);
 
         let output = if let Some(node) = found_node {
             DocumentAnnotator::new()

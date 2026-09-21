@@ -6,9 +6,8 @@ use crate::css_error::CssError;
 use crate::definition_link::DefinitionLink;
 use crate::dependency_graph::DependencyGraph;
 use crate::diagnostic::Diagnostic;
-use crate::document::{CheapString, Document, DocumentRange};
+use crate::document::{CheapString, Document, DocumentPosition, DocumentRange, PositionEncoding};
 use crate::document_id::DocumentId;
-use crate::document_position::DocumentPosition;
 use crate::hop::assembly::TailwindInjection;
 use crate::hop::format;
 use crate::hop::parsing::find_node::find_node_at_position;
@@ -243,37 +242,40 @@ impl Program {
             .join("\n")
     }
 
-    /// Returns the range and the message to display when hovering the
-    /// given position.
-    pub fn get_hover_info(
+    /// Resolve an editor's line and column in a module to a position.
+    /// None if the module is unknown or the position is outside its text.
+    pub fn position(
         &self,
         document_id: &DocumentId,
-        position: DocumentPosition,
-    ) -> Option<(DocumentRange, String)> {
-        self.hover_annotations
+        encoding: PositionEncoding,
+        line: usize,
+        column: usize,
+    ) -> Option<DocumentPosition> {
+        self.documents
             .get(document_id)?
+            .position(encoding, line, column)
+    }
+
+    /// Returns the range and the message to display when hovering the
+    /// given position.
+    pub fn get_hover_info(&self, position: &DocumentPosition) -> Option<(DocumentRange, String)> {
+        self.hover_annotations
+            .get(position.document_id())?
             .iter()
             .find(|a| a.range().contains_position(position))
             .map(|annotation| (annotation.range().clone(), annotation.to_string()))
     }
 
-    pub fn get_definition_location(
-        &self,
-        document_id: &DocumentId,
-        position: DocumentPosition,
-    ) -> Option<DocumentRange> {
+    pub fn get_definition_location(&self, position: &DocumentPosition) -> Option<DocumentRange> {
         self.definition_links
-            .get(document_id)?
+            .get(position.document_id())?
             .iter()
             .find(|link| link.use_range.contains_position(position))
             .map(|link| link.definition_range.clone())
     }
 
-    pub fn get_rename_locations(
-        &self,
-        document_id: &DocumentId,
-        position: DocumentPosition,
-    ) -> Option<Vec<DocumentRange>> {
+    pub fn get_rename_locations(&self, position: &DocumentPosition) -> Option<Vec<DocumentRange>> {
+        let document_id = position.document_id();
         let ast = self.parsed_asts.get(document_id)?;
 
         // Check if cursor is on a record declaration name
@@ -323,10 +325,9 @@ impl Program {
     /// or at a use.
     pub fn get_renameable_symbol(
         &self,
-        document_id: &DocumentId,
-        position: DocumentPosition,
+        position: &DocumentPosition,
     ) -> Option<(DocumentRange, String)> {
-        let ast = self.parsed_asts.get(document_id)?;
+        let ast = self.parsed_asts.get(position.document_id())?;
 
         let mut declaration_names = ast
             .record_declarations()
@@ -651,29 +652,18 @@ mod tests {
     use indoc::indoc;
     use txtar::{Archive, Builder, File};
 
-    #[derive(Debug, Clone, PartialEq)]
-    pub struct MarkerInfo {
-        pub filename: String,
-        pub position: DocumentPosition,
-    }
-
-    /// Extracts all position markers from an archive and returns the cleaned archive
-    /// along with information about each marker found.
-    ///
-    /// # Returns
-    /// - The cleaned archive (with all markers removed)
-    /// - A vector of MarkerInfo containing filenames and positions for each marker
-    pub fn extract_markers_from_archive(archive: &Archive) -> (Archive, Vec<MarkerInfo>) {
+    /// Extracts all position markers from an archive and returns the cleaned
+    /// archive (with all markers removed) along with the position of each
+    /// marker found.
+    pub fn extract_markers_from_archive(archive: &Archive) -> (Archive, Vec<DocumentPosition>) {
         let mut markers = Vec::new();
         let mut builder = Builder::new();
 
         for file in archive.iter() {
-            if let Some((clean_content, pos)) = extract_position(&file.content) {
-                markers.push(MarkerInfo {
-                    filename: file.name.clone(),
-                    position: pos,
-                });
-                builder.file(File::new(file.name.clone(), clean_content));
+            let document_id = DocumentId::new(&file.name).unwrap();
+            if let Some((document, position)) = extract_position(document_id, &file.content) {
+                markers.push(position);
+                builder.file(File::new(file.name.clone(), document.as_str().to_string()));
             } else {
                 builder.file(file.clone());
             }
@@ -712,11 +702,8 @@ mod tests {
             );
         }
 
-        let marker = &markers[0];
-        let module = DocumentId::new(&marker.filename).unwrap();
-
         let locs = program_from_archive(&archive)
-            .get_rename_locations(&module, marker.position)
+            .get_rename_locations(&markers[0])
             .expect("Expected locations to be defined");
 
         let output = DocumentAnnotator::new()
@@ -740,9 +727,6 @@ mod tests {
             );
         }
 
-        let marker = &markers[0];
-        let module = DocumentId::new(&marker.filename).unwrap();
-
         let program = program_from_archive(&archive);
 
         let diagnostics = program.diagnostics();
@@ -753,7 +737,7 @@ mod tests {
         );
 
         let range = program
-            .get_definition_location(&module, marker.position)
+            .get_definition_location(&markers[0])
             .expect("Expected definition location to be defined");
 
         let output = DocumentAnnotator::new()
@@ -803,11 +787,8 @@ mod tests {
             );
         }
 
-        let marker = &markers[0];
-        let module = DocumentId::new(&marker.filename).unwrap();
-
         let (range, name) = program_from_archive(&archive)
-            .get_renameable_symbol(&module, marker.position)
+            .get_renameable_symbol(&markers[0])
             .expect("Expected symbol to be defined");
 
         let output = DocumentAnnotator::new()
@@ -828,9 +809,6 @@ mod tests {
             );
         }
 
-        let marker = &markers[0];
-        let module = DocumentId::new(&marker.filename).unwrap();
-
         let program = program_from_archive(&archive);
 
         let diagnostics = program.diagnostics();
@@ -841,7 +819,7 @@ mod tests {
         );
 
         let (range, message) = program
-            .get_hover_info(&module, marker.position)
+            .get_hover_info(&markers[0])
             .expect("Expected hover info to be defined");
 
         let output = DocumentAnnotator::new()

@@ -1,4 +1,7 @@
-use hop_core::{Document, DocumentId, DocumentPosition, DocumentRange, Program, Project, Severity};
+use hop_core::{
+    Document, DocumentId, DocumentPosition, DocumentRange, PositionEncoding, Program, Project,
+    Severity,
+};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::sync::{OnceCell, RwLock};
@@ -50,24 +53,31 @@ pub async fn execute() {
 }
 
 // LSP uses UTF-16 encoding by default for position character offsets.
-fn lsp_pos_to_doc_pos(lsp_pos: ls_types::Position) -> DocumentPosition {
-    DocumentPosition::Utf16 {
-        line: lsp_pos.line as usize,
-        column: lsp_pos.character as usize,
-    }
+// Returns None if the document is unknown or the position is outside it.
+fn lsp_pos_to_doc_pos(
+    program: &Program,
+    document_id: &DocumentId,
+    lsp_pos: ls_types::Position,
+) -> Option<DocumentPosition> {
+    program.position(
+        document_id,
+        PositionEncoding::Utf16,
+        lsp_pos.line as usize,
+        lsp_pos.character as usize,
+    )
 }
 
 fn doc_range_to_lsp_range(range: DocumentRange) -> ls_types::Range {
-    let start_pos = range.start_utf16();
-    let end_pos = range.end_utf16();
+    let start_pos = range.start_position();
+    let end_pos = range.end_position();
     ls_types::Range {
         start: ls_types::Position {
             line: start_pos.line() as u32,
-            character: start_pos.column() as u32,
+            character: start_pos.utf16_column() as u32,
         },
         end: ls_types::Position {
             line: end_pos.line() as u32,
-            character: end_pos.column() as u32,
+            character: end_pos.utf16_column() as u32,
         },
     }
 }
@@ -238,8 +248,11 @@ impl LanguageServer for HopLanguageServer {
             };
 
             let program = self.program.read().await;
+            let Some(position) = lsp_pos_to_doc_pos(&program, &document_id, position) else {
+                return Ok(None);
+            };
             Ok(program
-                .get_hover_info(&document_id, lsp_pos_to_doc_pos(position))
+                .get_hover_info(&position)
                 .map(|(range, message)| Hover {
                     contents: HoverContents::Scalar(MarkedString::String(message)),
                     range: Some(doc_range_to_lsp_range(range)),
@@ -261,15 +274,16 @@ impl LanguageServer for HopLanguageServer {
             };
 
             let program = self.program.read().await;
+            let Some(position) = lsp_pos_to_doc_pos(&program, &document_id, position) else {
+                return Ok(None);
+            };
 
-            Ok(program
-                .get_definition_location(&document_id, lsp_pos_to_doc_pos(position))
-                .map(|range| {
-                    GotoDefinitionResponse::Scalar(Location {
-                        uri: Self::document_id_to_uri(range.document_id(), project),
-                        range: doc_range_to_lsp_range(range),
-                    })
-                }))
+            Ok(program.get_definition_location(&position).map(|range| {
+                GotoDefinitionResponse::Scalar(Location {
+                    uri: Self::document_id_to_uri(range.document_id(), project),
+                    range: doc_range_to_lsp_range(range),
+                })
+            }))
         } else {
             Ok(None)
         }
@@ -287,9 +301,12 @@ impl LanguageServer for HopLanguageServer {
             };
 
             let program = self.program.read().await;
+            let Some(position) = lsp_pos_to_doc_pos(&program, &document_id, position) else {
+                return Ok(None);
+            };
 
             Ok(program
-                .get_renameable_symbol(&document_id, lsp_pos_to_doc_pos(position))
+                .get_renameable_symbol(&position)
                 .map(
                     |(range, placeholder)| PrepareRenameResponse::RangeWithPlaceholder {
                         range: doc_range_to_lsp_range(range),
@@ -311,10 +328,11 @@ impl LanguageServer for HopLanguageServer {
             };
 
             let server = self.program.read().await;
+            let Some(position) = lsp_pos_to_doc_pos(&server, &document_id, position) else {
+                return Ok(None);
+            };
 
-            if let Some(rename_locations) =
-                server.get_rename_locations(&document_id, lsp_pos_to_doc_pos(position))
-            {
+            if let Some(rename_locations) = server.get_rename_locations(&position) {
                 #[allow(clippy::mutable_key_type)]
                 let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 

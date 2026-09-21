@@ -1,4 +1,4 @@
-use crate::{document_id::DocumentId, document_position::DocumentPosition};
+use crate::document_id::DocumentId;
 use std::borrow::Borrow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -34,43 +34,81 @@ impl DocumentInfo {
         }
     }
 
-    /// Convert a byte offset to a UTF-16 position (line, column).
-    pub fn offset_to_utf16_position(&self, offset: usize) -> DocumentPosition {
-        let line_idx = match self.line_starts.binary_search(&offset) {
+    /// The 0-based line a byte offset is on.
+    fn line_of(&self, offset: usize) -> usize {
+        match self.line_starts.binary_search(&offset) {
             Ok(idx) => idx,
             Err(idx) => idx.saturating_sub(1),
-        };
-
-        // Calculate UTF-16 column offset from the start of the line
-        let line_start_byte = self.line_starts[line_idx];
-        let line_text = &self.text[line_start_byte..offset];
-        let utf16_column: usize = line_text.chars().map(|ch| ch.len_utf16()).sum();
-
-        DocumentPosition::Utf16 {
-            line: line_idx,
-            column: utf16_column,
         }
     }
 
-    /// Convert a byte offset to a UTF-32 position (line, column).
-    /// UTF-32 column is the character count from the start of the line.
-    pub fn offset_to_utf32_position(&self, offset: usize) -> DocumentPosition {
-        let line_idx = match self.line_starts.binary_search(&offset) {
-            Ok(idx) => idx,
-            Err(idx) => idx.saturating_sub(1),
-        };
+    /// The 0-based column of a byte offset, measured in the given
+    /// encoding from the start of its line.
+    fn column_of(&self, offset: usize, encoding: PositionEncoding) -> usize {
+        let line_start = self.line_starts[self.line_of(offset)];
+        self.text[line_start..offset]
+            .chars()
+            .map(|ch| encoding.width(ch))
+            .sum()
+    }
+}
 
-        // Calculate UTF-32 column offset (character count) from the start of the line
-        let line_start_byte = self.line_starts[line_idx];
-        let line_text = &self.text[line_start_byte..offset];
-        let utf32_column = line_text.chars().count();
+/// How columns are counted when a position crosses the boundary to an
+/// editor or to human-readable output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PositionEncoding {
+    /// Columns count UTF-16 code units. This is what LSP clients send.
+    Utf16,
+    /// Columns count Unicode code points.
+    Utf32,
+}
 
-        DocumentPosition::Utf32 {
-            line: line_idx,
-            column: utf32_column,
+impl PositionEncoding {
+    fn width(self, ch: char) -> usize {
+        match self {
+            PositionEncoding::Utf16 => ch.len_utf16(),
+            PositionEncoding::Utf32 => 1,
         }
     }
 }
+
+/// A position in a document.
+#[derive(Clone, Debug)]
+pub struct DocumentPosition {
+    /// The source info containing the document text and line starts.
+    source: Arc<DocumentInfo>,
+    /// The byte offset of the position in the document.
+    offset: usize,
+}
+
+impl DocumentPosition {
+    pub fn document_id(&self) -> &DocumentId {
+        &self.source.document_id
+    }
+
+    /// The 0-based line of the position.
+    pub fn line(&self) -> usize {
+        self.source.line_of(self.offset)
+    }
+
+    /// The 0-based column of the position in UTF-16 code units.
+    pub fn utf16_column(&self) -> usize {
+        self.source.column_of(self.offset, PositionEncoding::Utf16)
+    }
+
+    /// The 0-based column of the position in Unicode code points.
+    pub fn utf32_column(&self) -> usize {
+        self.source.column_of(self.offset, PositionEncoding::Utf32)
+    }
+}
+
+impl PartialEq for DocumentPosition {
+    fn eq(&self, other: &Self) -> bool {
+        self.source.document_id == other.source.document_id && self.offset == other.offset
+    }
+}
+
+impl Eq for DocumentPosition {}
 
 /// A Document is a shared reference to a document in the project.
 #[derive(Clone, Debug)]
@@ -87,6 +125,46 @@ impl Document {
 
     pub fn as_str(&self) -> &str {
         &self.source.text
+    }
+
+    /// Resolve a line and column, with the column counted in `encoding`,
+    /// to a position in this document.
+    ///
+    /// Returns None if the line does not exist, if the column is past the end
+    /// of the line, or if it lands inside a code point.
+    ///
+    /// A column equal to the line's width is the position just after its last
+    /// character, where an editor puts the cursor at the line end.
+    pub fn position(
+        &self,
+        encoding: PositionEncoding,
+        line: usize,
+        column: usize,
+    ) -> Option<DocumentPosition> {
+        let info = &self.source;
+        let line_start = *info.line_starts.get(line)?;
+        let line_end = match info.line_starts.get(line + 1) {
+            Some(next_line_start) => next_line_start - 1,
+            None => info.text.len(),
+        };
+        let mut width = 0;
+        for (i, ch) in info.text[line_start..line_end].char_indices() {
+            if width == column {
+                return Some(DocumentPosition {
+                    source: info.clone(),
+                    offset: line_start + i,
+                });
+            }
+            width += encoding.width(ch);
+        }
+        if width == column {
+            Some(DocumentPosition {
+                source: info.clone(),
+                offset: line_end,
+            })
+        } else {
+            None
+        }
     }
 
     pub(crate) fn range(&self, span: std::ops::Range<usize>) -> DocumentRange {
@@ -235,7 +313,7 @@ impl Iterator for DocumentCursor {
     }
 }
 
-/// A DocumentRange represents a range in a document.
+/// A range in a document.
 #[derive(Clone, Debug)]
 pub struct DocumentRange {
     /// The source info containing the document text and line starts.
@@ -317,40 +395,27 @@ impl DocumentRange {
         &self.source.document_id
     }
 
-    pub fn start_utf16(&self) -> DocumentPosition {
-        self.source.offset_to_utf16_position(self.start)
+    pub fn start_position(&self) -> DocumentPosition {
+        DocumentPosition {
+            source: self.source.clone(),
+            offset: self.start,
+        }
     }
 
-    pub fn end_utf16(&self) -> DocumentPosition {
-        self.source.offset_to_utf16_position(self.end)
-    }
-
-    pub(crate) fn start_utf32(&self) -> DocumentPosition {
-        self.source.offset_to_utf32_position(self.start)
-    }
-
-    pub(crate) fn end_utf32(&self) -> DocumentPosition {
-        self.source.offset_to_utf32_position(self.end)
+    pub fn end_position(&self) -> DocumentPosition {
+        DocumentPosition {
+            source: self.source.clone(),
+            offset: self.end,
+        }
     }
 
     pub(crate) fn contains(&self, other: &DocumentRange) -> bool {
         self.start <= other.start && other.end <= self.end
     }
 
-    /// Returns true if the document range contains the given Position.
-    pub(crate) fn contains_position(&self, position: DocumentPosition) -> bool {
-        match position {
-            DocumentPosition::Utf16 { .. } => {
-                let start = self.start_utf16();
-                let end = self.end_utf16();
-                start <= position && position < end
-            }
-            DocumentPosition::Utf32 { .. } => {
-                let start = self.start_utf32();
-                let end = self.end_utf32();
-                start <= position && position < end
-            }
-        }
+    pub(crate) fn contains_position(&self, position: &DocumentPosition) -> bool {
+        debug_assert_eq!(self.source.document_id, position.source.document_id);
+        self.start <= position.offset && position.offset < self.end
     }
 
     pub(crate) fn intersection(&self, other: &DocumentRange) -> Option<DocumentRange> {
@@ -537,6 +602,14 @@ mod tests {
     use super::*;
     use crate::document_id::DocumentId;
 
+    fn utf16(position: &DocumentPosition) -> (usize, usize) {
+        (position.line(), position.utf16_column())
+    }
+
+    fn utf32(position: &DocumentPosition) -> (usize, usize) {
+        (position.line(), position.utf32_column())
+    }
+
     #[test]
     fn string_cursor_new() {
         let cursor = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "hello".to_string());
@@ -551,36 +624,18 @@ mod tests {
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
-        assert_eq!(
-            range1.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            range1.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
+        assert_eq!(utf32(&range1.start_position()), (0, 0));
+        assert_eq!(utf32(&range1.end_position()), (0, 1));
 
         let range2 = cursor.next().unwrap();
         assert_eq!(range2.ch(), 'b');
-        assert_eq!(
-            range2.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
-        assert_eq!(
-            range2.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 2 }
-        );
+        assert_eq!(utf32(&range2.start_position()), (0, 1));
+        assert_eq!(utf32(&range2.end_position()), (0, 2));
 
         let range3 = cursor.next().unwrap();
         assert_eq!(range3.ch(), 'c');
-        assert_eq!(
-            range3.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 2 }
-        );
-        assert_eq!(
-            range3.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 3 }
-        );
+        assert_eq!(utf32(&range3.start_position()), (0, 2));
+        assert_eq!(utf32(&range3.end_position()), (0, 3));
 
         assert!(cursor.next().is_none());
     }
@@ -592,58 +647,28 @@ mod tests {
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
-        assert_eq!(
-            range1.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            range1.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
+        assert_eq!(utf32(&range1.start_position()), (0, 0));
+        assert_eq!(utf32(&range1.end_position()), (0, 1));
 
         let range2 = cursor.next().unwrap();
         assert_eq!(range2.ch(), '\n');
-        assert_eq!(
-            range2.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
-        assert_eq!(
-            range2.end_utf32(),
-            DocumentPosition::Utf32 { line: 1, column: 0 }
-        );
+        assert_eq!(utf32(&range2.start_position()), (0, 1));
+        assert_eq!(utf32(&range2.end_position()), (1, 0));
 
         let range3 = cursor.next().unwrap();
         assert_eq!(range3.ch(), 'b');
-        assert_eq!(
-            range3.start_utf32(),
-            DocumentPosition::Utf32 { line: 1, column: 0 }
-        );
-        assert_eq!(
-            range3.end_utf32(),
-            DocumentPosition::Utf32 { line: 1, column: 1 }
-        );
+        assert_eq!(utf32(&range3.start_position()), (1, 0));
+        assert_eq!(utf32(&range3.end_position()), (1, 1));
 
         let range4 = cursor.next().unwrap();
         assert_eq!(range4.ch(), '\n');
-        assert_eq!(
-            range4.start_utf32(),
-            DocumentPosition::Utf32 { line: 1, column: 1 }
-        );
-        assert_eq!(
-            range4.end_utf32(),
-            DocumentPosition::Utf32 { line: 2, column: 0 }
-        );
+        assert_eq!(utf32(&range4.start_position()), (1, 1));
+        assert_eq!(utf32(&range4.end_position()), (2, 0));
 
         let range5 = cursor.next().unwrap();
         assert_eq!(range5.ch(), 'c');
-        assert_eq!(
-            range5.start_utf32(),
-            DocumentPosition::Utf32 { line: 2, column: 0 }
-        );
-        assert_eq!(
-            range5.end_utf32(),
-            DocumentPosition::Utf32 { line: 2, column: 1 }
-        );
+        assert_eq!(utf32(&range5.start_position()), (2, 0));
+        assert_eq!(utf32(&range5.end_position()), (2, 1));
 
         assert!(cursor.next().is_none());
     }
@@ -659,14 +684,8 @@ mod tests {
         let extended = range1.to(range3);
         assert_eq!(extended.ch(), 'a');
         assert_eq!(extended.to_string(), "abc");
-        assert_eq!(
-            extended.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            extended.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 3 }
-        );
+        assert_eq!(utf32(&extended.start_position()), (0, 0));
+        assert_eq!(utf32(&extended.end_position()), (0, 3));
     }
 
     #[test]
@@ -702,14 +721,8 @@ mod tests {
 
         let range = result.unwrap();
         assert_eq!(range.as_str(), "   ");
-        assert_eq!(
-            range.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            range.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 3 }
-        );
+        assert_eq!(utf32(&range.start_position()), (0, 0));
+        assert_eq!(utf32(&range.end_position()), (0, 3));
     }
 
     #[test]
@@ -731,14 +744,8 @@ mod tests {
 
         let range = result.unwrap();
         assert_eq!(range.as_str(), "aaa");
-        assert_eq!(
-            range.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            range.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 3 }
-        );
+        assert_eq!(utf32(&range.start_position()), (0, 0));
+        assert_eq!(utf32(&range.end_position()), (0, 3));
     }
 
     #[test]
@@ -753,14 +760,8 @@ mod tests {
 
         let range = result.unwrap();
         assert_eq!(range.as_str(), "hello");
-        assert_eq!(
-            range.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 3 }
-        );
-        assert_eq!(
-            range.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 8 }
-        );
+        assert_eq!(utf32(&range.start_position()), (0, 3));
+        assert_eq!(utf32(&range.end_position()), (0, 8));
     }
 
     #[test]
@@ -775,36 +776,18 @@ mod tests {
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
-        assert_eq!(
-            range1.start_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            range1.end_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 1 }
-        );
+        assert_eq!(utf16(&range1.start_position()), (0, 0));
+        assert_eq!(utf16(&range1.end_position()), (0, 1));
 
         let range2 = cursor.next().unwrap();
         assert_eq!(range2.ch(), '\u{20AC}');
-        assert_eq!(
-            range2.start_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 1 }
-        );
-        assert_eq!(
-            range2.end_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 2 }
-        ); // Euro sign is 1 code unit in UTF-16
+        assert_eq!(utf16(&range2.start_position()), (0, 1));
+        assert_eq!(utf16(&range2.end_position()), (0, 2)); // Euro sign is 1 code unit in UTF-16
 
         let range3 = cursor.next().unwrap();
         assert_eq!(range3.ch(), 'b');
-        assert_eq!(
-            range3.start_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 2 }
-        );
-        assert_eq!(
-            range3.end_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 3 }
-        );
+        assert_eq!(utf16(&range3.start_position()), (0, 2));
+        assert_eq!(utf16(&range3.end_position()), (0, 3));
     }
 
     #[test]
@@ -822,77 +805,103 @@ mod tests {
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), '\u{20AC}');
-        assert_eq!(
-            range1.start_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            range1.end_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 1 }
-        );
+        assert_eq!(utf16(&range1.start_position()), (0, 0));
+        assert_eq!(utf16(&range1.end_position()), (0, 1));
 
         let range2 = cursor.next().unwrap();
         assert_eq!(range2.ch(), '\n');
-        assert_eq!(
-            range2.start_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 1 }
-        );
-        assert_eq!(
-            range2.end_utf16(),
-            DocumentPosition::Utf16 { line: 1, column: 0 }
-        );
+        assert_eq!(utf16(&range2.start_position()), (0, 1));
+        assert_eq!(utf16(&range2.end_position()), (1, 0));
 
         let range3 = cursor.next().unwrap();
         assert_eq!(range3.ch(), '\u{1F3A8}');
-        assert_eq!(
-            range3.start_utf16(),
-            DocumentPosition::Utf16 { line: 1, column: 0 }
-        );
-        assert_eq!(
-            range3.end_utf16(),
-            DocumentPosition::Utf16 { line: 1, column: 2 }
-        ); // Emoji is 2 code units in UTF-16
+        assert_eq!(utf16(&range3.start_position()), (1, 0));
+        assert_eq!(utf16(&range3.end_position()), (1, 2)); // Emoji is 2 code units in UTF-16
 
         let range4 = cursor.next().unwrap();
         assert_eq!(range4.ch(), '\n');
-        assert_eq!(
-            range4.start_utf16(),
-            DocumentPosition::Utf16 { line: 1, column: 2 }
-        );
-        assert_eq!(
-            range4.end_utf16(),
-            DocumentPosition::Utf16 { line: 2, column: 0 }
-        );
+        assert_eq!(utf16(&range4.start_position()), (1, 2));
+        assert_eq!(utf16(&range4.end_position()), (2, 0));
 
         let range5 = cursor.next().unwrap();
         assert_eq!(range5.ch(), 'c');
-        assert_eq!(
-            range5.start_utf16(),
-            DocumentPosition::Utf16 { line: 2, column: 0 }
-        );
-        assert_eq!(
-            range5.end_utf16(),
-            DocumentPosition::Utf16 { line: 2, column: 1 }
-        );
+        assert_eq!(utf16(&range5.start_position()), (2, 0));
+        assert_eq!(utf16(&range5.end_position()), (2, 1));
     }
 
     #[test]
     fn contains_position_utf16() {
         // "hello\nworld" - ASCII text for simple position testing
-        let cursor = DocumentCursor::new(
+        let document = Document::new(
             DocumentId::new("test.hop").unwrap(),
             "hello\nworld".to_string(),
         );
-        let ranges: Vec<_> = cursor.collect();
+        let ranges: Vec<_> = document.cursor().collect();
+        let position = |line, column| {
+            document
+                .position(PositionEncoding::Utf16, line, column)
+                .unwrap()
+        };
 
         // "hello" ranges
         let hello_range = ranges[0].clone().to(ranges[4].clone());
 
         // Test UTF-16 position containment
-        assert!(hello_range.contains_position(DocumentPosition::Utf16 { line: 0, column: 0 }));
-        assert!(hello_range.contains_position(DocumentPosition::Utf16 { line: 0, column: 4 }));
-        assert!(!hello_range.contains_position(DocumentPosition::Utf16 { line: 0, column: 5 }));
-        assert!(!hello_range.contains_position(DocumentPosition::Utf16 { line: 1, column: 0 }));
+        assert!(hello_range.contains_position(&position(0, 0)));
+        assert!(hello_range.contains_position(&position(0, 4)));
+        assert!(!hello_range.contains_position(&position(0, 5)));
+        assert!(!hello_range.contains_position(&position(1, 0)));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "assertion `left == right` failed")]
+    fn contains_position_rejects_another_document() {
+        let text = "hello".to_string();
+        let a = Document::new(DocumentId::new("a.hop").unwrap(), text.clone());
+        let b = Document::new(DocumentId::new("b.hop").unwrap(), text);
+        let range = a.cursor().next().unwrap();
+
+        range.contains_position(&b.position(PositionEncoding::Utf32, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn position_rejects_columns_outside_the_line() {
+        let document = Document::new(
+            DocumentId::new("test.hop").unwrap(),
+            "\u{1F3A8}b\nc".to_string(),
+        );
+
+        // Line 0 is 🎨b: 2 code points, 3 UTF-16 code units. The column
+        // just past the last character is the end of the line and valid.
+        assert!(document.position(PositionEncoding::Utf32, 0, 2).is_some());
+        assert!(document.position(PositionEncoding::Utf32, 0, 3).is_none());
+        assert!(document.position(PositionEncoding::Utf16, 0, 3).is_some());
+        assert!(document.position(PositionEncoding::Utf16, 0, 4).is_none());
+
+        // A UTF-16 column between the surrogate halves is not a position.
+        assert!(document.position(PositionEncoding::Utf16, 0, 1).is_none());
+
+        // Line 1 is the last line and has no trailing newline.
+        assert!(document.position(PositionEncoding::Utf32, 1, 1).is_some());
+        assert!(document.position(PositionEncoding::Utf32, 1, 2).is_none());
+        assert!(document.position(PositionEncoding::Utf32, 2, 0).is_none());
+    }
+
+    #[test]
+    fn position_converts_back_to_either_encoding() {
+        let document = Document::new(
+            DocumentId::new("test.hop").unwrap(),
+            "a\u{20AC}\n\u{1F3A8}c".to_string(),
+        );
+
+        let position = document.position(PositionEncoding::Utf16, 1, 2).unwrap();
+        assert_eq!(utf16(&position), (1, 2));
+        assert_eq!(utf32(&position), (1, 1));
+        assert_eq!(
+            position,
+            document.position(PositionEncoding::Utf32, 1, 1).unwrap()
+        );
     }
 
     #[test]
@@ -909,58 +918,28 @@ mod tests {
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
-        assert_eq!(
-            range1.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            range1.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
+        assert_eq!(utf32(&range1.start_position()), (0, 0));
+        assert_eq!(utf32(&range1.end_position()), (0, 1));
 
         let range2 = cursor.next().unwrap();
         assert_eq!(range2.ch(), '\u{20AC}');
-        assert_eq!(
-            range2.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
-        assert_eq!(
-            range2.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 2 }
-        );
+        assert_eq!(utf32(&range2.start_position()), (0, 1));
+        assert_eq!(utf32(&range2.end_position()), (0, 2));
 
         let range3 = cursor.next().unwrap();
         assert_eq!(range3.ch(), 'b');
-        assert_eq!(
-            range3.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 2 }
-        );
-        assert_eq!(
-            range3.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 3 }
-        );
+        assert_eq!(utf32(&range3.start_position()), (0, 2));
+        assert_eq!(utf32(&range3.end_position()), (0, 3));
 
         let range4 = cursor.next().unwrap();
         assert_eq!(range4.ch(), '\u{1F3A8}');
-        assert_eq!(
-            range4.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 3 }
-        );
-        assert_eq!(
-            range4.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 4 }
-        );
+        assert_eq!(utf32(&range4.start_position()), (0, 3));
+        assert_eq!(utf32(&range4.end_position()), (0, 4));
 
         let range5 = cursor.next().unwrap();
         assert_eq!(range5.ch(), 'c');
-        assert_eq!(
-            range5.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 4 }
-        );
-        assert_eq!(
-            range5.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 5 }
-        );
+        assert_eq!(utf32(&range5.start_position()), (0, 4));
+        assert_eq!(utf32(&range5.end_position()), (0, 5));
     }
 
     #[test]
@@ -975,66 +954,47 @@ mod tests {
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), '\u{1F3A8}');
-        assert_eq!(
-            range1.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            range1.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
+        assert_eq!(utf32(&range1.start_position()), (0, 0));
+        assert_eq!(utf32(&range1.end_position()), (0, 1));
 
         let range2 = cursor.next().unwrap();
         assert_eq!(range2.ch(), '\n');
-        assert_eq!(
-            range2.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
-        assert_eq!(
-            range2.end_utf32(),
-            DocumentPosition::Utf32 { line: 1, column: 0 }
-        );
+        assert_eq!(utf32(&range2.start_position()), (0, 1));
+        assert_eq!(utf32(&range2.end_position()), (1, 0));
 
         let range3 = cursor.next().unwrap();
         assert_eq!(range3.ch(), '\u{20AC}');
-        assert_eq!(
-            range3.start_utf32(),
-            DocumentPosition::Utf32 { line: 1, column: 0 }
-        );
-        assert_eq!(
-            range3.end_utf32(),
-            DocumentPosition::Utf32 { line: 1, column: 1 }
-        );
+        assert_eq!(utf32(&range3.start_position()), (1, 0));
+        assert_eq!(utf32(&range3.end_position()), (1, 1));
 
         let range4 = cursor.next().unwrap();
         assert_eq!(range4.ch(), 'x');
-        assert_eq!(
-            range4.start_utf32(),
-            DocumentPosition::Utf32 { line: 1, column: 1 }
-        );
-        assert_eq!(
-            range4.end_utf32(),
-            DocumentPosition::Utf32 { line: 1, column: 2 }
-        );
+        assert_eq!(utf32(&range4.start_position()), (1, 1));
+        assert_eq!(utf32(&range4.end_position()), (1, 2));
     }
 
     #[test]
     fn contains_position_utf32() {
         // "\u{1F3A8}hello" - Emoji followed by ASCII
-        let cursor = DocumentCursor::new(
+        let document = Document::new(
             DocumentId::new("test.hop").unwrap(),
             "\u{1F3A8}hello".to_string(),
         );
-        let ranges: Vec<_> = cursor.collect();
+        let ranges: Vec<_> = document.cursor().collect();
+        let position = |line, column| {
+            document
+                .position(PositionEncoding::Utf32, line, column)
+                .unwrap()
+        };
 
         // Create range for "hello" (skipping the emoji)
         let hello_range = ranges[1].clone().to(ranges[5].clone());
 
         // Test UTF-32 position containment
-        assert!(hello_range.contains_position(DocumentPosition::Utf32 { line: 0, column: 1 }));
-        assert!(hello_range.contains_position(DocumentPosition::Utf32 { line: 0, column: 5 }));
-        assert!(!hello_range.contains_position(DocumentPosition::Utf32 { line: 0, column: 0 }));
-        assert!(!hello_range.contains_position(DocumentPosition::Utf32 { line: 0, column: 6 }));
+        assert!(hello_range.contains_position(&position(0, 1)));
+        assert!(hello_range.contains_position(&position(0, 5)));
+        assert!(!hello_range.contains_position(&position(0, 0)));
+        assert!(!hello_range.contains_position(&position(0, 6)));
     }
 
     #[test]
@@ -1051,41 +1011,17 @@ mod tests {
         let b = cursor.next().unwrap();
 
         // Emoji positions
-        assert_eq!(
-            emoji.start_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            emoji.end_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 2 }
-        );
-        assert_eq!(
-            emoji.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 0 }
-        );
-        assert_eq!(
-            emoji.end_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
+        assert_eq!(utf16(&emoji.start_position()), (0, 0));
+        assert_eq!(utf16(&emoji.end_position()), (0, 2));
+        assert_eq!(utf32(&emoji.start_position()), (0, 0));
+        assert_eq!(utf32(&emoji.end_position()), (0, 1));
 
         // 'a' positions - notice different column values
-        assert_eq!(
-            a.start_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 2 }
-        );
-        assert_eq!(
-            a.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 1 }
-        );
+        assert_eq!(utf16(&a.start_position()), (0, 2));
+        assert_eq!(utf32(&a.start_position()), (0, 1));
 
         // 'b' positions
-        assert_eq!(
-            b.start_utf16(),
-            DocumentPosition::Utf16 { line: 0, column: 3 }
-        );
-        assert_eq!(
-            b.start_utf32(),
-            DocumentPosition::Utf32 { line: 0, column: 2 }
-        );
+        assert_eq!(utf16(&b.start_position()), (0, 3));
+        assert_eq!(utf32(&b.start_position()), (0, 2));
     }
 }

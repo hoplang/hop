@@ -102,7 +102,7 @@ impl DocumentAnnotator {
             let range_doc_id = first_range.document_id().clone();
             let source = first_range.full_source().to_string();
             let lines: Vec<Option<DocumentRange>> = DocumentCursor::new(range_doc_id, source)
-                .chunk_by(|range| range.start_utf32().line())
+                .chunk_by(|range| range.start_position().line())
                 .into_iter()
                 .map(|(_, group)| group.filter(|s| s.ch() != '\n').collect())
                 .collect();
@@ -131,8 +131,8 @@ impl DocumentAnnotator {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
                         document_id,
-                        diagnostic.range().start_utf32().line() + 1,
-                        diagnostic.range().start_utf32().column() + 1
+                        diagnostic.range().start_position().line() + 1,
+                        diagnostic.range().start_position().utf32_column() + 1
                     ));
                 }
 
@@ -153,7 +153,7 @@ impl DocumentAnnotator {
 
         // An empty range marks a position between two characters rather than a
         // span, and is drawn as a single caret at that column.
-        let anchor_line = cmp::min(range.start_utf32().line(), lines.len() - 1);
+        let anchor_line = cmp::min(range.start_position().line(), lines.len() - 1);
         let (first_line, last_line) = if range.is_empty() {
             (
                 anchor_line.saturating_sub(self.lines_before),
@@ -161,8 +161,14 @@ impl DocumentAnnotator {
             )
         } else {
             (
-                range.start_utf32().line().saturating_sub(self.lines_before),
-                cmp::min(lines.len() - 1, range.end_utf32().line() + self.lines_after),
+                range
+                    .start_position()
+                    .line()
+                    .saturating_sub(self.lines_before),
+                cmp::min(
+                    lines.len() - 1,
+                    range.end_position().line() + self.lines_after,
+                ),
             )
         };
 
