@@ -168,7 +168,7 @@ fn check_with_asset_rewriter(
     expected: Expect,
 ) {
     let archive = Archive::from(archive);
-    let mut program = Program::default();
+    let mut program = Program::new();
     let mut modules = 0;
     for file in archive.iter() {
         assert!(
@@ -194,7 +194,7 @@ fn check_with_asset_rewriter(
         panic!("Diagnostics found");
     }
 
-    let typed_asts = program.get_typed_modules().clone();
+    let typed_asts = program.typed_modules().clone();
     let registry = program.type_registry();
 
     // Compile to IR without optimization

@@ -137,7 +137,7 @@ impl Project {
         })
     }
 
-    pub fn get_project_root(&self) -> &Path {
+    pub fn project_root(&self) -> &Path {
         &self.project_root
     }
 
@@ -392,7 +392,7 @@ mod tests {
         let project = Project::from(temp_dir.path()).unwrap();
 
         // A path inside the project whose name is not a valid document id
-        let path = project.get_project_root().join("my component.hop");
+        let path = project.project_root().join("my component.hop");
         let result = project.path_to_document_id(&path);
 
         assert!(

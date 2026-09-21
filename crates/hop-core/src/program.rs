@@ -81,6 +81,10 @@ pub struct Program {
 }
 
 impl Program {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Update or add a hop module to the program.
     ///
     /// This parses the document, updates the dependency graph, and re-typechecks
@@ -198,13 +202,13 @@ impl Program {
         self.css_documents.insert(document_id.clone(), document);
     }
 
-    pub fn get_asset_references(&self) -> &HashMap<DocumentId, Vec<AssetReference>> {
+    pub fn asset_references(&self) -> &HashMap<DocumentId, Vec<AssetReference>> {
         &self.asset_references
     }
 
     /// Returns the CSS document with asset paths rewritten, or `None` if
     /// there is no CSS document with the given id.
-    pub fn get_compiled_css_document(
+    pub fn compiled_css_document(
         &self,
         document_id: &DocumentId,
         asset_rewriter: Arc<dyn AssetRewriter>,
@@ -216,7 +220,7 @@ impl Program {
     /// Returns the formatted source code for a module.
     ///
     /// Returns an error if the module doesn't exist or has parse errors.
-    pub fn get_formatted_module(&self, document_id: &DocumentId) -> Result<String, FormatError> {
+    pub fn formatted_module(&self, document_id: &DocumentId) -> Result<String, FormatError> {
         let ast = self
             .parsed_asts
             .get(document_id)
@@ -234,7 +238,7 @@ impl Program {
     }
 
     /// Returns all hop module sources concatenated into a single string.
-    pub fn get_all_hop_sources(&self) -> String {
+    pub fn sources(&self) -> String {
         self.documents
             .values()
             .map(|doc| doc.as_str())
@@ -258,7 +262,7 @@ impl Program {
 
     /// Returns the range and the message to display when hovering the
     /// given position.
-    pub fn get_hover_info(&self, position: &DocumentPosition) -> Option<(DocumentRange, String)> {
+    pub fn hover_info(&self, position: &DocumentPosition) -> Option<(DocumentRange, String)> {
         self.hover_annotations
             .get(position.document_id())?
             .iter()
@@ -266,7 +270,7 @@ impl Program {
             .map(|annotation| (annotation.range().clone(), annotation.to_string()))
     }
 
-    pub fn get_definition_location(&self, position: &DocumentPosition) -> Option<DocumentRange> {
+    pub fn definition_location(&self, position: &DocumentPosition) -> Option<DocumentRange> {
         self.definition_links
             .get(position.document_id())?
             .iter()
@@ -274,7 +278,7 @@ impl Program {
             .map(|link| link.definition_range.clone())
     }
 
-    pub fn get_rename_locations(&self, position: &DocumentPosition) -> Option<Vec<DocumentRange>> {
+    pub fn rename_locations(&self, position: &DocumentPosition) -> Option<Vec<DocumentRange>> {
         let document_id = position.document_id();
         let ast = self.parsed_asts.get(document_id)?;
 
@@ -323,7 +327,7 @@ impl Program {
     /// Returns the range and current name of the renameable symbol at the
     /// given position: a function, record or enum name, at its declaration
     /// or at a use.
-    pub fn get_renameable_symbol(
+    pub fn renameable_symbol(
         &self,
         position: &DocumentPosition,
     ) -> Option<(DocumentRange, String)> {
@@ -511,7 +515,7 @@ impl Program {
         // Use orchestrate_pure to handle inlining and compilation
         // Pass the page filter to only compile the requested page
         let pure_module = orchestrate_pure(
-            self.get_typed_modules(),
+            self.typed_modules(),
             OrchestrateOptions {
                 skip_optimization,
                 page_filter: Some((document_id.clone(), page_name.clone())),
@@ -599,7 +603,7 @@ impl Program {
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> String {
         let ir_module = orchestrate(
-            self.get_typed_modules(),
+            self.typed_modules(),
             OrchestrateOptions {
                 skip_optimization,
                 asset_rewriter,
@@ -622,7 +626,7 @@ impl Program {
     }
 
     /// Get all typed modules for compilation
-    pub(crate) fn get_typed_modules(&self) -> &HashMap<DocumentId, TypedAst> {
+    pub(crate) fn typed_modules(&self) -> &HashMap<DocumentId, TypedAst> {
         &self.typed_asts
     }
 
@@ -674,7 +678,7 @@ mod tests {
 
     fn program_from_txtar(input: &str) -> Program {
         let archive = Archive::from(input);
-        let mut program = Program::default();
+        let mut program = Program::new();
         for file in archive.iter() {
             let document_id = DocumentId::new(&file.name).unwrap();
             let document = Document::new(document_id.clone(), file.content.clone());
@@ -684,7 +688,7 @@ mod tests {
     }
 
     fn program_from_archive(archive: &Archive) -> Program {
-        let mut program = Program::default();
+        let mut program = Program::new();
         for file in archive.iter() {
             let document_id = DocumentId::new(&file.name).unwrap();
             let document = Document::new(document_id.clone(), file.content.clone());
@@ -703,7 +707,7 @@ mod tests {
         }
 
         let locs = program_from_archive(&archive)
-            .get_rename_locations(&markers[0])
+            .rename_locations(&markers[0])
             .expect("Expected locations to be defined");
 
         let output = DocumentAnnotator::new()
@@ -737,7 +741,7 @@ mod tests {
         );
 
         let range = program
-            .get_definition_location(&markers[0])
+            .definition_location(&markers[0])
             .expect("Expected definition location to be defined");
 
         let output = DocumentAnnotator::new()
@@ -788,7 +792,7 @@ mod tests {
         }
 
         let (range, name) = program_from_archive(&archive)
-            .get_renameable_symbol(&markers[0])
+            .renameable_symbol(&markers[0])
             .expect("Expected symbol to be defined");
 
         let output = DocumentAnnotator::new()
@@ -819,7 +823,7 @@ mod tests {
         );
 
         let (range, message) = program
-            .get_hover_info(&markers[0])
+            .hover_info(&markers[0])
             .expect("Expected hover info to be defined");
 
         let output = DocumentAnnotator::new()

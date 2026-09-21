@@ -92,7 +92,7 @@ impl HopLanguageServer {
     pub fn new(client_tx: mpsc::Sender<ClientMessage>) -> Self {
         Self {
             client_tx,
-            program: RwLock::new(Program::default()),
+            program: RwLock::new(Program::new()),
             project: OnceCell::new(),
         }
     }
@@ -255,12 +255,10 @@ impl LanguageServer for HopLanguageServer {
             let Some(position) = lsp_pos_to_doc_pos(&program, &document_id, position) else {
                 return Ok(None);
             };
-            Ok(program
-                .get_hover_info(&position)
-                .map(|(range, message)| Hover {
-                    contents: HoverContents::Scalar(MarkedString::String(message)),
-                    range: Some(doc_range_to_lsp_range(range)),
-                }))
+            Ok(program.hover_info(&position).map(|(range, message)| Hover {
+                contents: HoverContents::Scalar(MarkedString::String(message)),
+                range: Some(doc_range_to_lsp_range(range)),
+            }))
         } else {
             Ok(None)
         }
@@ -282,7 +280,7 @@ impl LanguageServer for HopLanguageServer {
                 return Ok(None);
             };
 
-            Ok(program.get_definition_location(&position).map(|range| {
+            Ok(program.definition_location(&position).map(|range| {
                 GotoDefinitionResponse::Scalar(Location {
                     uri: Self::document_id_to_uri(range.document_id(), project),
                     range: doc_range_to_lsp_range(range),
@@ -310,7 +308,7 @@ impl LanguageServer for HopLanguageServer {
             };
 
             Ok(program
-                .get_renameable_symbol(&position)
+                .renameable_symbol(&position)
                 .map(
                     |(range, placeholder)| PrepareRenameResponse::RangeWithPlaceholder {
                         range: doc_range_to_lsp_range(range),
@@ -336,7 +334,7 @@ impl LanguageServer for HopLanguageServer {
                 return Ok(None);
             };
 
-            if let Some(rename_locations) = server.get_rename_locations(&position) {
+            if let Some(rename_locations) = server.rename_locations(&position) {
                 #[allow(clippy::mutable_key_type)]
                 let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 
@@ -371,7 +369,7 @@ impl LanguageServer for HopLanguageServer {
 
             let program = self.program.read().await;
 
-            match program.get_formatted_module(&document_id) {
+            match program.formatted_module(&document_id) {
                 Ok(formatted) => Ok(Some(vec![TextEdit {
                     range: ls_types::Range {
                         start: ls_types::Position {
@@ -433,7 +431,7 @@ mod tests {
 
         let project = server.project.get().expect("project should be resolved");
         assert_eq!(
-            project.get_project_root(),
+            project.project_root(),
             temp_dir.path().canonicalize().unwrap()
         );
     }
@@ -511,7 +509,7 @@ mod tests {
 
         let project = server.project.get().expect("project should be resolved");
         assert_eq!(
-            project.get_project_root(),
+            project.project_root(),
             temp_dir.path().join("hop").canonicalize().unwrap()
         );
     }

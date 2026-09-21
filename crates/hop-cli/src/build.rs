@@ -30,7 +30,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         .map_err(annotated_config_error)?;
 
     // Load program
-    let mut program = Program::default();
+    let mut program = Program::new();
     for document_id in project.documents()? {
         let document = project.load_document(&document_id)?;
         if document_id.extension() == Some("css") {
@@ -46,7 +46,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
         // An asset referenced via `asset!()` (in hop) or `--asset()` (in CSS)
         // that does not exist on disk.
-        for refs in program.get_asset_references().values() {
+        for refs in program.asset_references().values() {
             diagnostics.extend(
                 refs.iter()
                     .filter(|asset_ref| {
@@ -73,7 +73,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Get all asset document ids and compute hashes/filename replacements
     let asset_document_ids: Vec<DocumentId> = program
-        .get_asset_references()
+        .asset_references()
         .values()
         .flatten()
         .map(|r| r.document_id().clone())
@@ -88,17 +88,17 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Run Tailwind on the optimized IR (only classes that survived dead code removal)
     //
-    // TODO: Make get_compiled_css_document bundle CSS
+    // TODO: Make compiled_css_document bundle CSS
     if let Some(css_input_path) = config.css_input_path().map_err(annotated_config_error)? {
-        let input_path = project.get_project_root().join(css_input_path);
+        let input_path = project.project_root().join(css_input_path);
         let tailwind_input_document_id = project.path_to_document_id(input_path.as_path())?;
         let compiled_css = program
-            .get_compiled_css_document(&tailwind_input_document_id, asset_rewriter.clone())
+            .compiled_css_document(&tailwind_input_document_id, asset_rewriter.clone())
             .ok_or_else(|| {
                 anyhow::anyhow!("CSS document '{}' not found", tailwind_input_document_id)
             })?;
         let tailwind_runner = TailwindRunner::new();
-        let sources = program.get_all_hop_sources();
+        let sources = program.sources();
         css_output = tailwind_runner.compile_once(&compiled_css, &sources)?;
     }
     // Hash the rewritten CSS output and compute a href that mirrors how other
@@ -115,7 +115,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // `<script type="module">` into every page's <head>.
     let js_bundle = match config.js_input_path().map_err(annotated_config_error)? {
         Some(js_input_path) => {
-            let input_path = project.get_project_root().join(js_input_path);
+            let input_path = project.project_root().join(js_input_path);
             let bundled = esbuild_runner::bundle_script(&input_path, true)?;
             let js_filename = format!("scripts-{:08x}.js", crc32fast::hash(bundled.as_bytes()));
             let js_src = match production_prefix.as_deref() {
@@ -139,7 +139,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Preserve the file's mtime if the content is unchanged, so downstream
     // build tools (e.g. cargo) don't trigger unnecessary recompiles.
     let output_path = project
-        .get_project_root()
+        .project_root()
         .join(config.output_path().map_err(annotated_config_error)?);
     if !fs::read(&output_path).is_ok_and(|existing| existing == generated_code.as_bytes()) {
         if let Some(parent) = output_path.parent() {
@@ -159,7 +159,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Write CSS file
     let css_dest = project
-        .get_project_root()
+        .project_root()
         .join(&assets_output_dir)
         .join(&css_filename);
     if let Some(parent) = css_dest.parent() {
@@ -177,7 +177,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Write JS bundle
     if let Some((bundled, js_filename, _)) = &js_bundle {
         let js_dest = project
-            .get_project_root()
+            .project_root()
             .join(&assets_output_dir)
             .join(js_filename);
         if let Some(parent) = js_dest.parent() {
@@ -245,7 +245,7 @@ fn copy_assets(
 ) -> Result<()> {
     let document_ids: BTreeSet<DocumentId> = paths.into_iter().collect();
 
-    let dest_root = project.get_project_root().join(output_dir);
+    let dest_root = project.project_root().join(output_dir);
 
     for document_id in &document_ids {
         let src = project.document_id_to_path(document_id);

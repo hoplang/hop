@@ -141,7 +141,7 @@ mod tests {
 
     fn render(source: &str) -> String {
         let document_id = DocumentId::new("test.hop").unwrap();
-        let mut program = Program::default();
+        let mut program = Program::new();
         program.update_module(
             &document_id,
             Document::new(document_id.clone(), source.to_string()),
@@ -150,7 +150,7 @@ mod tests {
         let diagnostics = program.diagnostics();
         assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
 
-        let typed_asts = program.get_typed_modules().clone();
+        let typed_asts = program.typed_modules().clone();
         let page_name = TypeName::parse("Test").unwrap();
         let module = orchestrate_pure(
             &typed_asts,
