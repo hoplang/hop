@@ -5,8 +5,6 @@ mod lsp;
 use clap::{CommandFactory, Parser, Subcommand};
 use hop_core::Project;
 use std::path::Path;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::fmt::format::FmtSpan;
 
 #[derive(Parser)]
 #[command(name = "hop")]
@@ -51,12 +49,6 @@ fn print_header(message: &str) {
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_env_filter(EnvFilter::from_default_env())
-        .with_span_events(FmtSpan::CLOSE)
-        .init();
-
     let cli = Cli::parse();
 
     match &cli.command {

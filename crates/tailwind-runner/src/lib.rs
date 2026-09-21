@@ -1,7 +1,5 @@
 use std::{fs, path::PathBuf};
 
-use tracing::instrument;
-
 #[derive(Debug, thiserror::Error)]
 pub enum TailwindError {
     #[error("Tailwind CSS failed: {stderr}")]
@@ -51,10 +49,6 @@ impl TailwindRunner {
     ///
     /// This is the high-level API for one-shot compilation. It creates a temp
     /// directory, writes the sources, runs Tailwind, and returns the generated CSS.
-    #[instrument(
-        name = "TailwindRunner::compile_once",
-        skip(self, css_input, sources_input)
-    )]
     pub fn compile_once(
         &self,
         css_input: &str,
@@ -87,8 +81,6 @@ impl TailwindRunner {
         let input_str = config.input_path.display().to_string();
         let output_str = config.output_path.display().to_string();
         let args = vec!["--input", &input_str, "--output", &output_str, "--minify"];
-
-        tracing::info!(target: "exec", cmd = "tailwindcss", args = ?args, working_dir = %config.working_dir.display());
 
         let output = std::process::Command::new("tailwindcss")
             .args(&args)
@@ -124,8 +116,6 @@ impl TailwindRunner {
             output_path_str.as_str(),
         ];
 
-        tracing::info!(target: "exec", cmd = "tailwindcss", args = ?args, working_dir = %config.working_dir.display());
-
         let child = tokio::process::Command::new("tailwindcss")
             .args(&args)
             .current_dir(&config.working_dir)
@@ -142,10 +132,6 @@ impl TailwindRunner {
     ///
     /// This method manages its own temp directory and file watching internally.
     /// Clients push source code strings in and receive CSS content notifications out.
-    #[instrument(
-        name = "TailwindRunner::start_watcher",
-        skip(self, initial_css_input, initial_sources_input)
-    )]
     pub async fn start_watcher(
         &self,
         initial_css_input: String,
