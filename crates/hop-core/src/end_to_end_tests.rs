@@ -353,8 +353,6 @@ fn check_with_asset_rewriter(
 
 #[cfg(test)]
 mod tests {
-    use crate::asset_rewriter::{PrefixingAssetRewriter, ReplacingAssetRewriter};
-
     use super::*;
     use crate::ir::pure_module_generator::random_module_with_test_view;
     use expect_test::expect;
@@ -13198,9 +13196,9 @@ mod tests {
                   }
                 }
             "#},
-            Some(Arc::new(PrefixingAssetRewriter::new(
-                "/hop_assets".to_string(),
-            ))),
+            Some(Arc::new(|document_id: &DocumentId| {
+                format!("/hop_assets/{document_id}")
+            })),
             r#"<img src="/hop_assets/logo.svg">"#,
             expect![[r#"
                 -- ir (unoptimized) --
@@ -13245,10 +13243,10 @@ mod tests {
                   }
                 }
             "#},
-            Some(Arc::new(ReplacingAssetRewriter::new(HashMap::from([(
-                DocumentId::new("logo.svg").unwrap(),
-                "/static/v1/logo-a1b2c3d4.svg".to_string(),
-            )])))),
+            Some(Arc::new(|document_id: &DocumentId| {
+                assert_eq!(document_id.as_str(), "logo.svg");
+                "/static/v1/logo-a1b2c3d4.svg".to_string()
+            })),
             r#"<img src="/static/v1/logo-a1b2c3d4.svg">"#,
             expect![[r#"
                 -- ir (unoptimized) --

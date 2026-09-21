@@ -29,7 +29,7 @@ mod type_error;
 
 // Public API
 pub use asset_reference::AssetReference;
-pub use asset_rewriter::{AssetRewriter, PrefixingAssetRewriter, ReplacingAssetRewriter};
+pub use asset_rewriter::AssetRewriter;
 pub use config::{Config, TargetLanguage};
 pub use diagnostic::Diagnostic;
 pub use document::{Document, DocumentPosition, DocumentRange, PositionEncoding};

@@ -1,39 +1,12 @@
-use std::collections::HashMap;
-
 use crate::document_id::DocumentId;
 
+/// Maps an asset's document id to the URL emitted for it in compiled output.
 pub trait AssetRewriter: Send + Sync {
     fn rewrite(&self, document_id: &DocumentId) -> String;
 }
 
-pub struct ReplacingAssetRewriter {
-    replacements: HashMap<DocumentId, String>,
-}
-
-impl ReplacingAssetRewriter {
-    pub fn new(replacements: HashMap<DocumentId, String>) -> Self {
-        Self { replacements }
-    }
-}
-
-impl AssetRewriter for ReplacingAssetRewriter {
+impl<F: Fn(&DocumentId) -> String + Send + Sync> AssetRewriter for F {
     fn rewrite(&self, document_id: &DocumentId) -> String {
-        self.replacements.get(document_id).unwrap().clone()
-    }
-}
-
-pub struct PrefixingAssetRewriter {
-    prefix: String,
-}
-
-impl PrefixingAssetRewriter {
-    pub fn new(prefix: String) -> Self {
-        Self { prefix }
-    }
-}
-
-impl AssetRewriter for PrefixingAssetRewriter {
-    fn rewrite(&self, document_id: &DocumentId) -> String {
-        format!("/{}/{}", self.prefix.trim_matches('/'), document_id)
+        self(document_id)
     }
 }

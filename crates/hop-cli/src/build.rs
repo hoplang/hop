@@ -1,7 +1,7 @@
 use anyhow::Result;
 use hop_core::{
-    AssetReference, Diagnostic, DocumentAnnotator, DocumentId, Program, Project,
-    ReplacingAssetRewriter, Severity,
+    AssetReference, AssetRewriter, Diagnostic, DocumentAnnotator, DocumentId, Program, Project,
+    Severity,
 };
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
@@ -79,7 +79,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     let (filenames_with_hashes, filename_replacements) =
         compute_filename_replacements(&asset_document_ids, production_prefix.clone(), project)?;
 
-    let asset_rewriter = Arc::new(ReplacingAssetRewriter::new(filename_replacements));
+    let asset_rewriter: Arc<dyn AssetRewriter> =
+        Arc::new(move |document_id: &DocumentId| filename_replacements[document_id].clone());
 
     let mut css_output = String::new();
 
