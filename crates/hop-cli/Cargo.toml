@@ -22,7 +22,7 @@ crc32fast = "1"
 txtar = { path = "../txtar" }
 indoc = "2.0"
 expect-test = "1.5"
-tempfile = "3.8"
+tempfile = "3.27"
 
 [lints.clippy]
 too_many_arguments = "allow"

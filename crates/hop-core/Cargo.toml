@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-toml = "0.9"
+toml = "1"
 unicode-width = "0.2"
 thiserror = "2.0"
 pretty = "0.12"
@@ -16,7 +16,7 @@ regex-syntax = "0.8"
 
 [dev-dependencies]
 txtar = { path = "../txtar" }
-tempfile = "3.8"
+tempfile = "3.27"
 expect-test = "1.5"
 arbitrary = "1"
 arbtest = "0.3"
