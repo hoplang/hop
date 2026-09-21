@@ -173,12 +173,6 @@ impl Project {
         Ok(Document::new(document_id.clone(), content))
     }
 
-    /// Check if a document exists.
-    pub fn document_exists(&self, document_id: &DocumentId) -> io::Result<bool> {
-        let path = self.document_id_to_path(document_id);
-        std::fs::exists(path)
-    }
-
     /// Find all hop modules in this project.
     pub fn find_hop_modules(&self) -> Result<Vec<DocumentId>, ProjectError> {
         self.find_files_by_extension("hop")

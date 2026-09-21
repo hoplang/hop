@@ -49,8 +49,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
                 refs.iter()
                     .filter(|asset_ref| {
                         !project
-                            .document_exists(asset_ref.document_id())
-                            .unwrap_or(false)
+                            .document_id_to_path(asset_ref.document_id())
+                            .exists()
                     })
                     .map(AssetReference::not_found),
             );
