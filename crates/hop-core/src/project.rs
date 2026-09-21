@@ -1,10 +1,4 @@
 //! Represents a hop project and provides methods for working with it.
-//!
-//! A [`Project`] is anchored to a directory containing a `hop.toml` configuration
-//! file. It provides functionality for:
-//!
-//! - Converting between file paths and [`ModuleId`]
-//! - Loading modules and configuration
 
 use std::fs;
 use std::io;
@@ -155,12 +149,10 @@ impl Project {
         })
     }
 
-    /// Convert a ModuleId back to a file path
     pub fn document_id_to_path(&self, document_id: &DocumentId) -> PathBuf {
         self.project_root.join(document_id.as_str())
     }
 
-    /// Load a single document from its module ID
     pub fn load_document(&self, document_id: &DocumentId) -> Result<Document, ProjectError> {
         let path = self.document_id_to_path(document_id);
         let content =
@@ -168,7 +160,6 @@ impl Project {
         Ok(Document::new(document_id.clone(), content))
     }
 
-    /// Find every hop module and CSS document in this project.
     pub fn documents(&self) -> Result<Vec<DocumentId>, ProjectError> {
         let mut document_ids = Vec::new();
 

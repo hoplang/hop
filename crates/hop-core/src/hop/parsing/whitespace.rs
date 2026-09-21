@@ -142,7 +142,7 @@ mod tests {
     fn render(source: &str) -> String {
         let document_id = DocumentId::new("test.hop").unwrap();
         let mut program = Program::new();
-        program.update_module(
+        program.update_hop_document(
             &document_id,
             Document::new(document_id.clone(), source.to_string()),
         );

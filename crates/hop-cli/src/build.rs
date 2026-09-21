@@ -36,7 +36,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         if document_id.extension() == Some("css") {
             program.update_css_document(&document_id, document);
         } else {
-            program.update_module(&document_id, document);
+            program.update_hop_document(&document_id, document);
         }
     }
 
@@ -88,12 +88,12 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Run Tailwind on the optimized IR (only classes that survived dead code removal)
     //
-    // TODO: Make compiled_css_document bundle CSS
+    // TODO: Make compile_css_document bundle CSS
     if let Some(css_input_path) = config.css_input_path().map_err(annotated_config_error)? {
         let input_path = project.project_root().join(css_input_path);
         let tailwind_input_document_id = project.path_to_document_id(input_path.as_path())?;
         let compiled_css = program
-            .compiled_css_document(&tailwind_input_document_id, asset_rewriter.clone())
+            .compile_css_document(&tailwind_input_document_id, asset_rewriter.clone())
             .ok_or_else(|| {
                 anyhow::anyhow!("CSS document '{}' not found", tailwind_input_document_id)
             })?;

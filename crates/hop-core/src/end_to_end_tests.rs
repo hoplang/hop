@@ -178,7 +178,7 @@ fn check_with_asset_rewriter(
         );
         let document_id = DocumentId::new(&file.name).unwrap();
         let document = Document::new(document_id.clone(), file.content.clone());
-        program.update_module(&document_id, document);
+        program.update_hop_document(&document_id, document);
         modules += 1;
     }
     assert!(modules > 0, "archive declares no modules");

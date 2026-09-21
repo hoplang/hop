@@ -26,7 +26,7 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
     let mut program = Program::new();
 
     for document_id in &document_ids {
-        program.update_module(document_id, project.load_document(document_id)?);
+        program.update_hop_document(document_id, project.load_document(document_id)?);
     }
 
     // Format every module before writing any, so that a parse error in one
@@ -34,7 +34,7 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
     let mut formatted = Vec::new();
     let mut unparsable = Vec::new();
     for document_id in &document_ids {
-        match program.formatted_module(document_id) {
+        match program.format_hop_document(document_id) {
             Ok(source) => formatted.push((document_id, source)),
             Err(FormatError::HasParseErrors(_)) => unparsable.push(document_id),
             Err(err) => return Err(err.into()),

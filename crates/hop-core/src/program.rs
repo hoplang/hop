@@ -35,10 +35,10 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FormatError {
-    #[error("Module '{0}' not found")]
-    ModuleNotFound(DocumentId),
+    #[error("Document '{0}' not found")]
+    DocumentNotFound(DocumentId),
 
-    #[error("Cannot format module '{0}': it has parse errors")]
+    #[error("Cannot format document '{0}': it has parse errors")]
     HasParseErrors(DocumentId),
 }
 
@@ -85,13 +85,13 @@ impl Program {
         Self::default()
     }
 
-    /// Update or add a hop module to the program.
+    /// Update or add a hop document to the program.
     ///
     /// This parses the document, updates the dependency graph, and re-typechecks
     /// the module along with any modules that depend on it (directly or transitively).
     ///
-    /// Returns the list of all module IDs that were re-typechecked.
-    pub fn update_module(
+    /// Returns the ids of all documents that were re-typechecked.
+    pub fn update_hop_document(
         &mut self,
         document_id: &DocumentId,
         document: Document,
@@ -99,7 +99,7 @@ impl Program {
         // Store the document
         self.documents.insert(document_id.clone(), document.clone());
 
-        // Parse the module
+        // Parse the document
         let parse_errors = self.parse_errors.entry(document_id.clone()).or_default();
         parse_errors.clear();
         let parsed_ast = parse(document_id.clone(), document, parse_errors);
@@ -135,15 +135,15 @@ impl Program {
             );
         }
 
-        // Return all modules that have been re-typechecked
+        // Return the ids of all documents that were re-typechecked
         grouped_modules.into_iter().flatten().collect()
     }
 
-    /// Remove a hop module from the program.
+    /// Remove a hop document from the program.
     ///
-    /// This cleans up all state associated with the module and re-typechecks
+    /// This cleans up all state associated with the document and re-typechecks
     /// any modules that depended on it (since their imports are now broken).
-    pub fn remove_module(&mut self, document_id: &DocumentId) {
+    pub fn remove_hop_document(&mut self, document_id: &DocumentId) {
         // Remove document and parsed state
         self.documents.remove(document_id);
         self.parse_errors.remove(document_id);
@@ -208,7 +208,7 @@ impl Program {
 
     /// Returns the CSS document with asset paths rewritten, or `None` if
     /// there is no CSS document with the given id.
-    pub fn compiled_css_document(
+    pub fn compile_css_document(
         &self,
         document_id: &DocumentId,
         asset_rewriter: Arc<dyn AssetRewriter>,
@@ -217,14 +217,14 @@ impl Program {
         Some(css::rewrite_asset_paths(css, asset_rewriter))
     }
 
-    /// Returns the formatted source code for a module.
+    /// Returns the formatted source code for a hop document.
     ///
-    /// Returns an error if the module doesn't exist or has parse errors.
-    pub fn formatted_module(&self, document_id: &DocumentId) -> Result<String, FormatError> {
+    /// Returns an error if the document doesn't exist or has parse errors.
+    pub fn format_hop_document(&self, document_id: &DocumentId) -> Result<String, FormatError> {
         let ast = self
             .parsed_asts
             .get(document_id)
-            .ok_or_else(|| FormatError::ModuleNotFound(document_id.clone()))?;
+            .ok_or_else(|| FormatError::DocumentNotFound(document_id.clone()))?;
 
         if self
             .parse_errors
@@ -237,7 +237,7 @@ impl Program {
         Ok(format(ast))
     }
 
-    /// Returns all hop module sources concatenated into a single string.
+    /// Returns the text of every hop document concatenated into a single string.
     pub fn sources(&self) -> String {
         self.documents
             .values()
@@ -246,8 +246,8 @@ impl Program {
             .join("\n")
     }
 
-    /// Resolve an editor's line and column in a module to a position.
-    /// None if the module is unknown or the position is outside its text.
+    /// Resolve an editor's line and column in a document to a position.
+    /// None if the document is unknown or the position is outside its text.
     pub fn position(
         &self,
         document_id: &DocumentId,
@@ -428,10 +428,10 @@ impl Program {
             .collect()
     }
 
-    /// Every diagnostic across all modules and CSS documents, sorted by
+    /// Every diagnostic across all hop and CSS documents, sorted by
     /// document id and position.
     ///
-    /// Type errors are not reported for a module that has parse errors,
+    /// Type errors are not reported for a document that has parse errors,
     /// since they may be nonsensical when parsing fails.
     pub fn diagnostics(&self) -> Vec<Diagnostic> {
         self.parse_errors
@@ -444,11 +444,11 @@ impl Program {
             .collect()
     }
 
-    /// Every diagnostic for a single module or CSS document, sorted by
+    /// Every diagnostic for a single hop or CSS document, sorted by
     /// position. Returns an empty list for a document the program does not
     /// know about.
     ///
-    /// Type errors are not reported for a module that has parse errors,
+    /// Type errors are not reported for a document that has parse errors,
     /// since they may be nonsensical when parsing fails.
     pub fn document_diagnostics(&self, document_id: &DocumentId) -> Vec<Diagnostic> {
         let parse_errors = self
@@ -489,7 +489,7 @@ impl Program {
         diagnostics
     }
 
-    /// Evaluate a page given a module and page name.
+    /// Evaluate a page given a document and page name.
     fn evaluate_page_with_values(
         &self,
         document_id: &DocumentId,
@@ -499,7 +499,7 @@ impl Program {
         skip_optimization: bool,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> Result<String, EvaluatePageError> {
-        // Refuse to evaluate if there are errors in any module
+        // Refuse to evaluate if there are errors in any document
         if self.parse_errors.values().any(|errors| !errors.is_empty()) {
             return Err(EvaluatePageError::ParseErrors);
         }
@@ -682,7 +682,7 @@ mod tests {
         for file in archive.iter() {
             let document_id = DocumentId::new(&file.name).unwrap();
             let document = Document::new(document_id.clone(), file.content.clone());
-            program.update_module(&document_id, document);
+            program.update_hop_document(&document_id, document);
         }
         program
     }
@@ -692,7 +692,7 @@ mod tests {
         for file in archive.iter() {
             let document_id = DocumentId::new(&file.name).unwrap();
             let document = Document::new(document_id.clone(), file.content.clone());
-            program.update_module(&document_id, document);
+            program.update_hop_document(&document_id, document);
         }
         program
     }
@@ -2250,7 +2250,7 @@ mod tests {
             "#]],
         );
         // Resolve cycle
-        program.update_module(
+        program.update_hop_document(
             &DocumentId::new("a.hop").unwrap(),
             Document::new(
                 DocumentId::new("a.hop").unwrap(),
@@ -2318,7 +2318,7 @@ mod tests {
             "#]],
         );
         // Resolve cycle
-        program.update_module(
+        program.update_hop_document(
             &DocumentId::new("c.hop").unwrap(),
             Document::new(
                 DocumentId::new("c.hop").unwrap(),
@@ -2333,7 +2333,7 @@ mod tests {
         // Type errors should now be empty
         check_diagnostics(&program, expect![""]);
         // Introduce new cycle a → b → a
-        program.update_module(
+        program.update_hop_document(
             &DocumentId::new("b.hop").unwrap(),
             Document::new(
                 DocumentId::new("b.hop").unwrap(),
@@ -2361,7 +2361,7 @@ mod tests {
             "#]],
         );
         // Resolve cycle
-        program.update_module(
+        program.update_hop_document(
             &DocumentId::new("b.hop").unwrap(),
             Document::new(
                 DocumentId::new("b.hop").unwrap(),
@@ -2401,7 +2401,7 @@ mod tests {
         check_diagnostics(&program, expect![""]);
 
         // Remove the components module
-        program.remove_module(&DocumentId::new("components.hop").unwrap());
+        program.remove_hop_document(&DocumentId::new("components.hop").unwrap());
 
         // Now main should have a type error about the missing import
         check_diagnostics(
@@ -2420,7 +2420,7 @@ mod tests {
         );
 
         // Add the module back
-        program.update_module(
+        program.update_hop_document(
             &DocumentId::new("components.hop").unwrap(),
             Document::new(
                 DocumentId::new("components.hop").unwrap(),

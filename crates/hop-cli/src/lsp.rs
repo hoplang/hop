@@ -202,7 +202,7 @@ impl LanguageServer for HopLanguageServer {
                     let mut server = self.program.write().await;
                     for document_id in &document_ids {
                         if let Ok(document) = project.load_document(document_id) {
-                            server.update_module(document_id, document);
+                            server.update_hop_document(document_id, document);
                         }
                     }
                 }
@@ -230,7 +230,7 @@ impl LanguageServer for HopLanguageServer {
                 let changed_modules: Vec<DocumentId>;
                 {
                     let mut server = self.program.write().await;
-                    changed_modules = server.update_module(
+                    changed_modules = server.update_hop_document(
                         &document_id,
                         Document::new(document_id.clone(), change.text),
                     );
@@ -369,7 +369,7 @@ impl LanguageServer for HopLanguageServer {
 
             let program = self.program.read().await;
 
-            match program.formatted_module(&document_id) {
+            match program.format_hop_document(&document_id) {
                 Ok(formatted) => Ok(Some(vec![TextEdit {
                     range: ls_types::Range {
                         start: ls_types::Position {
