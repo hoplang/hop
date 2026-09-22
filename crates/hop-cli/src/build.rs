@@ -1,7 +1,7 @@
 use crate::project::Project;
 use anyhow::Result;
 use hop_core::{
-    AssetPath, AssetPathRewriter, AssetReference, Diagnostic, DiagnosticSeverity,
+    AssetPath, AssetPathRewriter, AssetReference, Config, Diagnostic, DiagnosticSeverity,
     DocumentAnnotator, Program,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -23,12 +23,23 @@ fn annotated_config_error(error: Diagnostic) -> anyhow::Error {
     anyhow::anyhow!("Configuration failed:\n{}", annotator.render())
 }
 
+/// A value `hop build` needs but `hop.toml` leaves out.
+fn missing_config_value(field: &str) -> anyhow::Error {
+    anyhow::anyhow!("Build failed:\nmissing field `{field}` in hop.toml\n")
+}
+
 pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResult> {
-    let config = project.load_config()?;
-    let assets_output_dir = config.assets_output_dir().map_err(annotated_config_error)?;
-    let production_prefix = config
-        .assets_production_prefix()
-        .map_err(annotated_config_error)?;
+    let config_document = project.load_config()?;
+    let config = Config::parse(&config_document).map_err(annotated_config_error)?;
+    let assets_output_dir = config
+        .assets_output_dir()
+        .ok_or_else(|| missing_config_value("assets.output_dir"))?;
+    let target = config
+        .compile_target()
+        .ok_or_else(|| missing_config_value("compile.target"))?;
+    let output_path = config
+        .compile_output_path()
+        .ok_or_else(|| missing_config_value("compile.output_path"))?;
 
     // Load program
     let mut program = Program::new();
@@ -88,7 +99,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     let filename_replacements: HashMap<AssetPath, String> = hashed_filenames
         .iter()
         .map(|(asset_path, filename)| {
-            let url = match &production_prefix {
+            let url = match config.assets_production_prefix() {
                 Some(p) => format!("/{}/{}", p.trim_matches('/'), filename),
                 None => format!("/{}", filename),
             };
@@ -103,9 +114,9 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Run Tailwind on the optimized IR (only classes that survived dead code removal)
     //
     // TODO: Make compile_css_document bundle CSS
-    if let Some(css_input) = config.css_input_path().map_err(annotated_config_error)? {
+    if let Some(css_input) = config.css_input_path() {
         let compiled_css = program
-            .compile_css_document(&css_input, asset_path_rewriter.clone())
+            .compile_css_document(css_input, asset_path_rewriter.clone())
             .ok_or_else(|| anyhow::anyhow!("CSS document '{}' not found", css_input))?;
         let tailwind_runner = TailwindRunner::new();
         let sources = program.sources();
@@ -114,7 +125,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Hash the rewritten CSS output and compute a href that mirrors how other
     // assets are rewritten (production_prefix + content-hashed filename).
     let css_filename = format!("styles-{:08x}.css", crc32fast::hash(css_output.as_bytes()));
-    let css_link_href = match production_prefix.as_deref() {
+    let css_link_href = match config.assets_production_prefix() {
         Some(prefix) => format!("/{}/{}", prefix.trim_matches('/'), css_filename),
         None => format!("/{}", css_filename),
     };
@@ -123,12 +134,12 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // output is hashed and a src is computed the same way as the CSS link
     // (production_prefix + content-hashed filename), then injected as a
     // `<script type="module">` into every page's <head>.
-    let js_bundle = match config.js_input_path().map_err(annotated_config_error)? {
+    let js_bundle = match config.js_input_path() {
         Some(js_input) => {
-            let input_path = project.root().document_id_to_path(&js_input);
+            let input_path = project.root().document_id_to_path(js_input);
             let bundled = esbuild_runner::bundle_script(&input_path, true)?;
             let js_filename = format!("scripts-{:08x}.js", crc32fast::hash(bundled.as_bytes()));
-            let js_src = match production_prefix.as_deref() {
+            let js_src = match config.assets_production_prefix() {
                 Some(prefix) => format!("/{}/{}", prefix.trim_matches('/'), js_filename),
                 None => format!("/{}", js_filename),
             };
@@ -139,7 +150,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Compile to IR and inject link to the final CSS file (and script to the JS bundle).
     let generated_code = program.transpile(
-        config.target().map_err(annotated_config_error)?,
+        target,
         &css_link_href,
         js_bundle.as_ref().map(|(_, _, src)| src.as_str()),
         skip_optimization,
@@ -148,10 +159,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Preserve the file's mtime if the content is unchanged, so downstream
     // build tools (e.g. cargo) don't trigger unnecessary recompiles.
-    let output_path = project
-        .root()
-        .as_path()
-        .join(config.output_path().map_err(annotated_config_error)?);
+    let output_path = project.root().as_path().join(output_path);
     if !fs::read(&output_path).is_ok_and(|existing| existing == generated_code.as_bytes()) {
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)?;
@@ -160,13 +168,13 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     }
 
     // Copy assets with hashed filenames
-    copy_assets(project, &assets_output_dir, &hashed_filenames)?;
+    copy_assets(project, assets_output_dir, &hashed_filenames)?;
 
     // Write CSS file
     let css_dest = project
         .root()
         .as_path()
-        .join(&assets_output_dir)
+        .join(assets_output_dir)
         .join(&css_filename);
     if let Some(parent) = css_dest.parent() {
         fs::create_dir_all(parent).map_err(|err| {
@@ -185,7 +193,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         let js_dest = project
             .root()
             .as_path()
-            .join(&assets_output_dir)
+            .join(assets_output_dir)
             .join(js_filename);
         if let Some(parent) = js_dest.parent() {
             fs::create_dir_all(parent).map_err(|err| {
@@ -734,11 +742,31 @@ mod tests {
                 <svg>logo</svg>
             "#},
             expect![[r#"
-                Configuration failed:
-                error: missing field `assets`
-                  --> hop.toml (line 1, col 1)
-                1 | [compile]
-                  | ^
+                Build failed:
+                missing field `assets.output_dir` in hop.toml
+            "#]],
+        )
+    }
+
+    #[test]
+    #[ignore]
+    fn missing_target_is_rejected() {
+        check_error(
+            indoc! {r#"
+                -- hop.toml --
+                [compile]
+                output_path = "app.ts"
+
+                [assets]
+                output_dir = "dist/public"
+                -- main.hop --
+                page Home() {
+                    fn body() -> Html {}
+                }
+            "#},
+            expect![[r#"
+                Build failed:
+                missing field `compile.target` in hop.toml
             "#]],
         )
     }

@@ -7,7 +7,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use hop_core::{Config, Document, DocumentId, ProjectRoot, ProjectRootError};
+use hop_core::{Document, DocumentId, ProjectRoot, ProjectRootError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
@@ -169,15 +169,9 @@ impl Project {
         Ok(document_ids)
     }
 
-    /// Load the hop.toml configuration file from this project root.
-    pub fn load_config(&self) -> Result<Config, ProjectError> {
-        let document_id = self.root.config();
-        let config_path = self.root.document_id_to_path(&document_id);
-        let config_str = fs::read_to_string(&config_path).map_err(|source| ProjectError::Io {
-            path: config_path,
-            source,
-        })?;
-        Ok(Config::new(Document::new(document_id, config_str)))
+    /// Read the hop.toml configuration file of this project root.
+    pub fn load_config(&self) -> Result<Document, ProjectError> {
+        self.load_document(&self.root.config())
     }
 }
 
@@ -218,6 +212,7 @@ fn should_skip_directory(dir_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hop_core::Config;
     use indoc::indoc;
     use tempfile::TempDir;
     use txtar::{Archive, write_archive_to_dir};
@@ -425,31 +420,32 @@ mod tests {
     }
 
     #[test]
-    fn load_config_with_empty_hop_toml() {
+    fn load_config_document_reads_hop_toml() {
+        let (_temp_dir, project) = project_from(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
+        "#});
+
+        let document = project.load_config().unwrap();
+        let config = Config::parse(&document).unwrap();
+        assert_eq!(config.compile_output_path(), Some("app.ts"));
+    }
+
+    #[test]
+    fn load_config_document_with_empty_hop_toml() {
         let (_temp_dir, project) = project_from(indoc! {r#"
             -- hop.toml --
             # Empty config file
         "#});
 
-        // Empty config should now parse successfully (build section is optional)
-        let result = project.load_config();
+        // Empty config should parse successfully (every section is optional)
+        let document = project.load_config().unwrap();
+        let result = Config::parse(&document);
         assert!(
             result.is_ok(),
             "Empty config should parse: {:?}",
-            result.err()
-        );
-    }
-
-    #[test]
-    fn load_config_without_build_section() {
-        let (_temp_dir, project) = project_from(indoc! {r#"
-            -- hop.toml --
-        "#});
-
-        let result = project.load_config();
-        assert!(
-            result.is_ok(),
-            "Config without build section should succeed: {:?}",
             result.err()
         );
     }

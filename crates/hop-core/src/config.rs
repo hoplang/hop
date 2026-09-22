@@ -4,6 +4,77 @@ use crate::document::Document;
 use crate::document_id::DocumentId;
 use serde::Deserialize;
 
+/// The parsed contents of a `hop.toml` file.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Config {
+    css: Option<CssSection>,
+    js: Option<JsSection>,
+    assets: Option<AssetsSection>,
+    compile: Option<CompileSection>,
+}
+
+impl Config {
+    /// Parse the contents of a `hop.toml` file.
+    pub fn parse(document: &Document) -> Result<Config, Diagnostic> {
+        toml::from_str(document.as_str()).map_err(|err| {
+            Diagnostic {
+                message: err.message().to_string(),
+                // A zero-width span is kept as a position marker, toml reports
+                // one for "expected X here" and for a missing top-level section.
+                range: document.range(err.span().unwrap_or(0..0)),
+                severity: DiagnosticSeverity::Error,
+            }
+        })
+    }
+
+    /// Path to the CSS entrypoint.
+    pub fn css_input_path(&self) -> Option<&DocumentId> {
+        self.css.as_ref()?.input_path.as_ref()
+    }
+
+    /// Path to the JS/TS entrypoint.
+    pub fn js_input_path(&self) -> Option<&DocumentId> {
+        self.js.as_ref()?.input_path.as_ref()
+    }
+
+    /// Directory to copy all `asset!()` referenced files into during `hop build`
+    /// (relative to the project root). Absolute paths are rejected.
+    ///
+    /// Assets are copied flat, as `{name}-{hash}.{ext}`, regardless of where
+    /// the source file lives (it may even be outside the project root).
+    pub fn assets_output_dir(&self) -> Option<&str> {
+        self.assets.as_ref()?.output_dir.as_deref()
+    }
+
+    /// When set, prepends `/{production_prefix}/` to all
+    /// [AssetPaths](crate::AssetPath) via the
+    /// [AssetPathRewriter](crate::AssetPathRewriter) during compilation.
+    ///
+    /// Leading and trailing slashes are stripped before formatting. Empty
+    /// strings are rejected, omit the field instead.
+    pub fn assets_production_prefix(&self) -> Option<&str> {
+        self.assets.as_ref()?.production_prefix.as_deref()
+    }
+
+    /// The language to compile to.
+    pub fn compile_target(&self) -> Option<TargetLanguage> {
+        self.compile.as_ref()?.target
+    }
+
+    /// The path to the compiled output file.
+    pub fn compile_output_path(&self) -> Option<&str> {
+        self.compile.as_ref()?.output_path.as_deref()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CompileSection {
+    target: Option<TargetLanguage>,
+    output_path: Option<String>,
+}
+
 /// The target language for compilation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum TargetLanguage {
@@ -13,127 +84,38 @@ pub enum TargetLanguage {
     Rust,
 }
 
-/// The contents of a `hop.toml` file.
-#[derive(Debug, Clone)]
-pub struct Config {
-    document: Document,
-}
-
-impl Config {
-    /// Wrap the contents of a `hop.toml` file. Parsing happens lazily in the accessors.
-    pub fn new(document: Document) -> Self {
-        Config { document }
-    }
-
-    fn parse<T: serde::de::DeserializeOwned>(&self) -> Result<T, Diagnostic> {
-        toml::from_str(self.document.as_str()).map_err(|err| {
-            Diagnostic {
-                message: err.message().to_string(),
-                // A zero-width span is kept as a position marker, toml reports
-                // one for "expected X here" and for a missing top-level section.
-                range: self.document.range(err.span().unwrap_or(0..0)),
-                severity: DiagnosticSeverity::Error,
-            }
-        })
-    }
-
-    /// The CSS entrypoint.
-    pub fn css_input_path(&self) -> Result<Option<DocumentId>, Diagnostic> {
-        Ok(self.parse::<CssToml>()?.css.map(|css| css.input_path))
-    }
-
-    /// The JS/TS entrypoint.
-    pub fn js_input_path(&self) -> Result<Option<DocumentId>, Diagnostic> {
-        Ok(self.parse::<JsToml>()?.js.map(|js| js.input_path))
-    }
-
-    pub fn assets_output_dir(&self) -> Result<String, Diagnostic> {
-        Ok(self.parse::<AssetsToml>()?.assets.output_dir)
-    }
-
-    pub fn assets_production_prefix(&self) -> Result<Option<String>, Diagnostic> {
-        Ok(self.parse::<AssetsToml>()?.assets.production_prefix)
-    }
-
-    pub fn target(&self) -> Result<TargetLanguage, Diagnostic> {
-        Ok(self.parse::<CompileToml>()?.compile.target)
-    }
-
-    pub fn output_path(&self) -> Result<String, Diagnostic> {
-        Ok(self.parse::<CompileToml>()?.compile.output_path)
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct CssToml {
-    css: Option<CssSection>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct JsToml {
-    js: Option<JsSection>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct AssetsToml {
-    assets: AssetsSection,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct CompileToml {
-    compile: CompileSection,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CompileSection {
-    /// The language to build to: "ts" or "rust"
-    target: TargetLanguage,
-
-    /// The path to the file generated by hop build
-    output_path: String,
-}
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CssSection {
-    /// Path to the CSS entrypoint, relative to the project root.
-    #[serde(deserialize_with = "deserialize_document_id")]
-    input_path: DocumentId,
+    #[serde(default, deserialize_with = "deserialize_document_id")]
+    input_path: Option<DocumentId>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JsSection {
-    /// Path to the JS/TS entrypoint, relative to the project root.
-    #[serde(deserialize_with = "deserialize_document_id")]
-    input_path: DocumentId,
+    #[serde(default, deserialize_with = "deserialize_document_id")]
+    input_path: Option<DocumentId>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AssetsSection {
-    /// When set, `asset!("/x.svg")` rewrites to `"/{production_prefix}/x-{hash}.svg"`
-    /// in `hop build`. Leading and trailing slashes are stripped before formatting.
-    /// Empty strings are rejected, omit the field instead.
     #[serde(default, deserialize_with = "deserialize_production_prefix")]
     production_prefix: Option<String>,
 
-    /// Directory to copy all `asset!()` referenced files into during `hop build`
-    /// (relative to the project root). Absolute paths are rejected.
-    ///
-    /// Assets are copied flat, as `{name}-{hash}.{ext}`, regardless of where
-    /// the source file lives (it may even be outside the project root).
-    #[serde(deserialize_with = "deserialize_output_dir")]
-    output_dir: String,
+    #[serde(default, deserialize_with = "deserialize_output_dir")]
+    output_dir: Option<String>,
 }
 
-fn deserialize_document_id<'de, D>(deserializer: D) -> Result<DocumentId, D::Error>
+fn deserialize_document_id<'de, D>(deserializer: D) -> Result<Option<DocumentId>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let path = String::deserialize(deserializer)?;
-    DocumentId::new(&path).map_err(serde::de::Error::custom)
+    DocumentId::new(&path)
+        .map(Some)
+        .map_err(serde::de::Error::custom)
 }
 
 fn deserialize_production_prefix<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -149,7 +131,7 @@ where
     Ok(Some(production_prefix))
 }
 
-fn deserialize_output_dir<'de, D>(deserializer: D) -> Result<String, D::Error>
+fn deserialize_output_dir<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -159,7 +141,7 @@ where
             "assets.output_dir must be a relative path (must not start with '/')",
         ));
     }
-    Ok(output_dir)
+    Ok(Some(output_dir))
 }
 
 #[cfg(test)]
@@ -169,19 +151,23 @@ mod tests {
     use expect_test::expect;
     use indoc::indoc;
 
-    fn from_toml(toml_str: &str) -> Config {
-        Config::new(Document::new(
+    fn parse(toml_str: &str) -> Result<Config, Diagnostic> {
+        Config::parse(&Document::new(
             DocumentId::new("hop.toml").unwrap(),
             toml_str.to_string(),
         ))
     }
 
-    fn render(error: Diagnostic) -> String {
+    fn config(toml_str: &str) -> Config {
+        parse(toml_str).expect("config should parse")
+    }
+
+    fn error(toml_str: &str) -> String {
         DocumentAnnotator::new()
             .with_severity_label()
             .with_lines_before(1)
             .with_location()
-            .annotate([error])
+            .annotate([parse(toml_str).expect_err("config should not parse")])
             .render()
     }
 
@@ -192,9 +178,9 @@ mod tests {
             target = "ts"
             output_path = "app.ts"
         "#};
-        let config = from_toml(toml_str);
-        assert_eq!(config.target().unwrap(), TargetLanguage::Typescript);
-        assert_eq!(config.output_path().unwrap(), "app.ts");
+        let config = config(toml_str);
+        assert_eq!(config.compile_target(), Some(TargetLanguage::Typescript));
+        assert_eq!(config.compile_output_path(), Some("app.ts"));
     }
 
     #[test]
@@ -207,10 +193,9 @@ mod tests {
             target = "ts"
             output_path = "app.ts"
         "#};
-        let config = from_toml(toml_str);
         assert_eq!(
-            config.css_input_path().unwrap(),
-            Some(DocumentId::new("styles/input.css").unwrap())
+            config(toml_str).css_input_path(),
+            Some(&DocumentId::new("styles/input.css").unwrap())
         );
     }
 
@@ -228,7 +213,7 @@ mod tests {
             2 | bundler = "tailwind_4"
               | ^^^^^^^
         "#]]
-        .assert_eq(&render(from_toml(toml_str).css_input_path().unwrap_err()));
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
@@ -244,21 +229,15 @@ mod tests {
             2 | input_path = "../styles/input.css"
               |              ^^^^^^^^^^^^^^^^^^^^^
         "#]]
-        .assert_eq(&render(from_toml(toml_str).css_input_path().unwrap_err()));
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
-    fn rejects_css_block_missing_input_path() {
+    fn accepts_css_block_without_input_path() {
         let toml_str = indoc! {r#"
             [css]
         "#};
-        expect![[r#"
-            error: missing field `input_path`
-              --> hop.toml (line 1, col 1)
-            1 | [css]
-              | ^^^^^
-        "#]]
-        .assert_eq(&render(from_toml(toml_str).css_input_path().unwrap_err()));
+        assert_eq!(config(toml_str).css_input_path(), None);
     }
 
     #[test]
@@ -267,10 +246,9 @@ mod tests {
             [css]
             input_path = "styles/input.css"
         "#};
-        let config = from_toml(toml_str);
         assert_eq!(
-            config.css_input_path().unwrap(),
-            Some(DocumentId::new("styles/input.css").unwrap())
+            config(toml_str).css_input_path(),
+            Some(&DocumentId::new("styles/input.css").unwrap())
         );
     }
 
@@ -284,10 +262,9 @@ mod tests {
             target = "ts"
             output_path = "app.ts"
         "#};
-        let config = from_toml(toml_str);
         assert_eq!(
-            config.js_input_path().unwrap(),
-            Some(DocumentId::new("src/app.ts").unwrap())
+            config(toml_str).js_input_path(),
+            Some(&DocumentId::new("src/app.ts").unwrap())
         );
     }
 
@@ -305,7 +282,7 @@ mod tests {
             2 | bundler = "esbuild"
               | ^^^^^^^
         "#]]
-        .assert_eq(&render(from_toml(toml_str).js_input_path().unwrap_err()));
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
@@ -321,21 +298,15 @@ mod tests {
             2 | input_path = "/src/app.ts"
               |              ^^^^^^^^^^^^^
         "#]]
-        .assert_eq(&render(from_toml(toml_str).js_input_path().unwrap_err()));
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
-    fn rejects_js_block_missing_input_path() {
+    fn accepts_js_block_without_input_path() {
         let toml_str = indoc! {r#"
             [js]
         "#};
-        expect![[r#"
-            error: missing field `input_path`
-              --> hop.toml (line 1, col 1)
-            1 | [js]
-              | ^^^^
-        "#]]
-        .assert_eq(&render(from_toml(toml_str).js_input_path().unwrap_err()));
+        assert_eq!(config(toml_str).js_input_path(), None);
     }
 
     #[test]
@@ -353,7 +324,7 @@ mod tests {
             4 | unknown_field = "should error"
               | ^^^^^^^^^^^^^
         "#]]
-        .assert_eq(&render(from_toml(toml_str).target().unwrap_err()));
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
@@ -370,7 +341,28 @@ mod tests {
             2 | target = "invalid"
               |          ^^^^^^^^^
         "#]]
-        .assert_eq(&render(from_toml(toml_str).target().unwrap_err()));
+        .assert_eq(&error(toml_str));
+    }
+
+    #[test]
+    fn reports_errors_from_sections_the_caller_never_reads() {
+        let toml_str = indoc! {r#"
+            [css]
+            input_path = "styles/input.css"
+
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
+            unknown_field = "should error"
+        "#};
+        expect![[r#"
+            error: unknown field `unknown_field`, expected `target` or `output_path`
+              --> hop.toml (line 7, col 1)
+            6 | output_path = "app.ts"
+            7 | unknown_field = "should error"
+              | ^^^^^^^^^^^^^
+        "#]]
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
@@ -380,16 +372,20 @@ mod tests {
             target = "ts"
             output_path = "app.ts"
         "#};
-        let config = from_toml(toml_str);
-        assert_eq!(config.target().unwrap(), TargetLanguage::Typescript);
+        assert_eq!(
+            config(toml_str).compile_target(),
+            Some(TargetLanguage::Typescript)
+        );
 
         let toml_str = indoc! {r#"
             [compile]
             target = "rust"
             output_path = "main.rs"
         "#};
-        let config = from_toml(toml_str);
-        assert_eq!(config.target().unwrap(), TargetLanguage::Rust);
+        assert_eq!(
+            config(toml_str).compile_target(),
+            Some(TargetLanguage::Rust)
+        );
     }
 
     #[test]
@@ -406,7 +402,7 @@ mod tests {
             2 | target = "typescript"
               |          ^^^^^^^^^^^^
         "#]]
-        .assert_eq(&render(from_toml(toml_str).target().unwrap_err()));
+        .assert_eq(&error(toml_str));
         let toml_str = indoc! {r#"
             [compile]
             target = "javascript"
@@ -419,7 +415,7 @@ mod tests {
             2 | target = "javascript"
               |          ^^^^^^^^^^^^
         "#]]
-        .assert_eq(&render(from_toml(toml_str).target().unwrap_err()));
+        .assert_eq(&error(toml_str));
         let toml_str = indoc! {r#"
             [compile]
             target = "js"
@@ -432,113 +428,67 @@ mod tests {
             2 | target = "js"
               |          ^^^^
         "#]]
-        .assert_eq(&render(from_toml(toml_str).target().unwrap_err()));
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
-    fn should_parse_config_without_build_section() {
-        let toml_str = indoc! {r#"
-        "#};
-        let result = from_toml(toml_str).css_input_path();
-        assert!(
-            result.is_ok(),
-            "Config without build section should parse: {:?}",
-            result.err()
-        );
+    fn accepts_empty_config() {
+        let config = config("");
+        assert_eq!(config.css_input_path(), None);
+        assert_eq!(config.js_input_path(), None);
+        assert_eq!(config.assets_output_dir(), None);
+        assert_eq!(config.assets_production_prefix(), None);
+        assert_eq!(config.compile_target(), None);
+        assert_eq!(config.compile_output_path(), None);
     }
 
     #[test]
-    fn should_parse_empty_config() {
-        let toml_str = "";
-        let result = from_toml(toml_str).css_input_path();
-        assert!(
-            result.is_ok(),
-            "Empty config should parse: {:?}",
-            result.err()
-        );
-    }
-
-    #[test]
-    fn rejects_compile_section_without_target() {
+    fn accepts_compile_section_without_target() {
         let toml_str = indoc! {r#"
             [compile]
             output_path = "app.ts"
         "#};
-        expect![[r#"
-            error: missing field `target`
-              --> hop.toml (line 1, col 1)
-            1 | [compile]
-              | ^^^^^^^^^
-        "#]]
-        .assert_eq(&render(from_toml(toml_str).target().unwrap_err()));
+        let config = config(toml_str);
+        assert_eq!(config.compile_target(), None);
+        assert_eq!(config.compile_output_path(), Some("app.ts"));
     }
 
     #[test]
-    fn rejects_compile_section_without_output_path() {
+    fn accepts_compile_section_without_output_path() {
         let toml_str = indoc! {r#"
             [compile]
             target = "ts"
         "#};
-        expect![[r#"
-            error: missing field `output_path`
-              --> hop.toml (line 1, col 1)
-            1 | [compile]
-              | ^^^^^^^^^
-        "#]]
-        .assert_eq(&render(from_toml(toml_str).target().unwrap_err()));
+        let config = config(toml_str);
+        assert_eq!(config.compile_target(), Some(TargetLanguage::Typescript));
+        assert_eq!(config.compile_output_path(), None);
     }
 
     #[test]
-    fn rejects_missing_compile_section_when_required() {
-        let toml_str = indoc! {r#"
-        "#};
-        expect![[r#"
-            error: missing field `compile`
-              --> hop.toml (line 1, col 1)
-            1 |         
-              | ^
-        "#]]
-        .assert_eq(&render(from_toml(toml_str).target().unwrap_err()));
-    }
-
-    #[test]
-    fn ignores_incomplete_compile_section_when_reading_css() {
-        let toml_str = indoc! {r#"
-            [css]
-            input_path = "styles/input.css"
-
-            [compile]
-            target = "ts"
-        "#};
-        let config = from_toml(toml_str);
-        assert_eq!(
-            config.css_input_path().unwrap(),
-            Some(DocumentId::new("styles/input.css").unwrap())
-        );
-        expect!["missing field `output_path`"].assert_eq(config.target().unwrap_err().message());
-    }
-
-    #[test]
-    fn ignores_unknown_top_level_sections() {
+    fn rejects_unknown_top_level_sections() {
         let toml_str = indoc! {r#"
             [asset]
             output_dir = "dist/public"
         "#};
-        let config = from_toml(toml_str);
-        assert_eq!(config.css_input_path().unwrap(), None);
+        expect![[r#"
+            error: unknown field `asset`, expected one of `css`, `js`, `assets`, `compile`
+              --> hop.toml (line 1, col 2)
+            1 | [asset]
+              |  ^^^^^
+        "#]]
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
-    fn should_parse_assets_config_with_production_prefix() {
+    fn accepts_assets_config_with_production_prefix() {
         let toml_str = indoc! {r#"
             [assets]
             production_prefix = "static/v1"
             output_dir = "dist/public"
         "#};
-        let config = from_toml(toml_str);
         assert_eq!(
-            config.assets_production_prefix().unwrap(),
-            Some("static/v1".to_string())
+            config(toml_str).assets_production_prefix(),
+            Some("static/v1")
         );
     }
 
@@ -548,8 +498,7 @@ mod tests {
             [assets]
             output_dir = "dist/public"
         "#};
-        let config = from_toml(toml_str);
-        assert!(config.assets_production_prefix().unwrap().is_none());
+        assert_eq!(config(toml_str).assets_production_prefix(), None);
     }
 
     #[test]
@@ -567,9 +516,7 @@ mod tests {
             4 | unknown_field = "should error"
               | ^^^^^^^^^^^^^
         "#]]
-        .assert_eq(&render(
-            from_toml(toml_str).assets_output_dir().unwrap_err(),
-        ));
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
@@ -585,52 +532,38 @@ mod tests {
             1 | [assets]
             2 | production_prefix = ""
               |                     ^^
-        "#]].assert_eq(&render(from_toml(toml_str).assets_output_dir().unwrap_err()));
+        "#]]
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
-    fn should_parse_assets_output_dir() {
+    fn accepts_assets_output_dir() {
         let toml_str = indoc! {r#"
             [assets]
             output_dir = "dist/public"
         "#};
-        let config = from_toml(toml_str);
-        assert_eq!(config.assets_output_dir().unwrap(), "dist/public");
+        assert_eq!(config(toml_str).assets_output_dir(), Some("dist/public"));
     }
 
     #[test]
-    fn rejects_missing_assets_section() {
+    fn accepts_config_without_assets_section() {
         let toml_str = indoc! {r#"
             [compile]
             target = "ts"
             output_path = "app.ts"
         "#};
-        expect![[r#"
-            error: missing field `assets`
-              --> hop.toml (line 1, col 1)
-            1 | [compile]
-              | ^
-        "#]]
-        .assert_eq(&render(
-            from_toml(toml_str).assets_output_dir().unwrap_err(),
-        ));
+        assert_eq!(config(toml_str).assets_output_dir(), None);
     }
 
     #[test]
-    fn rejects_missing_output_dir() {
+    fn accepts_assets_section_without_output_dir() {
         let toml_str = indoc! {r#"
             [assets]
             production_prefix = "static/v1"
         "#};
-        expect![[r#"
-            error: missing field `output_dir`
-              --> hop.toml (line 1, col 1)
-            1 | [assets]
-              | ^^^^^^^^
-        "#]]
-        .assert_eq(&render(
-            from_toml(toml_str).assets_output_dir().unwrap_err(),
-        ));
+        let config = config(toml_str);
+        assert_eq!(config.assets_output_dir(), None);
+        assert_eq!(config.assets_production_prefix(), Some("static/v1"));
     }
 
     #[test]
@@ -646,9 +579,7 @@ mod tests {
             2 | output_dir = "/absolute/path"
               |              ^^^^^^^^^^^^^^^^
         "#]]
-        .assert_eq(&render(
-            from_toml(toml_str).assets_output_dir().unwrap_err(),
-        ));
+        .assert_eq(&error(toml_str));
     }
 
     #[test]
@@ -657,8 +588,7 @@ mod tests {
             [assets]
             output_dir = "a/b/c"
         "#};
-        let config = from_toml(toml_str);
-        assert_eq!(config.assets_output_dir().unwrap(), "a/b/c");
+        assert_eq!(config(toml_str).assets_output_dir(), Some("a/b/c"));
     }
 
     #[test]
@@ -667,8 +597,7 @@ mod tests {
             [assets]
             output_dir = "./dist"
         "#};
-        let config = from_toml(toml_str);
-        assert_eq!(config.assets_output_dir().unwrap(), "./dist");
+        assert_eq!(config(toml_str).assets_output_dir(), Some("./dist"));
     }
 
     #[test]
@@ -678,11 +607,8 @@ mod tests {
             production_prefix = "static/v1"
             output_dir = "dist/public"
         "#};
-        let config = from_toml(toml_str);
-        assert_eq!(
-            config.assets_production_prefix().unwrap(),
-            Some("static/v1".to_string())
-        );
-        assert_eq!(config.assets_output_dir().unwrap(), "dist/public");
+        let config = config(toml_str);
+        assert_eq!(config.assets_production_prefix(), Some("static/v1"));
+        assert_eq!(config.assets_output_dir(), Some("dist/public"));
     }
 }
