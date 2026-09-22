@@ -20,7 +20,8 @@ pub struct Config {
 }
 
 impl Config {
-    pub(crate) fn new(document: Document) -> Self {
+    /// Wrap the contents of a `hop.toml` file. Parsing happens lazily in the accessors.
+    pub fn new(document: Document) -> Self {
         Config { document }
     }
 
@@ -162,7 +163,6 @@ where
 mod tests {
     use super::*;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::document_id::DocumentId;
     use expect_test::expect;
     use indoc::indoc;
 

@@ -1,13 +1,13 @@
-//! Represents a hop project and provides methods for working with it.
+//! Locates a hop project on disk and reads its documents.
+//!
+//! This module owns the filesystem access that `hop-core` deliberately avoids:
+//! finding `hop.toml`, enumerating source files and reading their contents.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::config::Config;
-use crate::document::Document;
-use crate::document_id::DocumentId;
-use crate::project_root::{ProjectRoot, ProjectRootError};
+use hop_core::{Config, Document, DocumentId, ProjectRoot, ProjectRootError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
@@ -45,7 +45,7 @@ impl Project {
             });
         }
         let root = ProjectRoot::new(&absolute(path)?);
-        if !root.as_path().join("hop.toml").exists() {
+        if !root.config_path().exists() {
             return Err(ProjectError::ConfigNotFound {
                 path: path.to_path_buf(),
             });
@@ -68,10 +68,9 @@ impl Project {
         };
 
         loop {
-            if current_dir.join("hop.toml").exists() {
-                return Ok(Project {
-                    root: ProjectRoot::new(current_dir),
-                });
+            let root = ProjectRoot::new(current_dir);
+            if root.config_path().exists() {
+                return Ok(Project { root });
             }
             current_dir = current_dir
                 .parent()
@@ -93,10 +92,9 @@ impl Project {
                     }
                 }
 
-                if path.join("hop.toml").exists() {
-                    return Ok(Project {
-                        root: ProjectRoot::new(&path),
-                    });
+                let root = ProjectRoot::new(&path);
+                if root.config_path().exists() {
+                    return Ok(Project { root });
                 }
 
                 if let Ok(entries) = std::fs::read_dir(&path) {
@@ -173,12 +171,12 @@ impl Project {
 
     /// Load the hop.toml configuration file from this project root.
     pub fn load_config(&self) -> Result<Config, ProjectError> {
-        let config_path = self.root.as_path().join("hop.toml");
+        let document_id = self.root.config();
+        let config_path = self.root.document_id_to_path(&document_id);
         let config_str = fs::read_to_string(&config_path).map_err(|source| ProjectError::Io {
             path: config_path,
             source,
         })?;
-        let document_id = DocumentId::new("hop.toml").expect("hop.toml is a valid document id");
         Ok(Config::new(Document::new(document_id, config_str)))
     }
 }
@@ -235,6 +233,13 @@ mod tests {
         let temp_dir = write(input);
         let project = Project::from(temp_dir.path()).unwrap();
         (temp_dir, project)
+    }
+
+    /// Build a [`DocumentId`] for a path relative to the project root.
+    fn document_id(project: &Project, relative: &str) -> DocumentId {
+        let root = project.root();
+        root.path_to_document_id(&root.as_path().join(relative))
+            .unwrap()
     }
 
     #[test]
@@ -302,7 +307,7 @@ mod tests {
             <button-comp>Click me!</button-comp>
         "#});
 
-        let document_id = DocumentId::new("src/components/button.hop").unwrap();
+        let document_id = document_id(&project, "src/components/button.hop");
         let document = project.load_document(&document_id).unwrap();
 
         assert!(
@@ -321,7 +326,7 @@ mod tests {
             output_path = "app.ts"
         "#});
 
-        let document_id = DocumentId::new("nonexistent/module.hop").unwrap();
+        let document_id = document_id(&project, "nonexistent/module.hop");
         let result = project.load_document(&document_id);
 
         assert!(result.is_err());
@@ -350,14 +355,13 @@ mod tests {
         documents.sort();
 
         assert_eq!(
-            documents,
+            documents.iter().map(|id| id.as_str()).collect::<Vec<_>>(),
             [
                 "src/components/button.hop",
                 "src/components/header.hop",
                 "src/main.hop",
                 "src/styles.css",
             ]
-            .map(|id| DocumentId::new(id).unwrap())
         );
     }
 
@@ -385,7 +389,7 @@ mod tests {
         assert_eq!(modules.len(), 1);
 
         // Check which modules were loaded
-        assert_eq!(modules[0], DocumentId::new("src/main.hop").unwrap());
+        assert_eq!(modules[0].as_str(), "src/main.hop");
 
         // Should NOT contain modules from skipped directories
         let document_ids: Vec<String> = modules.iter().map(|m| m.to_string()).collect();

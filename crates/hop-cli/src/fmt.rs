@@ -1,5 +1,6 @@
+use crate::project::Project;
 use anyhow::Result;
-use hop_core::{DocumentAnnotator, FormatError, Program, Project};
+use hop_core::{DocumentAnnotator, FormatError, Program};
 
 #[derive(Debug)]
 pub struct FmtResult {

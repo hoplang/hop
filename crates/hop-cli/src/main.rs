@@ -1,9 +1,10 @@
 mod build;
 mod fmt;
 mod lsp;
+mod project;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use hop_core::Project;
+use project::Project;
 use std::path::Path;
 
 #[derive(Parser)]

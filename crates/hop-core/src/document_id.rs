@@ -3,12 +3,12 @@ use std::sync::Arc;
 use thiserror::Error;
 
 /// A unique identifier for a [Document](crate::Document).
-/// Represents the path to a document relative to the [ProjectRoot](crate::ProjectRoot).
+/// Represents the path to a document relative to (and inside) the [ProjectRoot](crate::ProjectRoot).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DocumentId(Arc<String>);
 
 impl DocumentId {
-    pub fn new(name: &str) -> Result<Self, DocumentIdError> {
+    pub(crate) fn new(name: &str) -> Result<Self, DocumentIdError> {
         Self::validate(name)?;
         Ok(DocumentId(Arc::new(name.to_string())))
     }

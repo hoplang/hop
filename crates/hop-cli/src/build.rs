@@ -1,7 +1,8 @@
+use crate::project::Project;
 use anyhow::Result;
 use hop_core::{
     AssetReference, AssetRewriter, Diagnostic, DiagnosticSeverity, DocumentAnnotator, DocumentId,
-    Program, Project,
+    Program,
 };
 use std::collections::{BTreeSet, HashMap};
 use std::fs;

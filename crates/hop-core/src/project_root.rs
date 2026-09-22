@@ -26,7 +26,7 @@ impl ProjectRoot {
     ///
     /// The `path` is expected to be absolute.
     /// Components equal to `.` and `..` are folded without touching the filesystem.
-    pub(crate) fn new(path: &Path) -> ProjectRoot {
+    pub fn new(path: &Path) -> ProjectRoot {
         ProjectRoot {
             path: normalize(path),
         }
@@ -34,6 +34,16 @@ impl ProjectRoot {
 
     pub fn as_path(&self) -> &Path {
         &self.path
+    }
+
+    /// The [`DocumentId`] of the project's `hop.toml` file.
+    pub fn config(&self) -> DocumentId {
+        DocumentId::new("hop.toml").expect("hop.toml is a valid document id")
+    }
+
+    /// The path of the project's `hop.toml` file.
+    pub fn config_path(&self) -> PathBuf {
+        self.document_id_to_path(&self.config())
     }
 
     /// Convert an absolute file path to a [`DocumentId`].
@@ -152,6 +162,14 @@ mod tests {
             ),
             "Expected InvalidId error, got: {:?}",
             result
+        );
+    }
+
+    #[test]
+    fn config_path() {
+        assert_eq!(
+            root().config_path(),
+            PathBuf::from("/projects/app/hop.toml")
         );
     }
 

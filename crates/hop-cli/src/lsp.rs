@@ -1,6 +1,7 @@
+use crate::project::Project;
 use hop_core::{
     DiagnosticSeverity, Document, DocumentId, DocumentPosition, DocumentRange, PositionEncoding,
-    Program, Project,
+    Program,
 };
 use std::collections::HashMap;
 use tokio::sync::mpsc;

@@ -448,6 +448,7 @@ dependencies = [
  "indoc",
  "tailwind-runner",
  "tempfile",
+ "thiserror",
  "tokio",
  "tower-lsp-server",
  "txtar",

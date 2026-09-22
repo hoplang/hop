@@ -15,6 +15,7 @@ tailwind-runner = { path = "../tailwind-runner" }
 clap = { version = "4.0", features = ["derive"] }
 tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
+thiserror = "2.0"
 tower-lsp-server = "0.23"
 crc32fast = "1"
 
