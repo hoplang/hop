@@ -1,5 +1,6 @@
+mod asset_path;
+mod asset_path_rewriter;
 mod asset_reference;
-mod asset_rewriter;
 mod config;
 mod css;
 mod css_error;
@@ -28,8 +29,9 @@ mod symbols;
 mod type_error;
 
 // Public API
+pub use asset_path::{AssetPath, AssetPathError};
+pub use asset_path_rewriter::AssetPathRewriter;
 pub use asset_reference::AssetReference;
-pub use asset_rewriter::AssetRewriter;
 pub use config::{Config, TargetLanguage};
 pub use diagnostic::Diagnostic;
 pub use diagnostic_severity::DiagnosticSeverity;

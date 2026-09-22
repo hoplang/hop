@@ -1,10 +1,10 @@
 use crate::project::Project;
 use anyhow::Result;
 use hop_core::{
-    AssetReference, AssetRewriter, Diagnostic, DiagnosticSeverity, DocumentAnnotator, DocumentId,
-    Program,
+    AssetPath, AssetPathRewriter, AssetReference, Diagnostic, DiagnosticSeverity,
+    DocumentAnnotator, Program,
 };
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -53,8 +53,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
                     .filter(|asset_ref| {
                         !project
                             .root()
-                            .document_id_to_path(asset_ref.document_id())
-                            .exists()
+                            .asset_path_to_path(asset_ref.path())
+                            .is_file()
                     })
                     .map(AssetReference::not_found),
             );
@@ -76,18 +76,27 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         }
     }
 
-    // Get all asset document ids and compute hashes/filename replacements
-    let asset_document_ids: Vec<DocumentId> = program
+    // Collect all referenced assets and compute their hashed output names.
+    let asset_paths: BTreeSet<AssetPath> = program
         .asset_references()
         .values()
         .flatten()
-        .map(|r| r.document_id().clone())
+        .map(|r| r.path().clone())
         .collect();
-    let (filenames_with_hashes, filename_replacements) =
-        compute_filename_replacements(&asset_document_ids, production_prefix.clone(), project)?;
+    let hashed_filenames = compute_hashed_filenames(&asset_paths, project)?;
 
-    let asset_rewriter: Arc<dyn AssetRewriter> =
-        Arc::new(move |document_id: &DocumentId| filename_replacements[document_id].clone());
+    let filename_replacements: HashMap<AssetPath, String> = hashed_filenames
+        .iter()
+        .map(|(asset_path, filename)| {
+            let url = match &production_prefix {
+                Some(p) => format!("/{}/{}", p.trim_matches('/'), filename),
+                None => format!("/{}", filename),
+            };
+            (asset_path.clone(), url)
+        })
+        .collect();
+    let asset_path_rewriter: Arc<dyn AssetPathRewriter> =
+        Arc::new(move |asset_path: &AssetPath| filename_replacements[asset_path].clone());
 
     let mut css_output = String::new();
 
@@ -96,7 +105,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // TODO: Make compile_css_document bundle CSS
     if let Some(css_input) = config.css_input_path().map_err(annotated_config_error)? {
         let compiled_css = program
-            .compile_css_document(&css_input, asset_rewriter.clone())
+            .compile_css_document(&css_input, asset_path_rewriter.clone())
             .ok_or_else(|| anyhow::anyhow!("CSS document '{}' not found", css_input))?;
         let tailwind_runner = TailwindRunner::new();
         let sources = program.sources();
@@ -134,7 +143,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         &css_link_href,
         js_bundle.as_ref().map(|(_, _, src)| src.as_str()),
         skip_optimization,
-        Some(asset_rewriter.clone()),
+        Some(asset_path_rewriter.clone()),
     );
 
     // Preserve the file's mtime if the content is unchanged, so downstream
@@ -151,12 +160,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     }
 
     // Copy assets with hashed filenames
-    copy_assets(
-        asset_document_ids,
-        project,
-        &assets_output_dir,
-        &filenames_with_hashes,
-    )?;
+    copy_assets(project, &assets_output_dir, &hashed_filenames)?;
 
     // Write CSS file
     let css_dest = project
@@ -199,78 +203,96 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     Ok(CompileResult { output_path })
 }
 
-/// Insert a content hash into a filename, before the last extension.
-fn insert_hash(path: &str, hash: &str) -> String {
-    let p = Path::new(path);
-    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    let new_name = match p.extension().and_then(|e| e.to_str()) {
-        Some(ext) => format!("{stem}-{hash}.{ext}"),
-        None => format!("{stem}-{hash}"),
-    };
-    p.with_file_name(new_name).to_string_lossy().into_owned()
+/// Replace every run of characters outside `[A-Za-z0-9._-]` with a single
+/// `-`, so the result is safe to use unencoded in a URL and as a filename on
+/// any filesystem.
+fn sanitize_filename_part(part: &str) -> String {
+    let mut out = String::with_capacity(part.len());
+    let mut pending_dash = false;
+    for c in part.chars() {
+        if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+            if pending_dash && !out.is_empty() {
+                out.push('-');
+            }
+            pending_dash = false;
+            out.push(c);
+        } else {
+            pending_dash = true;
+        }
+    }
+    out
 }
 
-fn compute_filename_replacements(
-    document_ids: &[DocumentId],
-    prefix: Option<String>,
-    project: &Project,
-) -> Result<(HashMap<DocumentId, String>, HashMap<DocumentId, String>)> {
-    let document_ids: BTreeSet<DocumentId> = document_ids.iter().cloned().collect();
+/// Derive the output filename for an asset: the sanitized stem, a content
+/// hash, and the sanitized extension, e.g. `My Logo.svg` -> `My-Logo-<hash>.svg`.
+fn hashed_output_filename(filename: &str, hash: &str) -> String {
+    let p = Path::new(filename);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let stem = match sanitize_filename_part(stem) {
+        s if s.is_empty() => "asset".to_string(),
+        s => s,
+    };
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(sanitize_filename_part)
+        .filter(|e| !e.is_empty());
+    match ext {
+        Some(ext) => format!("{stem}-{hash}.{ext}"),
+        None => format!("{stem}-{hash}"),
+    }
+}
 
-    let mut filenames_with_hashes = HashMap::new();
-    let mut filename_replacements = HashMap::new();
-    for document_id in &document_ids {
-        let full_path = project.root().document_id_to_path(document_id);
+/// Compute the output filename for each asset.
+///
+/// Output names are flat: the source directory structure is dropped and the
+/// file name gets a content hash inserted before its extension, so
+/// `icons/star.svg` and `../shared/star.svg` both become `star-<hash>.svg`.
+/// Characters that are unsafe in URLs or filenames are replaced by `-`.
+/// Two assets with the same name and the same content share one output file.
+fn compute_hashed_filenames(
+    asset_paths: &BTreeSet<AssetPath>,
+    project: &Project,
+) -> Result<BTreeMap<AssetPath, String>> {
+    let mut hashed_filenames = BTreeMap::new();
+    for asset_path in asset_paths {
+        let full_path = project.root().asset_path_to_path(asset_path);
 
         let bytes = fs::read(&full_path).map_err(|e| {
-            anyhow::anyhow!("Failed to read asset '{}' for hashing: {}", document_id, e)
+            anyhow::anyhow!("Failed to read asset '{}' for hashing: {}", asset_path, e)
         })?;
-        let filename_for_hash = document_id.to_string();
 
         let hash = format!("{:08x}", crc32fast::hash(&bytes));
-        let hashed_filename = insert_hash(&filename_for_hash, &hash);
-        let prefixed_filename = match &prefix {
-            Some(p) => format!("/{}/{}", p.trim_matches('/'), hashed_filename),
-            None => format!("/{}", hashed_filename),
-        };
-        filenames_with_hashes.insert(document_id.clone(), hashed_filename);
-        filename_replacements.insert(document_id.clone(), prefixed_filename);
+        hashed_filenames.insert(
+            asset_path.clone(),
+            hashed_output_filename(asset_path.file_name(), &hash),
+        );
     }
 
-    Ok((filenames_with_hashes, filename_replacements))
+    Ok(hashed_filenames)
 }
 
 fn copy_assets(
-    paths: impl IntoIterator<Item = DocumentId>,
     project: &Project,
     output_dir: &str,
-    filenames_with_hashes: &HashMap<DocumentId, String>,
+    hashed_filenames: &BTreeMap<AssetPath, String>,
 ) -> Result<()> {
-    let document_ids: BTreeSet<DocumentId> = paths.into_iter().collect();
-
     let dest_root = project.root().as_path().join(output_dir);
 
-    for document_id in &document_ids {
-        let src = project.root().document_id_to_path(document_id);
+    fs::create_dir_all(&dest_root).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to create assets output directory {:?}: {}",
+            dest_root,
+            e
+        )
+    })?;
 
-        let hashed_filename = filenames_with_hashes
-            .get(document_id)
-            .unwrap_or_else(|| panic!("no hash computed for asset {}", document_id));
+    for (asset_path, hashed_filename) in hashed_filenames {
+        let src = project.root().asset_path_to_path(asset_path);
         let dst = dest_root.join(hashed_filename);
 
-        if let Some(parent) = dst.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to create directory {:?} for asset '{}': {}",
-                    parent,
-                    document_id,
-                    e
-                )
-            })?;
-        }
-
         fs::copy(&src, &dst).map_err(|e| {
-            anyhow::anyhow!("Failed to copy asset '{}' to {:?}: {}", document_id, dst, e)
+            anyhow::anyhow!("Failed to copy asset '{}' to {:?}: {}", asset_path, dst, e)
         })?;
     }
 
@@ -506,13 +528,13 @@ mod tests {
                     output += " name=\"viewport\">";
                     output += "<link rel=\"icon\" href=\"/logo-ffe99b60.svg\">";
                     output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
-                    output += "<body><img src=\"/icons/star-890d8c02.svg\"></body></html>";
+                    output += "<body><img src=\"/star-890d8c02.svg\"></body></html>";
                     return output;
                 }
-                -- dist/public/icons/star-890d8c02.svg --
-                <svg>star</svg>
                 -- dist/public/logo-ffe99b60.svg --
                 <svg>logo</svg>
+                -- dist/public/star-890d8c02.svg --
+                <svg>star</svg>
                 -- dist/public/styles-00000000.css --
                 -- hop.toml --
                 [compile]
@@ -646,10 +668,10 @@ mod tests {
                 <svg>star</svg>
             "#},
             expect![[r#"
-                -- assets/icons/star-890d8c02.svg --
-                <svg>star</svg>
                 -- assets/logo-ffe99b60.svg --
                 <svg>logo</svg>
+                -- assets/star-890d8c02.svg --
+                <svg>star</svg>
                 -- assets/styles-00000000.css --
                 -- hop/app.ts --
                 // Code generated by the hop compiler. DO NOT EDIT.
@@ -661,7 +683,7 @@ mod tests {
                     output += " name=\"viewport\">";
                     output += "<link rel=\"icon\" href=\"/logo-ffe99b60.svg\">";
                     output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
-                    output += "<body><img src=\"/icons/star-890d8c02.svg\"></body></html>";
+                    output += "<body><img src=\"/star-890d8c02.svg\"></body></html>";
                     return output;
                 }
                 -- hop/hop.toml --
@@ -762,13 +784,13 @@ mod tests {
                     output += " name=\"viewport\">";
                     output += "<link rel=\"icon\" href=\"/logo-ffe99b60.svg\">";
                     output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
-                    output += "<body><img src=\"/icons/star-890d8c02.svg\"></body></html>";
+                    output += "<body><img src=\"/star-890d8c02.svg\"></body></html>";
                     return output;
                 }
-                -- dist/public/icons/star-890d8c02.svg --
-                <svg>star</svg>
                 -- dist/public/logo-ffe99b60.svg --
                 <svg>logo</svg>
+                -- dist/public/star-890d8c02.svg --
+                <svg>star</svg>
                 -- dist/public/styles-00000000.css --
                 -- hop.toml --
                 [compile]
@@ -839,13 +861,14 @@ mod tests {
                     output += "<meta content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\">";
                     output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
-                    output += "<body><img src=\"/images/a-d8c00d88.svg\">";
-                    output += "<img src=\"/images/b-d8c00d88.svg\"></body></html>";
+                    output += "<body>";
+                    output += "<img src=\"/a-d8c00d88.svg\"><img src=\"/b-d8c00d88.svg\">";
+                    output += "</body></html>";
                     return output;
                 }
-                -- dist/public/images/a-d8c00d88.svg --
+                -- dist/public/a-d8c00d88.svg --
                 <svg>same</svg>
-                -- dist/public/images/b-d8c00d88.svg --
+                -- dist/public/b-d8c00d88.svg --
                 <svg>same</svg>
                 -- dist/public/styles-00000000.css --
                 -- hop.toml --
@@ -872,6 +895,212 @@ mod tests {
                   }
                 }
                 -- style.css --
+            "#]],
+        )
+    }
+
+    #[test]
+    #[ignore]
+    fn asset_outside_project_root() {
+        // `/../` climbs above the project root. The asset is still hashed and
+        // copied flat into the output dir.
+        check(
+            indoc! {r#"
+                -- hop/style.css --
+                -- hop/hop.toml --
+                [compile]
+                target = "ts"
+                output_path = "app.ts"
+
+                [css]
+                input_path = "style.css"
+
+                [assets]
+                output_dir = "dist/public"
+                -- hop/main.hop --
+                page Home() {
+                    fn body() -> Html {
+                        <img src={asset!("/../shared/logo.svg")} />
+                    }
+                }
+                -- shared/logo.svg --
+                <svg>shared</svg>
+            "#},
+            expect![[r#"
+                -- hop/app.ts --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export function Home(): string {
+                    let output: string = "";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><img src=\"/logo-87e808bf.svg\"></body></html>";
+                    return output;
+                }
+                -- hop/dist/public/logo-87e808bf.svg --
+                <svg>shared</svg>
+                -- hop/dist/public/styles-00000000.css --
+                -- hop/hop.toml --
+                [compile]
+                target = "ts"
+                output_path = "app.ts"
+
+                [css]
+                input_path = "style.css"
+
+                [assets]
+                output_dir = "dist/public"
+                -- hop/main.hop --
+                page Home() {
+                    fn body() -> Html {
+                        <img src={asset!("/../shared/logo.svg")} />
+                    }
+                }
+                -- hop/style.css --
+                -- shared/logo.svg --
+                <svg>shared</svg>
+            "#]],
+        )
+    }
+
+    #[test]
+    fn output_filenames_are_sanitized() {
+        assert_eq!(
+            hashed_output_filename("logo.svg", "abcd1234"),
+            "logo-abcd1234.svg"
+        );
+        assert_eq!(
+            hashed_output_filename("My Logo.svg", "abcd1234"),
+            "My-Logo-abcd1234.svg"
+        );
+        assert_eq!(
+            hashed_output_filename("Inter Variable (v3).woff2", "abcd1234"),
+            "Inter-Variable-v3-abcd1234.woff2"
+        );
+        assert_eq!(
+            hashed_output_filename("ünicode#1.svg", "abcd1234"),
+            "nicode-1-abcd1234.svg"
+        );
+        assert_eq!(
+            hashed_output_filename("README", "abcd1234"),
+            "README-abcd1234"
+        );
+        assert_eq!(hashed_output_filename(" ", "abcd1234"), "asset-abcd1234");
+        assert_eq!(
+            hashed_output_filename(".hidden.svg", "abcd1234"),
+            ".hidden-abcd1234.svg"
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn asset_with_spaces_in_name() {
+        // Spaces are allowed in the source path. The output filename (and
+        // hence the URL) is sanitized so it needs no encoding.
+        check(
+            indoc! {r#"
+                -- hop.toml --
+                [compile]
+                target = "ts"
+                output_path = "app.ts"
+
+                [css]
+                input_path = "input.css"
+
+                [assets]
+                output_dir = "dist/public"
+                -- input.css --
+                @font-face {
+                    font-family: "Inter";
+                    src: --asset("/fonts/Inter Variable.woff2") format("woff2");
+                }
+                -- main.hop --
+                page Home() {
+                    fn body() -> Html {
+                        <img src={asset!("/My Logo.svg")} />
+                    }
+                }
+                -- My Logo.svg --
+                <svg>logo</svg>
+                -- fonts/Inter Variable.woff2 --
+                fake-woff2-bytes
+            "#},
+            expect![[r#"
+                -- My Logo.svg --
+                <svg>logo</svg>
+                -- app.ts --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export function Home(): string {
+                    let output: string = "";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-79463e4b.css\"></head>";
+                    output += "<body><img src=\"/My-Logo-ffe99b60.svg\"></body></html>";
+                    return output;
+                }
+                -- dist/public/Inter-Variable-1c757f7b.woff2 --
+                fake-woff2-bytes
+                -- dist/public/My-Logo-ffe99b60.svg --
+                <svg>logo</svg>
+                -- dist/public/styles-79463e4b.css --
+                @font-face{font-family:Inter;src:url(/Inter-Variable-1c757f7b.woff2)format("woff2")}
+                -- fonts/Inter Variable.woff2 --
+                fake-woff2-bytes
+                -- hop.toml --
+                [compile]
+                target = "ts"
+                output_path = "app.ts"
+
+                [css]
+                input_path = "input.css"
+
+                [assets]
+                output_dir = "dist/public"
+                -- input.css --
+                @font-face {
+                    font-family: "Inter";
+                    src: --asset("/fonts/Inter Variable.woff2") format("woff2");
+                }
+                -- main.hop --
+                page Home() {
+                    fn body() -> Html {
+                        <img src={asset!("/My Logo.svg")} />
+                    }
+                }
+            "#]],
+        )
+    }
+
+    #[test]
+    #[ignore]
+    fn asset_missing_outside_project_root() {
+        check_error(
+            indoc! {r#"
+                -- hop/hop.toml --
+                [compile]
+                target = "ts"
+                output_path = "app.ts"
+
+                [assets]
+                output_dir = "dist/public"
+                -- hop/main.hop --
+                page Home() {
+                    fn body() -> Html {
+                        <img src={asset!("/../shared/missing.svg")} />
+                    }
+                }
+            "#},
+            expect![[r#"
+                Compilation failed:
+                error: asset `../shared/missing.svg` was not found
+                  --> main.hop (line 3, col 19)
+                2 |     fn body() -> Html {
+                3 |         <img src={asset!("/../shared/missing.svg")} />
+                  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         )
     }
@@ -1266,14 +1495,14 @@ mod tests {
                     output += "<!doctype html><html><head><meta charset=\"utf-8\">";
                     output += "<meta content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\">";
-                    output += "<link rel=\"stylesheet\" href=\"/styles-ca0dd958.css\"></head>";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-779fe409.css\"></head>";
                     output += "<body><div>hi</div></body></html>";
                     return output;
                 }
-                -- dist/public/fonts/inter-1c757f7b.woff2 --
+                -- dist/public/inter-1c757f7b.woff2 --
                 fake-woff2-bytes
-                -- dist/public/styles-ca0dd958.css --
-                @font-face{font-family:Inter;src:url(/fonts/inter-1c757f7b.woff2)format("woff2")}
+                -- dist/public/styles-779fe409.css --
+                @font-face{font-family:Inter;src:url(/inter-1c757f7b.woff2)format("woff2")}
                 -- fonts/inter.woff2 --
                 fake-woff2-bytes
                 -- hop.toml --
@@ -1340,14 +1569,14 @@ mod tests {
                     output += "<!doctype html><html><head><meta charset=\"utf-8\">";
                     output += "<meta content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link";
-                    output += " rel=\"stylesheet\" href=\"/static/v1/styles-25fd2426.css\">";
+                    output += " rel=\"stylesheet\" href=\"/static/v1/styles-19d4bb7c.css\">";
                     output += "</head><body><div>hi</div></body></html>";
                     return output;
                 }
-                -- dist/public/fonts/inter-1c757f7b.woff2 --
+                -- dist/public/inter-1c757f7b.woff2 --
                 fake-woff2-bytes
-                -- dist/public/styles-25fd2426.css --
-                @font-face{font-family:Inter;src:url(/static/v1/fonts/inter-1c757f7b.woff2)format("woff2")}
+                -- dist/public/styles-19d4bb7c.css --
+                @font-face{font-family:Inter;src:url(/static/v1/inter-1c757f7b.woff2)format("woff2")}
                 -- fonts/inter.woff2 --
                 fake-woff2-bytes
                 -- hop.toml --

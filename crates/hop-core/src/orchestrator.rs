@@ -1,4 +1,4 @@
-use crate::asset_rewriter::AssetRewriter;
+use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document_id::DocumentId;
 use crate::hop::assembly::{self, AssembledPageDeclaration, TailwindInjection};
 use crate::hop::typing::typed_ast::TypedAst;
@@ -15,7 +15,7 @@ pub struct OrchestrateOptions<'a> {
     /// When set, only compile the specified page instead of all pages.
     pub page_filter: Option<(DocumentId, TypeName)>,
     /// Controls how `asset!()` macro invocations are resolved.
-    pub asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+    pub asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     /// When set, inject the given Tailwind CSS into the `<head>` of each page.
     pub tailwind_injection: Option<TailwindInjection<'a>>,
     /// When set, inject a `<script type="module" src=...>` into the `<head>` of each page.
@@ -72,7 +72,7 @@ pub fn orchestrate_pure(
         })
         .collect();
 
-    let pure_module = compile(assembled_pages, &functions, options.asset_rewriter);
+    let pure_module = compile(assembled_pages, &functions, options.asset_path_rewriter);
     // Every function in the project is compiled, whether or not
     // the selected pages reach it. Dropping the unreachable ones keeps a
     // page_filter build to what that page actually needs.

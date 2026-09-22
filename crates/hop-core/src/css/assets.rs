@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
+use crate::asset_path::AssetPath;
+use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::asset_reference::AssetReference;
-use crate::asset_rewriter::AssetRewriter;
 use crate::css_error::{CssError, CssErrorKind};
 use crate::document::{Document, DocumentCursor, DocumentRange};
-use crate::document_id::DocumentId;
 
 /// Lex `--asset(...)` calls out of a `Document`.
 pub fn scan_for_asset_references(
@@ -24,18 +24,13 @@ pub fn scan_for_asset_references(
                 // Parse the argument and closing `)`
                 match parse_argument(&mut iter, marker_range.clone()) {
                     ArgumentParseResult::StringLiteral { path, close_paren } => {
-                        if !path.starts_with("/") {
-                            errors.push(CssError::new(
-                                CssErrorKind::AssetPathMustBeAbsolute,
-                                marker_range.to(close_paren),
-                            ));
-                        } else {
-                            let document_id =
-                                DocumentId::new(path.trim_start_matches('/')).unwrap();
-                            asset_references.push(AssetReference {
-                                range: marker_range.to(close_paren),
-                                document_id,
-                            });
+                        let range = marker_range.to(close_paren);
+                        match AssetPath::new(&path) {
+                            Ok(path) => asset_references.push(AssetReference { range, path }),
+                            Err(source) => errors.push(CssError::new(
+                                CssErrorKind::InvalidAssetPath { source },
+                                range,
+                            )),
                         }
                     }
                     ArgumentParseResult::Error { kind, last_range } => {
@@ -336,7 +331,10 @@ fn extend_content_range(
 
 /// Replace each asset reference in document using a function
 /// and return the new CSS string.
-pub fn rewrite_asset_paths(css: &Document, asset_rewriter: Arc<dyn AssetRewriter>) -> String {
+pub fn rewrite_asset_paths(
+    css: &Document,
+    asset_path_rewriter: Arc<dyn AssetPathRewriter>,
+) -> String {
     let mut errors = Vec::new();
     let mut asset_references = Vec::new();
     scan_for_asset_references(css, &mut asset_references, &mut errors);
@@ -354,7 +352,7 @@ pub fn rewrite_asset_paths(css: &Document, asset_rewriter: Arc<dyn AssetRewriter
 
         // Push replacement
         output.push_str("url(\"");
-        output.push_str(&asset_rewriter.rewrite(&asset_ref.document_id));
+        output.push_str(&asset_path_rewriter.rewrite(&asset_ref.path));
         output.push_str("\")");
 
         pos = end;
@@ -387,7 +385,7 @@ mod tests {
 
         for asset_reference in asset_references {
             asset_reference_annotations.push(Diagnostic {
-                message: format!("asset: {}", asset_reference.document_id),
+                message: format!("asset: {}", asset_reference.path),
                 range: asset_reference.range.clone(),
                 severity: DiagnosticSeverity::Error,
             });
@@ -559,9 +557,48 @@ mod tests {
             indoc! {r#"background: --asset("img/logo.svg")"#},
             expect![[r#"
                 -- errors --
-                CSS `--asset()` path must start with '/'
+                CSS `--asset()` has an invalid path: asset path must start with '/'
                 background: --asset("img/logo.svg")
                             ^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn scan_path_may_escape_the_project_root() {
+        check(
+            indoc! {r#"background: --asset("/../shared/logo.svg")"#},
+            expect![[r#"
+                -- calls --
+                asset: ../shared/logo.svg
+                background: --asset("/../shared/logo.svg")
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn scan_path_with_space() {
+        check(
+            indoc! {r#"background: --asset("/my logo.svg")"#},
+            expect![[r#"
+                -- calls --
+                asset: my logo.svg
+                background: --asset("/my logo.svg")
+                            ^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn scan_invalid_path() {
+        check(
+            indoc! {r#"background: --asset("/icons/..")"#},
+            expect![[r#"
+                -- errors --
+                CSS `--asset()` has an invalid path: asset path does not name a file
+                background: --asset("/icons/..")
+                            ^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

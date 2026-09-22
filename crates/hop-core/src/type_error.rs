@@ -1,3 +1,4 @@
+use crate::asset_path::AssetPathError;
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
@@ -380,8 +381,8 @@ pub(crate) enum TypeErrorKind {
     #[error("asset! argument must be a string literal")]
     AssetMacroNonLiteralArg,
 
-    #[error("asset! path must start with '/'")]
-    AssetPathMustBeAbsolute,
+    #[error("invalid asset! path: {source}")]
+    InvalidAssetPath { source: AssetPathError },
 
     #[error("format! requires a string literal as its first argument")]
     FormatMacroNonLiteralTemplate,

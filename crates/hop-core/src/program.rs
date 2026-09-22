@@ -1,5 +1,5 @@
+use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::asset_reference::AssetReference;
-use crate::asset_rewriter::AssetRewriter;
 use crate::config::TargetLanguage;
 use crate::css;
 use crate::css_error::CssError;
@@ -211,10 +211,10 @@ impl Program {
     pub fn compile_css_document(
         &self,
         document_id: &DocumentId,
-        asset_rewriter: Arc<dyn AssetRewriter>,
+        asset_path_rewriter: Arc<dyn AssetPathRewriter>,
     ) -> Option<String> {
         let css = self.css_documents.get(document_id)?;
-        Some(css::rewrite_asset_paths(css, asset_rewriter))
+        Some(css::rewrite_asset_paths(css, asset_path_rewriter))
     }
 
     /// Returns the formatted source code for a hop document.
@@ -497,7 +497,7 @@ impl Program {
         args: HashMap<VarName, ir::runtime::value::Value>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
-        asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+        asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Result<String, EvaluatePageError> {
         // Refuse to evaluate if there are errors in any document
         if self.parse_errors.values().any(|errors| !errors.is_empty()) {
@@ -519,7 +519,7 @@ impl Program {
             OrchestrateOptions {
                 skip_optimization,
                 page_filter: Some((document_id.clone(), page_name.clone())),
-                asset_rewriter,
+                asset_path_rewriter,
                 tailwind_injection: generated_tailwind_css.map(TailwindInjection::Inline),
                 ..Default::default()
             },
@@ -544,7 +544,7 @@ impl Program {
         rng: &mut impl Rng,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
-        asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+        asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Result<String, EvaluatePageError> {
         let page_name = TypeName::new(CheapString::new(page.to_string())).map_err(|e| {
             EvaluatePageError::InvalidPageName {
@@ -589,7 +589,7 @@ impl Program {
             params,
             generated_tailwind_css,
             skip_optimization,
-            asset_rewriter,
+            asset_path_rewriter,
         )
     }
 
@@ -600,13 +600,13 @@ impl Program {
         css_link_href: &str,
         js_script_src: Option<&str>,
         skip_optimization: bool,
-        asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+        asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> String {
         let ir_module = orchestrate(
             self.typed_modules(),
             OrchestrateOptions {
                 skip_optimization,
-                asset_rewriter,
+                asset_path_rewriter,
                 tailwind_injection: Some(TailwindInjection::Link {
                     href: css_link_href,
                 }),
@@ -2099,7 +2099,7 @@ mod tests {
                 asset!(literal: String) -> String
                 ```
 
-                Resolves to a path served by the dev server in dev mode and prefixed by `assets.production_prefix` in production builds.
+                The path must start with `/`, which denotes the project root. Resolves to a content-hashed URL prefixed by `assets.production_prefix` in production builds.
                   --> main.hop (line 3, col 5)
                 3 |     asset!("/logo.svg")
                   |     ^^^^^^

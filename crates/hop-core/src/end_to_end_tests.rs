@@ -1,4 +1,5 @@
-use crate::asset_rewriter::AssetRewriter;
+use crate::asset_path::AssetPath;
+use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::Document;
 use crate::document_annotator::DocumentAnnotator;
 use crate::document_id::DocumentId;
@@ -158,12 +159,12 @@ fn execute_evaluator(module: &PureModule) -> Result<String, String> {
 }
 
 fn check(archive: &str, expected_output: &str, expected: Expect) {
-    check_with_asset_rewriter(archive, None, expected_output, expected);
+    check_with_asset_path_rewriter(archive, None, expected_output, expected);
 }
 
-fn check_with_asset_rewriter(
+fn check_with_asset_path_rewriter(
     archive: &str,
-    asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+    asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     expected_output: &str,
     expected: Expect,
 ) {
@@ -201,7 +202,7 @@ fn check_with_asset_rewriter(
     let unoptimized_options = OrchestrateOptions {
         skip_html_structure: true,
         skip_optimization: true,
-        asset_rewriter: asset_rewriter.clone(),
+        asset_path_rewriter: asset_path_rewriter.clone(),
         ..Default::default()
     };
     let unoptimized_pure = orchestrate_pure(&typed_asts, unoptimized_options);
@@ -210,7 +211,7 @@ fn check_with_asset_rewriter(
     let optimized_options = OrchestrateOptions {
         skip_html_structure: true,
         skip_optimization: false,
-        asset_rewriter,
+        asset_path_rewriter,
         ..Default::default()
     };
     let optimized_pure = orchestrate_pure(&typed_asts, optimized_options);
@@ -13187,7 +13188,7 @@ mod tests {
     #[test]
     #[ignore]
     fn asset_macro_in_dev_rewrites_to_hop_assets() {
-        check_with_asset_rewriter(
+        check_with_asset_path_rewriter(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
@@ -13196,8 +13197,8 @@ mod tests {
                   }
                 }
             "#},
-            Some(Arc::new(|document_id: &DocumentId| {
-                format!("/hop_assets/{document_id}")
+            Some(Arc::new(|asset_path: &AssetPath| {
+                format!("/hop_assets/{asset_path}")
             })),
             r#"<img src="/hop_assets/logo.svg">"#,
             expect![[r#"
@@ -13234,7 +13235,7 @@ mod tests {
     #[test]
     #[ignore]
     fn asset_macro_in_prod_with_prefix() {
-        check_with_asset_rewriter(
+        check_with_asset_path_rewriter(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
@@ -13243,8 +13244,8 @@ mod tests {
                   }
                 }
             "#},
-            Some(Arc::new(|document_id: &DocumentId| {
-                assert_eq!(document_id.as_str(), "logo.svg");
+            Some(Arc::new(|asset_path: &AssetPath| {
+                assert_eq!(asset_path.as_str(), "logo.svg");
                 "/static/v1/logo-a1b2c3d4.svg".to_string()
             })),
             r#"<img src="/static/v1/logo-a1b2c3d4.svg">"#,

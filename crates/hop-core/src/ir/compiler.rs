@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::asset_rewriter::AssetRewriter;
+use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
 use crate::document_id::DocumentId;
 use crate::hop::assembly::AssembledPageDeclaration;
@@ -29,7 +29,7 @@ use super::writer_module::WriterParameter;
 pub fn compile(
     pages: Vec<AssembledPageDeclaration>,
     source_functions: &[(&DocumentId, &TypedFunctionDeclaration)],
-    asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+    asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 ) -> PureModule {
     let mut expr_ids = ExprIdCounter::new();
     let mut var_ids = VarIdCounter::new();
@@ -45,7 +45,7 @@ pub fn compile(
         })
         .collect();
 
-    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, &declared, asset_rewriter);
+    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, &declared, asset_path_rewriter);
 
     let pages = pages
         .into_iter()
@@ -69,7 +69,7 @@ struct Compiler<'a> {
     var_id_counter: &'a mut VarIdCounter,
     declared: &'a HashMap<(DocumentId, FunctionName), IrFunction>,
     scopes: Vec<Vec<(VarName, VarId)>>,
-    asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+    asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
 impl<'a> Compiler<'a> {
@@ -77,14 +77,14 @@ impl<'a> Compiler<'a> {
         expr_id_counter: &'a mut ExprIdCounter,
         var_id_counter: &'a mut VarIdCounter,
         declared: &'a HashMap<(DocumentId, FunctionName), IrFunction>,
-        asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+        asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Self {
         Compiler {
             expr_id_counter,
             var_id_counter,
             declared,
             scopes: vec![Vec::new()],
-            asset_rewriter,
+            asset_path_rewriter,
         }
     }
 
@@ -267,13 +267,14 @@ impl<'a> Compiler<'a> {
                 id: expr_id,
             },
             TypedExpr::Asset { path } => {
-                let value = match &self.asset_rewriter {
-                    Some(rewriter) => CheapString::new(
-                        rewriter.rewrite(&DocumentId::new(path.trim_start_matches('/')).unwrap()),
-                    ),
-                    None => path.clone(),
+                let value = match &self.asset_path_rewriter {
+                    Some(rewriter) => rewriter.rewrite(path),
+                    None => format!("/{path}"),
                 };
-                PureExpr::StringLiteral { value, id: expr_id }
+                PureExpr::StringLiteral {
+                    value: CheapString::new(value),
+                    id: expr_id,
+                }
             }
             TypedExpr::BooleanLiteral { value, .. } => PureExpr::BooleanLiteral {
                 value: *value,

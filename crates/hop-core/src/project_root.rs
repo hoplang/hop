@@ -1,5 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
+use crate::asset_path::AssetPath;
 use crate::document_id::{DocumentId, DocumentIdError};
 
 #[derive(Debug, thiserror::Error)]
@@ -67,6 +68,14 @@ impl ProjectRoot {
 
     pub fn document_id_to_path(&self, document_id: &DocumentId) -> PathBuf {
         self.path.join(document_id.as_str())
+    }
+
+    /// Convert an [`AssetPath`] to an absolute file path.
+    ///
+    /// Leading `..` components in the asset path are folded into the root,
+    /// so the result may lie outside the project.
+    pub fn asset_path_to_path(&self, asset_path: &AssetPath) -> PathBuf {
+        normalize(&self.path.join(asset_path.as_str()))
     }
 }
 
@@ -179,6 +188,21 @@ mod tests {
         assert_eq!(
             root().document_id_to_path(&document_id),
             PathBuf::from("/projects/app/src/components/button.hop")
+        );
+    }
+
+    #[test]
+    fn asset_path_to_path() {
+        let inside = AssetPath::new("/icons/star.svg").unwrap();
+        assert_eq!(
+            root().asset_path_to_path(&inside),
+            PathBuf::from("/projects/app/icons/star.svg")
+        );
+
+        let outside = AssetPath::new("/../shared/logo.svg").unwrap();
+        assert_eq!(
+            root().asset_path_to_path(&outside),
+            PathBuf::from("/projects/shared/logo.svg")
         );
     }
 }

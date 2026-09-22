@@ -1,5 +1,6 @@
 use std::fmt::{self, Display};
 
+use crate::asset_path::AssetPath;
 use crate::document::CheapString;
 use crate::document_id::DocumentId;
 use crate::hop::patterns::{EnumPattern, Match};
@@ -262,10 +263,10 @@ pub enum TypedExpr {
         attributes: Vec<TypedAttribute>,
     },
 
-    /// An asset path, e.g. asset!("/logo.svg").
-    /// Resolved to a concrete string literal at IR compile time based on build mode.
+    /// An asset reference, e.g. asset!("/logo.svg"), resolved to a path
+    /// relative to the project root.
     Asset {
-        path: CheapString,
+        path: AssetPath,
     },
 
     /// A function call expression, e.g. foo(1, 2)
@@ -756,7 +757,7 @@ impl TypedExpr {
                     )
                     .append(BoxDoc::text(")"))
             }
-            TypedExpr::Asset { path } => BoxDoc::text("asset!(\"")
+            TypedExpr::Asset { path } => BoxDoc::text("asset!(\"/")
                 .append(BoxDoc::text(path.as_str()))
                 .append(BoxDoc::text("\")")),
             TypedExpr::FunctionCall {

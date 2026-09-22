@@ -113,14 +113,17 @@ struct JsSection {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AssetsSection {
-    /// When set, `asset!("/x")` rewrites to `"/{production_prefix}/x"` in `hop build`.
-    /// Leading and trailing slashes are stripped before formatting.
+    /// When set, `asset!("/x.svg")` rewrites to `"/{production_prefix}/x-{hash}.svg"`
+    /// in `hop build`. Leading and trailing slashes are stripped before formatting.
     /// Empty strings are rejected, omit the field instead.
     #[serde(default, deserialize_with = "deserialize_production_prefix")]
     production_prefix: Option<String>,
 
     /// Directory to copy all `asset!()` referenced files into during `hop build`
     /// (relative to the project root). Absolute paths are rejected.
+    ///
+    /// Assets are copied flat, as `{name}-{hash}.{ext}`, regardless of where
+    /// the source file lives (it may even be outside the project root).
     #[serde(deserialize_with = "deserialize_output_dir")]
     output_dir: String,
 }

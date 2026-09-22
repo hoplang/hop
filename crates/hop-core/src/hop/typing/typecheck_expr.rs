@@ -8,10 +8,10 @@ use super::typecheck_call::{Argument, typecheck_call_arguments};
 use super::typecheck_match::typecheck_match;
 use super::typecheck_node::typecheck_node;
 use super::variable_scope::VariableScope;
+use crate::asset_path::AssetPath;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
-use crate::document_id::DocumentId;
 use crate::hop::parsing::parsed_expr::{
     ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource,
 };
@@ -1938,30 +1938,32 @@ pub fn typecheck_expr(
                         return None;
                     }
                 };
-                if !path.as_str().starts_with('/') {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::AssetPathMustBeAbsolute {},
-                        path_range,
-                    ));
-                    return None;
-                }
-
-                let document_id = DocumentId::new(path.trim_start_matches('/')).unwrap();
+                let asset_path = match AssetPath::new(path.as_str()) {
+                    Ok(asset_path) => asset_path,
+                    Err(source) => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::InvalidAssetPath { source },
+                            path_range,
+                        ));
+                        return None;
+                    }
+                };
 
                 asset_references.push(AssetReference {
                     range: range.clone(),
-                    document_id,
+                    path: asset_path.clone(),
                 });
 
                 annotations.push(HoverAnnotation::Description {
                     title: "asset!(literal: String) -> String".to_string(),
-                    description: "Resolves to a path served by the dev server in dev mode \
-                         and prefixed by `assets.production_prefix` in production builds."
+                    description: "The path must start with `/`, which denotes the project root. \
+                         Resolves to a content-hashed URL prefixed by \
+                         `assets.production_prefix` in production builds."
                         .to_string(),
                     range: subject_range.clone(),
                 });
 
-                Some(TypedExpr::Asset { path })
+                Some(TypedExpr::Asset { path: asset_path })
             }
             _ => {
                 errors.push(TypeError::new(
@@ -5530,9 +5532,43 @@ mod tests {
             &[],
             r#"asset!("logo.svg")"#,
             expect![[r#"
-                error: asset! path must start with '/'
+                error: invalid asset! path: asset path must start with '/'
                 asset!("logo.svg")
                        ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_asset_macro_outside_project_root() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"asset!("/../shared/logo.svg")"#,
+            expect![[r#"String"#]],
+        );
+    }
+
+    #[test]
+    fn accepts_asset_macro_with_space_in_path() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"asset!("/my logo.svg")"#,
+            expect![[r#"String"#]],
+        );
+    }
+
+    #[test]
+    fn rejects_asset_macro_naming_a_directory() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"asset!("/icons/..")"#,
+            expect![[r#"
+                error: invalid asset! path: asset path does not name a file
+                asset!("/icons/..")
+                       ^^^^^^^^^^^
             "#]],
         );
     }
@@ -5544,7 +5580,7 @@ mod tests {
             &[],
             r#"asset!("")"#,
             expect![[r#"
-                error: asset! path must start with '/'
+                error: invalid asset! path: asset path cannot be empty
                 asset!("")
                        ^^
             "#]],
