@@ -5,9 +5,9 @@ use crate::itertools::ChunkByExt as _;
 
 use crate::{
     diagnostic::Diagnostic,
+    diagnostic_severity::DiagnosticSeverity,
     document::{DocumentCursor, DocumentRange},
     document_id::DocumentId,
-    severity::Severity,
 };
 
 /// Annotator that can display source code with diagnostics
@@ -119,8 +119,8 @@ impl DocumentAnnotator {
 
                 if self.show_severity_label {
                     let label = match diagnostic.severity() {
-                        Severity::Error => "error",
-                        Severity::Warning => "warning",
+                        DiagnosticSeverity::Error => "error",
+                        DiagnosticSeverity::Warning => "warning",
                     };
                     output.push_str(&format!("{}: {}\n", label, diagnostic.message()));
                 } else {
@@ -265,7 +265,7 @@ mod tests {
                 if !is_separator {
                     let range: Option<DocumentRange> = group.collect();
                     range.map(|range| {
-                        Diagnostic::new(range.as_str().to_string(), range, Severity::Error)
+                        Diagnostic::new(range.as_str().to_string(), range, DiagnosticSeverity::Error)
                     })
                 } else {
                     None
@@ -314,7 +314,7 @@ mod tests {
         let annotation = Diagnostic::new(
             "unexpected end of file".to_string(),
             DocumentCursor::new(doc_id, "fn main(".to_string()).eof_range(),
-            Severity::Error,
+            DiagnosticSeverity::Error,
         );
 
         let actual = DocumentAnnotator::new().annotate([annotation]).render();
@@ -333,7 +333,7 @@ mod tests {
         let annotation = Diagnostic::new(
             "unexpected end of file".to_string(),
             DocumentCursor::new(doc_id, "fn main() {\n".to_string()).eof_range(),
-            Severity::Error,
+            DiagnosticSeverity::Error,
         );
 
         let actual = DocumentAnnotator::new().annotate([annotation]).render();

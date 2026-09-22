@@ -1,7 +1,7 @@
 use anyhow::Result;
 use hop_core::{
-    AssetReference, AssetRewriter, Diagnostic, DocumentAnnotator, DocumentId, Program, Project,
-    Severity,
+    AssetReference, AssetRewriter, Diagnostic, DiagnosticSeverity, DocumentAnnotator, DocumentId,
+    Program, Project,
 };
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
@@ -58,7 +58,10 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
             );
         }
 
-        if diagnostics.iter().any(|d| d.severity() == Severity::Error) {
+        if diagnostics
+            .iter()
+            .any(|d| d.severity() == DiagnosticSeverity::Error)
+        {
             let mut annotator = DocumentAnnotator::new()
                 .with_severity_label()
                 .with_lines_before(1)

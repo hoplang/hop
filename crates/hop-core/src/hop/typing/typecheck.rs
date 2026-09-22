@@ -1079,11 +1079,12 @@ fn collect_names_in_pattern(pattern: &ParsedMatchPattern, out: &mut HashSet<Chea
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document_annotator::DocumentAnnotator;
-    use crate::document_id::DocumentId;
+    use crate::DiagnosticSeverity;
+    use crate::Document;
+    use crate::DocumentAnnotator;
+    use crate::DocumentId;
     use crate::hop::parsing::parse::parse;
     use crate::hop::parsing::source_generator;
-    use crate::{document::Document, severity::Severity};
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use txtar::Archive;
@@ -1145,7 +1146,7 @@ mod tests {
                 if !module_errors.is_empty() {
                     let (real_errors, real_warnings): (Vec<_>, Vec<_>) = module_errors
                         .iter()
-                        .partition(|e| e.severity() == Severity::Error);
+                        .partition(|e| e.severity() == DiagnosticSeverity::Error);
 
                     if !real_errors.is_empty() {
                         error_annotator.annotate(real_errors.iter().map(|e| e.to_diagnostic()));

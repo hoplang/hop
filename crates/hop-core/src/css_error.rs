@@ -1,6 +1,6 @@
 use crate::diagnostic::Diagnostic;
+use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::DocumentRange;
-use crate::severity::Severity;
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -15,7 +15,7 @@ impl CssError {
     }
 
     pub(crate) fn to_diagnostic(&self) -> Diagnostic {
-        Diagnostic::new(self.kind.to_string(), self.range.clone(), Severity::Error)
+        Diagnostic::new(self.kind.to_string(), self.range.clone(), DiagnosticSeverity::Error)
     }
 }
 

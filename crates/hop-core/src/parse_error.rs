@@ -1,7 +1,7 @@
 use crate::diagnostic::Diagnostic;
+use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::token::LangToken;
-use crate::severity::Severity;
 use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::function_name::InvalidFunctionNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
@@ -54,7 +54,11 @@ pub(crate) struct ParseError {
 
 impl ParseError {
     pub(crate) fn to_diagnostic(&self) -> Diagnostic {
-        Diagnostic::new(self.kind.to_string(), self.range.clone(), Severity::Error)
+        Diagnostic::new(
+            self.kind.to_string(),
+            self.range.clone(),
+            DiagnosticSeverity::Error,
+        )
     }
 }
 

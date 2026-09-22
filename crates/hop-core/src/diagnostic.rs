@@ -1,5 +1,5 @@
+use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::DocumentRange;
-use crate::severity::Severity;
 
 /// A diagnostic is an error or warning that should be displayed for a
 /// specific range in a document.
@@ -7,11 +7,11 @@ use crate::severity::Severity;
 pub struct Diagnostic {
     message: String,
     range: DocumentRange,
-    severity: Severity,
+    severity: DiagnosticSeverity,
 }
 
 impl Diagnostic {
-    pub(crate) fn new(message: String, range: DocumentRange, severity: Severity) -> Self {
+    pub(crate) fn new(message: String, range: DocumentRange, severity: DiagnosticSeverity) -> Self {
         Diagnostic {
             message,
             range,
@@ -27,7 +27,7 @@ impl Diagnostic {
         &self.range
     }
 
-    pub fn severity(&self) -> Severity {
+    pub fn severity(&self) -> DiagnosticSeverity {
         self.severity
     }
 }

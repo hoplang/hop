@@ -1,21 +1,21 @@
 use hop_core::{
-    Document, DocumentId, DocumentPosition, DocumentRange, PositionEncoding, Program, Project,
-    Severity,
+    DiagnosticSeverity, Document, DocumentId, DocumentPosition, DocumentRange, PositionEncoding,
+    Program, Project,
 };
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::jsonrpc::Result;
-use tower_lsp_server::ls_types::{self, *};
+use tower_lsp_server::ls_types;
 
 pub enum ClientMessage {
     PublishDiagnostics {
-        uri: Uri,
-        diagnostics: Vec<Diagnostic>,
+        uri: ls_types::Uri,
+        diagnostics: Vec<ls_types::Diagnostic>,
     },
     ShowMessage {
-        message_type: MessageType,
+        message_type: ls_types::MessageType,
         message: String,
     },
 }
@@ -100,29 +100,29 @@ impl HopLanguageServer {
     /// Resolve an editor URI to a DocumentId. Returns `None` for URIs that
     /// are not file paths, files outside the project, and files whose names
     /// cannot be represented as a DocumentIds.
-    fn uri_to_document_id(uri: &Uri, project: &Project) -> Option<DocumentId> {
+    fn uri_to_document_id(uri: &ls_types::Uri, project: &Project) -> Option<DocumentId> {
         let path = uri.to_file_path()?;
         project.path_to_document_id(&path).ok()
     }
 
-    fn document_id_to_uri(document_id: &DocumentId, project: &Project) -> Uri {
+    fn document_id_to_uri(document_id: &DocumentId, project: &Project) -> ls_types::Uri {
         let p = project.document_id_to_path(document_id);
-        Uri::from_file_path(&p).expect("Failed to create URI from file path")
+        ls_types::Uri::from_file_path(&p).expect("Failed to create URI from file path")
     }
 
-    async fn publish_diagnostics(&self, project: &Project, uri: &Uri) {
+    async fn publish_diagnostics(&self, project: &Project, uri: &ls_types::Uri) {
         let Some(document_id) = Self::uri_to_document_id(uri, project) else {
             return;
         };
         let program = self.program.read().await;
-        let lsp_diagnostics: Vec<Diagnostic> = program
+        let lsp_diagnostics: Vec<ls_types::Diagnostic> = program
             .document_diagnostics(&document_id)
             .into_iter()
-            .map(|d| Diagnostic {
+            .map(|d| ls_types::Diagnostic {
                 range: doc_range_to_lsp_range(d.range().clone()),
                 severity: Some(match d.severity() {
-                    Severity::Error => DiagnosticSeverity::ERROR,
-                    Severity::Warning => DiagnosticSeverity::WARNING,
+                    DiagnosticSeverity::Error => ls_types::DiagnosticSeverity::ERROR,
+                    DiagnosticSeverity::Warning => ls_types::DiagnosticSeverity::WARNING,
                 }),
                 code: None,
                 code_description: None,
@@ -145,7 +145,10 @@ impl HopLanguageServer {
 }
 
 impl LanguageServer for HopLanguageServer {
-    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(
+        &self,
+        params: ls_types::InitializeParams,
+    ) -> Result<ls_types::InitializeResult> {
         // Try to find the project root from the rootUri or rootPath
         #[allow(deprecated)]
         if let Some(ref root_uri) = params.root_uri {
@@ -161,7 +164,7 @@ impl LanguageServer for HopLanguageServer {
                         let _ = self
                             .client_tx
                             .send(ClientMessage::ShowMessage {
-                                message_type: MessageType::WARNING,
+                                message_type: ls_types::MessageType::WARNING,
                                 message: format!("Failed to load Hop project: {e}"),
                             })
                             .await;
@@ -169,21 +172,21 @@ impl LanguageServer for HopLanguageServer {
                 }
             }
         }
-        Ok(InitializeResult {
-            capabilities: ServerCapabilities {
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
+        Ok(ls_types::InitializeResult {
+            capabilities: ls_types::ServerCapabilities {
+                text_document_sync: Some(ls_types::TextDocumentSyncCapability::Kind(
+                    ls_types::TextDocumentSyncKind::FULL,
                 )),
-                hover_provider: Some(HoverProviderCapability::Simple(true)),
-                definition_provider: Some(OneOf::Left(true)),
-                rename_provider: Some(OneOf::Right(RenameOptions {
+                hover_provider: Some(ls_types::HoverProviderCapability::Simple(true)),
+                definition_provider: Some(ls_types::OneOf::Left(true)),
+                rename_provider: Some(ls_types::OneOf::Right(ls_types::RenameOptions {
                     prepare_provider: Some(true),
-                    work_done_progress_options: WorkDoneProgressOptions::default(),
+                    work_done_progress_options: ls_types::WorkDoneProgressOptions::default(),
                 })),
-                document_formatting_provider: Some(OneOf::Left(true)),
+                document_formatting_provider: Some(ls_types::OneOf::Left(true)),
                 ..Default::default()
             },
-            server_info: Some(ServerInfo {
+            server_info: Some(ls_types::ServerInfo {
                 name: "hop-language-server".to_string(),
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
             }),
@@ -191,7 +194,7 @@ impl LanguageServer for HopLanguageServer {
         })
     }
 
-    async fn initialized(&self, _: InitializedParams) {
+    async fn initialized(&self, _: ls_types::InitializedParams) {
         if let Some(project) = self.project.get() {
             if let Ok(document_ids) = project.documents() {
                 let document_ids: Vec<DocumentId> = document_ids
@@ -214,13 +217,13 @@ impl LanguageServer for HopLanguageServer {
         }
     }
 
-    async fn did_save(&self, _: DidSaveTextDocumentParams) {}
+    async fn did_save(&self, _: ls_types::DidSaveTextDocumentParams) {}
 
-    async fn did_close(&self, _: DidCloseTextDocumentParams) {}
+    async fn did_close(&self, _: ls_types::DidCloseTextDocumentParams) {}
 
-    async fn did_open(&self, _params: DidOpenTextDocumentParams) {}
+    async fn did_open(&self, _params: ls_types::DidOpenTextDocumentParams) {}
 
-    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+    async fn did_change(&self, params: ls_types::DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         if let Some(project) = self.project.get() {
             let Some(document_id) = Self::uri_to_document_id(&uri, project) else {
@@ -243,7 +246,7 @@ impl LanguageServer for HopLanguageServer {
         }
     }
 
-    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+    async fn hover(&self, params: ls_types::HoverParams) -> Result<Option<ls_types::Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         if let Some(project) = self.project.get() {
@@ -255,10 +258,14 @@ impl LanguageServer for HopLanguageServer {
             let Some(position) = lsp_pos_to_doc_pos(&program, &document_id, position) else {
                 return Ok(None);
             };
-            Ok(program.hover_info(&position).map(|(range, message)| Hover {
-                contents: HoverContents::Scalar(MarkedString::String(message)),
-                range: Some(doc_range_to_lsp_range(range)),
-            }))
+            Ok(program
+                .hover_info(&position)
+                .map(|(range, message)| ls_types::Hover {
+                    contents: ls_types::HoverContents::Scalar(ls_types::MarkedString::String(
+                        message,
+                    )),
+                    range: Some(doc_range_to_lsp_range(range)),
+                }))
         } else {
             Ok(None)
         }
@@ -266,8 +273,8 @@ impl LanguageServer for HopLanguageServer {
 
     async fn goto_definition(
         &self,
-        params: GotoDefinitionParams,
-    ) -> Result<Option<GotoDefinitionResponse>> {
+        params: ls_types::GotoDefinitionParams,
+    ) -> Result<Option<ls_types::GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         if let Some(project) = self.project.get() {
@@ -281,7 +288,7 @@ impl LanguageServer for HopLanguageServer {
             };
 
             Ok(program.definition_location(&position).map(|range| {
-                GotoDefinitionResponse::Scalar(Location {
+                ls_types::GotoDefinitionResponse::Scalar(ls_types::Location {
                     uri: Self::document_id_to_uri(range.document_id(), project),
                     range: doc_range_to_lsp_range(range),
                 })
@@ -293,8 +300,8 @@ impl LanguageServer for HopLanguageServer {
 
     async fn prepare_rename(
         &self,
-        params: TextDocumentPositionParams,
-    ) -> Result<Option<PrepareRenameResponse>> {
+        params: ls_types::TextDocumentPositionParams,
+    ) -> Result<Option<ls_types::PrepareRenameResponse>> {
         let uri = params.text_document.uri;
         let position = params.position;
         if let Some(project) = self.project.get() {
@@ -309,18 +316,21 @@ impl LanguageServer for HopLanguageServer {
 
             Ok(program
                 .renameable_symbol(&position)
-                .map(
-                    |(range, placeholder)| PrepareRenameResponse::RangeWithPlaceholder {
+                .map(|(range, placeholder)| {
+                    ls_types::PrepareRenameResponse::RangeWithPlaceholder {
                         range: doc_range_to_lsp_range(range),
                         placeholder,
-                    },
-                ))
+                    }
+                }))
         } else {
             Ok(None)
         }
     }
 
-    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+    async fn rename(
+        &self,
+        params: ls_types::RenameParams,
+    ) -> Result<Option<ls_types::WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let new_name = params.new_name;
@@ -336,11 +346,11 @@ impl LanguageServer for HopLanguageServer {
 
             if let Some(rename_locations) = server.rename_locations(&position) {
                 #[allow(clippy::mutable_key_type)]
-                let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
+                let mut changes: HashMap<ls_types::Uri, Vec<ls_types::TextEdit>> = HashMap::new();
 
                 for range in rename_locations {
                     let file_uri = Self::document_id_to_uri(range.document_id(), project);
-                    let edit = TextEdit {
+                    let edit = ls_types::TextEdit {
                         range: doc_range_to_lsp_range(range),
                         new_text: new_name.clone(),
                     };
@@ -348,7 +358,7 @@ impl LanguageServer for HopLanguageServer {
                     changes.entry(file_uri).or_default().push(edit);
                 }
 
-                Ok(Some(WorkspaceEdit {
+                Ok(Some(ls_types::WorkspaceEdit {
                     changes: Some(changes),
                     ..Default::default()
                 }))
@@ -360,7 +370,10 @@ impl LanguageServer for HopLanguageServer {
         }
     }
 
-    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+    async fn formatting(
+        &self,
+        params: ls_types::DocumentFormattingParams,
+    ) -> Result<Option<Vec<ls_types::TextEdit>>> {
         let uri = params.text_document.uri;
         if let Some(project) = self.project.get() {
             let Some(document_id) = Self::uri_to_document_id(&uri, project) else {
@@ -370,7 +383,7 @@ impl LanguageServer for HopLanguageServer {
             let program = self.program.read().await;
 
             match program.format_hop_document(&document_id) {
-                Ok(formatted) => Ok(Some(vec![TextEdit {
+                Ok(formatted) => Ok(Some(vec![ls_types::TextEdit {
                     range: ls_types::Range {
                         start: ls_types::Position {
                             line: 0,
@@ -420,9 +433,9 @@ mod tests {
         let (tx, _rx) = mpsc::channel(32);
         let server = HopLanguageServer::new(tx);
 
-        let root_uri = Uri::from_file_path(temp_dir.path()).unwrap();
+        let root_uri = ls_types::Uri::from_file_path(temp_dir.path()).unwrap();
         #[allow(deprecated)]
-        let params = InitializeParams {
+        let params = ls_types::InitializeParams {
             root_uri: Some(root_uri),
             ..Default::default()
         };
@@ -454,9 +467,9 @@ mod tests {
         let (tx, _rx) = mpsc::channel(32);
         let server = HopLanguageServer::new(tx);
 
-        let root_uri = Uri::from_file_path(temp_dir.path()).unwrap();
+        let root_uri = ls_types::Uri::from_file_path(temp_dir.path()).unwrap();
         #[allow(deprecated)]
-        let params = InitializeParams {
+        let params = ls_types::InitializeParams {
             root_uri: Some(root_uri),
             ..Default::default()
         };
@@ -464,11 +477,12 @@ mod tests {
 
         // An editor can have files open that live outside the hop project
         let outside_dir = TempDir::new().unwrap();
-        let outside_uri = Uri::from_file_path(outside_dir.path().join("other.hop")).unwrap();
-        let params = HoverParams {
-            text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: outside_uri },
-                position: Position {
+        let outside_uri =
+            ls_types::Uri::from_file_path(outside_dir.path().join("other.hop")).unwrap();
+        let params = ls_types::HoverParams {
+            text_document_position_params: ls_types::TextDocumentPositionParams {
+                text_document: ls_types::TextDocumentIdentifier { uri: outside_uri },
+                position: ls_types::Position {
                     line: 0,
                     character: 0,
                 },
@@ -498,9 +512,9 @@ mod tests {
         let (tx, _rx) = mpsc::channel(32);
         let server = HopLanguageServer::new(tx);
 
-        let root_uri = Uri::from_file_path(temp_dir.path()).unwrap();
+        let root_uri = ls_types::Uri::from_file_path(temp_dir.path()).unwrap();
         #[allow(deprecated)]
-        let params = InitializeParams {
+        let params = ls_types::InitializeParams {
             root_uri: Some(root_uri),
             ..Default::default()
         };
@@ -528,9 +542,9 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(32);
         let server = HopLanguageServer::new(tx);
 
-        let root_uri = Uri::from_file_path(temp_dir.path()).unwrap();
+        let root_uri = ls_types::Uri::from_file_path(temp_dir.path()).unwrap();
         #[allow(deprecated)]
-        let params = InitializeParams {
+        let params = ls_types::InitializeParams {
             root_uri: Some(root_uri),
             ..Default::default()
         };
@@ -545,7 +559,7 @@ mod tests {
                 message_type,
                 message,
             } => {
-                assert_eq!(message_type, MessageType::WARNING);
+                assert_eq!(message_type, ls_types::MessageType::WARNING);
                 assert!(message.contains("Failed to load Hop project"));
             }
             _ => panic!("expected ShowMessage"),

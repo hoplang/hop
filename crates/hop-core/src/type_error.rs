@@ -1,8 +1,8 @@
 use crate::diagnostic::Diagnostic;
+use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::patterns::typed::TypedMatchPattern;
 use crate::hop::typing::r#type::Type;
-use crate::severity::Severity;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
@@ -43,7 +43,7 @@ impl TypeError {
         )
     }
 
-    pub(crate) fn severity(&self) -> Severity {
+    pub(crate) fn severity(&self) -> DiagnosticSeverity {
         self.kind.severity()
     }
 
@@ -432,12 +432,12 @@ pub(crate) enum TypeErrorKind {
 }
 
 impl TypeErrorKind {
-    pub fn severity(&self) -> Severity {
+    pub fn severity(&self) -> DiagnosticSeverity {
         match self {
             TypeErrorKind::UnusedVariable { .. }
             | TypeErrorKind::UnusedImport { .. }
-            | TypeErrorKind::MatchUnusedBinding { .. } => Severity::Warning,
-            _ => Severity::Error,
+            | TypeErrorKind::MatchUnusedBinding { .. } => DiagnosticSeverity::Warning,
+            _ => DiagnosticSeverity::Error,
         }
     }
 }

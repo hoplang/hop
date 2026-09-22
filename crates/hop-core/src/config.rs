@@ -1,6 +1,6 @@
 use crate::diagnostic::Diagnostic;
+use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::Document;
-use crate::severity::Severity;
 use serde::Deserialize;
 
 /// The target language for compilation
@@ -30,7 +30,7 @@ impl Config {
                 // A zero-width span is kept as a position marker, toml reports
                 // one for "expected X here" and for a missing top-level section.
                 self.document.range(err.span().unwrap_or(0..0)),
-                Severity::Error,
+                DiagnosticSeverity::Error,
             )
         })
     }

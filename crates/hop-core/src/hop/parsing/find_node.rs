@@ -83,11 +83,11 @@ fn find_node_at_position_in_node<'a>(
 mod tests {
     use super::*;
     use crate::diagnostic::Diagnostic;
+    use crate::diagnostic_severity::DiagnosticSeverity;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
     use crate::extract_position::extract_position;
     use crate::hop::parsing::parse::parse;
-    use crate::severity::Severity;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -108,7 +108,7 @@ mod tests {
                 .annotate([Diagnostic::new(
                     "range".to_string(),
                     node.range().clone(),
-                    Severity::Error,
+                    DiagnosticSeverity::Error,
                 )])
                 .render()
         } else {

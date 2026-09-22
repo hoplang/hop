@@ -250,7 +250,7 @@ pub fn next(
 mod tests {
     use super::*;
     use crate::diagnostic::Diagnostic;
-    use crate::severity::Severity;
+    use crate::diagnostic_severity::DiagnosticSeverity;
     use crate::{document_annotator::DocumentAnnotator, document_id::DocumentId};
     use expect_test::{Expect, expect};
 
@@ -264,14 +264,14 @@ mod tests {
             annotations.push(Diagnostic::new(
                 format!("token: {:?}", tok),
                 range,
-                Severity::Error,
+                DiagnosticSeverity::Error,
             ));
         }
         for range in comments {
             annotations.push(Diagnostic::new(
                 format!("comment: {}", range.as_str()),
                 range,
-                Severity::Error,
+                DiagnosticSeverity::Error,
             ));
         }
         for err in &errors {

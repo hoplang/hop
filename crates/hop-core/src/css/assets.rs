@@ -370,9 +370,9 @@ pub fn rewrite_asset_paths(css: &Document, asset_rewriter: Arc<dyn AssetRewriter
 mod tests {
     use super::*;
     use crate::diagnostic::Diagnostic;
+    use crate::diagnostic_severity::DiagnosticSeverity;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
-    use crate::severity::Severity;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -389,7 +389,7 @@ mod tests {
             asset_reference_annotations.push(Diagnostic::new(
                 format!("asset: {}", asset_reference.document_id),
                 asset_reference.range.clone(),
-                Severity::Error,
+                DiagnosticSeverity::Error,
             ));
         }
 

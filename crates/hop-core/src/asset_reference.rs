@@ -1,7 +1,7 @@
 use crate::diagnostic::Diagnostic;
+use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::DocumentRange;
 use crate::document_id::DocumentId;
-use crate::severity::Severity;
 
 /// A reference to an asset via an `asset!(...)` macro (in hop) or an `--asset(...)` call (in CSS).
 #[derive(Debug, Clone)]
@@ -23,7 +23,7 @@ impl AssetReference {
         Diagnostic::new(
             format!("asset `{}` was not found", self.document_id),
             self.range.clone(),
-            Severity::Error,
+            DiagnosticSeverity::Error,
         )
     }
 }

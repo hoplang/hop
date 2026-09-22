@@ -6,6 +6,7 @@ use crate::css_error::CssError;
 use crate::definition_link::DefinitionLink;
 use crate::dependency_graph::DependencyGraph;
 use crate::diagnostic::Diagnostic;
+use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, Document, DocumentPosition, DocumentRange, PositionEncoding};
 use crate::document_id::DocumentId;
 use crate::hop::assembly::TailwindInjection;
@@ -25,7 +26,6 @@ use crate::ir::runtime::evaluator::EvalError;
 use crate::ir::runtime::random::random_value;
 use crate::orchestrator::{OrchestrateOptions, orchestrate, orchestrate_pure};
 use crate::parse_error::ParseError;
-use crate::severity::Severity;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
@@ -507,7 +507,7 @@ impl Program {
             .type_errors
             .values()
             .flatten()
-            .any(|error| error.severity() == Severity::Error)
+            .any(|error| error.severity() == DiagnosticSeverity::Error)
         {
             return Err(EvaluatePageError::TypeErrors);
         }
@@ -712,10 +712,9 @@ mod tests {
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate(
-                locs.into_iter()
-                    .map(|range| Diagnostic::new("Rename".to_string(), range, Severity::Error)),
-            )
+            .annotate(locs.into_iter().map(|range| {
+                Diagnostic::new("Rename".to_string(), range, DiagnosticSeverity::Error)
+            }))
             .render();
 
         expected.assert_eq(&output);
@@ -749,7 +748,7 @@ mod tests {
             .annotate([Diagnostic::new(
                 "Definition".to_string(),
                 range,
-                Severity::Error,
+                DiagnosticSeverity::Error,
             )])
             .render();
 
@@ -797,7 +796,7 @@ mod tests {
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate([Diagnostic::new(name, range, Severity::Error)])
+            .annotate([Diagnostic::new(name, range, DiagnosticSeverity::Error)])
             .render();
 
         expected.assert_eq(&output);
@@ -828,7 +827,7 @@ mod tests {
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate([Diagnostic::new(message, range, Severity::Error)])
+            .annotate([Diagnostic::new(message, range, DiagnosticSeverity::Error)])
             .render();
 
         expected.assert_eq(&output);
@@ -2172,7 +2171,7 @@ mod tests {
         let diagnostics = program.diagnostics();
         let warnings: Vec<_> = diagnostics
             .into_iter()
-            .filter(|d| d.severity() == Severity::Warning)
+            .filter(|d| d.severity() == DiagnosticSeverity::Warning)
             .collect();
         assert!(
             warnings.is_empty(),
