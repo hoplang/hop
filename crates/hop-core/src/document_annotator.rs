@@ -10,7 +10,8 @@ use crate::{
     document_id::DocumentId,
 };
 
-/// Annotator that can display source code with diagnostics
+/// A printer that displays the source code of a [Document](crate::Document)
+/// annotated with [Diagnostics](crate::Diagnostic).
 pub struct DocumentAnnotator {
     // Display options
     show_line_numbers: bool,
@@ -264,8 +265,10 @@ mod tests {
             .filter_map(|(is_separator, group)| {
                 if !is_separator {
                     let range: Option<DocumentRange> = group.collect();
-                    range.map(|range| {
-                        Diagnostic::new(range.as_str().to_string(), range, DiagnosticSeverity::Error)
+                    range.map(|range| Diagnostic {
+                        message: range.as_str().to_string(),
+                        range,
+                        severity: DiagnosticSeverity::Error,
                     })
                 } else {
                     None
@@ -311,11 +314,11 @@ mod tests {
     #[test]
     fn end_of_input_range_is_a_single_caret() {
         let doc_id = DocumentId::new("test.hop").unwrap();
-        let annotation = Diagnostic::new(
-            "unexpected end of file".to_string(),
-            DocumentCursor::new(doc_id, "fn main(".to_string()).eof_range(),
-            DiagnosticSeverity::Error,
-        );
+        let annotation = Diagnostic {
+            message: "unexpected end of file".to_string(),
+            range: DocumentCursor::new(doc_id, "fn main(".to_string()).eof_range(),
+            severity: DiagnosticSeverity::Error,
+        };
 
         let actual = DocumentAnnotator::new().annotate([annotation]).render();
 
@@ -330,11 +333,11 @@ mod tests {
     #[test]
     fn end_of_input_range_after_trailing_newline_clamps_to_the_last_line() {
         let doc_id = DocumentId::new("test.hop").unwrap();
-        let annotation = Diagnostic::new(
-            "unexpected end of file".to_string(),
-            DocumentCursor::new(doc_id, "fn main() {\n".to_string()).eof_range(),
-            DiagnosticSeverity::Error,
-        );
+        let annotation = Diagnostic {
+            message: "unexpected end of file".to_string(),
+            range: DocumentCursor::new(doc_id, "fn main() {\n".to_string()).eof_range(),
+            severity: DiagnosticSeverity::Error,
+        };
 
         let actual = DocumentAnnotator::new().annotate([annotation]).render();
 

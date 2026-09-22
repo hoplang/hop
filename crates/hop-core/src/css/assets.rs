@@ -386,11 +386,11 @@ mod tests {
         let mut error_annotations = Vec::new();
 
         for asset_reference in asset_references {
-            asset_reference_annotations.push(Diagnostic::new(
-                format!("asset: {}", asset_reference.document_id),
-                asset_reference.range.clone(),
-                DiagnosticSeverity::Error,
-            ));
+            asset_reference_annotations.push(Diagnostic {
+                message: format!("asset: {}", asset_reference.document_id),
+                range: asset_reference.range.clone(),
+                severity: DiagnosticSeverity::Error,
+            });
         }
 
         for err in errors {

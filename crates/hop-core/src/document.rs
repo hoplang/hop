@@ -72,7 +72,7 @@ impl PositionEncoding {
     }
 }
 
-/// A position in a document.
+/// A position in a [Document].
 #[derive(Clone, Debug)]
 pub struct DocumentPosition {
     /// The source info containing the document text and line starts.
@@ -82,6 +82,7 @@ pub struct DocumentPosition {
 }
 
 impl DocumentPosition {
+    /// The [DocumentId] for the [Document] in which this position belongs.
     pub fn document_id(&self) -> &DocumentId {
         &self.source.document_id
     }
@@ -110,7 +111,7 @@ impl PartialEq for DocumentPosition {
 
 impl Eq for DocumentPosition {}
 
-/// A Document is a shared reference to a document in the project.
+/// A shared reference to a document in the project.
 #[derive(Clone, Debug)]
 pub struct Document {
     source: Arc<DocumentInfo>,
@@ -313,7 +314,7 @@ impl Iterator for DocumentCursor {
     }
 }
 
-/// A range in a document.
+/// A range in a [Document](crate::Document).
 #[derive(Clone, Debug)]
 pub struct DocumentRange {
     /// The source info containing the document text and line starts.

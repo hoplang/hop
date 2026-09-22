@@ -48,11 +48,11 @@ impl TypeError {
     }
 
     pub(crate) fn to_diagnostic(&self) -> Diagnostic {
-        Diagnostic::new(
-            self.kind.to_string(),
-            self.range.clone(),
-            self.kind.severity(),
-        )
+        Diagnostic {
+            message: self.kind.to_string(),
+            range: self.range.clone(),
+            severity: self.kind.severity(),
+        }
     }
 }
 

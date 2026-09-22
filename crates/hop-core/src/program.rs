@@ -182,7 +182,7 @@ impl Program {
         }
     }
 
-    /// Update or add a CSS document to the program.
+    /// Remove a CSS document from the program.
     pub fn remove_css_document(&mut self, document_id: &DocumentId) {
         self.css_documents.remove(document_id);
         self.css_errors.remove(document_id);
@@ -712,8 +712,10 @@ mod tests {
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate(locs.into_iter().map(|range| {
-                Diagnostic::new("Rename".to_string(), range, DiagnosticSeverity::Error)
+            .annotate(locs.into_iter().map(|range| Diagnostic {
+                message: "Rename".to_string(),
+                range,
+                severity: DiagnosticSeverity::Error,
             }))
             .render();
 
@@ -745,11 +747,11 @@ mod tests {
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate([Diagnostic::new(
-                "Definition".to_string(),
+            .annotate([Diagnostic {
+                message: "Definition".to_string(),
                 range,
-                DiagnosticSeverity::Error,
-            )])
+                severity: DiagnosticSeverity::Error,
+            }])
             .render();
 
         expected.assert_eq(&output);
@@ -796,7 +798,11 @@ mod tests {
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate([Diagnostic::new(name, range, DiagnosticSeverity::Error)])
+            .annotate([Diagnostic {
+                message: name,
+                range,
+                severity: DiagnosticSeverity::Error,
+            }])
             .render();
 
         expected.assert_eq(&output);
@@ -827,7 +833,11 @@ mod tests {
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate([Diagnostic::new(message, range, DiagnosticSeverity::Error)])
+            .annotate([Diagnostic {
+                message,
+                range,
+                severity: DiagnosticSeverity::Error,
+            }])
             .render();
 
         expected.assert_eq(&output);

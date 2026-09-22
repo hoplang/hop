@@ -105,11 +105,11 @@ mod tests {
         let output = if let Some(node) = found_node {
             DocumentAnnotator::new()
                 .without_location()
-                .annotate([Diagnostic::new(
-                    "range".to_string(),
-                    node.range().clone(),
-                    DiagnosticSeverity::Error,
-                )])
+                .annotate([Diagnostic {
+                    message: "range".to_string(),
+                    range: node.range().clone(),
+                    severity: DiagnosticSeverity::Error,
+                }])
                 .render()
         } else {
             "No node found at position".to_string()

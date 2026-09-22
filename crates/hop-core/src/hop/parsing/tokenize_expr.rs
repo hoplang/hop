@@ -261,26 +261,26 @@ mod tests {
         let mut comments = Vec::new();
         let mut annotations = Vec::new();
         while let Some((tok, range)) = next(&mut cursor, &mut comments, &mut errors) {
-            annotations.push(Diagnostic::new(
-                format!("token: {:?}", tok),
+            annotations.push(Diagnostic {
+                message: format!("token: {:?}", tok),
                 range,
-                DiagnosticSeverity::Error,
-            ));
+                severity: DiagnosticSeverity::Error,
+            });
         }
         for range in comments {
-            annotations.push(Diagnostic::new(
-                format!("comment: {}", range.as_str()),
+            annotations.push(Diagnostic {
+                message: format!("comment: {}", range.as_str()),
                 range,
-                DiagnosticSeverity::Error,
-            ));
+                severity: DiagnosticSeverity::Error,
+            });
         }
         for err in &errors {
             let diagnostic = err.to_diagnostic();
-            annotations.push(Diagnostic::new(
-                format!("error: {}", diagnostic.message()),
-                diagnostic.range().clone(),
-                diagnostic.severity(),
-            ));
+            annotations.push(Diagnostic {
+                message: format!("error: {}", diagnostic.message()),
+                range: diagnostic.range().clone(),
+                severity: diagnostic.severity(),
+            });
         }
         let actual = DocumentAnnotator::new()
             .without_line_numbers()

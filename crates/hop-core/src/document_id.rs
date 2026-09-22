@@ -2,9 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 use thiserror::Error;
 
-/// A type-safe wrapper for documents IDs in the hop system.
-/// Document IDs represent the path to a document relative to the project root.
-/// Document IDs do _not_ have a leading slash.
+/// A unique identifier for a [Document](crate::Document).
+/// Represents the path to a document relative to the project root.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DocumentId(Arc<String>);
 
@@ -71,7 +70,7 @@ impl fmt::Display for DocumentId {
     }
 }
 
-/// Error type for invalid module IDs
+/// Error type for invalid [DocumentIds](crate::DocumentId).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum DocumentIdError {
     #[error("Document ID cannot be empty")]

@@ -25,13 +25,13 @@ impl Config {
 
     fn parse<T: serde::de::DeserializeOwned>(&self) -> Result<T, Diagnostic> {
         toml::from_str(self.document.as_str()).map_err(|err| {
-            Diagnostic::new(
-                err.message().to_string(),
+            Diagnostic {
+                message: err.message().to_string(),
                 // A zero-width span is kept as a position marker, toml reports
                 // one for "expected X here" and for a missing top-level section.
-                self.document.range(err.span().unwrap_or(0..0)),
-                DiagnosticSeverity::Error,
-            )
+                range: self.document.range(err.span().unwrap_or(0..0)),
+                severity: DiagnosticSeverity::Error,
+            }
         })
     }
 

@@ -54,11 +54,11 @@ pub(crate) struct ParseError {
 
 impl ParseError {
     pub(crate) fn to_diagnostic(&self) -> Diagnostic {
-        Diagnostic::new(
-            self.kind.to_string(),
-            self.range.clone(),
-            DiagnosticSeverity::Error,
-        )
+        Diagnostic {
+            message: self.kind.to_string(),
+            range: self.range.clone(),
+            severity: DiagnosticSeverity::Error,
+        }
     }
 }
 
