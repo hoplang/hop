@@ -1,6 +1,7 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::Document;
+use crate::document_id::DocumentId;
 use serde::Deserialize;
 
 /// The target language for compilation
@@ -12,7 +13,7 @@ pub enum TargetLanguage {
     Rust,
 }
 
-/// The contents of a `hop.toml`.
+/// The contents of a `hop.toml` file.
 #[derive(Debug, Clone)]
 pub struct Config {
     document: Document,
@@ -35,11 +36,13 @@ impl Config {
         })
     }
 
-    pub fn css_input_path(&self) -> Result<Option<String>, Diagnostic> {
+    /// The CSS entrypoint.
+    pub fn css_input_path(&self) -> Result<Option<DocumentId>, Diagnostic> {
         Ok(self.parse::<CssToml>()?.css.map(|css| css.input_path))
     }
 
-    pub fn js_input_path(&self) -> Result<Option<String>, Diagnostic> {
+    /// The JS/TS entrypoint.
+    pub fn js_input_path(&self) -> Result<Option<DocumentId>, Diagnostic> {
         Ok(self.parse::<JsToml>()?.js.map(|js| js.input_path))
     }
 
@@ -93,15 +96,17 @@ struct CompileSection {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CssSection {
-    /// Path to the input CSS file
-    input_path: String,
+    /// Path to the CSS entrypoint, relative to the project root.
+    #[serde(deserialize_with = "deserialize_document_id")]
+    input_path: DocumentId,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JsSection {
-    /// Path to the input JS/TS entrypoint file
-    input_path: String,
+    /// Path to the JS/TS entrypoint, relative to the project root.
+    #[serde(deserialize_with = "deserialize_document_id")]
+    input_path: DocumentId,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -117,6 +122,14 @@ struct AssetsSection {
     /// (relative to the project root). Absolute paths are rejected.
     #[serde(deserialize_with = "deserialize_output_dir")]
     output_dir: String,
+}
+
+fn deserialize_document_id<'de, D>(deserializer: D) -> Result<DocumentId, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let path = String::deserialize(deserializer)?;
+    DocumentId::new(&path).map_err(serde::de::Error::custom)
 }
 
 fn deserialize_production_prefix<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -194,7 +207,7 @@ mod tests {
         let config = from_toml(toml_str);
         assert_eq!(
             config.css_input_path().unwrap(),
-            Some("styles/input.css".to_string())
+            Some(DocumentId::new("styles/input.css").unwrap())
         );
     }
 
@@ -211,6 +224,22 @@ mod tests {
             1 | [css]
             2 | bundler = "tailwind_4"
               | ^^^^^^^
+        "#]]
+        .assert_eq(&render(from_toml(toml_str).css_input_path().unwrap_err()));
+    }
+
+    #[test]
+    fn rejects_css_input_path_that_is_not_a_document_id() {
+        let toml_str = indoc! {r#"
+            [css]
+            input_path = "../styles/input.css"
+        "#};
+        expect![[r#"
+            error: Document ID cannot contain '.' or '..' components
+              --> hop.toml (line 2, col 14)
+            1 | [css]
+            2 | input_path = "../styles/input.css"
+              |              ^^^^^^^^^^^^^^^^^^^^^
         "#]]
         .assert_eq(&render(from_toml(toml_str).css_input_path().unwrap_err()));
     }
@@ -238,7 +267,7 @@ mod tests {
         let config = from_toml(toml_str);
         assert_eq!(
             config.css_input_path().unwrap(),
-            Some("styles/input.css".to_string())
+            Some(DocumentId::new("styles/input.css").unwrap())
         );
     }
 
@@ -255,7 +284,7 @@ mod tests {
         let config = from_toml(toml_str);
         assert_eq!(
             config.js_input_path().unwrap(),
-            Some("src/app.ts".to_string())
+            Some(DocumentId::new("src/app.ts").unwrap())
         );
     }
 
@@ -272,6 +301,22 @@ mod tests {
             1 | [js]
             2 | bundler = "esbuild"
               | ^^^^^^^
+        "#]]
+        .assert_eq(&render(from_toml(toml_str).js_input_path().unwrap_err()));
+    }
+
+    #[test]
+    fn rejects_absolute_js_input_path() {
+        let toml_str = indoc! {r#"
+            [js]
+            input_path = "/src/app.ts"
+        "#};
+        expect![[r#"
+            error: Document ID cannot start with '/'
+              --> hop.toml (line 2, col 14)
+            1 | [js]
+            2 | input_path = "/src/app.ts"
+              |              ^^^^^^^^^^^^^
         "#]]
         .assert_eq(&render(from_toml(toml_str).js_input_path().unwrap_err()));
     }
@@ -465,7 +510,7 @@ mod tests {
         let config = from_toml(toml_str);
         assert_eq!(
             config.css_input_path().unwrap(),
-            Some("styles/input.css".to_string())
+            Some(DocumentId::new("styles/input.css").unwrap())
         );
         expect!["missing field `output_path`"].assert_eq(config.target().unwrap_err().message());
     }

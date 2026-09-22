@@ -24,6 +24,7 @@ mod orchestrator;
 mod parse_error;
 mod program;
 mod project;
+mod project_root;
 mod symbols;
 mod type_error;
 
@@ -38,3 +39,4 @@ pub use document_annotator::DocumentAnnotator;
 pub use document_id::{DocumentId, DocumentIdError};
 pub use program::{EvaluatePageError, FormatError, Program};
 pub use project::{Project, ProjectError};
+pub use project_root::{ProjectRoot, ProjectRootError};

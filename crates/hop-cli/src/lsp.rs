@@ -102,11 +102,11 @@ impl HopLanguageServer {
     /// cannot be represented as a DocumentIds.
     fn uri_to_document_id(uri: &ls_types::Uri, project: &Project) -> Option<DocumentId> {
         let path = uri.to_file_path()?;
-        project.path_to_document_id(&path).ok()
+        project.root().path_to_document_id(&path).ok()
     }
 
     fn document_id_to_uri(document_id: &DocumentId, project: &Project) -> ls_types::Uri {
-        let p = project.document_id_to_path(document_id);
+        let p = project.root().document_id_to_path(document_id);
         ls_types::Uri::from_file_path(&p).expect("Failed to create URI from file path")
     }
 
@@ -443,10 +443,7 @@ mod tests {
         server.initialize(params).await.unwrap();
 
         let project = server.project.get().expect("project should be resolved");
-        assert_eq!(
-            project.project_root(),
-            temp_dir.path().canonicalize().unwrap()
-        );
+        assert_eq!(project.root().as_path(), temp_dir.path());
     }
 
     #[tokio::test]
@@ -522,10 +519,7 @@ mod tests {
         server.initialize(params).await.unwrap();
 
         let project = server.project.get().expect("project should be resolved");
-        assert_eq!(
-            project.project_root(),
-            temp_dir.path().join("hop").canonicalize().unwrap()
-        );
+        assert_eq!(project.root().as_path(), temp_dir.path().join("hop"));
     }
 
     #[tokio::test]

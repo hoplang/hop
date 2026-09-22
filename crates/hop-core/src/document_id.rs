@@ -3,7 +3,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 /// A unique identifier for a [Document](crate::Document).
-/// Represents the path to a document relative to the project root.
+/// Represents the path to a document relative to the [ProjectRoot](crate::ProjectRoot).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DocumentId(Arc<String>);
 

@@ -1,6 +1,5 @@
 use anyhow::Result;
 use hop_core::{DocumentAnnotator, FormatError, Program, Project};
-use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct FmtResult {
@@ -12,7 +11,8 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
     let document_ids = {
         match file {
             Some(file_path) => {
-                let document_id = project.path_to_document_id(&PathBuf::from(file_path))?;
+                let path = std::path::absolute(file_path)?;
+                let document_id = project.root().path_to_document_id(&path)?;
                 vec![document_id]
             }
             None => project
@@ -60,7 +60,7 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
     for (document_id, formatted) in formatted {
         let original = project.load_document(document_id)?;
         if formatted != original.as_str() {
-            let path = project.document_id_to_path(document_id);
+            let path = project.root().document_id_to_path(document_id);
             std::fs::write(&path, &formatted)?;
             files_formatted += 1;
         } else {

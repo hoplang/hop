@@ -51,6 +51,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
                 refs.iter()
                     .filter(|asset_ref| {
                         !project
+                            .root()
                             .document_id_to_path(asset_ref.document_id())
                             .exists()
                     })
@@ -92,14 +93,10 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Run Tailwind on the optimized IR (only classes that survived dead code removal)
     //
     // TODO: Make compile_css_document bundle CSS
-    if let Some(css_input_path) = config.css_input_path().map_err(annotated_config_error)? {
-        let input_path = project.project_root().join(css_input_path);
-        let tailwind_input_document_id = project.path_to_document_id(input_path.as_path())?;
+    if let Some(css_input) = config.css_input_path().map_err(annotated_config_error)? {
         let compiled_css = program
-            .compile_css_document(&tailwind_input_document_id, asset_rewriter.clone())
-            .ok_or_else(|| {
-                anyhow::anyhow!("CSS document '{}' not found", tailwind_input_document_id)
-            })?;
+            .compile_css_document(&css_input, asset_rewriter.clone())
+            .ok_or_else(|| anyhow::anyhow!("CSS document '{}' not found", css_input))?;
         let tailwind_runner = TailwindRunner::new();
         let sources = program.sources();
         css_output = tailwind_runner.compile_once(&compiled_css, &sources)?;
@@ -117,8 +114,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // (production_prefix + content-hashed filename), then injected as a
     // `<script type="module">` into every page's <head>.
     let js_bundle = match config.js_input_path().map_err(annotated_config_error)? {
-        Some(js_input_path) => {
-            let input_path = project.project_root().join(js_input_path);
+        Some(js_input) => {
+            let input_path = project.root().document_id_to_path(&js_input);
             let bundled = esbuild_runner::bundle_script(&input_path, true)?;
             let js_filename = format!("scripts-{:08x}.js", crc32fast::hash(bundled.as_bytes()));
             let js_src = match production_prefix.as_deref() {
@@ -142,7 +139,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Preserve the file's mtime if the content is unchanged, so downstream
     // build tools (e.g. cargo) don't trigger unnecessary recompiles.
     let output_path = project
-        .project_root()
+        .root()
+        .as_path()
         .join(config.output_path().map_err(annotated_config_error)?);
     if !fs::read(&output_path).is_ok_and(|existing| existing == generated_code.as_bytes()) {
         if let Some(parent) = output_path.parent() {
@@ -150,7 +148,6 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         }
         fs::write(&output_path, &generated_code)?;
     }
-    let output_path = output_path.canonicalize()?;
 
     // Copy assets with hashed filenames
     copy_assets(
@@ -162,7 +159,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Write CSS file
     let css_dest = project
-        .project_root()
+        .root()
+        .as_path()
         .join(&assets_output_dir)
         .join(&css_filename);
     if let Some(parent) = css_dest.parent() {
@@ -180,7 +178,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // Write JS bundle
     if let Some((bundled, js_filename, _)) = &js_bundle {
         let js_dest = project
-            .project_root()
+            .root()
+            .as_path()
             .join(&assets_output_dir)
             .join(js_filename);
         if let Some(parent) = js_dest.parent() {
@@ -220,7 +219,7 @@ fn compute_filename_replacements(
     let mut filenames_with_hashes = HashMap::new();
     let mut filename_replacements = HashMap::new();
     for document_id in &document_ids {
-        let full_path = project.document_id_to_path(document_id);
+        let full_path = project.root().document_id_to_path(document_id);
 
         let bytes = fs::read(&full_path).map_err(|e| {
             anyhow::anyhow!("Failed to read asset '{}' for hashing: {}", document_id, e)
@@ -248,10 +247,10 @@ fn copy_assets(
 ) -> Result<()> {
     let document_ids: BTreeSet<DocumentId> = paths.into_iter().collect();
 
-    let dest_root = project.project_root().join(output_dir);
+    let dest_root = project.root().as_path().join(output_dir);
 
     for document_id in &document_ids {
-        let src = project.document_id_to_path(document_id);
+        let src = project.root().document_id_to_path(document_id);
 
         let hashed_filename = filenames_with_hashes
             .get(document_id)
