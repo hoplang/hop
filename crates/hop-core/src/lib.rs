@@ -1,4 +1,3 @@
-mod asset_path;
 mod asset_path_rewriter;
 mod asset_reference;
 mod config;
@@ -25,11 +24,12 @@ mod orchestrator;
 mod parse_error;
 mod program;
 mod project_root;
+mod root_relative_file_path;
+mod root_relative_path;
 mod symbols;
 mod type_error;
 
 // Public API
-pub use asset_path::{AssetPath, AssetPathError};
 pub use asset_path_rewriter::AssetPathRewriter;
 pub use asset_reference::AssetReference;
 pub use config::{Config, TargetLanguage};
@@ -40,3 +40,5 @@ pub use document_annotator::DocumentAnnotator;
 pub use document_id::{DocumentId, DocumentIdError};
 pub use program::{EvaluatePageError, FormatError, Program};
 pub use project_root::{ProjectRoot, ProjectRootError};
+pub use root_relative_file_path::RootRelativeFilePath;
+pub use root_relative_path::RootRelativePath;

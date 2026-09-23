@@ -1,9 +1,9 @@
-use crate::asset_path::AssetPathError;
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::patterns::typed::TypedMatchPattern;
 use crate::hop::typing::r#type::Type;
+use crate::root_relative_path::RootRelativePathError;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
@@ -382,7 +382,7 @@ pub(crate) enum TypeErrorKind {
     AssetMacroNonLiteralArg,
 
     #[error("invalid asset! path: {source}")]
-    InvalidAssetPath { source: AssetPathError },
+    InvalidAssetPath { source: RootRelativePathError },
 
     #[error("format! requires a string literal as its first argument")]
     FormatMacroNonLiteralTemplate,

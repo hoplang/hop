@@ -1,7 +1,7 @@
-use crate::asset_path::AssetPathError;
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::DocumentRange;
+use crate::root_relative_path::RootRelativePathError;
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ pub(crate) enum CssErrorKind {
     /// `--asset("...")` was called with a path that cannot be resolved to an
     /// asset, e.g. an empty path or one containing invalid characters.
     #[error("CSS `--asset()` has an invalid path: {source}")]
-    InvalidAssetPath { source: AssetPathError },
+    InvalidAssetPath { source: RootRelativePathError },
 
     /// `--asset(` appeared but the call was never closed before EOF or
     /// before a hard CSS boundary (newline inside a string literal, etc.).

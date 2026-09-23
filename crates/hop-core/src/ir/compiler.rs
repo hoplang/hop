@@ -269,7 +269,7 @@ impl<'a> Compiler<'a> {
             TypedExpr::Asset { path } => {
                 let value = match &self.asset_path_rewriter {
                     Some(rewriter) => rewriter.rewrite(path),
-                    None => format!("/{path}"),
+                    None => format!("/{}", path.as_str()),
                 };
                 PureExpr::StringLiteral {
                     value: CheapString::new(value),

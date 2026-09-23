@@ -1,10 +1,10 @@
 use std::fmt::{self, Display};
 
-use crate::asset_path::AssetPath;
 use crate::document::CheapString;
 use crate::document_id::DocumentId;
 use crate::hop::patterns::{EnumPattern, Match};
 use crate::html::HtmlElementKind;
+use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
@@ -266,7 +266,7 @@ pub enum TypedExpr {
     /// An asset reference, e.g. asset!("/logo.svg"), resolved to a path
     /// relative to the project root.
     Asset {
-        path: AssetPath,
+        path: RootRelativeFilePath,
     },
 
     /// A function call expression, e.g. foo(1, 2)

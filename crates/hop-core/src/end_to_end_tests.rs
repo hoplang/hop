@@ -1,4 +1,3 @@
-use crate::asset_path::AssetPath;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::Document;
 use crate::document_annotator::DocumentAnnotator;
@@ -9,6 +8,7 @@ use crate::ir::runtime::evaluator;
 use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
 use crate::program::Program;
+use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::type_name::TypeName;
 use expect_test::Expect;
 use indoc::formatdoc;
@@ -13197,8 +13197,8 @@ mod tests {
                   }
                 }
             "#},
-            Some(Arc::new(|asset_path: &AssetPath| {
-                format!("/hop_assets/{asset_path}")
+            Some(Arc::new(|asset_path: &RootRelativeFilePath| {
+                format!("/hop_assets/{}", asset_path.as_str())
             })),
             r#"<img src="/hop_assets/logo.svg">"#,
             expect![[r#"
@@ -13244,7 +13244,7 @@ mod tests {
                   }
                 }
             "#},
-            Some(Arc::new(|asset_path: &AssetPath| {
+            Some(Arc::new(|asset_path: &RootRelativeFilePath| {
                 assert_eq!(asset_path.as_str(), "logo.svg");
                 "/static/v1/logo-a1b2c3d4.svg".to_string()
             })),

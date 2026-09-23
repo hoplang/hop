@@ -8,7 +8,6 @@ use super::typecheck_call::{Argument, typecheck_call_arguments};
 use super::typecheck_match::typecheck_match;
 use super::typecheck_node::typecheck_node;
 use super::variable_scope::VariableScope;
-use crate::asset_path::AssetPath;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
@@ -19,6 +18,7 @@ use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::{TypedExpr, TypedLoopSource};
 use crate::hover_annotation::HoverAnnotation;
+use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
@@ -1938,7 +1938,7 @@ pub fn typecheck_expr(
                         return None;
                     }
                 };
-                let asset_path = match AssetPath::new(path.as_str()) {
+                let asset_path = match RootRelativeFilePath::from_root_anchored(path.as_str()) {
                     Ok(asset_path) => asset_path,
                     Err(source) => {
                         errors.push(TypeError::new(
@@ -5532,7 +5532,7 @@ mod tests {
             &[],
             r#"asset!("logo.svg")"#,
             expect![[r#"
-                error: invalid asset! path: asset path must start with '/'
+                error: invalid asset! path: path must start with '/'
                 asset!("logo.svg")
                        ^^^^^^^^^^
             "#]],
@@ -5566,7 +5566,7 @@ mod tests {
             &[],
             r#"asset!("/icons/..")"#,
             expect![[r#"
-                error: invalid asset! path: asset path does not name a file
+                error: invalid asset! path: path does not name a file
                 asset!("/icons/..")
                        ^^^^^^^^^^^
             "#]],
@@ -5580,7 +5580,7 @@ mod tests {
             &[],
             r#"asset!("")"#,
             expect![[r#"
-                error: invalid asset! path: asset path cannot be empty
+                error: invalid asset! path: path cannot be empty
                 asset!("")
                        ^^
             "#]],

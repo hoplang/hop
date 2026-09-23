@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use crate::asset_path::AssetPath;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::asset_reference::AssetReference;
 use crate::css_error::{CssError, CssErrorKind};
 use crate::document::{Document, DocumentCursor, DocumentRange};
+use crate::root_relative_file_path::RootRelativeFilePath;
 
 /// Lex `--asset(...)` calls out of a `Document`.
 pub fn scan_for_asset_references(
@@ -25,7 +25,7 @@ pub fn scan_for_asset_references(
                 match parse_argument(&mut iter, marker_range.clone()) {
                     ArgumentParseResult::StringLiteral { path, close_paren } => {
                         let range = marker_range.to(close_paren);
-                        match AssetPath::new(&path) {
+                        match RootRelativeFilePath::from_root_anchored(&path) {
                             Ok(path) => asset_references.push(AssetReference { range, path }),
                             Err(source) => errors.push(CssError::new(
                                 CssErrorKind::InvalidAssetPath { source },
@@ -385,7 +385,7 @@ mod tests {
 
         for asset_reference in asset_references {
             asset_reference_annotations.push(Diagnostic {
-                message: format!("asset: {}", asset_reference.path),
+                message: format!("asset: {}", asset_reference.path.as_str()),
                 range: asset_reference.range.clone(),
                 severity: DiagnosticSeverity::Error,
             });
@@ -557,7 +557,7 @@ mod tests {
             indoc! {r#"background: --asset("img/logo.svg")"#},
             expect![[r#"
                 -- errors --
-                CSS `--asset()` has an invalid path: asset path must start with '/'
+                CSS `--asset()` has an invalid path: path must start with '/'
                 background: --asset("img/logo.svg")
                             ^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -596,7 +596,7 @@ mod tests {
             indoc! {r#"background: --asset("/icons/..")"#},
             expect![[r#"
                 -- errors --
-                CSS `--asset()` has an invalid path: asset path does not name a file
+                CSS `--asset()` has an invalid path: path does not name a file
                 background: --asset("/icons/..")
                             ^^^^^^^^^^^^^^^^^^^^
             "#]],

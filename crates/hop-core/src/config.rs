@@ -2,6 +2,8 @@ use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::Document;
 use crate::document_id::DocumentId;
+use crate::root_relative_file_path::RootRelativeFilePath;
+use crate::root_relative_path::RootRelativePath;
 use serde::Deserialize;
 
 /// The parsed contents of a `hop.toml` file.
@@ -38,17 +40,12 @@ impl Config {
         self.js.as_ref()?.input_path.as_ref()
     }
 
-    /// Directory to copy all `asset!()` referenced files into during `hop build`
-    /// (relative to the project root). Absolute paths are rejected.
-    ///
-    /// Assets are copied flat, as `{name}-{hash}.{ext}`, regardless of where
-    /// the source file lives (it may even be outside the project root).
-    pub fn assets_output_dir(&self) -> Option<&str> {
-        self.assets.as_ref()?.output_dir.as_deref()
+    /// Directory to copy all `asset!()` referenced files into during `hop build`.
+    pub fn assets_output_dir(&self) -> Option<&RootRelativePath> {
+        self.assets.as_ref()?.output_dir.as_ref()
     }
 
-    /// When set, prepends `/{production_prefix}/` to all
-    /// [AssetPaths](crate::AssetPath) via the
+    /// When set, prepends `/{production_prefix}/` to all asset URLs via the
     /// [AssetPathRewriter](crate::AssetPathRewriter) during compilation.
     ///
     /// Leading and trailing slashes are stripped before formatting. Empty
@@ -63,8 +60,8 @@ impl Config {
     }
 
     /// The path to the compiled output file.
-    pub fn compile_output_path(&self) -> Option<&str> {
-        self.compile.as_ref()?.output_path.as_deref()
+    pub fn compile_output_path(&self) -> Option<&RootRelativeFilePath> {
+        self.compile.as_ref()?.output_path.as_ref()
     }
 }
 
@@ -72,7 +69,8 @@ impl Config {
 #[serde(deny_unknown_fields)]
 struct CompileSection {
     target: Option<TargetLanguage>,
-    output_path: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_compile_output_path")]
+    output_path: Option<RootRelativeFilePath>,
 }
 
 /// The target language for compilation
@@ -104,8 +102,8 @@ struct AssetsSection {
     #[serde(default, deserialize_with = "deserialize_production_prefix")]
     production_prefix: Option<String>,
 
-    #[serde(default, deserialize_with = "deserialize_output_dir")]
-    output_dir: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_assets_output_dir")]
+    output_dir: Option<RootRelativePath>,
 }
 
 fn deserialize_document_id<'de, D>(deserializer: D) -> Result<Option<DocumentId>, D::Error>
@@ -131,17 +129,28 @@ where
     Ok(Some(production_prefix))
 }
 
-fn deserialize_output_dir<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+fn deserialize_assets_output_dir<'de, D>(
+    deserializer: D,
+) -> Result<Option<RootRelativePath>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let output_dir = String::deserialize(deserializer)?;
-    if output_dir.starts_with('/') {
-        return Err(serde::de::Error::custom(
-            "assets.output_dir must be a relative path (must not start with '/')",
-        ));
-    }
-    Ok(Some(output_dir))
+    let path = String::deserialize(deserializer)?;
+    RootRelativePath::new(&path)
+        .map(Some)
+        .map_err(|err| serde::de::Error::custom(format!("assets.output_dir: {err}")))
+}
+
+fn deserialize_compile_output_path<'de, D>(
+    deserializer: D,
+) -> Result<Option<RootRelativeFilePath>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let path = String::deserialize(deserializer)?;
+    RootRelativeFilePath::new(&path)
+        .map(Some)
+        .map_err(|err| serde::de::Error::custom(format!("compile.output_path: {err}")))
 }
 
 #[cfg(test)]
@@ -180,7 +189,12 @@ mod tests {
         "#};
         let config = config(toml_str);
         assert_eq!(config.compile_target(), Some(TargetLanguage::Typescript));
-        assert_eq!(config.compile_output_path(), Some("app.ts"));
+        assert_eq!(
+            config
+                .compile_output_path()
+                .map(RootRelativeFilePath::as_str),
+            Some("app.ts")
+        );
     }
 
     #[test]
@@ -443,6 +457,69 @@ mod tests {
     }
 
     #[test]
+    fn rejects_absolute_compile_output_path() {
+        let toml_str = indoc! {r#"
+            [compile]
+            target = "ts"
+            output_path = "/etc/hop/app.ts"
+        "#};
+        expect![[r#"
+            error: compile.output_path: path must not start with '/'
+              --> hop.toml (line 3, col 15)
+            2 | target = "ts"
+            3 | output_path = "/etc/hop/app.ts"
+              |               ^^^^^^^^^^^^^^^^^
+        "#]]
+        .assert_eq(&error(toml_str));
+    }
+
+    #[test]
+    fn rejects_empty_compile_output_path() {
+        let toml_str = indoc! {r#"
+            [compile]
+            output_path = ""
+        "#};
+        expect![[r#"
+            error: compile.output_path: path cannot be empty
+              --> hop.toml (line 2, col 15)
+            1 | [compile]
+            2 | output_path = ""
+              |               ^^
+        "#]]
+        .assert_eq(&error(toml_str));
+    }
+
+    #[test]
+    fn rejects_compile_output_path_that_names_no_file() {
+        let toml_str = indoc! {r#"
+            [compile]
+            output_path = "dist/.."
+        "#};
+        expect![[r#"
+            error: compile.output_path: path does not name a file
+              --> hop.toml (line 2, col 15)
+            1 | [compile]
+            2 | output_path = "dist/.."
+              |               ^^^^^^^^^
+        "#]]
+        .assert_eq(&error(toml_str));
+    }
+
+    #[test]
+    fn accepts_compile_output_path_above_project_root() {
+        let toml_str = indoc! {r#"
+            [compile]
+            output_path = "../generated/app.ts"
+        "#};
+        assert_eq!(
+            config(toml_str)
+                .compile_output_path()
+                .map(RootRelativeFilePath::as_str),
+            Some("../generated/app.ts")
+        );
+    }
+
+    #[test]
     fn accepts_compile_section_without_target() {
         let toml_str = indoc! {r#"
             [compile]
@@ -450,7 +527,12 @@ mod tests {
         "#};
         let config = config(toml_str);
         assert_eq!(config.compile_target(), None);
-        assert_eq!(config.compile_output_path(), Some("app.ts"));
+        assert_eq!(
+            config
+                .compile_output_path()
+                .map(RootRelativeFilePath::as_str),
+            Some("app.ts")
+        );
     }
 
     #[test]
@@ -542,7 +624,12 @@ mod tests {
             [assets]
             output_dir = "dist/public"
         "#};
-        assert_eq!(config(toml_str).assets_output_dir(), Some("dist/public"));
+        assert_eq!(
+            config(toml_str)
+                .assets_output_dir()
+                .map(RootRelativePath::as_str),
+            Some("dist/public")
+        );
     }
 
     #[test]
@@ -573,7 +660,7 @@ mod tests {
             output_dir = "/absolute/path"
         "#};
         expect![[r#"
-            error: assets.output_dir must be a relative path (must not start with '/')
+            error: assets.output_dir: path must not start with '/'
               --> hop.toml (line 2, col 14)
             1 | [assets]
             2 | output_dir = "/absolute/path"
@@ -583,12 +670,63 @@ mod tests {
     }
 
     #[test]
+    fn rejects_empty_output_dir() {
+        let toml_str = indoc! {r#"
+            [assets]
+            output_dir = ""
+        "#};
+        expect![[r#"
+            error: assets.output_dir: path cannot be empty
+              --> hop.toml (line 2, col 14)
+            1 | [assets]
+            2 | output_dir = ""
+              |              ^^
+        "#]]
+        .assert_eq(&error(toml_str));
+    }
+
+    #[test]
+    fn rejects_output_dir_with_trailing_slash() {
+        let toml_str = indoc! {r#"
+            [assets]
+            output_dir = "dist/"
+        "#};
+        expect![[r#"
+            error: assets.output_dir: path cannot end with '/'
+              --> hop.toml (line 2, col 14)
+            1 | [assets]
+            2 | output_dir = "dist/"
+              |              ^^^^^^^
+        "#]]
+        .assert_eq(&error(toml_str));
+    }
+
+    #[test]
+    fn accepts_output_dir_above_project_root() {
+        let toml_str = indoc! {r#"
+            [assets]
+            output_dir = "../assets"
+        "#};
+        assert_eq!(
+            config(toml_str)
+                .assets_output_dir()
+                .map(RootRelativePath::as_str),
+            Some("../assets")
+        );
+    }
+
+    #[test]
     fn accepts_nested_output_dir() {
         let toml_str = indoc! {r#"
             [assets]
             output_dir = "a/b/c"
         "#};
-        assert_eq!(config(toml_str).assets_output_dir(), Some("a/b/c"));
+        assert_eq!(
+            config(toml_str)
+                .assets_output_dir()
+                .map(RootRelativePath::as_str),
+            Some("a/b/c")
+        );
     }
 
     #[test]
@@ -597,7 +735,12 @@ mod tests {
             [assets]
             output_dir = "./dist"
         "#};
-        assert_eq!(config(toml_str).assets_output_dir(), Some("./dist"));
+        assert_eq!(
+            config(toml_str)
+                .assets_output_dir()
+                .map(RootRelativePath::as_str),
+            Some("dist")
+        );
     }
 
     #[test]
@@ -609,6 +752,9 @@ mod tests {
         "#};
         let config = config(toml_str);
         assert_eq!(config.assets_production_prefix(), Some("static/v1"));
-        assert_eq!(config.assets_output_dir(), Some("dist/public"));
+        assert_eq!(
+            config.assets_output_dir().map(RootRelativePath::as_str),
+            Some("dist/public")
+        );
     }
 }

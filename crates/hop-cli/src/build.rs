@@ -1,8 +1,8 @@
 use crate::project::Project;
 use anyhow::Result;
 use hop_core::{
-    AssetPath, AssetPathRewriter, AssetReference, Config, Diagnostic, DiagnosticSeverity,
-    DocumentAnnotator, Program,
+    AssetPathRewriter, AssetReference, Config, Diagnostic, DiagnosticSeverity, DocumentAnnotator,
+    Program, RootRelativeFilePath,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
@@ -31,15 +31,20 @@ fn missing_config_value(field: &str) -> anyhow::Error {
 pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResult> {
     let config_document = project.load_config()?;
     let config = Config::parse(&config_document).map_err(annotated_config_error)?;
-    let assets_output_dir = config
-        .assets_output_dir()
-        .ok_or_else(|| missing_config_value("assets.output_dir"))?;
+    let assets_output_dir = project.root().root_relative_path_to_path(
+        config
+            .assets_output_dir()
+            .ok_or_else(|| missing_config_value("assets.output_dir"))?,
+    );
     let target = config
         .compile_target()
         .ok_or_else(|| missing_config_value("compile.target"))?;
-    let output_path = config
-        .compile_output_path()
-        .ok_or_else(|| missing_config_value("compile.output_path"))?;
+    let compile_output_path = project.root().root_relative_path_to_path(
+        config
+            .compile_output_path()
+            .ok_or_else(|| missing_config_value("compile.output_path"))?
+            .as_root_relative(),
+    );
 
     // Load program
     let mut program = Program::new();
@@ -64,7 +69,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
                     .filter(|asset_ref| {
                         !project
                             .root()
-                            .asset_path_to_path(asset_ref.path())
+                            .root_relative_path_to_path(asset_ref.path().as_root_relative())
                             .is_file()
                     })
                     .map(AssetReference::not_found),
@@ -88,7 +93,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     }
 
     // Collect all referenced assets and compute their hashed output names.
-    let asset_paths: BTreeSet<AssetPath> = program
+    let asset_paths: BTreeSet<RootRelativeFilePath> = program
         .asset_references()
         .values()
         .flatten()
@@ -96,7 +101,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         .collect();
     let hashed_filenames = compute_hashed_filenames(&asset_paths, project)?;
 
-    let filename_replacements: HashMap<AssetPath, String> = hashed_filenames
+    let filename_replacements: HashMap<RootRelativeFilePath, String> = hashed_filenames
         .iter()
         .map(|(asset_path, filename)| {
             let url = match config.assets_production_prefix() {
@@ -107,7 +112,9 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         })
         .collect();
     let asset_path_rewriter: Arc<dyn AssetPathRewriter> =
-        Arc::new(move |asset_path: &AssetPath| filename_replacements[asset_path].clone());
+        Arc::new(move |asset_path: &RootRelativeFilePath| {
+            filename_replacements[asset_path].clone()
+        });
 
     let mut css_output = String::new();
 
@@ -159,23 +166,18 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Preserve the file's mtime if the content is unchanged, so downstream
     // build tools (e.g. cargo) don't trigger unnecessary recompiles.
-    let output_path = project.root().as_path().join(output_path);
-    if !fs::read(&output_path).is_ok_and(|existing| existing == generated_code.as_bytes()) {
-        if let Some(parent) = output_path.parent() {
+    if !fs::read(&compile_output_path).is_ok_and(|existing| existing == generated_code.as_bytes()) {
+        if let Some(parent) = compile_output_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&output_path, &generated_code)?;
+        fs::write(&compile_output_path, &generated_code)?;
     }
 
     // Copy assets with hashed filenames
-    copy_assets(project, assets_output_dir, &hashed_filenames)?;
+    copy_assets(project, &assets_output_dir, &hashed_filenames)?;
 
     // Write CSS file
-    let css_dest = project
-        .root()
-        .as_path()
-        .join(assets_output_dir)
-        .join(&css_filename);
+    let css_dest = assets_output_dir.join(&css_filename);
     if let Some(parent) = css_dest.parent() {
         fs::create_dir_all(parent).map_err(|err| {
             anyhow::anyhow!(
@@ -190,11 +192,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
 
     // Write JS bundle
     if let Some((bundled, js_filename, _)) = &js_bundle {
-        let js_dest = project
-            .root()
-            .as_path()
-            .join(assets_output_dir)
-            .join(js_filename);
+        let js_dest = assets_output_dir.join(js_filename);
         if let Some(parent) = js_dest.parent() {
             fs::create_dir_all(parent).map_err(|err| {
                 anyhow::anyhow!(
@@ -208,7 +206,9 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
             .map_err(|e| anyhow::anyhow!("Failed to write generated JS to {:?}: {}", js_dest, e))?;
     }
 
-    Ok(CompileResult { output_path })
+    Ok(CompileResult {
+        output_path: compile_output_path,
+    })
 }
 
 /// Replace every run of characters outside `[A-Za-z0-9._-]` with a single
@@ -259,15 +259,17 @@ fn hashed_output_filename(filename: &str, hash: &str) -> String {
 /// Characters that are unsafe in URLs or filenames are replaced by `-`.
 /// Two assets with the same name and the same content share one output file.
 fn compute_hashed_filenames(
-    asset_paths: &BTreeSet<AssetPath>,
+    asset_paths: &BTreeSet<RootRelativeFilePath>,
     project: &Project,
-) -> Result<BTreeMap<AssetPath, String>> {
+) -> Result<BTreeMap<RootRelativeFilePath, String>> {
     let mut hashed_filenames = BTreeMap::new();
     for asset_path in asset_paths {
-        let full_path = project.root().asset_path_to_path(asset_path);
+        let full_path = project
+            .root()
+            .root_relative_path_to_path(asset_path.as_root_relative());
 
         let bytes = fs::read(&full_path).map_err(|e| {
-            anyhow::anyhow!("Failed to read asset '{}' for hashing: {}", asset_path, e)
+            anyhow::anyhow!("Failed to read asset {:?} for hashing: {}", full_path, e)
         })?;
 
         let hash = format!("{:08x}", crc32fast::hash(&bytes));
@@ -282,12 +284,10 @@ fn compute_hashed_filenames(
 
 fn copy_assets(
     project: &Project,
-    output_dir: &str,
-    hashed_filenames: &BTreeMap<AssetPath, String>,
+    dest_root: &Path,
+    hashed_filenames: &BTreeMap<RootRelativeFilePath, String>,
 ) -> Result<()> {
-    let dest_root = project.root().as_path().join(output_dir);
-
-    fs::create_dir_all(&dest_root).map_err(|e| {
+    fs::create_dir_all(dest_root).map_err(|e| {
         anyhow::anyhow!(
             "Failed to create assets output directory {:?}: {}",
             dest_root,
@@ -296,12 +296,13 @@ fn copy_assets(
     })?;
 
     for (asset_path, hashed_filename) in hashed_filenames {
-        let src = project.root().asset_path_to_path(asset_path);
+        let src = project
+            .root()
+            .root_relative_path_to_path(asset_path.as_root_relative());
         let dst = dest_root.join(hashed_filename);
 
-        fs::copy(&src, &dst).map_err(|e| {
-            anyhow::anyhow!("Failed to copy asset '{}' to {:?}: {}", asset_path, dst, e)
-        })?;
+        fs::copy(&src, &dst)
+            .map_err(|e| anyhow::anyhow!("Failed to copy asset {:?} to {:?}: {}", src, dst, e))?;
     }
 
     Ok(())

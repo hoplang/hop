@@ -1,9 +1,9 @@
-use crate::asset_path::AssetPath;
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::DocumentRange;
+use crate::root_relative_file_path::RootRelativeFilePath;
 
-/// An [AssetPath](crate::AssetPath) located at a
+/// The [RootRelativeFilePath](crate::RootRelativeFilePath) of an asset, located at a
 /// [DocumentRange](crate::DocumentRange) inside a [Document](crate::Document).
 ///
 /// Produced via an `asset!(...)` macro (in hop) or an `--asset(...)` call (in CSS).
@@ -12,19 +12,19 @@ pub struct AssetReference {
     /// The full range of the asset reference (including the macro/function call).
     pub(crate) range: DocumentRange,
     /// The resolved path of the asset (e.g. `img/logo.svg`).
-    pub(crate) path: AssetPath,
+    pub(crate) path: RootRelativeFilePath,
 }
 
 impl AssetReference {
     /// The resolved path of the asset (e.g. `img/logo.svg`).
-    pub fn path(&self) -> &AssetPath {
+    pub fn path(&self) -> &RootRelativeFilePath {
         &self.path
     }
 
     /// The diagnostic to report when the referenced asset does not exist.
     pub fn not_found(&self) -> Diagnostic {
         Diagnostic {
-            message: format!("asset `{}` was not found", self.path),
+            message: format!("asset `{}` was not found", self.path.as_str()),
             range: self.range.clone(),
             severity: DiagnosticSeverity::Error,
         }

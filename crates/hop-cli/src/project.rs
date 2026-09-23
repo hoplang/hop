@@ -29,7 +29,7 @@ pub enum ProjectError {
 }
 
 /// A hop project on disk.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Project {
     root: ProjectRoot,
 }
@@ -429,8 +429,14 @@ mod tests {
         "#});
 
         let document = project.load_config().unwrap();
-        let config = Config::parse(&document).unwrap();
-        assert_eq!(config.compile_output_path(), Some("app.ts"));
+        assert_eq!(
+            document.as_str(),
+            indoc! {r#"
+                [compile]
+                target = "ts"
+                output_path = "app.ts"
+            "#}
+        );
     }
 
     #[test]

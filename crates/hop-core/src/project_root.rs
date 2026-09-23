@@ -1,7 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
-use crate::asset_path::AssetPath;
 use crate::document_id::{DocumentId, DocumentIdError};
+use crate::root_relative_path::RootRelativePath;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectRootError {
@@ -17,22 +17,28 @@ pub enum ProjectRootError {
 }
 
 /// The directory that contains a project's `hop.toml` file.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct ProjectRoot {
     path: PathBuf,
 }
 
 impl ProjectRoot {
-    /// Wrap an already located root directory.
+    /// Construct a project root from an absolute directory path.
     ///
-    /// The `path` is expected to be absolute.
-    /// Components equal to `.` and `..` are folded without touching the filesystem.
+    /// # Panics
+    ///
+    /// If `path` is relative.
     pub fn new(path: &Path) -> ProjectRoot {
+        assert!(
+            path.is_absolute(),
+            "project root must be an absolute path, got {path:?}"
+        );
         ProjectRoot {
             path: normalize(path),
         }
     }
 
+    /// The absolute directory path this root was constructed from.
     pub fn as_path(&self) -> &Path {
         &self.path
     }
@@ -42,7 +48,7 @@ impl ProjectRoot {
         DocumentId::new("hop.toml").expect("hop.toml is a valid document id")
     }
 
-    /// The path of the project's `hop.toml` file.
+    /// The absolute path of the project's `hop.toml` file.
     pub fn config_path(&self) -> PathBuf {
         self.document_id_to_path(&self.config())
     }
@@ -66,16 +72,17 @@ impl ProjectRoot {
         })
     }
 
+    /// Convert a [`DocumentId`] to an absolute file path.
     pub fn document_id_to_path(&self, document_id: &DocumentId) -> PathBuf {
         self.path.join(document_id.as_str())
     }
 
-    /// Convert an [`AssetPath`] to an absolute file path.
+    /// Convert a [`RootRelativePath`] to an absolute file path.
     ///
-    /// Leading `..` components in the asset path are folded into the root,
-    /// so the result may lie outside the project.
-    pub fn asset_path_to_path(&self, asset_path: &AssetPath) -> PathBuf {
-        normalize(&self.path.join(asset_path.as_str()))
+    /// Leading `..` components in the path are folded into the root, so the
+    /// result may lie outside the project root.
+    pub fn root_relative_path_to_path(&self, path: &RootRelativePath) -> PathBuf {
+        normalize(&self.path.join(path.as_str()))
     }
 }
 
@@ -107,6 +114,12 @@ mod tests {
 
     fn root() -> ProjectRoot {
         ProjectRoot::new(Path::new("/projects/app"))
+    }
+
+    #[test]
+    #[should_panic(expected = "project root must be an absolute path")]
+    fn new_rejects_a_relative_path() {
+        ProjectRoot::new(Path::new("projects/app"));
     }
 
     #[test]
@@ -192,17 +205,29 @@ mod tests {
     }
 
     #[test]
-    fn asset_path_to_path() {
-        let inside = AssetPath::new("/icons/star.svg").unwrap();
+    fn root_relative_path_to_path() {
+        let inside = RootRelativePath::from_root_anchored("/icons/star.svg").unwrap();
         assert_eq!(
-            root().asset_path_to_path(&inside),
+            root().root_relative_path_to_path(&inside),
             PathBuf::from("/projects/app/icons/star.svg")
         );
 
-        let outside = AssetPath::new("/../shared/logo.svg").unwrap();
+        let outside = RootRelativePath::from_root_anchored("/../shared/logo.svg").unwrap();
         assert_eq!(
-            root().asset_path_to_path(&outside),
+            root().root_relative_path_to_path(&outside),
             PathBuf::from("/projects/shared/logo.svg")
+        );
+
+        let output_dir = RootRelativePath::new("dist/public").unwrap();
+        assert_eq!(
+            root().root_relative_path_to_path(&output_dir),
+            PathBuf::from("/projects/app/dist/public")
+        );
+
+        let sibling = RootRelativePath::new("../assets").unwrap();
+        assert_eq!(
+            root().root_relative_path_to_path(&sibling),
+            PathBuf::from("/projects/assets")
         );
     }
 }
