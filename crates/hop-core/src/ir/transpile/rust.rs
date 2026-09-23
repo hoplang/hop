@@ -2055,7 +2055,7 @@ mod tests {
                 -- before --
                 page Test() {
                   write_string(Node {
-                    link: (Option[test::Node]::None, 1),
+                    link: (Option[Node]::None, 1),
                   }.link.1.to_string())
                 }
 
@@ -2614,7 +2614,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(node@v0: test::Node) {
+                page Test(node@v0: Node) {
                   write_string(v0.value.to_string())
                 }
 
@@ -2736,9 +2736,9 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: 2,
-                    next: Option[test::Node]::Some(Node {
+                    next: Option[Node]::Some(Node {
                       value: 1,
-                      next: Option[test::Node]::None,
+                      next: Option[Node]::None,
                     }),
                   } in {
                     write_string(v0.value.to_string())
@@ -2816,7 +2816,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(e@v0: test::Expr) {
+                page Test(e@v0: Expr) {
                   match v0 {
                     Expr::Neg(inner: v1) => {
                       match v1 {
@@ -2912,7 +2912,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(node@v0: test::Node) {
+                page Test(node@v0: Node) {
                   match v0.next {
                     Some(v1) => {
                       write_string(v1.value)
@@ -2997,7 +2997,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(c@v0: test::Chain) {
+                page Test(c@v0: Chain) {
                   match v0 {
                     Chain::Link(next: v1) => {
                       match v1 {
@@ -3145,9 +3145,7 @@ mod tests {
                 -- before --
                 page Test() {
                   let v0 = B {
-                    a: Option[test::A]::Some(A {
-                      b: B {a: Option[test::A]::None},
-                    }),
+                    a: Option[A]::Some(A {b: B {a: Option[A]::None}}),
                   } in {
                     write("done")
                   }
@@ -3208,7 +3206,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Badge@f0(color@v0: test::Color) -> Html {
+                fn Badge@f0(color@v0: Color) -> Html {
                   match v0 {
                     Color::Red => {
                       write("red")
@@ -3285,7 +3283,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(post@v0: test::Post) {
+                page Test(post@v0: Post) {
                   let v1 = v0.views in {
                     write_string((v1 + 1).to_string())
                   }
@@ -3362,15 +3360,12 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Card@f0(
-                  p@v0: test::Post,
-                  tags@v1: Array[String],
-                ) -> Html {
+                fn Card@f0(p@v0: Post, tags@v1: Array[String]) -> Html {
                   write_string(v0.title)
                   write_string(v0.views.to_string())
                   write_string(v1.len().to_string())
                 }
-                page Test(post@v2: test::Post, tags@v3: Array[String]) {
+                page Test(post@v2: Post, tags@v3: Array[String]) {
                   call Card@f0(p = v2, tags = v3)
                 }
 
@@ -3447,10 +3442,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Show@f0(t@v0: test::Tag) -> Html {
+                fn Show@f0(t@v0: Tag) -> Html {
                   write_string(Wrap {tag: v0}.tag.name)
                 }
-                page Test(tag@v1: test::Tag) {
+                page Test(tag@v1: Tag) {
                   call Show@f0(t = v1)
                 }
 
@@ -3523,7 +3518,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(post@v0: test::Post) {
+                page Test(post@v0: Post) {
                   let v1 = v0.title in {
                     write_string(v1)
                   }

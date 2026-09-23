@@ -2396,7 +2396,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page UserProfile(user@v0: test::User) {
+                page UserProfile(user@v0: User) {
                   write("<div>")
                   write_string(v0.name)
                   write("</div>")
@@ -2514,7 +2514,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(node@v0: test::Node) {
+                page Test(node@v0: Node) {
                   write_string(v0.value.to_string())
                 }
 
@@ -2619,9 +2619,9 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: 2,
-                    next: Option[test::Node]::Some(Node {
+                    next: Option[Node]::Some(Node {
                       value: 1,
-                      next: Option[test::Node]::None,
+                      next: Option[Node]::None,
                     }),
                   } in {
                     write_string(v0.value.to_string())
@@ -2722,7 +2722,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page ColorName(color@v0: test::Color) {
+                page ColorName(color@v0: Color) {
                   write_string(match v0 {
                     Color::Red => { "red" }
                     Color::Green => { "green" }
@@ -3396,7 +3396,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page ShowOutcome(r@v0: test::Outcome) {
+                page ShowOutcome(r@v0: Outcome) {
                   write("<div>")
                   let v1 = Outcome::Success {value: 42} in {
                     write_string("Created Ok!")
@@ -3462,7 +3462,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page ShowOutcome(r@v0: test::Outcome) {
+                page ShowOutcome(r@v0: Outcome) {
                   match v0 {
                     Outcome::Success(value: v1) => {
                       write("Value: ")

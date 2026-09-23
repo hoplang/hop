@@ -635,7 +635,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched pattern type: expected test::Color got true
+                error: Mismatched pattern type: expected Color got true
                     true => 0,
                     ^^^^
             "#]],
@@ -653,7 +653,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched pattern type: expected test::Color got Some(v)
+                error: Mismatched pattern type: expected Color got Some(v)
                     Some(v) => 0,
                     ^^^^^^^
             "#]],

@@ -126,9 +126,7 @@ impl<'a> Type {
                     BoxDoc::nil()
                 })
                 .append(BoxDoc::text(")")),
-            Type::Named { module, name, .. } => {
-                BoxDoc::text(format!("{}::{}", module.to_module_id(), name))
-            }
+            Type::Named { name, .. } => BoxDoc::text(name.as_str()),
         }
     }
 }

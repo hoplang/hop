@@ -1212,7 +1212,7 @@ mod tests {
                 -- main.hop --
 
                 -- type registry --
-                record main::Row {
+                record Row {
                   cell: (Int, Array[String]),
                   only: (Int,),
                   nothing: (),
@@ -1256,7 +1256,7 @@ mod tests {
                 -- main.hop --
 
                 -- type registry --
-                record main::User {
+                record User {
                   name: String,
                 }
             "#]],
@@ -2150,12 +2150,12 @@ mod tests {
                 -- other.hop --
 
                 -- main.hop --
-                fn Main(foo: other::Foo) -> Html {
+                fn Main(foo: Foo) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(foo.name)))
                 }
 
                 -- type registry --
-                record other::Foo {
+                record Foo {
                   name: String,
                 }
             "#]],
@@ -2185,7 +2185,7 @@ mod tests {
                 -- other.hop --
 
                 -- main.hop --
-                fn Main(color: other::Color) -> Html {
+                fn Main(color: Color) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -2196,7 +2196,7 @@ mod tests {
                 }
 
                 -- type registry --
-                enum other::Color {
+                enum Color {
                   Red,
                   Green,
                 }
@@ -2270,18 +2270,18 @@ mod tests {
                 -- other.hop --
 
                 -- main.hop --
-                fn Main(account: other::Account) -> Html {
+                fn Main(account: Account) -> Html {
                   let v__0 = account.user in let v__1 = v__0.name in let n = v__1 in concat(
                     escape(n),
                   )
                 }
 
                 -- type registry --
-                record other::Account {
-                  user: other::User,
+                record Account {
+                  user: User,
                 }
 
-                record other::User {
+                record User {
                   name: String,
                 }
             "#]],
@@ -2831,7 +2831,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(params: main::Params) -> Html {
+                fn Main(params: Params) -> Html {
                   for item in params.items {
                     concat(
                       let v__0 = item.active in match v__0 {
@@ -2844,13 +2844,13 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::Item {
+                record Item {
                   active: Bool,
                   name: Bool,
                 }
 
-                record main::Params {
-                  items: Array[main::Item],
+                record Params {
+                  items: Array[Item],
                 }
             "#]],
         );
@@ -2897,7 +2897,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(params: main::Params) -> Html {
+                fn Main(params: Params) -> Html {
                   let v__0 = (params.x == params.y) in match v__0 {
                     true => html(
                       tag: "div",
@@ -2909,7 +2909,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::Params {
+                record Params {
                   x: String,
                   y: String,
                 }
@@ -2946,7 +2946,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(params: Array[main::Item]) -> Html {
+                fn Main(params: Array[Item]) -> Html {
                   concat(
                     for j in params {
                       let v__0 = j.a in match v__0 {true => concat(), false => concat()}
@@ -2958,7 +2958,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::Item {
+                record Item {
                   a: Bool,
                   b: Bool,
                 }
@@ -3068,7 +3068,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- a/bar.hop --
-                fn WidgetComp(config: a::bar::Config) -> Html {
+                fn WidgetComp(config: Config) -> Html {
                   let v__0 = config.enabled in match v__0 {
                     true => html(tag: "div", attrs: [], children: concat(escape(config.title))),
                     false => concat(),
@@ -3076,33 +3076,33 @@ mod tests {
                 }
 
                 -- foo.hop --
-                fn PanelComp(data: foo::Data) -> Html {
+                fn PanelComp(data: Data) -> Html {
                   for item in data.items {
                     WidgetComp(config: item)
                   }
                 }
 
                 -- main.hop --
-                fn Main(settings: main::Settings) -> Html {
+                fn Main(settings: Settings) -> Html {
                   PanelComp(data: settings.dashboard)
                 }
 
                 -- type registry --
-                record a::bar::Config {
+                record Config {
                   enabled: Bool,
                   title: String,
                 }
 
-                record foo::Data {
-                  items: Array[a::bar::Config],
+                record Data {
+                  items: Array[Config],
                 }
 
-                record main::Dashboard {
-                  items: Array[foo::Data],
+                record Dashboard {
+                  items: Array[Data],
                 }
 
-                record main::Settings {
-                  dashboard: foo::Data,
+                record Settings {
+                  dashboard: Data,
                 }
             "#]],
         );
@@ -3143,7 +3143,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'user' of function 'BarComp': expected bar::User got foo::User
+                error: Mismatched type for argument 'user' of function 'BarComp': expected User got User (these are different types with the same name)
                   --> main.hop (line 8, col 22)
                  7 |       <FooComp user={user}/>
                  8 |       <BarComp user={user}/>
@@ -3189,11 +3189,86 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'user' of function 'BarComp': expected bar::User got foo::User
+                error: Mismatched type for argument 'user' of function 'BarComp': expected User got User (these are different types with the same name)
                   --> main.hop (line 8, col 22)
                  7 |       <FooComp user={user}/>
                  8 |       <BarComp user={user}/>
                    |                      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_arrays_of_different_types_with_same_name_are_used_in_place_of_eachother() {
+        reject(
+            indoc! {r#"
+                -- foo.hop --
+                pub record User {
+                    name: String,
+                }
+
+                -- bar.hop --
+                pub record User {
+                    name: String,
+                }
+
+                pub fn BarComp(users: Array[User]) -> Html {
+                    for user in users { <>{user.name}</> }
+                }
+
+                -- main.hop --
+                import bar::BarComp
+                import foo::User
+
+                fn Main(users: Array[User]) -> Html {
+                  <BarComp users={users}/>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for argument 'users' of function 'BarComp': expected Array[User] got Array[User] (these are different types with the same name)
+                  --> main.hop (line 5, col 19)
+                4 | fn Main(users: Array[User]) -> Html {
+                5 |   <BarComp users={users}/>
+                  |                   ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_types_that_print_differently_without_same_name_note() {
+        reject(
+            indoc! {r#"
+                -- foo.hop --
+                pub record User {
+                    name: String,
+                }
+
+                -- bar.hop --
+                pub record User {
+                    name: String,
+                }
+
+                pub fn BarComp(user: Option[User]) -> Html {
+                    match user {
+                        Some(u) => <>{u.name}</>,
+                        None => <>nobody</>,
+                    }
+                }
+
+                -- main.hop --
+                import bar::BarComp
+                import foo::User
+
+                fn Main(users: Array[User]) -> Html {
+                  <BarComp user={users}/>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for argument 'user' of function 'BarComp': expected Option[User] got Array[User]
+                  --> main.hop (line 5, col 18)
+                4 | fn Main(users: Array[User]) -> Html {
+                5 |   <BarComp user={users}/>
+                  |                  ^^^^^
             "#]],
         );
     }
@@ -3210,7 +3285,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Html {
+                fn Main(user: User) -> Html {
                   html(
                     tag: "a",
                     attrs: [href: escape(user.url), class: escape(user.theme)],
@@ -3219,7 +3294,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::User {
+                record User {
                   url: String,
                   theme: String,
                 }
@@ -3299,7 +3374,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Type main::Params is not comparable
+                error: Type Params is not comparable
                   --> main.hop (line 5, col 9)
                 4 | fn Main(p1: Params, p2: Params) -> Html {
                 5 |   match p1 == p2 {
@@ -3536,9 +3611,9 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::User {
+                record User {
                   name: String,
-                  friend: main::User,
+                  friend: User,
                 }
             "#]],
         );
@@ -3565,12 +3640,12 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::Address {
+                record Address {
                   city: String,
                 }
 
-                record main::User {
-                  address: main::Address,
+                record User {
+                  address: Address,
                 }
             "#]],
         );
@@ -3588,12 +3663,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Html {
+                fn Main(user: User) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(user.name)))
                 }
 
                 -- type registry --
-                record main::User {
+                record User {
                   name: String,
                 }
             "#]],
@@ -3613,18 +3688,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Html {
+                fn Main(user: User) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
 
                 -- type registry --
-                record main::Address {
+                record Address {
                   city: String,
                 }
 
-                record main::User {
+                record User {
                   name: String,
-                  address: main::Address,
+                  address: Address,
                 }
             "#]],
         );
@@ -3663,7 +3738,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(params: main::Params) -> Html {
+                fn Main(params: Params) -> Html {
                   concat(
                     let v__0 = params.app.ui.theme.dark in match v__0 {
                       true => concat(raw("ok!")),
@@ -3681,41 +3756,41 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::API {
-                  endpoints: main::Endpoints,
+                record API {
+                  endpoints: Endpoints,
                 }
 
-                record main::App {
-                  ui: main::UI,
-                  api: main::API,
-                  database: main::Database,
+                record App {
+                  ui: UI,
+                  api: API,
+                  database: Database,
                 }
 
-                record main::Connection {
+                record Connection {
                   ssl: Bool,
                 }
 
-                record main::Database {
-                  connection: main::Connection,
+                record Database {
+                  connection: Connection,
                 }
 
-                record main::Endpoints {
-                  users: main::Users,
+                record Endpoints {
+                  users: Users,
                 }
 
-                record main::Params {
-                  app: main::App,
+                record Params {
+                  app: App,
                 }
 
-                record main::Theme {
+                record Theme {
                   dark: Bool,
                 }
 
-                record main::UI {
-                  theme: main::Theme,
+                record UI {
+                  theme: Theme,
                 }
 
-                record main::Users {
+                record Users {
                   enabled: Bool,
                 }
             "#]],
@@ -3808,7 +3883,7 @@ mod tests {
                 }
 
                 -- bar.hop --
-                fn Bar(user: bar::User) -> Html {
+                fn Bar(user: User) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
 
@@ -3818,12 +3893,12 @@ mod tests {
                 }
 
                 -- type registry --
-                record bar::User {
+                record User {
                   name: String,
-                  address: foo::Address,
+                  address: Address,
                 }
 
-                record foo::Address {
+                record Address {
                   city: String,
                 }
             "#]],
@@ -3859,7 +3934,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- colors.hop --
-                fn ColorDisplay(color: colors::Color) -> Html {
+                fn ColorDisplay(color: Color) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -3879,7 +3954,7 @@ mod tests {
                 }
 
                 -- type registry --
-                enum colors::Color {
+                enum Color {
                   Red,
                   Green,
                   Blue,
@@ -3991,7 +4066,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Type main::Color is not comparable
+                error: Type Color is not comparable
                   --> main.hop (line 4, col 11)
                 3 | fn Main(a: Color, b: Color) -> Html {
                 4 |     match a == b {
@@ -4021,7 +4096,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(color: main::Color) -> Html {
+                fn Main(color: Color) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4036,7 +4111,7 @@ mod tests {
                 }
 
                 -- type registry --
-                enum main::Color {
+                enum Color {
                   Red,
                   Green,
                   Blue,
@@ -4174,7 +4249,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Type main::Color is not comparable
+                error: Type Color is not comparable
                   --> main.hop (line 8, col 12)
                  7 | fn Main(color: Color) -> Html {
                  8 |     match (color == Color::Red) {
@@ -4207,7 +4282,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Html {
+                fn Main(user: User) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4221,14 +4296,14 @@ mod tests {
                 }
 
                 -- type registry --
-                enum main::Status {
+                enum Status {
                   Active,
                   Inactive,
                 }
 
-                record main::User {
+                record User {
                   name: String,
-                  status: main::Status,
+                  status: Status,
                 }
             "#]],
         );
@@ -4253,17 +4328,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(o: main::Outer) -> Html {
+                fn Main(o: Outer) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(o.inner.value)))
                 }
 
                 -- type registry --
-                record main::Inner {
+                record Inner {
                   value: String,
                 }
 
-                record main::Outer {
-                  inner: main::Inner,
+                record Outer {
+                  inner: Inner,
                 }
             "#]],
         );
@@ -4290,19 +4365,19 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(root: main::Folder) -> Html {
+                fn Main(root: Folder) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(root.name)))
                 }
 
                 -- type registry --
-                record main::File {
+                record File {
                   name: String,
-                  backups: Array[main::Folder],
+                  backups: Array[Folder],
                 }
 
-                record main::Folder {
+                record Folder {
                   name: String,
-                  files: Array[main::File],
+                  files: Array[File],
                 }
             "#]],
         );
@@ -4335,7 +4410,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(t: main::Tree) -> Html {
+                fn Main(t: Tree) -> Html {
                   let v__0 = t.root in match v__0 {
                     Node::Leaf => let label = v__1 in concat(escape(label)),
                     Node::Branch => let children = v__2 in for _ in children {
@@ -4345,13 +4420,13 @@ mod tests {
                 }
 
                 -- type registry --
-                enum main::Node {
+                enum Node {
                   Leaf { label: String },
-                  Branch { children: Array[main::Tree] },
+                  Branch { children: Array[Tree] },
                 }
 
-                record main::Tree {
-                  root: main::Node,
+                record Tree {
+                  root: Node,
                 }
             "#]],
         );
@@ -4381,7 +4456,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Type main::Role is not comparable
+                error: Type Role is not comparable
                   --> main.hop (line 13, col 12)
                 12 | fn Main(person: Person) -> Html {
                 13 |     match (person.role == Role::Admin) {
@@ -4865,12 +4940,12 @@ mod tests {
                   Settings(config: Config {name: "default", enabled: true})
                 }
 
-                fn Settings(config: main::Config) -> Html {
+                fn Settings(config: Config) -> Html {
                   concat(escape(config.name))
                 }
 
                 -- type registry --
-                record main::Config {
+                record Config {
                   name: String,
                   enabled: Bool,
                 }
@@ -4898,7 +4973,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Badge(status: main::Status) -> Html {
+                fn Badge(status: Status) -> Html {
                   concat(
                     escape(match status {
                       Status::Active => "active",
@@ -4913,7 +4988,7 @@ mod tests {
                 }
 
                 -- type registry --
-                enum main::Status {
+                enum Status {
                   Active { since: Int },
                   Inactive,
                   Pending,
@@ -5084,7 +5159,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(c: main::Color) -> Html {
+                fn Main(c: Color) -> Html {
                   match c {
                     Color::Red => concat(raw("red")),
                     Color::Green => concat(raw("green")),
@@ -5093,7 +5168,7 @@ mod tests {
                 }
 
                 -- type registry --
-                enum main::Color {
+                enum Color {
                   Red,
                   Green,
                   Blue,
@@ -5125,7 +5200,7 @@ mod tests {
                 }
 
                 -- type registry --
-                enum main::Status {
+                enum Status {
                   Active { name: String },
                   Inactive,
                 }
@@ -5529,7 +5604,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(items: Array[main::Item]) -> Html {
+                fn Main(items: Array[Item]) -> Html {
                   for item in items {
                     let name = item.name in html(
                       tag: "li",
@@ -5540,7 +5615,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::Item {
+                record Item {
                   name: String,
                 }
             "#]],
@@ -5570,7 +5645,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::Item {
+                record Item {
                   name: String,
                 }
             "#]],
@@ -5757,7 +5832,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Html {
+                fn Main(user: User) -> Html {
                   let v__0 = user.name in match v__0 {
                     Some(v__1) => let n = v__1 in concat(escape(n)),
                     None => concat(raw("anonymous")),
@@ -5765,7 +5840,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::User {
+                record User {
                   name: Option[String],
                 }
             "#]],
@@ -6414,7 +6489,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::User {
+                record User {
                   name: String,
                   age: Int,
                 }
@@ -6435,7 +6510,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Html {
+                fn Main(user: User) -> Html {
                   let updated = User {name: "Jane", age: user.age} in html(
                     tag: "div",
                     attrs: [],
@@ -6444,7 +6519,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::User {
+                record User {
                   name: String,
                   age: Int,
                 }
@@ -6466,7 +6541,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(app: main::App) -> Html {
+                fn Main(app: App) -> Html {
                   let next = let v__0 = app.state in State {query: v__0.query, num: 1} in html(
                     tag: "div",
                     attrs: [],
@@ -6475,11 +6550,11 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::App {
-                  state: main::State,
+                record App {
+                  state: State,
                 }
 
-                record main::State {
+                record State {
                   query: String,
                   num: Int,
                 }
@@ -6500,7 +6575,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(user: main::User) -> Html {
+                fn Main(user: User) -> Html {
                   let updated = User {name: "Jane", age: 30} in html(
                     tag: "div",
                     attrs: [],
@@ -6509,7 +6584,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::User {
+                record User {
                   name: String,
                   age: Int,
                 }
@@ -6530,7 +6605,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for spread: expected main::User got main::Admin
+                error: Mismatched type for spread: expected User got Admin
                   --> main.hop (line 4, col 23)
                 3 | fn Main(admin: Admin) -> Html {
                 4 |   let user = User {...admin};
@@ -7224,9 +7299,9 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::TreeNode {
+                record TreeNode {
                   value: Int,
-                  children: Array[main::TreeNode],
+                  children: Array[TreeNode],
                 }
             "#]],
         );
@@ -7251,9 +7326,9 @@ mod tests {
                 }
 
                 -- type registry --
-                enum main::Expr {
+                enum Expr {
                   Literal { value: Int },
-                  Neg { inner: main::Expr },
+                  Neg { inner: Expr },
                 }
             "#]],
         );
@@ -7277,7 +7352,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::Product {
+                record Product {
                   price: Int,
                 }
             "#]],
@@ -7344,7 +7419,7 @@ mod tests {
                 }
 
                 -- type registry --
-                record main::Post {
+                record Post {
                   tags: Array[String],
                 }
             "#]],
@@ -7940,20 +8015,20 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Card(user: main::User) -> Html {
+                fn Card(user: User) -> Html {
                   html(tag: "div", attrs: [], children: concat(escape(user.name)))
                 }
 
-                fn Page(user: main::User) -> Html {
+                fn Page(user: User) -> Html {
                   Wrapper(user: user, rest: [])
                 }
 
-                fn Wrapper(user: main::User, rest: Attrs) -> Html {
+                fn Wrapper(user: User, rest: Attrs) -> Html {
                   Card(user: user)
                 }
 
                 -- type registry --
-                record main::User {
+                record User {
                   name: String,
                 }
             "#]],

@@ -3151,7 +3151,7 @@ mod tests {
             &[("config", "Config")],
             "config.users.profile.name",
             expect![[r#"
-                error: Array[test::UserInfo] can not be used as a record
+                error: Array[UserInfo] can not be used as a record
                 config.users.profile.name
                 ^^^^^^^^^^^^
             "#]],
@@ -3165,7 +3165,7 @@ mod tests {
             &[("users", "Array[User]")],
             "users.name",
             expect![[r#"
-                error: Array[test::User] can not be used as a record
+                error: Array[User] can not be used as a record
                 users.name
                 ^^^^^
             "#]],
@@ -3216,7 +3216,7 @@ mod tests {
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[],
             r#"User {name: "John", age: 30}"#,
-            expect!["test::User"],
+            expect!["User"],
         );
     }
 
@@ -3226,7 +3226,7 @@ mod tests {
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user_name", "String"), ("user_age", "Int")],
             "User {name: user_name, age: user_age}",
-            expect!["test::User"],
+            expect!["User"],
         );
     }
 
@@ -3403,7 +3403,7 @@ mod tests {
                 .record("User", [("name", "String"), ("address", "Address")]),
             &[],
             r#"User {name: "John", address: Address {city: "NYC"}}"#,
-            expect!["test::User"],
+            expect!["User"],
         );
     }
 
@@ -3455,7 +3455,7 @@ mod tests {
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
             r#"User {...user, name: "Jane"}"#,
-            expect!["test::User"],
+            expect!["User"],
         );
     }
 
@@ -3465,7 +3465,7 @@ mod tests {
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
             "User {...user}",
-            expect!["test::User"],
+            expect!["User"],
         );
     }
 
@@ -3477,7 +3477,7 @@ mod tests {
                 .record("App", [("state", "State")]),
             &[("app", "App")],
             "State {...app.state, num: 1}",
-            expect!["test::State"],
+            expect!["State"],
         );
     }
 
@@ -3487,7 +3487,7 @@ mod tests {
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
             r#"User {...user, name: "Jane", age: 30}"#,
-            expect!["test::User"],
+            expect!["User"],
         );
     }
 
@@ -3500,7 +3500,7 @@ mod tests {
             &[("admin", "Admin")],
             r#"User {...admin, name: "Jane"}"#,
             expect![[r#"
-                error: Mismatched type for spread: expected test::User got test::Admin
+                error: Mismatched type for spread: expected User got Admin
                 User {...admin, name: "Jane"}
                          ^^^^^
             "#]],
@@ -3514,7 +3514,7 @@ mod tests {
             &[("name", "String")],
             "User {...name}",
             expect![[r#"
-                error: Mismatched type for spread: expected test::User got String
+                error: Mismatched type for spread: expected User got String
                 User {...name}
                          ^^^^
             "#]],
@@ -3560,7 +3560,7 @@ mod tests {
             &[("a", "Color"), ("b", "Color")],
             "a == b",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 a == b
                 ^
             "#]],
@@ -3574,7 +3574,7 @@ mod tests {
             &[("a", "Color"), ("b", "Color")],
             "a != b",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 a != b
                 ^
             "#]],
@@ -3590,7 +3590,7 @@ mod tests {
             &[("color", "Color"), ("size", "Size")],
             "color == size",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 color == size
                 ^^^^^
             "#]],
@@ -3606,7 +3606,7 @@ mod tests {
             &[("color", "Color"), ("size", "Size")],
             "color != size",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 color != size
                 ^^^^^
             "#]],
@@ -3620,7 +3620,7 @@ mod tests {
             &[("color", "Color"), ("name", "String")],
             "color == name",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 color == name
                 ^^^^^
             "#]],
@@ -3634,7 +3634,7 @@ mod tests {
             &[("color", "Color"), ("count", "Int")],
             "color == count",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 color == count
                 ^^^^^
             "#]],
@@ -3648,7 +3648,7 @@ mod tests {
             &[("color", "Color"), ("flag", "Bool")],
             "color == flag",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 color == flag
                 ^^^^^
             "#]],
@@ -3662,7 +3662,7 @@ mod tests {
             &[("a", "Color"), ("b", "Color")],
             "a < b",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 a < b
                 ^
             "#]],
@@ -3676,7 +3676,7 @@ mod tests {
             &[("a", "Color"), ("b", "Color")],
             "a > b",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 a > b
                 ^
             "#]],
@@ -3692,7 +3692,7 @@ mod tests {
             &[("user", "User"), ("status", "Status")],
             "user.status == status",
             expect![[r#"
-                error: Type test::Status is not comparable
+                error: Type Status is not comparable
                 user.status == status
                 ^^^^^^^^^^^
             "#]],
@@ -3709,7 +3709,7 @@ mod tests {
             &[("user", "User"), ("admin", "Admin")],
             "user.status == admin.status",
             expect![[r#"
-                error: Type test::Status is not comparable
+                error: Type Status is not comparable
                 user.status == admin.status
                 ^^^^^^^^^^^
             "#]],
@@ -3722,7 +3722,7 @@ mod tests {
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[],
             "Color::Red",
-            expect!["test::Color"],
+            expect!["Color"],
         );
     }
 
@@ -3766,7 +3766,7 @@ mod tests {
             ),
             &[],
             "Outcome::Success {value: 42}",
-            expect!["test::Outcome"],
+            expect!["Outcome"],
         );
     }
 
@@ -3779,7 +3779,7 @@ mod tests {
             ),
             &[],
             "Point::XY {x: 10, y: 20}",
-            expect!["test::Point"],
+            expect!["Point"],
         );
     }
 
@@ -3898,7 +3898,7 @@ mod tests {
             &[("color", "Color")],
             "Color::Red == color",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 Color::Red == color
                 ^^^^^^^^^^
             "#]],
@@ -3913,7 +3913,7 @@ mod tests {
                 .record("User", [("name", "String"), ("status", "Status")]),
             &[],
             r#"User {name: "Alice", status: Status::Active}"#,
-            expect!["test::User"],
+            expect!["User"],
         );
     }
 
@@ -3924,7 +3924,7 @@ mod tests {
             &[],
             "Color::Red == Color::Green",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 Color::Red == Color::Green
                 ^^^^^^^^^^
             "#]],
@@ -3940,7 +3940,7 @@ mod tests {
             &[],
             "Color::Red == Shade::Red",
             expect![[r#"
-                error: Type test::Color is not comparable
+                error: Type Color is not comparable
                 Color::Red == Shade::Red
                 ^^^^^^^^^^
             "#]],
@@ -4037,7 +4037,7 @@ mod tests {
             TypeRegistryBuilder::new().record("Point", [("x", "Int"), ("y", "Int")]),
             &[],
             "Some(Point{x: 1, y: 2})",
-            expect!["Option[test::Point]"],
+            expect!["Option[Point]"],
         );
     }
 
@@ -4047,7 +4047,7 @@ mod tests {
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[],
             "Some(Color::Red)",
-            expect!["Option[test::Color]"],
+            expect!["Option[Color]"],
         );
     }
 
@@ -4078,7 +4078,7 @@ mod tests {
                 .record("User", [("name", "String"), ("nickname", "Option[String]")]),
             &[],
             r#"User {name: "Alice", nickname: None}"#,
-            expect!["test::User"],
+            expect!["User"],
         );
     }
 
@@ -4089,7 +4089,7 @@ mod tests {
                 .record("User", [("name", "String"), ("nickname", "Option[String]")]),
             &[],
             r#"User {name: "Alice", nickname: Some("Ali")}"#,
-            expect!["test::User"],
+            expect!["User"],
         );
     }
 
@@ -4099,7 +4099,7 @@ mod tests {
             TypeRegistryBuilder::new().record("Config", [("value", "Option[Option[Int]]")]),
             &[],
             "Config {value: Some(Some(42))}",
-            expect!["test::Config"],
+            expect!["Config"],
         );
     }
 
@@ -4109,7 +4109,7 @@ mod tests {
             TypeRegistryBuilder::new().record("Config", [("value", "Option[Option[Int]]")]),
             &[],
             "Config {value: None}",
-            expect!["test::Config"],
+            expect!["Config"],
         );
     }
 
@@ -4603,7 +4603,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected test::Color got true
+                error: Mismatched pattern type: expected Color got true
                     true => 0,
                     ^^^^
             "#]],
@@ -4793,7 +4793,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected test::Color got Some(_)
+                error: Mismatched pattern type: expected Color got Some(_)
                     Some(_)      => 0,
                     ^^^^^^^
             "#]],
@@ -4902,7 +4902,7 @@ mod tests {
                     x => x,
                 }
             "#},
-            expect!["test::Color"],
+            expect!["Color"],
         );
     }
 

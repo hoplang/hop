@@ -45,11 +45,6 @@ impl DocumentId {
         Ok(())
     }
 
-    /// Convert to a module-style identifier with '::' separator
-    pub(crate) fn to_module_id(&self) -> String {
-        self.0.trim_end_matches(".hop").replace("/", "::")
-    }
-
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }

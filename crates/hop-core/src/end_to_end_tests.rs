@@ -1704,13 +1704,13 @@ mod tests {
             r#"<div>Ada</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(user@v1: main::User) -> Html {
+                fn Card@f0(user@v1: User) -> Html {
                   write("<div")
                   write(">")
                   write_string(v1.name)
                   write("</div>")
                 }
-                fn Wrapper@f1(user@v2: main::User, rest@v3: Html) -> Html {
+                fn Wrapper@f1(user@v2: User, rest@v3: Html) -> Html {
                   call Card@f0(user = v2)
                 }
                 page Test() {
@@ -5896,7 +5896,7 @@ mod tests {
             "green",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Badge@f0(color@v0: main::Color) -> Html {
+                fn Badge@f0(color@v0: Color) -> Html {
                   match v0 {
                     Color::Red => {
                       write("red")
@@ -9515,7 +9515,7 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "first",
-                    next: Option[main::Node]::None,
+                    next: Option[Node]::None,
                   } in {
                     write_string(v0.value)
                   }
@@ -9795,7 +9795,7 @@ mod tests {
                 page Test() {
                   let v0 = Folder {
                     name: "root",
-                    parent: Option[main::File]::None,
+                    parent: Option[File]::None,
                   } in {
                     write_string(v0.name)
                   }
@@ -9859,7 +9859,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Leaf {back: Option[main::Expr]::None} in {
+                  let v0 = Leaf {back: Option[Expr]::None} in {
                     let v1 = v0.back in {
                       match v1 {
                         Some(_) => {
@@ -9917,7 +9917,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[main::Node]::None in {
+                  let v0 = Option[Node]::None in {
                     let v1 = Node {value: "head", next: v0} in {
                       write_string(v1.value)
                     }
@@ -9976,14 +9976,14 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "leaf",
-                    next: Option[main::Node]::None,
+                    next: Option[Node]::None,
                   } in {
                     let v2 = Node {
                       value: "head",
                       next: let v1 = true in {
                         match v1 {
-                          true => { Option[main::Node]::Some(v0) }
-                          false => { Option[main::Node]::None }
+                          true => { Option[Node]::Some(v0) }
+                          false => { Option[Node]::None }
                         }
                       },
                     } in {
@@ -10037,7 +10037,7 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "node",
-                    next: Option[Option[main::Node]]::None,
+                    next: Option[Option[Node]]::None,
                   } in {
                     write_string(v0.value)
                   }
@@ -10099,9 +10099,9 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "head",
-                    next: Option[Option[main::Node]]::Some(Option[main::Node]::Some(Node {
+                    next: Option[Option[Node]]::Some(Option[Node]::Some(Node {
                       value: "tail",
-                      next: Option[Option[main::Node]]::None,
+                      next: Option[Option[Node]]::None,
                     })),
                   } in {
                     let v1 = v0.next in {
@@ -10181,7 +10181,7 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "node",
-                    next: Option[main::Node]::None,
+                    next: Option[Node]::None,
                   } in {
                     let v1 = Holder {held: v0.next} in {
                       let v2 = v1.held in {
@@ -10251,9 +10251,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = A {
-                    b: B {name: "b", a: Option[main::A]::None},
-                  } in {
+                  let v0 = A {b: B {name: "b", a: Option[A]::None}} in {
                     write_string(v0.b.name)
                     let v1 = v0.b.a in {
                       match v1 {
@@ -10336,7 +10334,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Tree::Node {label: "a", left: Tree::Leaf, right: Option[main::Tree]::None} in {
+                  let v0 = Tree::Node {label: "a", left: Tree::Leaf, right: Option[Tree]::None} in {
                     match v0 {
                       Tree::Node(label: v1, left: v2, right: v3) => {
                         let v4 = v1 in {
@@ -10515,7 +10513,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   for v0 in [
-                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                    Tree::Node {label: "a", kid: Option[Tree]::None},
                   ] {
                     match v0 {
                       Tree::Node(label: v1, kid: v2) => {
@@ -10556,7 +10554,7 @@ mod tests {
                 -- ir (optimized) --
                 page Test() {
                   for v0 in [
-                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                    Tree::Node {label: "a", kid: Option[Tree]::None},
                   ] {
                     match v0 {
                       Tree::Node(label: v1, kid: v2) => {
@@ -10747,7 +10745,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   for v0 in [
-                    Tree::Node {label: "a", kid: Option[Option[main::Tree]]::None},
+                    Tree::Node {label: "a", kid: Option[Option[Tree]]::None},
                   ] {
                     match v0 {
                       Tree::Node(label: v1, kid: v2) => {
@@ -10778,7 +10776,7 @@ mod tests {
                 -- ir (optimized) --
                 page Test() {
                   for v0 in [
-                    Tree::Node {label: "a", kid: Option[Option[main::Tree]]::None},
+                    Tree::Node {label: "a", kid: Option[Option[Tree]]::None},
                   ] {
                     match v0 {
                       Tree::Node(label: v1, kid: v2) => {
@@ -10861,7 +10859,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [Wrap::Full {h: Option[main::Holder]::None}] {
+                  for v0 in [Wrap::Full {h: Option[Holder]::None}] {
                     match v0 {
                       Wrap::Full(h: v1) => {
                         let v2 = v1 in {
@@ -10896,7 +10894,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [Wrap::Full {h: Option[main::Holder]::None}] {
+                  for v0 in [Wrap::Full {h: Option[Holder]::None}] {
                     match v0 {
                       Wrap::Full(h: v1) => {
                         let v3 = Wrap::Full {h: v1} in {
@@ -10976,15 +10974,15 @@ mod tests {
             "none",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn pick@f0(t@v2: main::Tree) -> Option[main::Tree] {
+                fn pick@f0(t@v2: Tree) -> Option[Tree] {
                   match v2 {
                     Tree::Node {kid: v3} => { let v4 = v3 in { v4 } }
-                    Tree::Leaf => { Option[main::Tree]::None }
+                    Tree::Leaf => { Option[Tree]::None }
                   }
                 }
                 page Test() {
                   for v0 in [
-                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                    Tree::Node {label: "a", kid: Option[Tree]::None},
                   ] {
                     let v1 = call pick@f0(t = v0) in {
                       match v1 {
@@ -11001,11 +10999,11 @@ mod tests {
                 -- ir (optimized) --
                 page Test() {
                   for v0 in [
-                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                    Tree::Node {label: "a", kid: Option[Tree]::None},
                   ] {
                     let v1 = match v0 {
                       Tree::Node {kid: v6} => { v6 }
-                      Tree::Leaf => { Option[main::Tree]::None }
+                      Tree::Leaf => { Option[Tree]::None }
                     } in {
                       match v1 {
                         Some(_) => {
@@ -11071,12 +11069,12 @@ mod tests {
             "0",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn depth@f0(t@v3: Option[main::Tree]) -> Int {
+                fn depth@f0(t@v3: Option[Tree]) -> Int {
                   match v3 { Some(_) => { 1 } None => { 0 } }
                 }
                 page Test() {
                   for v0 in [
-                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                    Tree::Node {label: "a", kid: Option[Tree]::None},
                   ] {
                     match v0 {
                       Tree::Node(kid: v1) => {
@@ -11093,7 +11091,7 @@ mod tests {
                 -- ir (optimized) --
                 page Test() {
                   for v0 in [
-                    Tree::Node {label: "a", kid: Option[main::Tree]::None},
+                    Tree::Node {label: "a", kid: Option[Tree]::None},
                   ] {
                     match v0 {
                       Tree::Node(kid: v1) => {
@@ -11562,7 +11560,7 @@ mod tests {
                   write_string(v1)
                   write("</strong>")
                 }
-                fn NodeView@f1(node@v2: main::Node) -> Html {
+                fn NodeView@f1(node@v2: Node) -> Html {
                   call Badge@f0(text = v2.value)
                   let v3 = v2.next in {
                     match v3 {
@@ -11579,16 +11577,16 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "a",
-                    next: Option[main::Node]::Some(Node {
+                    next: Option[Node]::Some(Node {
                       value: "b",
-                      next: Option[main::Node]::None,
+                      next: Option[Node]::None,
                     }),
                   } in {
                     call NodeView@f1(node = v0)
                   }
                 }
                 -- ir (optimized) --
-                fn NodeView@f1(node@v2: main::Node) -> Html {
+                fn NodeView@f1(node@v2: Node) -> Html {
                   write("<strong>")
                   write_string(v2.value)
                   write("</strong>")
@@ -11605,9 +11603,9 @@ mod tests {
                 page Test() {
                   call NodeView@f1(node = Node {
                     value: "a",
-                    next: Option[main::Node]::Some(Node {
+                    next: Option[Node]::Some(Node {
                       value: "b",
-                      next: Option[main::Node]::None,
+                      next: Option[Node]::None,
                     }),
                   })
                 }
@@ -11672,7 +11670,7 @@ mod tests {
             "<span>a</span><span>b</span><span>c</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn NodeView@f0(node@v1: main::Node) -> Html {
+                fn NodeView@f0(node@v1: Node) -> Html {
                   write("<span")
                   write(">")
                   write_string(v1.value)
@@ -11692,11 +11690,11 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "a",
-                    next: Option[main::Node]::Some(Node {
+                    next: Option[Node]::Some(Node {
                       value: "b",
-                      next: Option[main::Node]::Some(Node {
+                      next: Option[Node]::Some(Node {
                         value: "c",
-                        next: Option[main::Node]::None,
+                        next: Option[Node]::None,
                       }),
                     }),
                   } in {
@@ -11704,7 +11702,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                fn NodeView@f0(node@v1: main::Node) -> Html {
+                fn NodeView@f0(node@v1: Node) -> Html {
                   write("<span>")
                   write_string(v1.value)
                   write("</span>")
@@ -11721,11 +11719,11 @@ mod tests {
                 page Test() {
                   call NodeView@f0(node = Node {
                     value: "a",
-                    next: Option[main::Node]::Some(Node {
+                    next: Option[Node]::Some(Node {
                       value: "b",
-                      next: Option[main::Node]::Some(Node {
+                      next: Option[Node]::Some(Node {
                         value: "c",
-                        next: Option[main::Node]::None,
+                        next: Option[Node]::None,
                       }),
                     }),
                   })
@@ -12740,7 +12738,7 @@ mod tests {
             "[x]Buy milk,[ ]Walk dog",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn RenderItem@f0(item@v0: main::Item) -> Html {
+                fn RenderItem@f0(item@v0: Item) -> Html {
                   match v0 {
                     Item::Todo(label: v1, done: v2) => {
                       let v3 = v1 in {
@@ -12841,7 +12839,7 @@ mod tests {
             "1 minute ago,5 minutes ago,1 hour ago",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Render@f0(time@v0: main::TimeAgo) -> Html {
+                fn Render@f0(time@v0: TimeAgo) -> Html {
                   match v0 {
                     TimeAgo::MinutesAgo(count: v1) => {
                       let v2 = v1 in {
@@ -12934,7 +12932,7 @@ mod tests {
             "<code>fn main()</code>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn RenderCode@f0(block@v0: main::CodeBlock) -> Html {
+                fn RenderCode@f0(block@v0: CodeBlock) -> Html {
                   match v0 {
                     CodeBlock::Snippet(code: v1) => {
                       let v2 = v1 in {
@@ -13013,7 +13011,7 @@ mod tests {
             r#"<button type="submit">btn</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Render@f0(el@v0: main::ButtonElement) -> Html {
+                fn Render@f0(el@v0: ButtonElement) -> Html {
                   match v0 {
                     ButtonElement::Link(href: v1) => {
                       let v2 = v1 in {
@@ -13115,7 +13113,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[main::Target]::Some(Target {
+                  let v0 = Option[Target]::Some(Target {
                     id: "1",
                     title: "hello",
                   }) in {
@@ -15244,7 +15242,7 @@ mod tests {
             r#"<div>off</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Row@f0(item@v2: main::Item) -> Html {
+                fn Row@f0(item@v2: Item) -> Html {
                   write("<div")
                   write(">")
                   write_string(v2.label)
@@ -15338,7 +15336,7 @@ mod tests {
             r#"qdark"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Dark@f0(s@v1: main::State) -> Html {
+                fn Dark@f0(s@v1: State) -> Html {
                   let v3 = let v2 = v1.settings in {
                     Settings {theme: "dark", compact: v2.compact}
                   } in {
@@ -15995,7 +15993,7 @@ mod tests {
                     }
                   }
                 }
-                fn mk@f1() -> main::Shape {
+                fn mk@f1() -> Shape {
                   Shape::Square
                 }
                 page Test() {
@@ -16058,7 +16056,7 @@ mod tests {
             "square",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn mk@f0() -> main::Shape {
+                fn mk@f0() -> Shape {
                   Shape::Square
                 }
                 page Test() {

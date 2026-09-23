@@ -131,7 +131,7 @@ impl RecordField {
 }
 
 impl TypeDef {
-    pub fn to_doc<'a>(&'a self, module: &DocumentId, name: &'a TypeName) -> BoxDoc<'a> {
+    pub fn to_doc<'a>(&'a self, name: &'a TypeName) -> BoxDoc<'a> {
         let (keyword, members): (&str, Vec<BoxDoc<'a>>) = match self {
             TypeDef::Record { fields } => {
                 ("record", fields.iter().map(RecordField::to_doc).collect())
@@ -158,7 +158,7 @@ impl TypeDef {
         };
         BoxDoc::text(keyword)
             .append(BoxDoc::space())
-            .append(BoxDoc::text(format!("{}::{}", module.to_module_id(), name)))
+            .append(BoxDoc::text(name.as_str()))
             .append(BoxDoc::space())
             .append(BoxDoc::text("{"))
             .append(if members.is_empty() {
@@ -179,10 +179,7 @@ impl TypeDef {
 
 impl TypeRegistry {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let docs: Vec<_> = self
-            .iter()
-            .map(|(module, name, def)| def.to_doc(module, name))
-            .collect();
+        let docs: Vec<_> = self.iter().map(|(_, name, def)| def.to_doc(name)).collect();
         if docs.is_empty() {
             BoxDoc::nil()
         } else {

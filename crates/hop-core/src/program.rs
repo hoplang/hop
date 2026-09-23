@@ -1817,7 +1817,7 @@ mod tests {
             "#},
             expect![[r#"
                 ```
-                user : main::User
+                user : User
                 ```
                   --> main.hop (line 2, col 9)
                 2 | fn Main(user: User) -> Html {
@@ -1943,7 +1943,7 @@ mod tests {
             "#},
             expect![[r#"
                 ```
-                User : main::User
+                User : User
                 ```
                   --> main.hop (line 3, col 20)
                 3 |   let user: User = User{name: "John"};
@@ -1969,7 +1969,7 @@ mod tests {
             "#},
             expect![[r#"
                 ```
-                Color : main::Color
+                Color : Color
                 ```
                   --> main.hop (line 3, col 22)
                 3 |   let color: Color = Color::Red;
@@ -1995,7 +1995,7 @@ mod tests {
             "#},
             expect![[r#"
                 ```
-                Outcome : main::Outcome
+                Outcome : Outcome
                 ```
                   --> main.hop (line 3, col 25)
                 3 |   let result: Outcome = Outcome::Success{value: "ok"};
@@ -2546,7 +2546,7 @@ mod tests {
         check_diagnostics(
             &program,
             expect![[r#"
-                Type main::Color is not comparable
+                Type Color is not comparable
                   --> main.hop (line 10, col 12)
                 10 |     match (color == Color::Red) {
                    |            ^^^^^
@@ -2577,7 +2577,7 @@ mod tests {
         check_diagnostics(
             &program,
             expect![[r#"
-                Type main::Color is not comparable
+                Type Color is not comparable
                   --> main.hop (line 10, col 12)
                 10 |     match (color != Color::Red) {
                    |            ^^^^^

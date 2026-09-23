@@ -49,8 +49,41 @@ impl TypeError {
     }
 
     pub(crate) fn to_diagnostic(&self) -> Diagnostic {
+        let types = match &self.kind {
+            TypeErrorKind::DefaultValueTypeMismatch {
+                expected, found, ..
+            }
+            | TypeErrorKind::LetBindingTypeMismatch { expected, found }
+            | TypeErrorKind::ArrayElementTypeMismatch { expected, found }
+            | TypeErrorKind::RecordLiteralFieldTypeMismatch {
+                expected, found, ..
+            }
+            | TypeErrorKind::RecordSpreadTypeMismatch { expected, found }
+            | TypeErrorKind::EnumVariantFieldTypeMismatch {
+                expected, found, ..
+            }
+            | TypeErrorKind::MatchArmTypeMismatch { expected, found }
+            | TypeErrorKind::MacroArgumentTypeMismatch {
+                expected, found, ..
+            }
+            | TypeErrorKind::FunctionArgumentTypeMismatch {
+                expected, found, ..
+            }
+            | TypeErrorKind::FunctionBodyTypeMismatch { expected, found } => {
+                Some((expected, found))
+            }
+            _ => None,
+        };
+        let mut message = self.kind.to_string();
+        // Named types print without their module, so two different types
+        // can print the same.
+        if types.is_some_and(|(expected, found)| {
+            expected != found && expected.to_string() == found.to_string()
+        }) {
+            message.push_str(" (these are different types with the same name)");
+        }
         Diagnostic {
-            message: self.kind.to_string(),
+            message,
             range: self.range.clone(),
             severity: self.kind.severity(),
         }
