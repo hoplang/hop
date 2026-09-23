@@ -7,7 +7,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use hop_core::{Document, DocumentId, ProjectRoot, ProjectRootError};
+use hop_core::{Document, ProjectRoot, ProjectRootError, RootContainedFilePath};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
@@ -38,14 +38,14 @@ impl Project {
     /// Construct the project from a path.
     ///
     /// The path should be a directory and contain the config file.
-    pub fn from(path: &Path) -> Result<Project, ProjectError> {
+    pub fn open(path: &Path) -> Result<Project, ProjectError> {
         if !path.is_dir() {
             return Err(ProjectError::NotADirectory {
                 path: path.to_path_buf(),
             });
         }
         let root = ProjectRoot::new(&absolute(path)?);
-        if !root.config_path().exists() {
+        if !root.resolve(root.config()).exists() {
             return Err(ProjectError::ConfigNotFound {
                 path: path.to_path_buf(),
             });
@@ -55,28 +55,25 @@ impl Project {
 
     /// Find the project root by traversing into superdirectories.
     pub fn find_traversing_superdirectories(start_path: &Path) -> Result<Project, ProjectError> {
-        let start = ProjectRoot::new(&absolute(start_path)?);
-        let mut current_dir = if start.as_path().is_file() {
-            start
-                .as_path()
-                .parent()
-                .ok_or_else(|| ProjectError::ConfigNotFound {
-                    path: start_path.to_path_buf(),
-                })?
+        let start = absolute(start_path)?;
+        let start_dir = if start.is_file() {
+            start.parent().ok_or_else(|| ProjectError::ConfigNotFound {
+                path: start_path.to_path_buf(),
+            })?
         } else {
-            start.as_path()
+            &start
         };
 
+        let mut root = ProjectRoot::new(start_dir);
         loop {
-            let root = ProjectRoot::new(current_dir);
-            if root.config_path().exists() {
+            if root.resolve(root.config()).exists() {
                 return Ok(Project { root });
             }
-            current_dir = current_dir
-                .parent()
-                .ok_or_else(|| ProjectError::ConfigNotFound {
+            root = ProjectRoot::new(root.as_path().parent().ok_or_else(|| {
+                ProjectError::ConfigNotFound {
                     path: start_path.to_path_buf(),
-                })?;
+                }
+            })?);
         }
     }
 
@@ -93,7 +90,7 @@ impl Project {
                 }
 
                 let root = ProjectRoot::new(&path);
-                if root.config_path().exists() {
+                if root.resolve(root.config()).exists() {
                     return Ok(Project { root });
                 }
 
@@ -117,22 +114,19 @@ impl Project {
         &self.root
     }
 
-    pub fn load_document(&self, document_id: &DocumentId) -> Result<Document, ProjectError> {
-        let path = self.root.document_id_to_path(document_id);
+    pub fn load_document(
+        &self,
+        document_id: &RootContainedFilePath,
+    ) -> Result<Document, ProjectError> {
+        let path = self.root.resolve(document_id);
         let content =
             fs::read_to_string(&path).map_err(|source| ProjectError::Io { path, source })?;
         Ok(Document::new(document_id.clone(), content))
     }
 
-    pub fn documents(&self) -> Result<Vec<DocumentId>, ProjectError> {
+    pub fn documents(&self) -> Result<Vec<RootContainedFilePath>, ProjectError> {
         let mut document_ids = Vec::new();
-
-        let root = self.root.as_path();
-        if !root.exists() || !root.is_dir() {
-            return Ok(document_ids);
-        }
-
-        let mut paths: Vec<PathBuf> = vec![root.to_path_buf()];
+        let mut paths: Vec<PathBuf> = vec![self.root.as_path().to_path_buf()];
 
         while let Some(path) = paths.pop() {
             if path.is_dir() {
@@ -162,7 +156,7 @@ impl Project {
                 // Paths come from walking the root, which is absolute and
                 // lexically normalized, so they share its prefix and need no
                 // further resolution before being stripped to a document id.
-                document_ids.push(self.root.path_to_document_id(&path)?);
+                document_ids.push(self.root.relativize(&path)?);
             }
         }
 
@@ -226,15 +220,14 @@ mod tests {
 
     fn project_from(input: &str) -> (TempDir, Project) {
         let temp_dir = write(input);
-        let project = Project::from(temp_dir.path()).unwrap();
+        let project = Project::open(temp_dir.path()).unwrap();
         (temp_dir, project)
     }
 
-    /// Build a [`DocumentId`] for a path relative to the project root.
-    fn document_id(project: &Project, relative: &str) -> DocumentId {
+    /// Build a [`RootContainedFilePath`] for a path relative to the project root.
+    fn document_id(project: &Project, relative: &str) -> RootContainedFilePath {
         let root = project.root();
-        root.path_to_document_id(&root.as_path().join(relative))
-            .unwrap()
+        root.relativize(&root.as_path().join(relative)).unwrap()
     }
 
     #[test]
@@ -251,6 +244,37 @@ mod tests {
         // Test finding from nested directory
         let nested_dir = temp_dir.path().join("src").join("components");
         let found = Project::find_traversing_superdirectories(&nested_dir).unwrap();
+        assert_eq!(found.root().as_path(), temp_dir.path());
+    }
+
+    #[test]
+    fn find_config_file_from_a_file() {
+        let temp_dir = write(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            -- src/main.hop --
+            <main-comp>Hello</main-comp>
+        "#});
+
+        let file = temp_dir.path().join("src").join("main.hop");
+        let found = Project::find_traversing_superdirectories(&file).unwrap();
+        assert_eq!(found.root().as_path(), temp_dir.path());
+    }
+
+    #[test]
+    fn find_config_file_upwards_does_not_descend_below_a_parent_component() {
+        let temp_dir = write(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            -- src/nested/hop.toml --
+            [compile]
+            target = "ts"
+        "#});
+
+        let start = temp_dir.path().join("src").join("nested").join("..");
+        let found = Project::find_traversing_superdirectories(&start).unwrap();
         assert_eq!(found.root().as_path(), temp_dir.path());
     }
 
@@ -350,13 +374,46 @@ mod tests {
         documents.sort();
 
         assert_eq!(
-            documents.iter().map(|id| id.as_str()).collect::<Vec<_>>(),
+            documents,
             [
                 "src/components/button.hop",
                 "src/components/header.hop",
                 "src/main.hop",
                 "src/styles.css",
             ]
+            .map(|path| document_id(&project, path))
+        );
+    }
+
+    // Linux only: macOS refuses to create files whose names are not UTF-8.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn documents_rejects_non_utf8_file_names() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let (temp_dir, project) = project_from(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            -- src/main.hop --
+            <main-comp>Main</main-comp>
+        "#});
+        let path = temp_dir
+            .path()
+            .join("src")
+            .join(OsStr::from_bytes(b"caf\xE9.hop"));
+        fs::write(&path, "<cafe-comp>Hello</cafe-comp>").unwrap();
+
+        let result = project.documents();
+        assert!(
+            matches!(
+                result,
+                Err(ProjectError::Root(ProjectRootError::NotUtf8 { path: ref p }))
+                    if *p == path
+            ),
+            "Expected NotUtf8 error, got: {:?}",
+            result
         );
     }
 
@@ -380,17 +437,8 @@ mod tests {
         // Test that documents correctly skips certain directories
         let modules = project.documents().unwrap();
 
-        // Should only load 1 module (from src/main.hop)
-        assert_eq!(modules.len(), 1);
-
-        // Check which modules were loaded
-        assert_eq!(modules[0].as_str(), "src/main.hop");
-
-        // Should NOT contain modules from skipped directories
-        let document_ids: Vec<String> = modules.iter().map(|m| m.to_string()).collect();
-        assert!(!document_ids.iter().any(|m| m.contains("node_modules")));
-        assert!(!document_ids.iter().any(|m| m.contains(".git")));
-        assert!(!document_ids.iter().any(|m| m.contains("target")));
+        // Should only load src/main.hop, nothing from the skipped directories
+        assert_eq!(modules, [document_id(&project, "src/main.hop")]);
     }
 
     #[test]

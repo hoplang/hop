@@ -105,12 +105,12 @@ fn drop_newlines(nodes: &mut Vec<ParsedNode>) {
 #[cfg(test)]
 mod tests {
     use crate::document::Document;
-    use crate::document_id::DocumentId;
     use crate::hop::format;
     use crate::hop::parsing::parse;
     use crate::ir::runtime::evaluator;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
     use crate::program::Program;
+    use crate::root_contained_file_path::RootContainedFilePath;
     use crate::symbols::type_name::TypeName;
     use indoc::indoc;
     use std::collections::HashMap;
@@ -128,7 +128,7 @@ mod tests {
     }
 
     fn reformat(source: &str) -> String {
-        let document_id = DocumentId::new("test.hop").unwrap();
+        let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let mut errors = Vec::new();
         let ast = parse::parse(
             document_id.clone(),
@@ -140,7 +140,7 @@ mod tests {
     }
 
     fn render(source: &str) -> String {
-        let document_id = DocumentId::new("test.hop").unwrap();
+        let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let mut program = Program::new();
         program.update_hop_document(
             &document_id,

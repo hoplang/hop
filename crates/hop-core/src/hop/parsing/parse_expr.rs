@@ -882,12 +882,12 @@ fn parse_match_pattern(
 mod tests {
     use super::*;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::document_id::DocumentId;
+    use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn accept(input: &str, expected: Expect) {
-        let document_id = DocumentId::new("test.hop").unwrap();
+        let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let mut iter = DocumentCursor::new(document_id, input.to_string());
         let mut comments = Vec::new();
         let mut errors = Vec::new();
@@ -898,7 +898,7 @@ mod tests {
     }
 
     fn reject(input: &str, expected: Expect) {
-        let document_id = DocumentId::new("test.hop").unwrap();
+        let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let mut iter = DocumentCursor::new(document_id, input.to_string());
         let mut comments = Vec::new();
         let mut errors = Vec::new();

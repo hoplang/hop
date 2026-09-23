@@ -7,7 +7,7 @@ use crate::{
     diagnostic::Diagnostic,
     diagnostic_severity::DiagnosticSeverity,
     document::{DocumentCursor, DocumentRange},
-    document_id::DocumentId,
+    root_contained_file_path::RootContainedFilePath,
 };
 
 /// A printer that displays the source code of a [Document](crate::Document)
@@ -24,7 +24,7 @@ pub struct DocumentAnnotator {
     underline_char: char,
     tab_width: usize,
 
-    diagnostics: BTreeMap<DocumentId, Vec<Diagnostic>>,
+    diagnostics: BTreeMap<RootContainedFilePath, Vec<Diagnostic>>,
 }
 
 impl DocumentAnnotator {
@@ -131,7 +131,7 @@ impl DocumentAnnotator {
                 if self.show_location {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
-                        document_id,
+                        document_id.as_str(),
                         diagnostic.range().start_position().line() + 1,
                         diagnostic.range().start_position().utf32_column() + 1
                     ));
@@ -251,11 +251,11 @@ impl Default for DocumentAnnotator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document_id::DocumentId;
+    use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::expect;
 
     fn create_annotations_from_chunks(
-        doc_id: DocumentId,
+        doc_id: RootContainedFilePath,
         source: &str,
         predicate: impl Fn(char) -> bool,
     ) -> Vec<Diagnostic> {
@@ -281,10 +281,11 @@ mod tests {
     fn with_severity_label() {
         let source = "line one\nline two\nline three\nline four";
 
-        let annotations =
-            create_annotations_from_chunks(DocumentId::new("test.hop").unwrap(), source, |ch| {
-                ch == '\n'
-            });
+        let annotations = create_annotations_from_chunks(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            source,
+            |ch| ch == '\n',
+        );
 
         let actual = DocumentAnnotator::new()
             .with_severity_label()
@@ -313,7 +314,7 @@ mod tests {
 
     #[test]
     fn end_of_input_range_is_a_single_caret() {
-        let doc_id = DocumentId::new("test.hop").unwrap();
+        let doc_id = RootContainedFilePath::new("test.hop").unwrap();
         let annotation = Diagnostic {
             message: "unexpected end of file".to_string(),
             range: DocumentCursor::new(doc_id, "fn main(".to_string()).eof_range(),
@@ -332,7 +333,7 @@ mod tests {
 
     #[test]
     fn end_of_input_range_after_trailing_newline_clamps_to_the_last_line() {
-        let doc_id = DocumentId::new("test.hop").unwrap();
+        let doc_id = RootContainedFilePath::new("test.hop").unwrap();
         let annotation = Diagnostic {
             message: "unexpected end of file".to_string(),
             range: DocumentCursor::new(doc_id, "fn main() {\n".to_string()).eof_range(),
@@ -352,7 +353,7 @@ mod tests {
     #[test]
     fn with_location_info() {
         let source = "line one\nline two\nline three\nline four";
-        let doc_id = DocumentId::new("main.rs").unwrap();
+        let doc_id = RootContainedFilePath::new("main.rs").unwrap();
 
         let annotations = create_annotations_from_chunks(doc_id, source, |ch| ch == '\n');
 
@@ -389,10 +390,11 @@ mod tests {
     fn with_lines_before() {
         let source = "line one\nline two\nline three\nline four";
 
-        let annotations =
-            create_annotations_from_chunks(DocumentId::new("test.hop").unwrap(), source, |ch| {
-                ch == '\n'
-            });
+        let annotations = create_annotations_from_chunks(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            source,
+            |ch| ch == '\n',
+        );
 
         let actual = DocumentAnnotator::new()
             .with_lines_before(2)
@@ -428,10 +430,11 @@ mod tests {
     fn with_lines_after() {
         let source = "line one\nline two\nline three\nline four";
 
-        let annotations =
-            create_annotations_from_chunks(DocumentId::new("test.hop").unwrap(), source, |ch| {
-                ch == '\n'
-            });
+        let annotations = create_annotations_from_chunks(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            source,
+            |ch| ch == '\n',
+        );
 
         let actual = DocumentAnnotator::new()
             .with_lines_after(2)
@@ -467,10 +470,11 @@ mod tests {
     fn tab_expansion() {
         let source = "code\n\t\tcode\n\tcode";
 
-        let annotations =
-            create_annotations_from_chunks(DocumentId::new("test.hop").unwrap(), source, |ch| {
-                ch.is_whitespace()
-            });
+        let annotations = create_annotations_from_chunks(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            source,
+            |ch| ch.is_whitespace(),
+        );
 
         let actual = DocumentAnnotator::new()
             .with_location()
@@ -500,10 +504,11 @@ mod tests {
     fn unicode_emoji_width() {
         let source = "😀 code";
 
-        let annotations =
-            create_annotations_from_chunks(DocumentId::new("test.hop").unwrap(), source, |ch| {
-                ch.is_whitespace()
-            });
+        let annotations = create_annotations_from_chunks(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            source,
+            |ch| ch.is_whitespace(),
+        );
 
         let actual = DocumentAnnotator::new()
             .with_location()
@@ -528,10 +533,11 @@ mod tests {
     fn location_with_document_id() {
         let source = "some code";
 
-        let annotations =
-            create_annotations_from_chunks(DocumentId::new("test.hop").unwrap(), source, |ch| {
-                ch.is_whitespace()
-            });
+        let annotations = create_annotations_from_chunks(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            source,
+            |ch| ch.is_whitespace(),
+        );
 
         let actual = DocumentAnnotator::new()
             .with_location()
@@ -556,10 +562,11 @@ mod tests {
     fn lines_before_exceeds_start() {
         let source = "line one\nline two\nline three\nline four\nline five\nline six";
 
-        let annotations =
-            create_annotations_from_chunks(DocumentId::new("test.hop").unwrap(), source, |ch| {
-                ch == '\n'
-            });
+        let annotations = create_annotations_from_chunks(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            source,
+            |ch| ch == '\n',
+        );
 
         let actual = DocumentAnnotator::new()
             .with_lines_before(1000)
@@ -613,10 +620,11 @@ mod tests {
     fn multi_line_annotation() {
         let source = "line one\nline two\nline three\nline four\nline five";
 
-        let annotations =
-            create_annotations_from_chunks(DocumentId::new("test.hop").unwrap(), source, |ch| {
-                ch == 'n'
-            });
+        let annotations = create_annotations_from_chunks(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            source,
+            |ch| ch == 'n',
+        );
 
         let actual = DocumentAnnotator::new().annotate(annotations).render();
 

@@ -7,8 +7,8 @@ use super::parsed_ast::{
 };
 use super::tokenize_expr;
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
-use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
+use crate::root_contained_file_path::RootContainedFilePath;
 
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_type::parse_type;
@@ -24,7 +24,7 @@ use crate::symbols::var_name::VarName;
 use std::collections::HashSet;
 
 pub fn parse(
-    document_id: DocumentId,
+    document_id: RootContainedFilePath,
     document: Document,
     errors: &mut Vec<ParseError>,
 ) -> ParsedAst {
@@ -699,7 +699,7 @@ mod tests {
 
     fn accept(input: &str, expected: Expect) {
         let mut errors = Vec::new();
-        let document_id = DocumentId::new("test.hop").unwrap();
+        let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let module = parse(
             document_id.clone(),
             Document::new(document_id, input.to_string()),
@@ -718,7 +718,7 @@ mod tests {
 
     fn reject(input: &str, expected: Expect) {
         let mut errors = Vec::new();
-        let document_id = DocumentId::new("test.hop").unwrap();
+        let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let module = parse(
             document_id.clone(),
             Document::new(document_id, input.to_string()),
@@ -6863,7 +6863,7 @@ mod tests {
         arbtest::arbtest(|u| {
             let source = source_generator::random_source(u)?;
             let mut errors = Vec::new();
-            let document_id = DocumentId::new("test.hop").unwrap();
+            let document_id = RootContainedFilePath::new("test.hop").unwrap();
             parse(
                 document_id.clone(),
                 Document::new(document_id, source.clone()),

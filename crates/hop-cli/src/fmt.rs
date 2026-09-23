@@ -13,7 +13,7 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
         match file {
             Some(file_path) => {
                 let path = std::path::absolute(file_path)?;
-                let document_id = project.root().path_to_document_id(&path)?;
+                let document_id = project.root().relativize(&path)?;
                 vec![document_id]
             }
             None => project
@@ -61,7 +61,7 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
     for (document_id, formatted) in formatted {
         let original = project.load_document(document_id)?;
         if formatted != original.as_str() {
-            let path = project.root().document_id_to_path(document_id);
+            let path = project.root().resolve(document_id);
             std::fs::write(&path, &formatted)?;
             files_formatted += 1;
         } else {
@@ -87,7 +87,7 @@ mod tests {
         let archive = Archive::from(input);
         let temp_dir = TempDir::new().unwrap();
         write_archive_to_dir(&archive, temp_dir.path()).unwrap();
-        let project = Project::from(temp_dir.path()).unwrap();
+        let project = Project::open(temp_dir.path()).unwrap();
         execute(&project, None).expect("formatting should succeed");
         let output_archive = read_archive_from_dir(temp_dir.path()).unwrap();
         expected.assert_eq(&output_archive.to_string());
@@ -97,7 +97,7 @@ mod tests {
         let archive = Archive::from(input);
         let temp_dir = TempDir::new().unwrap();
         write_archive_to_dir(&archive, temp_dir.path()).unwrap();
-        let project = Project::from(temp_dir.path()).unwrap();
+        let project = Project::open(temp_dir.path()).unwrap();
         let file_path = temp_dir.path().join(file);
         execute(&project, Some(file_path.to_str().unwrap())).expect("formatting should succeed");
         let output_archive = read_archive_from_dir(temp_dir.path()).unwrap();
@@ -108,7 +108,7 @@ mod tests {
         let archive = Archive::from(input);
         let temp_dir = TempDir::new().unwrap();
         write_archive_to_dir(&archive, temp_dir.path()).unwrap();
-        let project = Project::from(temp_dir.path()).unwrap();
+        let project = Project::open(temp_dir.path()).unwrap();
         let err = match execute(&project, None) {
             Ok(_) => panic!("formatting should fail"),
             Err(e) => e,

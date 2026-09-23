@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
-use crate::document_id::DocumentId;
 use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::Type;
@@ -17,6 +16,7 @@ use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::PureForSource;
 use crate::ir::var_id::VarId;
 use crate::ir::var_id::VarIdCounter;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 use std::collections::HashMap;
@@ -28,14 +28,14 @@ use super::writer_module::WriterParameter;
 
 pub fn compile(
     pages: Vec<AssembledPageDeclaration>,
-    source_functions: &[(&DocumentId, &TypedFunctionDeclaration)],
+    source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 ) -> PureModule {
     let mut expr_ids = ExprIdCounter::new();
     let mut var_ids = VarIdCounter::new();
     let mut function_ids = FunctionIdCounter::new();
 
-    let declared: HashMap<(DocumentId, FunctionName), IrFunction> = source_functions
+    let declared: HashMap<(RootContainedFilePath, FunctionName), IrFunction> = source_functions
         .iter()
         .map(|(module, decl)| {
             (
@@ -67,7 +67,7 @@ pub fn compile(
 struct Compiler<'a> {
     expr_id_counter: &'a mut ExprIdCounter,
     var_id_counter: &'a mut VarIdCounter,
-    declared: &'a HashMap<(DocumentId, FunctionName), IrFunction>,
+    declared: &'a HashMap<(RootContainedFilePath, FunctionName), IrFunction>,
     scopes: Vec<Vec<(VarName, VarId)>>,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
@@ -76,7 +76,7 @@ impl<'a> Compiler<'a> {
     fn new(
         expr_id_counter: &'a mut ExprIdCounter,
         var_id_counter: &'a mut VarIdCounter,
-        declared: &'a HashMap<(DocumentId, FunctionName), IrFunction>,
+        declared: &'a HashMap<(RootContainedFilePath, FunctionName), IrFunction>,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Self {
         Compiler {
@@ -90,7 +90,7 @@ impl<'a> Compiler<'a> {
 
     fn compile_function_decl(
         &mut self,
-        module: &DocumentId,
+        module: &RootContainedFilePath,
         decl: &TypedFunctionDeclaration,
     ) -> PureFunctionDeclaration {
         self.push_scope();

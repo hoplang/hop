@@ -1,9 +1,9 @@
 use std::fmt::{self, Display};
 
 use crate::document::CheapString;
-use crate::document_id::DocumentId;
 use crate::hop::patterns::{EnumPattern, Match};
 use crate::html::HtmlElementKind;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
@@ -273,7 +273,7 @@ pub enum TypedExpr {
     FunctionCall {
         function_name: FunctionName,
         /// The module that declares the callee.
-        module: DocumentId,
+        module: RootContainedFilePath,
         args: Vec<(VarName, Self)>,
         typ: Type,
     },

@@ -370,12 +370,15 @@ mod tests {
     use crate::diagnostic::Diagnostic;
     use crate::diagnostic_severity::DiagnosticSeverity;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::document_id::DocumentId;
+    use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
-        let doc = Document::new(DocumentId::new("input.css").unwrap(), input.to_string());
+        let doc = Document::new(
+            RootContainedFilePath::new("input.css").unwrap(),
+            input.to_string(),
+        );
         let mut asset_references = Vec::new();
         let mut errors = Vec::new();
         scan_for_asset_references(&doc, &mut asset_references, &mut errors);

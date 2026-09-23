@@ -2,7 +2,7 @@ use core::fmt;
 
 use pretty::BoxDoc;
 
-use crate::document_id::DocumentId;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,7 +16,10 @@ pub enum Type {
     Array(Box<Type>),
     Option(Box<Type>),
     Tuple(Vec<Type>),
-    Named { module: DocumentId, name: TypeName },
+    Named {
+        module: RootContainedFilePath,
+        name: TypeName,
+    },
 }
 
 /// An EquatableType is a type where its values can be compared

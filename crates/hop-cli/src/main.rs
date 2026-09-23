@@ -68,7 +68,7 @@ fn main() -> anyhow::Result<()> {
             let start_time = Instant::now();
 
             let proj = match project {
-                Some(d) => Project::from(Path::new(d))?,
+                Some(d) => Project::open(Path::new(d))?,
                 None => Project::find_traversing_superdirectories(Path::new("."))?,
             };
 
@@ -92,7 +92,7 @@ fn main() -> anyhow::Result<()> {
             let start_time = Instant::now();
 
             let proj = match project {
-                Some(d) => Project::from(Path::new(d))?,
+                Some(d) => Project::open(Path::new(d))?,
                 None => Project::find_traversing_superdirectories(Path::new("."))?,
             };
 

@@ -1,4 +1,4 @@
-use crate::document_id::DocumentId;
+use crate::root_contained_file_path::RootContainedFilePath;
 use std::borrow::Borrow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -11,7 +11,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 struct DocumentInfo {
     /// The id of the document.
-    document_id: DocumentId,
+    document_id: RootContainedFilePath,
     /// The source text.
     text: Arc<String>,
     /// Byte offsets where each line starts.
@@ -20,7 +20,7 @@ struct DocumentInfo {
 }
 
 impl DocumentInfo {
-    pub fn new(document_id: DocumentId, text: String) -> Self {
+    pub fn new(document_id: RootContainedFilePath, text: String) -> Self {
         let mut line_starts = vec![0];
         for (i, ch) in text.char_indices() {
             if ch == '\n' {
@@ -82,8 +82,8 @@ pub struct DocumentPosition {
 }
 
 impl DocumentPosition {
-    /// The [DocumentId] for the [Document] in which this position belongs.
-    pub fn document_id(&self) -> &DocumentId {
+    /// The [RootContainedFilePath] for the [Document] in which this position belongs.
+    pub fn document_id(&self) -> &RootContainedFilePath {
         &self.source.document_id
     }
 
@@ -118,7 +118,7 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(document_id: DocumentId, text: String) -> Self {
+    pub fn new(document_id: RootContainedFilePath, text: String) -> Self {
         Self {
             source: Arc::new(DocumentInfo::new(document_id, text)),
         }
@@ -211,7 +211,7 @@ pub(crate) struct DocumentCursor {
 }
 
 impl DocumentCursor {
-    pub fn new(document_id: DocumentId, source: String) -> Self {
+    pub fn new(document_id: RootContainedFilePath, source: String) -> Self {
         let end = source.len();
         Self {
             offset: 0,
@@ -392,7 +392,7 @@ impl DocumentRange {
         self.end
     }
 
-    pub fn document_id(&self) -> &DocumentId {
+    pub fn document_id(&self) -> &RootContainedFilePath {
         &self.source.document_id
     }
 
@@ -601,7 +601,7 @@ impl Borrow<str> for CheapString {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document_id::DocumentId;
+    use crate::root_contained_file_path::RootContainedFilePath;
 
     fn utf16(position: &DocumentPosition) -> (usize, usize) {
         (position.line(), position.utf16_column())
@@ -613,15 +613,20 @@ mod tests {
 
     #[test]
     fn string_cursor_new() {
-        let cursor = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "hello".to_string());
+        let cursor = DocumentCursor::new(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            "hello".to_string(),
+        );
         assert_eq!(cursor.offset, 0);
         assert_eq!(cursor.end, 5);
     }
 
     #[test]
     fn string_cursor_single_line() {
-        let mut cursor =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "abc".to_string());
+        let mut cursor = DocumentCursor::new(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            "abc".to_string(),
+        );
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
@@ -643,8 +648,10 @@ mod tests {
 
     #[test]
     fn string_cursor_multiline() {
-        let mut cursor =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "a\nb\nc".to_string());
+        let mut cursor = DocumentCursor::new(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            "a\nb\nc".to_string(),
+        );
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
@@ -676,8 +683,10 @@ mod tests {
 
     #[test]
     fn string_range_extend() {
-        let mut cursor =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "abc".to_string());
+        let mut cursor = DocumentCursor::new(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            "abc".to_string(),
+        );
         let range1 = cursor.next().unwrap();
         let _range2 = cursor.next().unwrap();
         let range3 = cursor.next().unwrap();
@@ -692,7 +701,7 @@ mod tests {
     #[test]
     fn string_range_to_string() {
         let mut cursor = DocumentCursor::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "hello world".to_string(),
         );
         let ranges: Vec<_> = cursor.by_ref().take(5).collect();
@@ -709,16 +718,21 @@ mod tests {
 
     #[test]
     fn empty_string_cursor() {
-        let mut cursor = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "".to_string());
+        let mut cursor = DocumentCursor::new(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            "".to_string(),
+        );
         assert!(cursor.next().is_none());
     }
 
     #[test]
     fn collect_string_ranges() {
-        let result: Option<DocumentRange> =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "   hello".to_string())
-                .take_while(|s| s.ch() == ' ')
-                .collect();
+        let result: Option<DocumentRange> = DocumentCursor::new(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            "   hello".to_string(),
+        )
+        .take_while(|s| s.ch() == ' ')
+        .collect();
 
         let range = result.unwrap();
         assert_eq!(range.as_str(), "   ");
@@ -728,20 +742,24 @@ mod tests {
 
     #[test]
     fn collect_empty_ranges() {
-        let result: Option<DocumentRange> =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "hello".to_string())
-                .take_while(|s| s.ch() == ' ')
-                .collect();
+        let result: Option<DocumentRange> = DocumentCursor::new(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            "hello".to_string(),
+        )
+        .take_while(|s| s.ch() == ' ')
+        .collect();
 
         assert!(result.is_none());
     }
 
     #[test]
     fn collect_multiline_ranges() {
-        let result: Option<DocumentRange> =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "aaa\nbbb".to_string())
-                .take_while(|s| s.ch() == 'a')
-                .collect();
+        let result: Option<DocumentRange> = DocumentCursor::new(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            "aaa\nbbb".to_string(),
+        )
+        .take_while(|s| s.ch() == 'a')
+        .collect();
 
         let range = result.unwrap();
         assert_eq!(range.as_str(), "aaa");
@@ -752,7 +770,7 @@ mod tests {
     #[test]
     fn collect_with_skip() {
         let result: Option<DocumentRange> = DocumentCursor::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "   hello   ".to_string(),
         )
         .skip(3)
@@ -771,7 +789,7 @@ mod tests {
         // UTF-8 bytes:  a(1) €(3) b(1) = positions 0,1,4,5
         // UTF-16 units: a(1) €(1) b(1) = positions 0,1,2,3
         let mut cursor = DocumentCursor::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "a\u{20AC}b".to_string(),
         );
 
@@ -800,7 +818,7 @@ mod tests {
         // Line 1: 🎨(2) \n(1)
         // Line 2: c(1)
         let mut cursor = DocumentCursor::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "\u{20AC}\n\u{1F3A8}\nc".to_string(),
         );
 
@@ -834,7 +852,7 @@ mod tests {
     fn contains_position_utf16() {
         // "hello\nworld" - ASCII text for simple position testing
         let document = Document::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "hello\nworld".to_string(),
         );
         let ranges: Vec<_> = document.cursor().collect();
@@ -859,8 +877,8 @@ mod tests {
     #[should_panic(expected = "assertion `left == right` failed")]
     fn contains_position_rejects_another_document() {
         let text = "hello".to_string();
-        let a = Document::new(DocumentId::new("a.hop").unwrap(), text.clone());
-        let b = Document::new(DocumentId::new("b.hop").unwrap(), text);
+        let a = Document::new(RootContainedFilePath::new("a.hop").unwrap(), text.clone());
+        let b = Document::new(RootContainedFilePath::new("b.hop").unwrap(), text);
         let range = a.cursor().next().unwrap();
 
         range.contains_position(&b.position(PositionEncoding::Utf32, 0, 0).unwrap());
@@ -869,7 +887,7 @@ mod tests {
     #[test]
     fn position_rejects_columns_outside_the_line() {
         let document = Document::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "\u{1F3A8}b\nc".to_string(),
         );
 
@@ -892,7 +910,7 @@ mod tests {
     #[test]
     fn position_converts_back_to_either_encoding() {
         let document = Document::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "a\u{20AC}\n\u{1F3A8}c".to_string(),
         );
 
@@ -913,7 +931,7 @@ mod tests {
         // UTF-16: a(1) €(1) b(1) 🎨(2) c(1) = code unit positions
         // UTF-32: a(1) €(1) b(1) 🎨(1) c(1) = character positions 0,1,2,3,4,5
         let mut cursor = DocumentCursor::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "a\u{20AC}b\u{1F3A8}c".to_string(),
         );
 
@@ -949,7 +967,7 @@ mod tests {
         // Line 0: 🎨(1 char) \n(1 char)
         // Line 1: €(1 char) x(1 char)
         let mut cursor = DocumentCursor::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "\u{1F3A8}\n\u{20AC}x".to_string(),
         );
 
@@ -978,7 +996,7 @@ mod tests {
     fn contains_position_utf32() {
         // "\u{1F3A8}hello" - Emoji followed by ASCII
         let document = Document::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "\u{1F3A8}hello".to_string(),
         );
         let ranges: Vec<_> = document.cursor().collect();
@@ -1003,7 +1021,7 @@ mod tests {
         // "\u{1F3A8}ab" - Compare UTF-16 and UTF-32 encodings
         // 🎨 = U+1F3A8: 2 code units UTF-16, 1 char UTF-32
         let mut cursor = DocumentCursor::new(
-            DocumentId::new("test.hop").unwrap(),
+            RootContainedFilePath::new("test.hop").unwrap(),
             "\u{1F3A8}ab".to_string(),
         );
 

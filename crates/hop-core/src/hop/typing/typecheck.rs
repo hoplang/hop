@@ -2,7 +2,6 @@ use super::{FunctionSignature, ParamEntry, Tail, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
-use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parsed_ast::ParsedAst;
@@ -26,6 +25,7 @@ use crate::hop::typing::typed_ast::{
 };
 use crate::hop::typing::variable_scope::VariableScope;
 use crate::hover_annotation::HoverAnnotation;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
@@ -33,13 +33,13 @@ use std::collections::{HashMap, HashSet};
 
 pub fn typecheck(
     modules: &[&ParsedAst],
-    exports: &mut HashMap<DocumentId, HashMap<CheapString, Export>>,
+    exports: &mut HashMap<RootContainedFilePath, HashMap<CheapString, Export>>,
     registry: &mut TypeRegistry,
-    typed_asts: &mut HashMap<DocumentId, TypedAst>,
-    errors: &mut HashMap<DocumentId, Vec<TypeError>>,
-    annotations: &mut HashMap<DocumentId, Vec<HoverAnnotation>>,
-    definition_links: &mut HashMap<DocumentId, Vec<DefinitionLink>>,
-    asset_references: &mut HashMap<DocumentId, Vec<AssetReference>>,
+    typed_asts: &mut HashMap<RootContainedFilePath, TypedAst>,
+    errors: &mut HashMap<RootContainedFilePath, Vec<TypeError>>,
+    annotations: &mut HashMap<RootContainedFilePath, Vec<HoverAnnotation>>,
+    definition_links: &mut HashMap<RootContainedFilePath, Vec<DefinitionLink>>,
+    asset_references: &mut HashMap<RootContainedFilePath, Vec<AssetReference>>,
 ) {
     for module in modules {
         let module_errors = errors.entry(module.document_id.clone()).or_default();
@@ -72,11 +72,11 @@ pub fn typecheck(
             module_errors.clear();
             for import_node in module.import_declarations() {
                 module_errors.push(TypeError::import_cycle(
-                    &module.document_id.to_string(),
+                    module.document_id.as_str(),
                     &import_node.module_name.to_string(),
                     &modules
                         .iter()
-                        .map(|m| m.document_id.to_string())
+                        .map(|m| m.document_id.as_str().to_string())
                         .collect::<Vec<_>>(),
                     import_node.path_range.clone(),
                 ));
@@ -87,7 +87,7 @@ pub fn typecheck(
 
 fn typecheck_module(
     parsed_ast: &ParsedAst,
-    exports: &mut HashMap<DocumentId, HashMap<CheapString, Export>>,
+    exports: &mut HashMap<RootContainedFilePath, HashMap<CheapString, Export>>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<HoverAnnotation>,
@@ -116,7 +116,7 @@ fn typecheck_module(
                     import_range,
                 } = import;
                 let imported_name = &imported_name.to_cheap_string();
-                let Some(imported_module_exports) = exports.get(&imported_module.to_document_id())
+                let Some(imported_module_exports) = exports.get(&imported_module.to_file_path())
                 else {
                     errors.push(TypeError::new(
                         TypeErrorKind::ModuleNotFound {
@@ -161,7 +161,7 @@ fn typecheck_module(
                 }
                 let kind = match export {
                     Export::Type { .. } => NameKind::Type(Type::Named {
-                        module: imported_module.to_document_id(),
+                        module: imported_module.to_file_path(),
                         name: TypeName::new(imported_name.clone())
                             .expect("an exported type has a valid type name"),
                     }),
@@ -392,7 +392,7 @@ fn typecheck_module(
 
 fn typecheck_record_declaration(
     record: &ParsedRecordDeclaration,
-    document_id: &DocumentId,
+    document_id: &RootContainedFilePath,
     names: &HashMap<CheapString, Name>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -436,7 +436,7 @@ fn typecheck_record_declaration(
 
 fn typecheck_enum_declaration(
     enum_decl: &ParsedEnumDeclaration,
-    document_id: &DocumentId,
+    document_id: &RootContainedFilePath,
     names: &HashMap<CheapString, Name>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -1082,7 +1082,7 @@ mod tests {
     use crate::DiagnosticSeverity;
     use crate::Document;
     use crate::DocumentAnnotator;
-    use crate::DocumentId;
+    use crate::RootContainedFilePath;
     use crate::hop::parsing::parse::parse;
     use crate::hop::parsing::source_generator;
     use expect_test::{Expect, expect};
@@ -1116,7 +1116,7 @@ mod tests {
             }
             let source_code = file.content.trim();
             let mut parse_errors = Vec::new();
-            let document_id = DocumentId::new(&file.name).unwrap();
+            let document_id = RootContainedFilePath::new(&file.name).unwrap();
             document_ids.push(document_id.clone());
             let ast = parse(
                 document_id.clone(),
@@ -1127,7 +1127,8 @@ mod tests {
             if !parse_errors.is_empty() {
                 panic!(
                     "unexpected parse errors in type checker test for {}: {:?}",
-                    document_id, parse_errors
+                    document_id.as_str(),
+                    parse_errors
                 );
             }
 
@@ -1168,7 +1169,7 @@ mod tests {
         } else {
             for document_id in &document_ids {
                 if let Some(typed_ast) = typed_asts.get(document_id) {
-                    ast_output.push(format!("-- {} --\n{}", document_id, typed_ast));
+                    ast_output.push(format!("-- {} --\n{}", document_id.as_str(), typed_ast));
                 }
             }
             let types = registry.to_string();
@@ -10675,7 +10676,7 @@ mod tests {
     fn fuzz_typechecking_generated_sources_does_not_panic() {
         arbtest::arbtest(|u| {
             let source = source_generator::random_source(u)?;
-            let document_id = DocumentId::new("test.hop").unwrap();
+            let document_id = RootContainedFilePath::new("test.hop").unwrap();
             let mut parse_errors = Vec::new();
             let ast = parse(
                 document_id.clone(),

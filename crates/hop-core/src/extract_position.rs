@@ -1,6 +1,6 @@
 use crate::{
     document::{Document, DocumentPosition, PositionEncoding},
-    document_id::DocumentId,
+    root_contained_file_path::RootContainedFilePath,
 };
 
 /// Extracts a single position marked with `^` from the source.
@@ -13,7 +13,7 @@ use crate::{
 /// Panics if multiple position markers are found or if the marker does not
 /// point to a valid character on the line above.
 pub fn extract_position(
-    document_id: DocumentId,
+    document_id: RootContainedFilePath,
     input: &str,
 ) -> Option<(Document, DocumentPosition)> {
     let markers = input
@@ -53,7 +53,7 @@ mod tests {
 
     fn check_extract_position(input: &str, expected_output: &str, expected: (usize, usize)) {
         let (document, position) =
-            extract_position(DocumentId::new("test.hop").unwrap(), input).unwrap();
+            extract_position(RootContainedFilePath::new("test.hop").unwrap(), input).unwrap();
         assert_eq!(document.as_str(), expected_output);
         assert_eq!((position.line(), position.utf32_column()), expected);
     }
@@ -138,7 +138,7 @@ mod tests {
             </hello-world>
         "#};
 
-        assert!(extract_position(DocumentId::new("test.hop").unwrap(), input).is_none());
+        assert!(extract_position(RootContainedFilePath::new("test.hop").unwrap(), input).is_none());
     }
 
     #[test]
@@ -152,7 +152,7 @@ mod tests {
             </hello-world>
         "#};
 
-        let _ = extract_position(DocumentId::new("test.hop").unwrap(), input);
+        let _ = extract_position(RootContainedFilePath::new("test.hop").unwrap(), input);
     }
 
     #[test]
@@ -165,7 +165,7 @@ mod tests {
             </hello-world>
         "#};
 
-        let _ = extract_position(DocumentId::new("test.hop").unwrap(), input);
+        let _ = extract_position(RootContainedFilePath::new("test.hop").unwrap(), input);
     }
 
     #[test]
@@ -178,7 +178,7 @@ mod tests {
             </hello-world>
         "#};
 
-        let _ = extract_position(DocumentId::new("test.hop").unwrap(), input);
+        let _ = extract_position(RootContainedFilePath::new("test.hop").unwrap(), input);
     }
 
     #[test]
@@ -191,7 +191,7 @@ mod tests {
             </hello-world>
         "#};
 
-        let _ = extract_position(DocumentId::new("test.hop").unwrap(), input);
+        let _ = extract_position(RootContainedFilePath::new("test.hop").unwrap(), input);
     }
 
     #[test]

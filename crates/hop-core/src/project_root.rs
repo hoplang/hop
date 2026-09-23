@@ -1,22 +1,25 @@
 use std::path::{Component, Path, PathBuf};
 
-use crate::document_id::{DocumentId, DocumentIdError};
-use crate::root_relative_path::RootRelativePath;
+use crate::root_contained_file_path::RootContainedFilePath;
+use crate::root_relative_path::{RootRelativePath, RootRelativePathError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectRootError {
     #[error("Path {path:?} is not inside the project at {root:?}")]
     OutsideProject { path: PathBuf, root: PathBuf },
 
-    #[error("Invalid document id for path {path:?}: {source}")]
-    InvalidId {
+    #[error("Path {path:?} is not valid UTF-8")]
+    NotUtf8 { path: PathBuf },
+
+    #[error("Path {path:?} cannot name a project file")]
+    InvalidPath {
         path: PathBuf,
         #[source]
-        source: DocumentIdError,
+        source: RootRelativePathError,
     },
 }
 
-/// The directory that contains a project's `hop.toml` file.
+/// The absolute directory that a project's paths are resolved against.
 #[derive(Debug, Clone)]
 pub struct ProjectRoot {
     path: PathBuf,
@@ -43,18 +46,13 @@ impl ProjectRoot {
         &self.path
     }
 
-    /// The [`DocumentId`] of the project's `hop.toml` file.
-    pub fn config(&self) -> DocumentId {
-        DocumentId::new("hop.toml").expect("hop.toml is a valid document id")
+    /// The [`RootContainedFilePath`] of the project's `hop.toml` file.
+    pub fn config(&self) -> RootContainedFilePath {
+        RootContainedFilePath::new("hop.toml").expect("hop.toml is a valid project file path")
     }
 
-    /// The absolute path of the project's `hop.toml` file.
-    pub fn config_path(&self) -> PathBuf {
-        self.document_id_to_path(&self.config())
-    }
-
-    /// Convert an absolute file path to a [`DocumentId`].
-    pub fn path_to_document_id(&self, path: &Path) -> Result<DocumentId, ProjectRootError> {
+    /// Convert an absolute file path to a [`RootContainedFilePath`].
+    pub fn relativize(&self, path: &Path) -> Result<RootContainedFilePath, ProjectRootError> {
         let normalized = normalize(path);
         let relative_path =
             normalized
@@ -64,25 +62,29 @@ impl ProjectRoot {
                     root: self.path.clone(),
                 })?;
 
-        DocumentId::new(&relative_path.to_string_lossy()).map_err(|source| {
-            ProjectRootError::InvalidId {
+        let components = relative_path
+            .components()
+            .map(|component| component.as_os_str().to_str())
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| ProjectRootError::NotUtf8 {
+                path: path.to_path_buf(),
+            })?;
+
+        RootContainedFilePath::new(&components.join("/")).map_err(|source| {
+            ProjectRootError::InvalidPath {
                 path: path.to_path_buf(),
                 source,
             }
         })
     }
 
-    /// Convert a [`DocumentId`] to an absolute file path.
-    pub fn document_id_to_path(&self, document_id: &DocumentId) -> PathBuf {
-        self.path.join(document_id.as_str())
-    }
-
-    /// Convert a [`RootRelativePath`] to an absolute file path.
+    /// Convert a [`RootRelativePath`], or a path type that wraps one, to an
+    /// absolute file path.
     ///
     /// Leading `..` components in the path are folded into the root, so the
     /// result may lie outside the project root.
-    pub fn root_relative_path_to_path(&self, path: &RootRelativePath) -> PathBuf {
-        normalize(&self.path.join(path.as_str()))
+    pub fn resolve(&self, path: impl AsRef<RootRelativePath>) -> PathBuf {
+        normalize(&self.path.join(path.as_ref().as_str()))
     }
 }
 
@@ -131,16 +133,16 @@ mod tests {
     }
 
     #[test]
-    fn path_to_document_id_folds_relative_components() {
+    fn relativize_folds_relative_components() {
         let document_id = root()
-            .path_to_document_id(Path::new("/projects/app/src/../main.hop"))
+            .relativize(Path::new("/projects/app/src/../main.hop"))
             .unwrap();
         assert_eq!(document_id.as_str(), "main.hop");
     }
 
     #[test]
-    fn path_to_document_id_does_not_escape_the_root() {
-        let result = root().path_to_document_id(Path::new("/projects/app/../other/main.hop"));
+    fn relativize_does_not_escape_the_root() {
+        let result = root().relativize(Path::new("/projects/app/../other/main.hop"));
         assert!(
             matches!(result, Err(ProjectRootError::OutsideProject { .. })),
             "Expected OutsideProject error, got: {:?}",
@@ -149,21 +151,21 @@ mod tests {
     }
 
     #[test]
-    fn path_to_document_id() {
+    fn relativize() {
         let document_id = root()
-            .path_to_document_id(Path::new("/projects/app/src/components/button.hop"))
+            .relativize(Path::new("/projects/app/src/components/button.hop"))
             .unwrap();
         assert_eq!(document_id.as_str(), "src/components/button.hop");
 
         let document_id = root()
-            .path_to_document_id(Path::new("/projects/app/main.hop"))
+            .relativize(Path::new("/projects/app/main.hop"))
             .unwrap();
         assert_eq!(document_id.as_str(), "main.hop");
     }
 
     #[test]
-    fn path_to_document_id_outside_project() {
-        let result = root().path_to_document_id(Path::new("/some/other/path/file.hop"));
+    fn relativize_outside_project() {
+        let result = root().relativize(Path::new("/some/other/path/file.hop"));
         assert!(
             matches!(result, Err(ProjectRootError::OutsideProject { .. })),
             "Expected OutsideProject error, got: {:?}",
@@ -172,62 +174,65 @@ mod tests {
     }
 
     #[test]
-    fn path_to_document_id_invalid_name() {
-        let result = root().path_to_document_id(Path::new("/projects/app/my component.hop"));
+    fn relativize_invalid_name() {
+        let result = root().relativize(Path::new("/projects/app"));
         assert!(
             matches!(
                 result,
-                Err(ProjectRootError::InvalidId {
-                    source: DocumentIdError::InvalidCharacter(' '),
+                Err(ProjectRootError::InvalidPath {
+                    source: RootRelativePathError::Empty,
                     ..
                 })
             ),
-            "Expected InvalidId error, got: {:?}",
+            "Expected InvalidPath error, got: {:?}",
             result
         );
     }
 
     #[test]
-    fn config_path() {
+    #[cfg(unix)]
+    fn relativize_rejects_non_utf8() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let path = Path::new(OsStr::from_bytes(b"/projects/app/caf\xE9.hop"));
+        let result = root().relativize(path);
+        assert!(
+            matches!(result, Err(ProjectRootError::NotUtf8 { .. })),
+            "Expected NotUtf8 error, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn config() {
         assert_eq!(
-            root().config_path(),
+            root().resolve(root().config()),
             PathBuf::from("/projects/app/hop.toml")
         );
     }
 
     #[test]
-    fn document_id_to_path() {
-        let document_id = DocumentId::new("src/components/button.hop").unwrap();
-        assert_eq!(
-            root().document_id_to_path(&document_id),
-            PathBuf::from("/projects/app/src/components/button.hop")
-        );
-    }
-
-    #[test]
-    fn root_relative_path_to_path() {
+    fn resolve() {
         let inside = RootRelativePath::from_root_anchored("/icons/star.svg").unwrap();
         assert_eq!(
-            root().root_relative_path_to_path(&inside),
+            root().resolve(&inside),
             PathBuf::from("/projects/app/icons/star.svg")
         );
 
         let outside = RootRelativePath::from_root_anchored("/../shared/logo.svg").unwrap();
         assert_eq!(
-            root().root_relative_path_to_path(&outside),
+            root().resolve(&outside),
             PathBuf::from("/projects/shared/logo.svg")
         );
 
         let output_dir = RootRelativePath::new("dist/public").unwrap();
         assert_eq!(
-            root().root_relative_path_to_path(&output_dir),
+            root().resolve(&output_dir),
             PathBuf::from("/projects/app/dist/public")
         );
 
         let sibling = RootRelativePath::new("../assets").unwrap();
-        assert_eq!(
-            root().root_relative_path_to_path(&sibling),
-            PathBuf::from("/projects/assets")
-        );
+        assert_eq!(root().resolve(&sibling), PathBuf::from("/projects/assets"));
     }
 }

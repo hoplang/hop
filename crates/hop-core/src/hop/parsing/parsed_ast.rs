@@ -1,8 +1,8 @@
 use crate::document::DocumentRange;
-use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
@@ -13,7 +13,7 @@ use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
 pub struct ParsedAst {
-    pub document_id: DocumentId,
+    pub document_id: RootContainedFilePath,
     // We use a Vec of enum to store the declarations so that the declaration
     // order is consistent when formatting.
     declarations: Vec<ParsedDeclaration>,
@@ -219,7 +219,7 @@ impl ParsedDeclaration {
 
 impl ParsedAst {
     pub fn new(
-        document_id: DocumentId,
+        document_id: RootContainedFilePath,
         declarations: Vec<ParsedDeclaration>,
         comments: Vec<DocumentRange>,
     ) -> Self {

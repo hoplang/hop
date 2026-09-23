@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::document::DocumentCursor;
 use crate::document_annotator::DocumentAnnotator;
-use crate::document_id::DocumentId;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::r#type::Type;
@@ -10,13 +9,14 @@ use crate::hop::typing::type_env::{FunctionSignature, Name, NameKind, ParamEntry
 use crate::hop::typing::type_registry::{
     EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
 };
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 /// The module all test-declared types live in.
-fn test_module() -> DocumentId {
-    DocumentId::new("test.hop").unwrap()
+fn test_module() -> RootContainedFilePath {
+    RootContainedFilePath::new("test.hop").unwrap()
 }
 
 fn type_name(name: &str) -> TypeName {
@@ -244,7 +244,7 @@ impl TypeRegistryBuilder {
 /// matching TypeDef in the registry.
 #[derive(Clone)]
 pub struct TestTypes {
-    module: DocumentId,
+    module: RootContainedFilePath,
     registry: TypeRegistry,
     named: BTreeMap<TypeName, Type>,
     functions: HashMap<VarName, FunctionSignature>,
@@ -255,7 +255,7 @@ impl TestTypes {
         &self.registry
     }
 
-    pub fn module(&self) -> &DocumentId {
+    pub fn module(&self) -> &RootContainedFilePath {
         &self.module
     }
 

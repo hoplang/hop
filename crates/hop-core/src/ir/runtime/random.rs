@@ -1,8 +1,8 @@
 use super::value::Value;
-use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::typing::Type;
 use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
 
@@ -29,7 +29,7 @@ fn random_word(rng: &mut impl Rng) -> Value {
 pub(crate) fn can_construct(
     ty: &Type,
     registry: &TypeRegistry,
-    visiting: &mut Vec<(DocumentId, TypeName)>,
+    visiting: &mut Vec<(RootContainedFilePath, TypeName)>,
 ) -> bool {
     if let Type::Named { module, name } = ty {
         if visiting.iter().any(|(m, n)| m == module && n == name) {
@@ -90,7 +90,7 @@ fn random_value_at_depth(
     examples: Option<&ExamplesAnnotation>,
     registry: &TypeRegistry,
     depth: usize,
-    visiting: &mut Vec<(DocumentId, TypeName)>,
+    visiting: &mut Vec<(RootContainedFilePath, TypeName)>,
 ) -> Value {
     if depth == MAX_DEPTH && !can_construct(ty, registry, &mut Vec::new()) {
         panic!("cannot generate a value for infinitely recursive type {ty}");
@@ -113,7 +113,7 @@ fn generate(
     examples: Option<&ExamplesAnnotation>,
     registry: &TypeRegistry,
     depth: usize,
-    visiting: &mut Vec<(DocumentId, TypeName)>,
+    visiting: &mut Vec<(RootContainedFilePath, TypeName)>,
 ) -> Value {
     match registry.resolve(ty).expect("named type must be registered") {
         ResolvedType::String => match examples.and_then(|e| e.pattern.as_ref()) {

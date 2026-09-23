@@ -8,7 +8,6 @@ use crate::dependency_graph::DependencyGraph;
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, Document, DocumentPosition, DocumentRange, PositionEncoding};
-use crate::document_id::DocumentId;
 use crate::hop::assembly::TailwindInjection;
 use crate::hop::format;
 use crate::hop::parsing::find_node::find_node_at_position;
@@ -26,6 +25,7 @@ use crate::ir::runtime::evaluator::EvalError;
 use crate::ir::runtime::random::random_value;
 use crate::orchestrator::{OrchestrateOptions, orchestrate, orchestrate_pure};
 use crate::parse_error::ParseError;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
@@ -35,11 +35,11 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FormatError {
-    #[error("Document '{0}' not found")]
-    DocumentNotFound(DocumentId),
+    #[error("Document '{}' not found", .0.as_str())]
+    DocumentNotFound(RootContainedFilePath),
 
-    #[error("Cannot format document '{0}': it has parse errors")]
-    HasParseErrors(DocumentId),
+    #[error("Cannot format document '{}': it has parse errors", .0.as_str())]
+    HasParseErrors(RootContainedFilePath),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -65,19 +65,19 @@ pub enum EvaluatePageError {
 
 #[derive(Debug, Default)]
 pub struct Program {
-    dependency_graph: DependencyGraph<DocumentId>,
-    documents: HashMap<DocumentId, Document>,
-    css_documents: HashMap<DocumentId, Document>,
-    css_errors: HashMap<DocumentId, Vec<CssError>>,
-    parse_errors: HashMap<DocumentId, Vec<ParseError>>,
-    parsed_asts: HashMap<DocumentId, ParsedAst>,
-    exports: HashMap<DocumentId, HashMap<CheapString, Export>>,
+    dependency_graph: DependencyGraph<RootContainedFilePath>,
+    documents: HashMap<RootContainedFilePath, Document>,
+    css_documents: HashMap<RootContainedFilePath, Document>,
+    css_errors: HashMap<RootContainedFilePath, Vec<CssError>>,
+    parse_errors: HashMap<RootContainedFilePath, Vec<ParseError>>,
+    parsed_asts: HashMap<RootContainedFilePath, ParsedAst>,
+    exports: HashMap<RootContainedFilePath, HashMap<CheapString, Export>>,
     type_registry: TypeRegistry,
-    type_errors: HashMap<DocumentId, Vec<TypeError>>,
-    hover_annotations: HashMap<DocumentId, Vec<HoverAnnotation>>,
-    definition_links: HashMap<DocumentId, Vec<DefinitionLink>>,
-    asset_references: HashMap<DocumentId, Vec<AssetReference>>,
-    typed_asts: HashMap<DocumentId, TypedAst>,
+    type_errors: HashMap<RootContainedFilePath, Vec<TypeError>>,
+    hover_annotations: HashMap<RootContainedFilePath, Vec<HoverAnnotation>>,
+    definition_links: HashMap<RootContainedFilePath, Vec<DefinitionLink>>,
+    asset_references: HashMap<RootContainedFilePath, Vec<AssetReference>>,
+    typed_asts: HashMap<RootContainedFilePath, TypedAst>,
 }
 
 impl Program {
@@ -93,9 +93,9 @@ impl Program {
     /// Returns the ids of all documents that were re-typechecked.
     pub fn update_hop_document(
         &mut self,
-        document_id: &DocumentId,
+        document_id: &RootContainedFilePath,
         document: Document,
-    ) -> Vec<DocumentId> {
+    ) -> Vec<RootContainedFilePath> {
         // Store the document
         self.documents.insert(document_id.clone(), document.clone());
 
@@ -107,8 +107,8 @@ impl Program {
         // Get all modules that this module depends on
         let module_dependencies = parsed_ast
             .import_declarations()
-            .map(|import_node| import_node.module_name.to_document_id())
-            .collect::<BTreeSet<DocumentId>>();
+            .map(|import_node| import_node.module_name.to_file_path())
+            .collect::<BTreeSet<RootContainedFilePath>>();
 
         // Store the AST
         self.parsed_asts.insert(document_id.clone(), parsed_ast);
@@ -143,7 +143,7 @@ impl Program {
     ///
     /// This cleans up all state associated with the document and re-typechecks
     /// any modules that depended on it (since their imports are now broken).
-    pub fn remove_hop_document(&mut self, document_id: &DocumentId) {
+    pub fn remove_hop_document(&mut self, document_id: &RootContainedFilePath) {
         // Remove document and parsed state
         self.documents.remove(document_id);
         self.parse_errors.remove(document_id);
@@ -183,14 +183,14 @@ impl Program {
     }
 
     /// Remove a CSS document from the program.
-    pub fn remove_css_document(&mut self, document_id: &DocumentId) {
+    pub fn remove_css_document(&mut self, document_id: &RootContainedFilePath) {
         self.css_documents.remove(document_id);
         self.css_errors.remove(document_id);
         self.asset_references.remove(document_id);
     }
 
     /// Update or add a CSS document to the program.
-    pub fn update_css_document(&mut self, document_id: &DocumentId, document: Document) {
+    pub fn update_css_document(&mut self, document_id: &RootContainedFilePath, document: Document) {
         let css_errors = self.css_errors.entry(document_id.clone()).or_default();
         css_errors.clear();
         let asset_references = self
@@ -202,7 +202,7 @@ impl Program {
         self.css_documents.insert(document_id.clone(), document);
     }
 
-    pub fn asset_references(&self) -> &HashMap<DocumentId, Vec<AssetReference>> {
+    pub fn asset_references(&self) -> &HashMap<RootContainedFilePath, Vec<AssetReference>> {
         &self.asset_references
     }
 
@@ -210,7 +210,7 @@ impl Program {
     /// there is no CSS document with the given id.
     pub fn compile_css_document(
         &self,
-        document_id: &DocumentId,
+        document_id: &RootContainedFilePath,
         asset_path_rewriter: Arc<dyn AssetPathRewriter>,
     ) -> Option<String> {
         let css = self.css_documents.get(document_id)?;
@@ -220,7 +220,10 @@ impl Program {
     /// Returns the formatted source code for a hop document.
     ///
     /// Returns an error if the document doesn't exist or has parse errors.
-    pub fn format_hop_document(&self, document_id: &DocumentId) -> Result<String, FormatError> {
+    pub fn format_hop_document(
+        &self,
+        document_id: &RootContainedFilePath,
+    ) -> Result<String, FormatError> {
         let ast = self
             .parsed_asts
             .get(document_id)
@@ -250,7 +253,7 @@ impl Program {
     /// None if the document is unknown or the position is outside its text.
     pub fn position(
         &self,
-        document_id: &DocumentId,
+        document_id: &RootContainedFilePath,
         encoding: PositionEncoding,
         line: usize,
         column: usize,
@@ -375,7 +378,7 @@ impl Program {
     fn collect_record_rename_locations(
         &self,
         record_name: &TypeName,
-        definition_module: &DocumentId,
+        definition_module: &RootContainedFilePath,
     ) -> Vec<DocumentRange> {
         // Find the definition range (the name_range of the record declaration)
         let definition_range = self
@@ -405,7 +408,7 @@ impl Program {
     fn collect_enum_rename_locations(
         &self,
         enum_name: &TypeName,
-        definition_module: &DocumentId,
+        definition_module: &RootContainedFilePath,
     ) -> Vec<DocumentRange> {
         // Find the definition range (the name_range of the enum declaration)
         let definition_range = self
@@ -450,7 +453,7 @@ impl Program {
     ///
     /// Type errors are not reported for a document that has parse errors,
     /// since they may be nonsensical when parsing fails.
-    pub fn document_diagnostics(&self, document_id: &DocumentId) -> Vec<Diagnostic> {
+    pub fn document_diagnostics(&self, document_id: &RootContainedFilePath) -> Vec<Diagnostic> {
         let parse_errors = self
             .parse_errors
             .get(document_id)
@@ -492,7 +495,7 @@ impl Program {
     /// Evaluate a page given a document and page name.
     fn evaluate_page_with_values(
         &self,
-        document_id: &DocumentId,
+        document_id: &RootContainedFilePath,
         page_name: &TypeName,
         args: HashMap<VarName, ir::runtime::value::Value>,
         generated_tailwind_css: Option<&str>,
@@ -626,7 +629,7 @@ impl Program {
     }
 
     /// Get all typed modules for compilation
-    pub(crate) fn typed_modules(&self) -> &HashMap<DocumentId, TypedAst> {
+    pub(crate) fn typed_modules(&self) -> &HashMap<RootContainedFilePath, TypedAst> {
         &self.typed_asts
     }
 
@@ -664,7 +667,7 @@ mod tests {
         let mut builder = Builder::new();
 
         for file in archive.iter() {
-            let document_id = DocumentId::new(&file.name).unwrap();
+            let document_id = RootContainedFilePath::new(&file.name).unwrap();
             if let Some((document, position)) = extract_position(document_id, &file.content) {
                 markers.push(position);
                 builder.file(File::new(file.name.clone(), document.as_str().to_string()));
@@ -680,7 +683,7 @@ mod tests {
         let archive = Archive::from(input);
         let mut program = Program::new();
         for file in archive.iter() {
-            let document_id = DocumentId::new(&file.name).unwrap();
+            let document_id = RootContainedFilePath::new(&file.name).unwrap();
             let document = Document::new(document_id.clone(), file.content.clone());
             program.update_hop_document(&document_id, document);
         }
@@ -690,7 +693,7 @@ mod tests {
     fn program_from_archive(archive: &Archive) -> Program {
         let mut program = Program::new();
         for file in archive.iter() {
-            let document_id = DocumentId::new(&file.name).unwrap();
+            let document_id = RootContainedFilePath::new(&file.name).unwrap();
             let document = Document::new(document_id.clone(), file.content.clone());
             program.update_hop_document(&document_id, document);
         }
@@ -760,7 +763,8 @@ mod tests {
     fn check_error_diagnostics(input: &str, module: &str, expected: Expect) {
         let program = program_from_txtar(input);
 
-        let diagnostics = program.document_diagnostics(&DocumentId::new(module).unwrap());
+        let diagnostics =
+            program.document_diagnostics(&RootContainedFilePath::new(module).unwrap());
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");
@@ -2260,9 +2264,9 @@ mod tests {
         );
         // Resolve cycle
         program.update_hop_document(
-            &DocumentId::new("a.hop").unwrap(),
+            &RootContainedFilePath::new("a.hop").unwrap(),
             Document::new(
-                DocumentId::new("a.hop").unwrap(),
+                RootContainedFilePath::new("a.hop").unwrap(),
                 indoc! {r#"
                     pub fn AComp() -> Html {
                       <></>
@@ -2328,9 +2332,9 @@ mod tests {
         );
         // Resolve cycle
         program.update_hop_document(
-            &DocumentId::new("c.hop").unwrap(),
+            &RootContainedFilePath::new("c.hop").unwrap(),
             Document::new(
-                DocumentId::new("c.hop").unwrap(),
+                RootContainedFilePath::new("c.hop").unwrap(),
                 indoc! {r#"
                     pub fn CComp() -> Html {
                       <></>
@@ -2343,9 +2347,9 @@ mod tests {
         check_diagnostics(&program, expect![""]);
         // Introduce new cycle a → b → a
         program.update_hop_document(
-            &DocumentId::new("b.hop").unwrap(),
+            &RootContainedFilePath::new("b.hop").unwrap(),
             Document::new(
-                DocumentId::new("b.hop").unwrap(),
+                RootContainedFilePath::new("b.hop").unwrap(),
                 indoc! {r#"
                     import a::AComp
                     pub fn BComp() -> Html {
@@ -2371,9 +2375,9 @@ mod tests {
         );
         // Resolve cycle
         program.update_hop_document(
-            &DocumentId::new("b.hop").unwrap(),
+            &RootContainedFilePath::new("b.hop").unwrap(),
             Document::new(
-                DocumentId::new("b.hop").unwrap(),
+                RootContainedFilePath::new("b.hop").unwrap(),
                 indoc! {r#"
                     pub fn BComp() -> Html {
                       <></>
@@ -2410,7 +2414,7 @@ mod tests {
         check_diagnostics(&program, expect![""]);
 
         // Remove the components module
-        program.remove_hop_document(&DocumentId::new("components.hop").unwrap());
+        program.remove_hop_document(&RootContainedFilePath::new("components.hop").unwrap());
 
         // Now main should have a type error about the missing import
         check_diagnostics(
@@ -2430,9 +2434,9 @@ mod tests {
 
         // Add the module back
         program.update_hop_document(
-            &DocumentId::new("components.hop").unwrap(),
+            &RootContainedFilePath::new("components.hop").unwrap(),
             Document::new(
-                DocumentId::new("components.hop").unwrap(),
+                RootContainedFilePath::new("components.hop").unwrap(),
                 indoc! {r#"
                     fn HelloWorld() -> Html {
                       <h1>Hello World</h1>
@@ -2483,7 +2487,7 @@ mod tests {
             ir::runtime::value::Value::String("Alice".to_string()),
         );
 
-        let main_module = DocumentId::new("main.hop").unwrap();
+        let main_module = RootContainedFilePath::new("main.hop").unwrap();
         let hello_world = TypeName::parse("HelloWorld").unwrap();
         let result = program
             .evaluate_page_with_values(&main_module, &hello_world, args, None, false, None)

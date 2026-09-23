@@ -31,7 +31,7 @@ fn missing_config_value(field: &str) -> anyhow::Error {
 pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResult> {
     let config_document = project.load_config()?;
     let config = Config::parse(&config_document).map_err(annotated_config_error)?;
-    let assets_output_dir = project.root().root_relative_path_to_path(
+    let assets_output_dir = project.root().resolve(
         config
             .assets_output_dir()
             .ok_or_else(|| missing_config_value("assets.output_dir"))?,
@@ -39,11 +39,10 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     let target = config
         .compile_target()
         .ok_or_else(|| missing_config_value("compile.target"))?;
-    let compile_output_path = project.root().root_relative_path_to_path(
+    let compile_output_path = project.root().resolve(
         config
             .compile_output_path()
-            .ok_or_else(|| missing_config_value("compile.output_path"))?
-            .as_root_relative(),
+            .ok_or_else(|| missing_config_value("compile.output_path"))?,
     );
 
     // Load program
@@ -66,12 +65,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         for refs in program.asset_references().values() {
             diagnostics.extend(
                 refs.iter()
-                    .filter(|asset_ref| {
-                        !project
-                            .root()
-                            .root_relative_path_to_path(asset_ref.path().as_root_relative())
-                            .is_file()
-                    })
+                    .filter(|asset_ref| !project.root().resolve(asset_ref.path()).is_file())
                     .map(AssetReference::not_found),
             );
         }
@@ -124,7 +118,12 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     if let Some(css_input) = config.css_input_path() {
         let compiled_css = program
             .compile_css_document(css_input, asset_path_rewriter.clone())
-            .ok_or_else(|| anyhow::anyhow!("CSS document '{}' not found", css_input))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "CSS document {:?} not found",
+                    project.root().resolve(css_input)
+                )
+            })?;
         let tailwind_runner = TailwindRunner::new();
         let sources = program.sources();
         css_output = tailwind_runner.compile_once(&compiled_css, &sources)?;
@@ -143,7 +142,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // `<script type="module">` into every page's <head>.
     let js_bundle = match config.js_input_path() {
         Some(js_input) => {
-            let input_path = project.root().document_id_to_path(js_input);
+            let input_path = project.root().resolve(js_input);
             let bundled = esbuild_runner::bundle_script(&input_path, true)?;
             let js_filename = format!("scripts-{:08x}.js", crc32fast::hash(bundled.as_bytes()));
             let js_src = match config.assets_production_prefix() {
@@ -264,9 +263,7 @@ fn compute_hashed_filenames(
 ) -> Result<BTreeMap<RootRelativeFilePath, String>> {
     let mut hashed_filenames = BTreeMap::new();
     for asset_path in asset_paths {
-        let full_path = project
-            .root()
-            .root_relative_path_to_path(asset_path.as_root_relative());
+        let full_path = project.root().resolve(asset_path);
 
         let bytes = fs::read(&full_path).map_err(|e| {
             anyhow::anyhow!("Failed to read asset {:?} for hashing: {}", full_path, e)
@@ -296,9 +293,7 @@ fn copy_assets(
     })?;
 
     for (asset_path, hashed_filename) in hashed_filenames {
-        let src = project
-            .root()
-            .root_relative_path_to_path(asset_path.as_root_relative());
+        let src = project.root().resolve(asset_path);
         let dst = dest_root.join(hashed_filename);
 
         fs::copy(&src, &dst)
@@ -337,7 +332,7 @@ mod tests {
             .filter(|p| !p.as_os_str().is_empty())
             .map(|p| temp_dir.path().join(p))
             .unwrap_or_else(|| temp_dir.path().to_path_buf());
-        let project = Project::from(&project_root).unwrap();
+        let project = Project::open(&project_root).unwrap();
 
         let err = match execute(&project, false) {
             Ok(_) => panic!("compilation should fail"),

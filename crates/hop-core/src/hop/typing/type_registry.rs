@@ -4,8 +4,8 @@ use std::fmt::{self, Display};
 use pretty::BoxDoc;
 
 use super::r#type::Type;
-use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
@@ -53,21 +53,21 @@ pub enum ResolvedType<'a> {
 
 #[derive(Debug, Clone, Default)]
 pub struct TypeRegistry {
-    defs: HashMap<DocumentId, HashMap<TypeName, TypeDef>>,
+    defs: HashMap<RootContainedFilePath, HashMap<TypeName, TypeDef>>,
 }
 
 impl TypeRegistry {
-    pub fn remove_module(&mut self, module: &DocumentId) {
+    pub fn remove_module(&mut self, module: &RootContainedFilePath) {
         self.defs.remove(module);
     }
 
-    pub fn insert(&mut self, module: DocumentId, name: TypeName, def: TypeDef) {
+    pub fn insert(&mut self, module: RootContainedFilePath, name: TypeName, def: TypeDef) {
         self.defs.entry(module).or_default().insert(name, def);
     }
 
     /// Every definition, sorted by module and then by name so that callers
     /// iterating the unordered maps get a deterministic order.
-    pub fn iter(&self) -> impl Iterator<Item = (&DocumentId, &TypeName, &TypeDef)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&RootContainedFilePath, &TypeName, &TypeDef)> {
         let mut defs: Vec<_> = self
             .defs
             .iter()

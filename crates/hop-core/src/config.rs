@@ -1,7 +1,7 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::Document;
-use crate::document_id::DocumentId;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::root_relative_path::RootRelativePath;
 use serde::Deserialize;
@@ -31,12 +31,12 @@ impl Config {
     }
 
     /// Path to the CSS entrypoint.
-    pub fn css_input_path(&self) -> Option<&DocumentId> {
+    pub fn css_input_path(&self) -> Option<&RootContainedFilePath> {
         self.css.as_ref()?.input_path.as_ref()
     }
 
     /// Path to the JS/TS entrypoint.
-    pub fn js_input_path(&self) -> Option<&DocumentId> {
+    pub fn js_input_path(&self) -> Option<&RootContainedFilePath> {
         self.js.as_ref()?.input_path.as_ref()
     }
 
@@ -84,15 +84,15 @@ pub enum TargetLanguage {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CssSection {
-    #[serde(default, deserialize_with = "deserialize_document_id")]
-    input_path: Option<DocumentId>,
+    #[serde(default, deserialize_with = "deserialize_css_input_path")]
+    input_path: Option<RootContainedFilePath>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JsSection {
-    #[serde(default, deserialize_with = "deserialize_document_id")]
-    input_path: Option<DocumentId>,
+    #[serde(default, deserialize_with = "deserialize_js_input_path")]
+    input_path: Option<RootContainedFilePath>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -105,14 +105,28 @@ struct AssetsSection {
     output_dir: Option<RootRelativePath>,
 }
 
-fn deserialize_document_id<'de, D>(deserializer: D) -> Result<Option<DocumentId>, D::Error>
+fn deserialize_css_input_path<'de, D>(
+    deserializer: D,
+) -> Result<Option<RootContainedFilePath>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let path = String::deserialize(deserializer)?;
-    DocumentId::new(&path)
+    RootContainedFilePath::new(&path)
         .map(Some)
-        .map_err(serde::de::Error::custom)
+        .map_err(|err| serde::de::Error::custom(format!("css.input_path: {err}")))
+}
+
+fn deserialize_js_input_path<'de, D>(
+    deserializer: D,
+) -> Result<Option<RootContainedFilePath>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let path = String::deserialize(deserializer)?;
+    RootContainedFilePath::new(&path)
+        .map(Some)
+        .map_err(|err| serde::de::Error::custom(format!("js.input_path: {err}")))
 }
 
 fn deserialize_production_prefix<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -162,7 +176,7 @@ mod tests {
 
     fn parse(toml_str: &str) -> Result<Config, Diagnostic> {
         Config::parse(&Document::new(
-            DocumentId::new("hop.toml").unwrap(),
+            RootContainedFilePath::new("hop.toml").unwrap(),
             toml_str.to_string(),
         ))
     }
@@ -209,7 +223,7 @@ mod tests {
         "#};
         assert_eq!(
             config(toml_str).css_input_path(),
-            Some(&DocumentId::new("styles/input.css").unwrap())
+            Some(&RootContainedFilePath::new("styles/input.css").unwrap())
         );
     }
 
@@ -237,13 +251,25 @@ mod tests {
             input_path = "../styles/input.css"
         "#};
         expect![[r#"
-            error: Document ID cannot contain '.' or '..' components
+            error: css.input_path: path must not point outside the project root
               --> hop.toml (line 2, col 14)
             1 | [css]
             2 | input_path = "../styles/input.css"
               |              ^^^^^^^^^^^^^^^^^^^^^
         "#]]
         .assert_eq(&error(toml_str));
+    }
+
+    #[test]
+    fn normalizes_css_input_path() {
+        let toml_str = indoc! {r#"
+            [css]
+            input_path = "./styles/input.css"
+        "#};
+        assert_eq!(
+            config(toml_str).css_input_path(),
+            Some(&RootContainedFilePath::new("styles/input.css").unwrap())
+        );
     }
 
     #[test]
@@ -262,7 +288,7 @@ mod tests {
         "#};
         assert_eq!(
             config(toml_str).css_input_path(),
-            Some(&DocumentId::new("styles/input.css").unwrap())
+            Some(&RootContainedFilePath::new("styles/input.css").unwrap())
         );
     }
 
@@ -278,7 +304,7 @@ mod tests {
         "#};
         assert_eq!(
             config(toml_str).js_input_path(),
-            Some(&DocumentId::new("src/app.ts").unwrap())
+            Some(&RootContainedFilePath::new("src/app.ts").unwrap())
         );
     }
 
@@ -306,7 +332,7 @@ mod tests {
             input_path = "/src/app.ts"
         "#};
         expect![[r#"
-            error: Document ID cannot start with '/'
+            error: js.input_path: path must not start with '/'
               --> hop.toml (line 2, col 14)
             1 | [js]
             2 | input_path = "/src/app.ts"

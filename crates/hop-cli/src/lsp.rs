@@ -1,7 +1,7 @@
 use crate::project::Project;
 use hop_core::{
-    DiagnosticSeverity, Document, DocumentId, DocumentPosition, DocumentRange, PositionEncoding,
-    Program,
+    DiagnosticSeverity, Document, DocumentPosition, DocumentRange, PositionEncoding, Program,
+    RootContainedFilePath,
 };
 use std::collections::HashMap;
 use tokio::sync::mpsc;
@@ -57,7 +57,7 @@ pub async fn execute() {
 // Returns None if the document is unknown or the position is outside it.
 fn lsp_pos_to_doc_pos(
     program: &Program,
-    document_id: &DocumentId,
+    document_id: &RootContainedFilePath,
     lsp_pos: ls_types::Position,
 ) -> Option<DocumentPosition> {
     program.position(
@@ -98,16 +98,16 @@ impl HopLanguageServer {
         }
     }
 
-    /// Resolve an editor URI to a DocumentId. Returns `None` for URIs that
+    /// Resolve an editor URI to a RootContainedFilePath. Returns `None` for URIs that
     /// are not file paths, files outside the project, and files whose names
-    /// cannot be represented as a DocumentIds.
-    fn uri_to_document_id(uri: &ls_types::Uri, project: &Project) -> Option<DocumentId> {
+    /// cannot be represented as a RootContainedFilePath.
+    fn uri_to_document_id(uri: &ls_types::Uri, project: &Project) -> Option<RootContainedFilePath> {
         let path = uri.to_file_path()?;
-        project.root().path_to_document_id(&path).ok()
+        project.root().relativize(&path).ok()
     }
 
-    fn document_id_to_uri(document_id: &DocumentId, project: &Project) -> ls_types::Uri {
-        let p = project.root().document_id_to_path(document_id);
+    fn document_id_to_uri(document_id: &RootContainedFilePath, project: &Project) -> ls_types::Uri {
+        let p = project.root().resolve(document_id);
         ls_types::Uri::from_file_path(&p).expect("Failed to create URI from file path")
     }
 
@@ -198,7 +198,7 @@ impl LanguageServer for HopLanguageServer {
     async fn initialized(&self, _: ls_types::InitializedParams) {
         if let Some(project) = self.project.get() {
             if let Ok(document_ids) = project.documents() {
-                let document_ids: Vec<DocumentId> = document_ids
+                let document_ids: Vec<RootContainedFilePath> = document_ids
                     .into_iter()
                     .filter(|document_id| document_id.extension() == Some("hop"))
                     .collect();
@@ -231,7 +231,7 @@ impl LanguageServer for HopLanguageServer {
                 return;
             };
             if let Some(change) = params.content_changes.into_iter().next() {
-                let changed_modules: Vec<DocumentId>;
+                let changed_modules: Vec<RootContainedFilePath>;
                 {
                     let mut server = self.program.write().await;
                     changed_modules = server.update_hop_document(

@@ -34,7 +34,7 @@ impl RootRelativePath {
             return Err(RootRelativePathError::Empty);
         }
         let Some(relative) = reference.strip_prefix('/') else {
-            return Err(RootRelativePathError::MustBeAbsolute);
+            return Err(RootRelativePathError::MustBeRootAnchored);
         };
         if reference.ends_with('/') {
             return Err(RootRelativePathError::EndsWithSeparator);
@@ -61,10 +61,16 @@ impl RootRelativePath {
                     }
                 },
                 _ => {
-                    // Only reject what breaks path handling. Anything else
-                    // (spaces, `#`, non-ASCII, ...) is allowed here and
-                    // sanitized when the output filename is derived.
-                    if let Some(c) = component.chars().find(|c| *c == '\\' || c.is_control()) {
+                    // Only reject what breaks path handling: `\` is a
+                    // separator on Windows, and `:` starts a drive prefix
+                    // (`C:/secrets.css`) or names an alternate data stream
+                    // (`logo.svg:x`) there. Anything else (spaces, `#`,
+                    // non-ASCII, ...) is allowed here and sanitized when the
+                    // output filename is derived.
+                    if let Some(c) = component
+                        .chars()
+                        .find(|c| *c == '\\' || *c == ':' || c.is_control())
+                    {
                         return Err(RootRelativePathError::InvalidCharacter(c));
                     }
                     components.push(component);
@@ -97,9 +103,15 @@ impl RootRelativePath {
     }
 }
 
+impl AsRef<RootRelativePath> for RootRelativePath {
+    fn as_ref(&self) -> &RootRelativePath {
+        self
+    }
+}
+
 /// Error type for invalid [RootRelativePaths](crate::RootRelativePath).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub(crate) enum RootRelativePathError {
+pub enum RootRelativePathError {
     #[error("path cannot be empty")]
     Empty,
 
@@ -107,7 +119,7 @@ pub(crate) enum RootRelativePathError {
     MustBeRelative,
 
     #[error("path must start with '/'")]
-    MustBeAbsolute,
+    MustBeRootAnchored,
 
     #[error("path cannot end with '/'")]
     EndsWithSeparator,
@@ -120,6 +132,9 @@ pub(crate) enum RootRelativePathError {
 
     #[error("path does not name a file")]
     NoFileName,
+
+    #[error("path must not point outside the project root")]
+    EscapesRoot,
 }
 
 #[cfg(test)]
@@ -158,9 +173,12 @@ mod tests {
 
     #[test]
     fn rejects_paths_without_a_leading_slash() {
-        reject_anchored("logo.svg", RootRelativePathError::MustBeAbsolute);
-        reject_anchored("./logo.svg", RootRelativePathError::MustBeAbsolute);
-        reject_anchored("../shared/logo.svg", RootRelativePathError::MustBeAbsolute);
+        reject_anchored("logo.svg", RootRelativePathError::MustBeRootAnchored);
+        reject_anchored("./logo.svg", RootRelativePathError::MustBeRootAnchored);
+        reject_anchored(
+            "../shared/logo.svg",
+            RootRelativePathError::MustBeRootAnchored,
+        );
     }
 
     #[test]
@@ -210,6 +228,23 @@ mod tests {
             RootRelativePathError::InvalidCharacter('\n'),
         );
         reject_anchored("/", RootRelativePathError::EndsWithSeparator);
+    }
+
+    #[test]
+    fn rejects_colons() {
+        reject(
+            "C:/secrets.css",
+            RootRelativePathError::InvalidCharacter(':'),
+        );
+        reject(
+            "c:secrets.css",
+            RootRelativePathError::InvalidCharacter(':'),
+        );
+        reject(
+            "icons/star.svg:x",
+            RootRelativePathError::InvalidCharacter(':'),
+        );
+        reject_anchored("/C:/logo.svg", RootRelativePathError::InvalidCharacter(':'));
     }
 
     #[test]

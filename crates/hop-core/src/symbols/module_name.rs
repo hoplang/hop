@@ -3,7 +3,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::document::CheapString;
-use crate::document_id::DocumentId;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::reserved::is_reserved_name;
 
 /// Error type for invalid module IDs
@@ -41,14 +41,14 @@ impl ModuleName {
         Ok(ModuleName(Arc::from(segments)))
     }
 
-    pub fn to_document_id(&self) -> DocumentId {
+    pub fn to_file_path(&self) -> RootContainedFilePath {
         let path = self
             .0
             .iter()
             .map(|segment| segment.as_str())
             .collect::<Vec<_>>()
             .join("/");
-        DocumentId::new(&format!("{path}.hop")).unwrap()
+        RootContainedFilePath::new(&format!("{path}.hop")).unwrap()
     }
 }
 

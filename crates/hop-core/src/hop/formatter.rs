@@ -1390,13 +1390,13 @@ mod tests {
     use indoc::indoc;
 
     use crate::document::Document;
-    use crate::document_id::DocumentId;
     use crate::hop::parsing::parse;
     use crate::hop::parsing::source_generator;
+    use crate::root_contained_file_path::RootContainedFilePath;
 
     fn check(source: &str, expected: Expect) {
         let mut errors = Vec::new();
-        let document_id = DocumentId::new("test.hop").unwrap();
+        let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let ast = parse::parse(
             document_id.clone(),
             Document::new(document_id, source.to_string()),
@@ -1408,7 +1408,7 @@ mod tests {
         let formatted = format(&ast);
         expected.assert_eq(&formatted);
 
-        let document_id = DocumentId::new("test.hop").unwrap();
+        let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let formatted_twice = format(&parse::parse(
             document_id.clone(),
             Document::new(document_id, formatted.clone()),
@@ -1424,7 +1424,7 @@ mod tests {
     fn fuzz_generated_sources_parse_after_formatting_and_format_is_idempotent() {
         arbtest::arbtest(|u| {
             let source = source_generator::random_source(u)?;
-            let document_id = DocumentId::new("test.hop").unwrap();
+            let document_id = RootContainedFilePath::new("test.hop").unwrap();
             let mut errors = Vec::new();
             let ast = parse::parse(
                 document_id.clone(),

@@ -33,17 +33,24 @@ impl RootRelativeFilePath {
     pub fn file_name(&self) -> &str {
         self.0
             .file_name()
-            .expect("checked by from_root_anchored at construction")
+            .expect("checked by from_root_relative at construction")
     }
 
-    /// The path itself, for anchoring against a
-    /// [ProjectRoot](crate::ProjectRoot).
-    pub fn as_root_relative(&self) -> &RootRelativePath {
-        &self.0
+    /// The part of the file name after its last `.`, e.g. `hop` for
+    /// `components/button.hop`.
+    pub fn extension(&self) -> Option<&str> {
+        let (stem, extension) = self.file_name().rsplit_once('.')?;
+        (!stem.is_empty()).then_some(extension)
     }
 
     pub(crate) fn as_str(&self) -> &str {
         self.0.as_str()
+    }
+}
+
+impl AsRef<RootRelativePath> for RootRelativeFilePath {
+    fn as_ref(&self) -> &RootRelativePath {
+        &self.0
     }
 }
 
@@ -106,7 +113,7 @@ mod tests {
         );
         assert_eq!(
             RootRelativeFilePath::from_root_anchored("logo.svg"),
-            Err(RootRelativePathError::MustBeAbsolute)
+            Err(RootRelativePathError::MustBeRootAnchored)
         );
         assert_eq!(
             RootRelativeFilePath::from_root_anchored("/icons/"),

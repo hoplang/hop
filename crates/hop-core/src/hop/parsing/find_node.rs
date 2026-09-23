@@ -85,14 +85,14 @@ mod tests {
     use crate::diagnostic::Diagnostic;
     use crate::diagnostic_severity::DiagnosticSeverity;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::document_id::DocumentId;
     use crate::extract_position::extract_position;
     use crate::hop::parsing::parse::parse;
+    use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check_find_node_at_position(input: &str, expected: Expect) {
-        let document_id = DocumentId::new("test.hop").unwrap();
+        let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let (document, position) =
             extract_position(document_id.clone(), input).expect("Position marker not found");
         let mut errors = Vec::new();

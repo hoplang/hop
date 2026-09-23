@@ -251,12 +251,16 @@ mod tests {
     use super::*;
     use crate::diagnostic::Diagnostic;
     use crate::diagnostic_severity::DiagnosticSeverity;
-    use crate::{document_annotator::DocumentAnnotator, document_id::DocumentId};
+    use crate::{
+        document_annotator::DocumentAnnotator, root_contained_file_path::RootContainedFilePath,
+    };
     use expect_test::{Expect, expect};
 
     fn run_tokenizer(input: &str) -> (String, bool) {
-        let mut cursor =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string());
+        let mut cursor = DocumentCursor::new(
+            RootContainedFilePath::new("test.hop").unwrap(),
+            input.to_string(),
+        );
         let mut errors = Vec::new();
         let mut comments = Vec::new();
         let mut annotations = Vec::new();

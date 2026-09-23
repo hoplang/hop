@@ -1,13 +1,13 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::Document;
 use crate::document_annotator::DocumentAnnotator;
-use crate::document_id::DocumentId;
 use crate::ir::lower_pure;
 use crate::ir::pure_module::PureModule;
 use crate::ir::runtime::evaluator;
 use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
 use crate::program::Program;
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::type_name::TypeName;
 use expect_test::Expect;
@@ -177,7 +177,7 @@ fn check_with_asset_path_rewriter(
             "expected a .hop module, got '{}'",
             file.name
         );
-        let document_id = DocumentId::new(&file.name).unwrap();
+        let document_id = RootContainedFilePath::new(&file.name).unwrap();
         let document = Document::new(document_id.clone(), file.content.clone());
         program.update_hop_document(&document_id, document);
         modules += 1;

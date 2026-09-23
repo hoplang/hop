@@ -1,9 +1,9 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
-use crate::document_id::DocumentId;
 use crate::hop::assembly::{self, AssembledPageDeclaration, TailwindInjection};
 use crate::hop::typing::typed_ast::TypedAst;
 use crate::ir::pure_module::PureModule;
 use crate::ir::{WriterModule, compile, lower_pure, optimize, retain_reachable};
+use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ pub struct OrchestrateOptions<'a> {
     pub skip_html_structure: bool,
     pub skip_optimization: bool,
     /// When set, only compile the specified page instead of all pages.
-    pub page_filter: Option<(DocumentId, TypeName)>,
+    pub page_filter: Option<(RootContainedFilePath, TypeName)>,
     /// Controls how `asset!()` macro invocations are resolved.
     pub asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     /// When set, inject the given Tailwind CSS into the `<head>` of each page.
@@ -23,14 +23,14 @@ pub struct OrchestrateOptions<'a> {
 }
 
 pub fn orchestrate(
-    typed_asts: &HashMap<DocumentId, TypedAst>,
+    typed_asts: &HashMap<RootContainedFilePath, TypedAst>,
     options: OrchestrateOptions<'_>,
 ) -> WriterModule {
     lower_pure(orchestrate_pure(typed_asts, options))
 }
 
 pub fn orchestrate_pure(
-    typed_asts: &HashMap<DocumentId, TypedAst>,
+    typed_asts: &HashMap<RootContainedFilePath, TypedAst>,
     options: OrchestrateOptions<'_>,
 ) -> PureModule {
     // Take pages from all modules (sorted by module ID for deterministic order)
