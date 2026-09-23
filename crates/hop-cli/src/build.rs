@@ -105,8 +105,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
         .iter()
         .map(|(asset_path, filename)| {
             let url = match config.assets_production_prefix() {
-                Some(p) => format!("/{}/{}", p.trim_matches('/'), filename),
-                None => format!("/{}", filename),
+                Some(p) => format!("/{p}/{filename}"),
+                None => format!("/{filename}"),
             };
             (asset_path.clone(), url)
         })
@@ -133,8 +133,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     // assets are rewritten (production_prefix + content-hashed filename).
     let css_filename = format!("styles-{:08x}.css", crc32fast::hash(css_output.as_bytes()));
     let css_link_href = match config.assets_production_prefix() {
-        Some(prefix) => format!("/{}/{}", prefix.trim_matches('/'), css_filename),
-        None => format!("/{}", css_filename),
+        Some(prefix) => format!("/{prefix}/{css_filename}"),
+        None => format!("/{css_filename}"),
     };
 
     // Bundle the single JS entrypoint (if configured) with esbuild. The bundled
@@ -147,8 +147,8 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
             let bundled = esbuild_runner::bundle_script(&input_path, true)?;
             let js_filename = format!("scripts-{:08x}.js", crc32fast::hash(bundled.as_bytes()));
             let js_src = match config.assets_production_prefix() {
-                Some(prefix) => format!("/{}/{}", prefix.trim_matches('/'), js_filename),
-                None => format!("/{}", js_filename),
+                Some(prefix) => format!("/{prefix}/{js_filename}"),
+                None => format!("/{js_filename}"),
             };
             Some((bundled, js_filename, js_src))
         }

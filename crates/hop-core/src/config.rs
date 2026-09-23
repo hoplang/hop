@@ -45,11 +45,10 @@ impl Config {
         self.assets.as_ref()?.output_dir.as_ref()
     }
 
-    /// When set, prepends `/{production_prefix}/` to all asset URLs via the
+    /// A production prefix that should be prepended to all asset URLs via the
     /// [AssetPathRewriter](crate::AssetPathRewriter) during compilation.
     ///
-    /// Leading and trailing slashes are stripped before formatting. Empty
-    /// strings are rejected, omit the field instead.
+    /// Leading and trailing slashes are trimmed.
     pub fn assets_production_prefix(&self) -> Option<&str> {
         self.assets.as_ref()?.production_prefix.as_deref()
     }
@@ -121,12 +120,13 @@ where
     D: serde::Deserializer<'de>,
 {
     let production_prefix = String::deserialize(deserializer)?;
-    if production_prefix.trim_matches('/').is_empty() {
+    let trimmed = production_prefix.trim_matches('/');
+    if trimmed.is_empty() {
         return Err(serde::de::Error::custom(
             "assets.production_prefix must be non-empty (omit the field to leave asset paths untouched)",
         ));
     }
-    Ok(Some(production_prefix))
+    Ok(Some(trimmed.to_string()))
 }
 
 fn deserialize_assets_output_dir<'de, D>(
@@ -572,6 +572,18 @@ mod tests {
             config(toml_str).assets_production_prefix(),
             Some("static/v1")
         );
+    }
+
+    #[test]
+    fn production_prefix_is_stored_without_surrounding_slashes() {
+        for written in ["/static/v1", "static/v1/", "/static/v1/", "//static/v1//"] {
+            let toml_str = format!("[assets]\nproduction_prefix = {written:?}\n");
+            assert_eq!(
+                config(&toml_str).assets_production_prefix(),
+                Some("static/v1"),
+                "for production_prefix = {written:?}"
+            );
+        }
     }
 
     #[test]
