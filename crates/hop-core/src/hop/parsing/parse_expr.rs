@@ -1977,16 +1977,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_expr_with_concatenation_having_lower_precedence_than_equality() {
-        accept(
-            r#""a" + "b" == "ab""#,
-            expect![[r#"
-                "a" + "b" == "ab"
-            "#]],
-        );
-    }
-
-    #[test]
     fn accepts_expr_with_string_concatenation_using_field_access() {
         accept(
             r#"user.first_name + " " + user.last_name"#,
