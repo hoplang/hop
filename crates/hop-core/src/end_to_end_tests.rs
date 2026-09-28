@@ -495,6 +495,103 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn logical_operators_short_circuit() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn spin() -> Bool {
+                  spin()
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <>
+                      {match false && spin() {
+                        true => <>yes</>,
+                        false => <>no</>,
+                      }}
+                      {match true || spin() {
+                        true => <>yes</>,
+                        false => <>no</>,
+                      }}
+                    </>
+                  }
+                }
+            "#},
+            "noyes",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn spin@f0() -> Bool {
+                  call spin@f0()
+                }
+                page Test() {
+                  let v0 = (false && call spin@f0()) in {
+                    match v0 {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
+                      }
+                    }
+                  }
+                  let v1 = (true || call spin@f0()) in {
+                    match v1 {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                fn spin@f0() -> Bool {
+                  call spin@f0()
+                }
+                page Test() {
+                  let v0 = (false && call spin@f0()) in {
+                    match v0 {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
+                      }
+                    }
+                  }
+                  let v1 = (true || call spin@f0()) in {
+                    match v1 {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                noyes
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn let_statements_in_body_arm_and_interpolation() {
         check(
             indoc! {r#"

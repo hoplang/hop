@@ -393,18 +393,24 @@ fn evaluate_expr(
 
         PureExpr::BooleanLogicalAnd { left, right, .. } => {
             let left_val = evaluate_expr(left, env, function_decls)?;
-            let right_val = evaluate_expr(right, env, function_decls)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
+            if !left_bool {
+                return Ok(Value::Bool(false));
+            }
+            let right_val = evaluate_expr(right, env, function_decls)?;
             let right_bool = right_val.as_bool().expect("Expected boolean value");
-            Ok(Value::Bool(left_bool && right_bool))
+            Ok(Value::Bool(right_bool))
         }
 
         PureExpr::BooleanLogicalOr { left, right, .. } => {
             let left_val = evaluate_expr(left, env, function_decls)?;
-            let right_val = evaluate_expr(right, env, function_decls)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
+            if left_bool {
+                return Ok(Value::Bool(true));
+            }
+            let right_val = evaluate_expr(right, env, function_decls)?;
             let right_bool = right_val.as_bool().expect("Expected boolean value");
-            Ok(Value::Bool(left_bool || right_bool))
+            Ok(Value::Bool(right_bool))
         }
 
         PureExpr::NumericAdd {
