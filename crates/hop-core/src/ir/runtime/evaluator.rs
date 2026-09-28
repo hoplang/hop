@@ -510,31 +510,37 @@ fn evaluate_expr(
                     panic!("Expected Enum value in match expression");
                 };
 
-                for arm in arms {
+                let mut matching_arms = arms.iter().filter(|arm| {
                     let EnumPattern::Variant {
                         variant_name: pattern_variant,
                         ..
                     } = &arm.pattern;
-                    if variant_name == pattern_variant {
-                        // Bind fields to variables
-                        for (field_name, var_name) in &arm.bindings {
-                            let field_val = fields.get(field_name).unwrap_or_else(|| {
-                                panic!(
-                                    "Field '{}' not found in enum variant '{}'",
-                                    field_name, variant_name
-                                )
-                            });
-                            env.insert(var_name.id, field_val.clone());
-                        }
-                        let result = evaluate_expr(&arm.body, env, function_decls);
-                        for (_, var_name) in &arm.bindings {
-                            env.remove(&var_name.id);
-                        }
-                        return result;
-                    }
-                }
+                    variant_name == pattern_variant
+                });
+                let arm = matching_arms.next().unwrap_or_else(|| {
+                    panic!("No matching arm found for variant '{}'", variant_name)
+                });
+                assert!(
+                    matching_arms.next().is_none(),
+                    "Multiple matching arms found for variant '{}'",
+                    variant_name
+                );
 
-                panic!("No matching arm found for variant '{}'", variant_name)
+                // Bind fields to variables
+                for (field_name, var_name) in &arm.bindings {
+                    let field_val = fields.get(field_name).unwrap_or_else(|| {
+                        panic!(
+                            "Field '{}' not found in enum variant '{}'",
+                            field_name, variant_name
+                        )
+                    });
+                    env.insert(var_name.id, field_val.clone());
+                }
+                let result = evaluate_expr(&arm.body, env, function_decls);
+                for (_, var_name) in &arm.bindings {
+                    env.remove(&var_name.id);
+                }
+                result
             }
             Match::Bool {
                 subject,
