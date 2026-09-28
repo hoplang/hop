@@ -1082,8 +1082,8 @@ pub fn typecheck_expr(
                 .collect::<HashMap<_, _>>();
 
             // The spread subject must have exactly the record type being
-            // constructed. It is checked before the explicit fields since it
-            // is evaluated first.
+            // constructed. If it doesn't, we bail out before checking the
+            // explicit fields.
             let typed_spread = match spread {
                 Some(subject) => {
                     let typed_subject = typecheck_expr(
