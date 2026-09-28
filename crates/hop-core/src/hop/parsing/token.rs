@@ -56,7 +56,7 @@ impl LangTokenPair {
 pub enum LangToken {
     Identifier(CheapString),
     StringLiteral(UncookedString),
-    IntLiteral(i32),
+    IntLiteral(CheapString),
     FloatLiteral(f64),
     Underscore,
     Assign,

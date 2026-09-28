@@ -187,7 +187,7 @@ pub(crate) enum ParseErrorKind {
     #[error("Invalid number format")]
     InvalidNumberFormat,
 
-    #[error("Integer literal is too large for Int (maximum is 2147483647)")]
+    #[error("Integer literal is out of range for Int (-2147483648 to 2147483647)")]
     IntLiteralOutOfRange,
 
     #[error("{0}")]

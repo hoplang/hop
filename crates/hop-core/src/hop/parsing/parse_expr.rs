@@ -5,7 +5,8 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 use super::parse_helpers::{
-    expect_identifier, expect_token, next_if_eq, next_if_map, parse_delimited, parse_delimited_list,
+    expect_identifier, expect_token, int_literal_value, next_if_eq, next_if_map, parse_delimited,
+    parse_delimited_list,
 };
 use super::parse_nodes;
 use super::parse_type::parse_type;
@@ -181,11 +182,32 @@ fn parse_unary(
             operand: Box::new(expr),
         })
     } else if let Some(operator_range) = next_if_eq(iter, comments, errors, LangToken::Minus) {
-        let expr = parse_unary(iter, comments, errors, restrictions)?; // Right associative for multiple -
-        Ok(ParsedExpr::NumericNegation {
-            range: operator_range.to(expr.range().clone()),
-            operand: Box::new(expr),
-        })
+        let folded = if matches!(peek2(iter), Some((LangToken::Dot, _))) {
+            None
+        } else {
+            next_if_map(iter, comments, errors, |token| match token {
+                LangToken::IntLiteral(digits)
+                    if int_literal_value(digits.as_str(), false).is_none() =>
+                {
+                    Some(digits)
+                }
+                _ => None,
+            })
+        };
+        if let Some((digits, lit_range)) = folded {
+            let range = operator_range.to(lit_range);
+            let value = int_literal_value(digits.as_str(), true).ok_or_else(|| {
+                errors.emit(ParseErrorKind::IntLiteralOutOfRange {}, range.clone())
+            })?;
+            Ok(ParsedExpr::IntLiteral { value, range })
+        } else {
+            // Right associative for multiple -
+            let expr = parse_unary(iter, comments, errors, restrictions)?;
+            Ok(ParsedExpr::NumericNegation {
+                range: operator_range.to(expr.range().clone()),
+                operand: Box::new(expr),
+            })
+        }
     } else {
         parse_primary(iter, comments, errors, restrictions)
     }
@@ -296,12 +318,15 @@ pub fn parse_primary(
             value,
             range: lit_range,
         }
-    } else if let Some((value, lit_range)) =
+    } else if let Some((digits, lit_range)) =
         next_if_map(iter, comments, errors, |token| match token {
-            LangToken::IntLiteral(value) => Some(value),
+            LangToken::IntLiteral(digits) => Some(digits),
             _ => None,
         })
     {
+        let value = int_literal_value(digits.as_str(), false).ok_or_else(|| {
+            errors.emit(ParseErrorKind::IntLiteralOutOfRange {}, lit_range.clone())
+        })?;
         ParsedExpr::IntLiteral {
             value,
             range: lit_range,
@@ -2261,6 +2286,98 @@ mod tests {
             "[-1, -2, -3]",
             expect![[r#"
                 [-1, -2, -3]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_int_min_literal() {
+        accept(
+            "-2147483648",
+            expect![[r#"
+                -2147483648
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_int_min_literal_with_space_after_minus() {
+        accept(
+            "- 2147483648",
+            expect![[r#"
+                -2147483648
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_negation_of_int_min_literal() {
+        accept(
+            "--2147483648",
+            expect![[r#"
+                --2147483648
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_parenthesized_int_min_literal_as_receiver() {
+        accept(
+            "(-2147483648).abs()",
+            expect![[r#"
+                (-2147483648).abs()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_int_min_magnitude_before_postfix() {
+        reject(
+            "-2147483648.abs()",
+            expect![[r#"
+                -- errors --
+                error: Integer literal is out of range for Int (-2147483648 to 2147483647)
+                -2147483648.abs()
+                 ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_int_min_magnitude_without_negation() {
+        reject(
+            "2147483648",
+            expect![[r#"
+                -- errors --
+                error: Integer literal is out of range for Int (-2147483648 to 2147483647)
+                2147483648
+                ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_negated_literal_below_int_range() {
+        reject(
+            "-99999999999999999999",
+            expect![[r#"
+            -- errors --
+            error: Integer literal is out of range for Int (-2147483648 to 2147483647)
+            -99999999999999999999
+            ^^^^^^^^^^^^^^^^^^^^^
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_int_min_magnitude_in_subtraction() {
+        reject(
+            "x - 2147483648",
+            expect![[r#"
+                -- errors --
+                error: Integer literal is out of range for Int (-2147483648 to 2147483647)
+                x - 2147483648
+                    ^^^^^^^^^^
             "#]],
         );
     }

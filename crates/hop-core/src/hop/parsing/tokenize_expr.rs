@@ -189,12 +189,10 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
                     Err(_) => LexStep::Error(ParseErrorKind::InvalidNumberFormat {}, number_string),
                 }
             } else {
-                match number_string.as_str().parse::<i32>() {
-                    Ok(i) => LexStep::Token(LangToken::IntLiteral(i), number_string),
-                    Err(_) => {
-                        LexStep::Error(ParseErrorKind::IntLiteralOutOfRange {}, number_string)
-                    }
-                }
+                LexStep::Token(
+                    LangToken::IntLiteral(number_string.to_cheap_string()),
+                    number_string,
+                )
             }
         }
         ch => LexStep::Error(ParseErrorKind::UnexpectedCharacter { ch }, start),
@@ -342,49 +340,45 @@ mod tests {
     }
 
     #[test]
-    fn rejects_integer_literal_beyond_i32_range() {
-        reject(
-            "2147483647 2147483648",
+    fn accepts_integer_literals_of_any_length() {
+        accept(
+            "2147483648 99999999999999999999",
             expect![[r#"
-                token: IntLiteral(2147483647)
-                2147483647 2147483648
-                ^^^^^^^^^^
+            token: IntLiteral("2147483648")
+            2147483648 99999999999999999999
+            ^^^^^^^^^^
 
-                error: Integer literal is too large for Int (maximum is 2147483647)
-                2147483647 2147483648
-                           ^^^^^^^^^^
-            "#]],
+            token: IntLiteral("99999999999999999999")
+            2147483648 99999999999999999999
+                       ^^^^^^^^^^^^^^^^^^^^
+        "#]],
         );
     }
 
     #[test]
     fn accepts_valid_float_numbers() {
         accept(
-            "1.0 0.0 0.0000 1000000 0.0000 0.1010",
+            "1.0 0.0 0.0000 0.0000 0.1010",
             expect![[r#"
                 token: FloatLiteral(1.0)
-                1.0 0.0 0.0000 1000000 0.0000 0.1010
+                1.0 0.0 0.0000 0.0000 0.1010
                 ^^^
 
                 token: FloatLiteral(0.0)
-                1.0 0.0 0.0000 1000000 0.0000 0.1010
+                1.0 0.0 0.0000 0.0000 0.1010
                     ^^^
 
                 token: FloatLiteral(0.0)
-                1.0 0.0 0.0000 1000000 0.0000 0.1010
+                1.0 0.0 0.0000 0.0000 0.1010
                         ^^^^^^
 
-                token: IntLiteral(1000000)
-                1.0 0.0 0.0000 1000000 0.0000 0.1010
-                               ^^^^^^^
-
                 token: FloatLiteral(0.0)
-                1.0 0.0 0.0000 1000000 0.0000 0.1010
-                                       ^^^^^^
+                1.0 0.0 0.0000 0.0000 0.1010
+                               ^^^^^^
 
                 token: FloatLiteral(0.101)
-                1.0 0.0 0.0000 1000000 0.0000 0.1010
-                                              ^^^^^^
+                1.0 0.0 0.0000 0.0000 0.1010
+                                      ^^^^^^
             "#]],
         );
     }
@@ -417,7 +411,7 @@ mod tests {
         accept(
             "1. 1000.",
             expect![[r#"
-                token: IntLiteral(1)
+                token: IntLiteral("1")
                 1. 1000.
                 ^
 
@@ -425,7 +419,7 @@ mod tests {
                 1. 1000.
                  ^
 
-                token: IntLiteral(1000)
+                token: IntLiteral("1000")
                 1. 1000.
                    ^^^^
 
@@ -485,53 +479,21 @@ mod tests {
         accept(
             "42 0 123 999",
             expect![[r#"
-                token: IntLiteral(42)
+                token: IntLiteral("42")
                 42 0 123 999
                 ^^
 
-                token: IntLiteral(0)
+                token: IntLiteral("0")
                 42 0 123 999
                    ^
 
-                token: IntLiteral(123)
+                token: IntLiteral("123")
                 42 0 123 999
                      ^^^
 
-                token: IntLiteral(999)
+                token: IntLiteral("999")
                 42 0 123 999
                          ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_mixed_integers_and_floats() {
-        accept(
-            "42 3.14 0 0.0 123 99.99",
-            expect![[r#"
-                token: IntLiteral(42)
-                42 3.14 0 0.0 123 99.99
-                ^^
-
-                token: FloatLiteral(3.14)
-                42 3.14 0 0.0 123 99.99
-                   ^^^^
-
-                token: IntLiteral(0)
-                42 3.14 0 0.0 123 99.99
-                        ^
-
-                token: FloatLiteral(0.0)
-                42 3.14 0 0.0 123 99.99
-                          ^^^
-
-                token: IntLiteral(123)
-                42 3.14 0 0.0 123 99.99
-                              ^^^
-
-                token: FloatLiteral(99.99)
-                42 3.14 0 0.0 123 99.99
-                                  ^^^^^
             "#]],
         );
     }
@@ -553,7 +515,7 @@ mod tests {
                 let letter = 1;
                            ^
 
-                token: IntLiteral(1)
+                token: IntLiteral("1")
                 let letter = 1;
                              ^
 
@@ -957,7 +919,7 @@ mod tests {
                 [1, 2, 3]
                 ^
 
-                token: IntLiteral(1)
+                token: IntLiteral("1")
                 [1, 2, 3]
                  ^
 
@@ -965,7 +927,7 @@ mod tests {
                 [1, 2, 3]
                   ^
 
-                token: IntLiteral(2)
+                token: IntLiteral("2")
                 [1, 2, 3]
                     ^
 
@@ -973,7 +935,7 @@ mod tests {
                 [1, 2, 3]
                      ^
 
-                token: IntLiteral(3)
+                token: IntLiteral("3")
                 [1, 2, 3]
                        ^
 
@@ -1797,7 +1759,7 @@ mod tests {
         accept(
             "0..=10",
             expect![[r#"
-                token: IntLiteral(0)
+                token: IntLiteral("0")
                 0..=10
                 ^
 
@@ -1805,7 +1767,7 @@ mod tests {
                 0..=10
                  ^^^
 
-                token: IntLiteral(10)
+                token: IntLiteral("10")
                 0..=10
                     ^^
             "#]],

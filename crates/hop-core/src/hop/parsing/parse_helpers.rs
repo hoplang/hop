@@ -22,6 +22,13 @@ const RIGHT_DELIMITERS: &[LangToken] = &[
     LangToken::RightBrace,
 ];
 
+/// Convert an int literal token's digits to an Int value, applying the
+/// sign of an enclosing negation.
+pub fn int_literal_value(digits: &str, negated: bool) -> Option<i32> {
+    let magnitude: i64 = digits.parse().ok()?;
+    i32::try_from(if negated { -magnitude } else { magnitude }).ok()
+}
+
 /// Consume the next token if it is `token`, returning its range.
 pub fn next_if_eq(
     iter: &mut DocumentCursor,

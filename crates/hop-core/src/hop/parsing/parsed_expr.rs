@@ -554,6 +554,7 @@ impl ParsedExpr {
             ParsedExpr::BooleanNegation { .. } | ParsedExpr::NumericNegation { .. } => {
                 Self::PREFIX_BINDING_POWER
             }
+            ParsedExpr::IntLiteral { value, .. } if *value < 0 => Self::PREFIX_BINDING_POWER,
             ParsedExpr::FieldAccess { .. } | ParsedExpr::MethodCall { .. } => {
                 Self::POSTFIX_BINDING_POWER
             }

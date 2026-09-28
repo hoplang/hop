@@ -668,9 +668,9 @@ fn parse_examples_annotation(
                     let negative =
                         parse_helpers::next_if_eq(iter, comments, errors, LangToken::Minus)
                             .is_some();
-                    let Some((value, _)) =
+                    let Some((digits, value_range)) =
                         parse_helpers::next_if_map(iter, comments, errors, |token| match token {
-                            LangToken::IntLiteral(value) => Some(value),
+                            LangToken::IntLiteral(digits) => Some(digits),
                             _ => None,
                         })
                     else {
@@ -680,7 +680,11 @@ fn parse_examples_annotation(
                             None => errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range()),
                         });
                     };
-                    *slot = Some(if negative { -value } else { value });
+                    let value = parse_helpers::int_literal_value(digits.as_str(), negative)
+                        .ok_or_else(|| {
+                            errors.emit(ParseErrorKind::IntLiteralOutOfRange {}, value_range)
+                        })?;
+                    *slot = Some(value);
                     Ok(())
                 },
             )?;
@@ -6422,6 +6426,46 @@ mod tests {
             expect![[r#"
                 record Reading {
                   #[examples(min = -40, max = 60)] celsius: Int,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_examples_bounds_spanning_full_int_range() {
+        accept(
+            indoc! {"
+                record Reading {
+                  #[examples(min = -2147483648, max = 2147483647)]
+                  value: Int,
+                }
+            "},
+            expect![[r#"
+                record Reading {
+                  #[examples(min = -2147483648, max = 2147483647)] value: Int,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_examples_bound_beyond_i32_range() {
+        reject(
+            indoc! {"
+                record Reading {
+                  #[examples(max = 2147483648)]
+                  value: Int,
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Integer literal is out of range for Int (-2147483648 to 2147483647)
+                1 | record Reading {
+                2 |   #[examples(max = 2147483648)]
+                  |                    ^^^^^^^^^^
+                -- ast --
+                record Reading {
+                  #[examples()] value: Int,
                 }
             "#]],
         );

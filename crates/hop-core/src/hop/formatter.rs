@@ -979,7 +979,7 @@ fn format_expr<'a>(
             .append(arena.text(value.as_raw_str()))
             .append(arena.text("\"")),
         ParsedExpr::BooleanLiteral { range, .. } => arena.text(range.as_str()),
-        ParsedExpr::IntLiteral { range, .. } => arena.text(range.as_str()),
+        ParsedExpr::IntLiteral { value, .. } => arena.text(value.to_string()),
         ParsedExpr::FloatLiteral { range, .. } => arena.text(range.as_str()),
         ParsedExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
@@ -1605,6 +1605,44 @@ mod tests {
 
                 pub fn label(x: Int) -> Int {
                   x + 10
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn int_min_literal_prints_without_trivia_between_minus_and_digits() {
+        check(
+            indoc! {"
+                fn a(x: Int) -> Int { x - - 2147483648 }
+
+                fn b(x: Int) -> Int {
+                  x + - // note
+                  2147483648
+                }
+            "},
+            expect![[r#"
+                fn a(x: Int) -> Int {
+                  x - -2147483648
+                }
+
+                fn b(x: Int) -> Int {
+                  x + -2147483648
+                  // note
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn int_min_literal_keeps_parens_as_receiver() {
+        check(
+            indoc! {"
+                fn a() -> Int { (-2147483648).foo() }
+            "},
+            expect![[r#"
+                fn a() -> Int {
+                  (-2147483648).foo()
                 }
             "#]],
         );

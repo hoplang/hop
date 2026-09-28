@@ -31,7 +31,8 @@ const STRING_LITERALS: &[&str] = &[
     "\"raw\nnewline\"",
 ];
 
-const INT_LITERALS: &[&str] = &["0", "1", "42", "2147483647"];
+const INT_LITERALS_POSITIVE: &[&str] = &["0", "1", "42", "2147483647"];
+const INT_LITERALS_NEGATIVE: &[&str] = &["-2147483648"];
 
 const FLOAT_LITERALS: &[&str] = &["0.5", "1.0", "3.25", "100.125"];
 
@@ -328,8 +329,11 @@ fn unary(
     for _ in 0..u.int_in_range(0..=2)? {
         out.push_str(u.choose(&["!", "-", "- "])?);
     }
-    primary(u, depth, restrictions, out)?;
-    if u.int_in_range(0..=3)? == 3 {
+    // Decided before the primary: postfix binds tighter than unary minus,
+    // so a negative int literal cannot stand where a `.` chain follows.
+    let postfix_follows = u.int_in_range(0..=3)? == 3;
+    primary(u, depth, restrictions, postfix_follows, out)?;
+    if postfix_follows {
         for _ in 0..u.int_in_range(1..=2)? {
             out.push('.');
             out.push_str(u.choose(FIELD_NAMES)?);
@@ -345,6 +349,7 @@ fn primary(
     u: &mut Unstructured<'_>,
     depth: usize,
     restrictions: Restrictions,
+    postfix_follows: bool,
     out: &mut String,
 ) -> Result<()> {
     enum P {
@@ -397,7 +402,15 @@ fn primary(
         P::Var => out.push_str(u.choose(VAR_NAMES)?),
         P::Str => out.push_str(u.choose(STRING_LITERALS)?),
         P::Bool => out.push_str(u.choose(&["true", "false"])?),
-        P::Int => out.push_str(u.choose(INT_LITERALS)?),
+        P::Int => {
+            let negative = !postfix_follows && u.arbitrary()?;
+            let literals = if negative {
+                INT_LITERALS_NEGATIVE
+            } else {
+                INT_LITERALS_POSITIVE
+            };
+            out.push_str(u.choose(literals)?);
+        }
         P::Float => out.push_str(u.choose(FLOAT_LITERALS)?),
         P::None => out.push_str("None"),
         P::EnumUnit => {
