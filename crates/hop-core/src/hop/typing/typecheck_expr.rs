@@ -10,7 +10,7 @@ use super::typecheck_node::typecheck_node;
 use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
-use crate::document::{CheapString, DocumentRange};
+use crate::document::CheapString;
 use crate::hop::parsing::parsed_expr::{
     ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource,
 };
@@ -87,12 +87,14 @@ pub fn typecheck_expr(
             Some(TypedExpr::BooleanLiteral { value: *value })
         }
         ParsedExpr::StringLiteral { value, .. } => {
-            let value = value.cook(&mut |ch, range| {
-                errors.push(TypeError::new(
-                    TypeErrorKind::InvalidEscapeSequence { ch },
-                    range,
-                ));
-            });
+            let value = value
+                .cook(&mut |ch, range| {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::InvalidEscapeSequence { ch },
+                        range,
+                    ));
+                })
+                .unwrap_or_else(|| CheapString::new(String::new()));
             Some(TypedExpr::StringLiteral { value })
         }
         ParsedExpr::IntLiteral { value, .. } => Some(TypedExpr::IntLiteral { value: *value }),
@@ -1794,8 +1796,8 @@ pub fn typecheck_expr(
                 Some(TypedExpr::StringConcat { parts })
             }
             "format" => {
-                let Some(template_range) = args.first().and_then(|arg| match arg {
-                    ParsedExpr::StringLiteral { range, .. } => Some(range.clone()),
+                let Some((template, template_range)) = args.first().and_then(|arg| match arg {
+                    ParsedExpr::StringLiteral { value, range } => Some((value, range)),
                     _ => None,
                 }) else {
                     errors.push(TypeError::new(
@@ -1805,48 +1807,42 @@ pub fn typecheck_expr(
                     return None;
                 };
 
-                // Scan the format string into the literal pieces surrounding its
-                // `{}` placeholders, where `None` marks a placeholder.
+                let template = template.cook(&mut |ch, range| {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::InvalidEscapeSequence { ch },
+                        range,
+                    ));
+                })?;
+
                 let mut pieces = Vec::new();
-                let mut piece: Option<DocumentRange> = None;
-                // A string literal range includes the surrounding quotes, so we
-                // skip the first character and stop at the last one.
-                let mut chars = template_range.cursor();
-                chars.next();
+                let mut piece = String::new();
+                let mut chars = template.as_str().chars().peekable();
                 while let Some(ch) = chars.next() {
-                    let Some(next) = chars.peek() else {
-                        break;
-                    };
-                    match (ch.ch(), next.ch()) {
-                        ('{', '}') => {
+                    match (ch, chars.peek()) {
+                        ('{', Some('}')) => {
                             chars.next();
-                            pieces.extend(piece.take().map(|piece| Some(piece.to_cheap_string())));
+                            if !piece.is_empty() {
+                                pieces.push(Some(CheapString::new(std::mem::take(&mut piece))));
+                            }
                             pieces.push(None);
                         }
-                        ('{', '{') | ('}', '}') => {
+                        ('{', Some('{')) | ('}', Some('}')) => {
                             chars.next();
-                            let escaped = match piece.take() {
-                                Some(piece) => piece.to(ch),
-                                None => ch,
-                            };
-                            pieces.push(Some(escaped.to_cheap_string()));
+                            piece.push(ch);
                         }
                         ('{' | '}', _) => {
                             errors.push(TypeError::new(
                                 TypeErrorKind::FormatMacroInvalidPlaceholder {},
-                                template_range,
+                                template_range.clone(),
                             ));
                             return None;
                         }
-                        _ => {
-                            piece = Some(match piece.take() {
-                                Some(piece) => piece.to(ch),
-                                None => ch,
-                            });
-                        }
+                        _ => piece.push(ch),
                     }
                 }
-                pieces.extend(piece.map(|piece| Some(piece.to_cheap_string())));
+                if !piece.is_empty() {
+                    pieces.push(Some(CheapString::new(piece)));
+                }
                 let placeholders = pieces.iter().filter(|piece| piece.is_none()).count();
 
                 let value_args = &args[1..];
@@ -1927,7 +1923,7 @@ pub fn typecheck_expr(
                                 TypeErrorKind::InvalidEscapeSequence { ch },
                                 range,
                             ));
-                        });
+                        })?;
                         (path, range.clone())
                     }
                     other => {
@@ -5434,6 +5430,20 @@ mod tests {
     }
 
     #[test]
+    fn rejects_format_macro_with_invalid_escape_sequence() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("name", "String")],
+            r#"format!("a\q{}", name)"#,
+            expect![[r#"
+                error: Invalid escape sequence '\q'
+                format!("a\q{}", name)
+                          ^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_unknown_macro() {
         reject(
             TypeRegistryBuilder::new(),
@@ -5569,6 +5579,20 @@ mod tests {
                 error: invalid asset! path: path does not name a file
                 asset!("/icons/..")
                        ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_asset_macro_with_invalid_escape_sequence() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"asset!("/img/\q.png")"#,
+            expect![[r#"
+                error: Invalid escape sequence '\q'
+                asset!("/img/\q.png")
+                             ^^
             "#]],
         );
     }

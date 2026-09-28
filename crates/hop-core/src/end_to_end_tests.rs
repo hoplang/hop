@@ -8107,7 +8107,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "c" in {
-                    write_string(("a{" + "b" + v0 + "d}" + "e"))
+                    write_string(("a{b" + v0 + "d}e"))
                   }
                 }
                 -- ir (optimized) --
@@ -8116,6 +8116,50 @@ mod tests {
                 }
                 -- expected output --
                 a{bcd}e
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn format_macro_resolves_escape_sequences() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let name = "c";
+                    <>{format!("a\"b\n{}\\d", name)}</>
+                  }
+                }
+            "#},
+            "a&quot;b\nc\\d",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = "c" in {
+                    write_string(("a\"b\n" + v0 + "\\d"))
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("a&quot;b\nc\\d")
+                }
+                -- expected output --
+                a&quot;b
+                c\d
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

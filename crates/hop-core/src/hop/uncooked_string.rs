@@ -20,9 +20,10 @@ impl UncookedString {
     /// Resolves the escape sequences, producing the string the literal means.
     ///
     /// Every sequence that is not one is handed to `on_invalid_escape`, as the
-    /// character following the backslash — or the backslash itself when nothing
-    /// follows it — and the range of the pair. An empty CheapString is returned
-    /// if there was any.
+    /// character following the backslash (or the backslash itself when nothing
+    /// follows it) and the range of the pair.
+    ///
+    /// Returns `None` if there was an invalid escape.
     ///
     /// Supported escape sequences:
     /// - `\n` → newline
@@ -30,13 +31,16 @@ impl UncookedString {
     /// - `\r` → carriage return
     /// - `\\` → backslash
     /// - `\"` → double quote
-    pub fn cook(&self, on_invalid_escape: &mut impl FnMut(char, DocumentRange)) -> CheapString {
+    pub fn cook(
+        &self,
+        on_invalid_escape: &mut impl FnMut(char, DocumentRange),
+    ) -> Option<CheapString> {
         let Some(range) = &self.0 else {
-            return CheapString::new(String::new());
+            return Some(CheapString::new(String::new()));
         };
 
         if !range.as_str().contains('\\') {
-            return range.to_cheap_string();
+            return Some(range.to_cheap_string());
         }
 
         let mut result = String::with_capacity(range.as_str().len());
@@ -66,9 +70,9 @@ impl UncookedString {
             }
         }
         if failed {
-            CheapString::new(String::new())
+            None
         } else {
-            CheapString::new(result)
+            Some(CheapString::new(result))
         }
     }
 }
@@ -100,7 +104,7 @@ mod tests {
     use crate::root_contained_file_path::RootContainedFilePath;
 
     /// Cooks `content`, the text a literal has between its quotes.
-    fn cook(content: &str) -> (String, Vec<char>) {
+    fn cook(content: &str) -> (Option<String>, Vec<char>) {
         let cursor = DocumentCursor::new(
             RootContainedFilePath::new("test.hop").unwrap(),
             content.to_string(),
@@ -108,50 +112,53 @@ mod tests {
         let range: Option<DocumentRange> = cursor.collect();
         let mut invalid = Vec::new();
         let cooked = UncookedString::new(range).cook(&mut |ch, _range| invalid.push(ch));
-        (cooked.as_str().to_string(), invalid)
+        (cooked.map(|cooked| cooked.as_str().to_string()), invalid)
     }
 
     #[test]
     fn resolves_supported_escape_sequences() {
-        assert_eq!(cook(r"a\nb").0, "a\nb");
-        assert_eq!(cook(r"a\tb").0, "a\tb");
-        assert_eq!(cook(r"a\rb").0, "a\rb");
-        assert_eq!(cook(r"a\\b").0, r"a\b");
-        assert_eq!(cook(r#"a\"b"#).0, "a\"b");
+        assert_eq!(cook(r"a\nb").0.as_deref(), Some("a\nb"));
+        assert_eq!(cook(r"a\tb").0.as_deref(), Some("a\tb"));
+        assert_eq!(cook(r"a\rb").0.as_deref(), Some("a\rb"));
+        assert_eq!(cook(r"a\\b").0.as_deref(), Some(r"a\b"));
+        assert_eq!(cook(r#"a\"b"#).0.as_deref(), Some("a\"b"));
     }
 
     #[test]
     fn resolves_escapes_at_either_end() {
-        assert_eq!(cook(r#"\""#).0, "\"");
-        assert_eq!(cook(r"\\").0, r"\");
-        assert_eq!(cook(r"C:\\Users\\name").0, r"C:\Users\name");
-        assert_eq!(cook(r"foo\nbar").0, "foo\nbar");
+        assert_eq!(cook(r#"\""#).0.as_deref(), Some("\""));
+        assert_eq!(cook(r"\\").0.as_deref(), Some(r"\"));
+        assert_eq!(
+            cook(r"C:\\Users\\name").0.as_deref(),
+            Some(r"C:\Users\name")
+        );
+        assert_eq!(cook(r"foo\nbar").0.as_deref(), Some("foo\nbar"));
     }
 
     #[test]
     fn keeps_text_without_escapes_verbatim() {
-        assert_eq!(cook("plain").0, "plain");
-        assert_eq!(cook("").0, "");
+        assert_eq!(cook("plain").0.as_deref(), Some("plain"));
+        assert_eq!(cook("").0.as_deref(), Some(""));
     }
 
     #[test]
     fn reports_an_unknown_escape_and_yields_no_value() {
         let (value, errors) = cook(r"a\qb");
-        assert_eq!(value, "");
+        assert_eq!(value, None);
         assert_eq!(errors, ['q']);
     }
 
     #[test]
     fn reports_a_backslash_with_nothing_after_it() {
         let (value, errors) = cook(r"a\");
-        assert_eq!(value, "");
+        assert_eq!(value, None);
         assert_eq!(errors, ['\\']);
     }
 
     #[test]
     fn reports_every_unknown_escape_in_one_literal() {
         let (value, errors) = cook(r"\q\x");
-        assert_eq!(value, "");
+        assert_eq!(value, None);
         assert_eq!(errors, ['q', 'x']);
     }
 }

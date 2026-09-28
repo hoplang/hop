@@ -880,13 +880,12 @@ fn validate_examples_annotation(
                 },
                 range.clone(),
             ));
-        } else {
-            let pattern = pattern.cook(&mut |ch, range| {
-                errors.push(TypeError::new(
-                    TypeErrorKind::InvalidEscapeSequence { ch },
-                    range,
-                ));
-            });
+        } else if let Some(pattern) = pattern.cook(&mut |ch, range| {
+            errors.push(TypeError::new(
+                TypeErrorKind::InvalidEscapeSequence { ch },
+                range,
+            ));
+        }) {
             if let Err(e) = regex_syntax::parse(pattern.as_str()) {
                 errors.push(TypeError::new(
                     TypeErrorKind::InvalidPatternRegex {
