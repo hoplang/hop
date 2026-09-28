@@ -979,8 +979,22 @@ fn format_expr<'a>(
             .append(arena.text(value.as_raw_str()))
             .append(arena.text("\"")),
         ParsedExpr::BooleanLiteral { range, .. } => arena.text(range.as_str()),
-        ParsedExpr::IntLiteral { value, .. } => arena.text(value.to_string()),
-        ParsedExpr::FloatLiteral { range, .. } => arena.text(range.as_str()),
+        ParsedExpr::IntLiteral {
+            minus_range,
+            digits_range,
+            ..
+        }
+        | ParsedExpr::FloatLiteral {
+            minus_range,
+            digits_range,
+            ..
+        } => {
+            let digits = arena.text(digits_range.as_str());
+            match minus_range {
+                Some(_) => arena.text("-").append(digits),
+                None => digits,
+            }
+        }
         ParsedExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 arena.text("[]")
@@ -1643,6 +1657,70 @@ mod tests {
             expect![[r#"
                 fn a() -> Int {
                   (-2147483648).foo()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn negative_float_literal_prints_digits_as_written() {
+        check(
+            indoc! {"
+                fn a() -> Float { - 1.50 }
+
+                fn b() -> Float {
+                  - // note
+                  0.0
+                }
+            "},
+            expect![[r#"
+                fn a() -> Float {
+                  -1.50
+                }
+
+                fn b() -> Float {
+                  -0.0
+                  // note
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn negative_literal_keeps_parens_as_receiver() {
+        check(
+            indoc! {"
+                fn a() -> Float { (-1.5).foo() }
+
+                fn b() -> Float { -1.5.foo() }
+
+                fn c() -> Int { (-0).foo() }
+            "},
+            expect![[r#"
+                fn a() -> Float {
+                  (-1.5).foo()
+                }
+
+                fn b() -> Float {
+                  -1.5.foo()
+                }
+
+                fn c() -> Int {
+                  (-0).foo()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn negation_of_negative_zero_literal_keeps_both_minuses() {
+        check(
+            indoc! {"
+                fn a() -> Int { - -0 }
+            "},
+            expect![[r#"
+                fn a() -> Int {
+                  --0
                 }
             "#]],
         );

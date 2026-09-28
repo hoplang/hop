@@ -42,11 +42,15 @@ pub enum ParsedExpr {
 
     IntLiteral {
         value: i32,
+        minus_range: Option<DocumentRange>,
+        digits_range: DocumentRange,
         range: DocumentRange,
     },
 
     FloatLiteral {
         value: f64,
+        minus_range: Option<DocumentRange>,
+        digits_range: DocumentRange,
         range: DocumentRange,
     },
 
@@ -554,7 +558,14 @@ impl ParsedExpr {
             ParsedExpr::BooleanNegation { .. } | ParsedExpr::NumericNegation { .. } => {
                 Self::PREFIX_BINDING_POWER
             }
-            ParsedExpr::IntLiteral { value, .. } if *value < 0 => Self::PREFIX_BINDING_POWER,
+            ParsedExpr::IntLiteral {
+                minus_range: Some(_),
+                ..
+            }
+            | ParsedExpr::FloatLiteral {
+                minus_range: Some(_),
+                ..
+            } => Self::PREFIX_BINDING_POWER,
             ParsedExpr::FieldAccess { .. } | ParsedExpr::MethodCall { .. } => {
                 Self::POSTFIX_BINDING_POWER
             }

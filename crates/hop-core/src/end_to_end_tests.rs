@@ -3543,7 +3543,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = (-123) in {
+                  let v0 = -123 in {
                     write_string(v0.to_string())
                   }
                 }
@@ -3586,7 +3586,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = (-2.9) in {
+                  let v0 = -2.9 in {
                     write_string(v0.to_int().to_string())
                   }
                 }
@@ -11844,6 +11844,60 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn function_with_negative_default_parameters() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Offset(dx: Int = -1, scale: Float = -2.5) -> Html {
+                  <div>
+                    {(dx * 3).to_string()} {(scale * 2.0).to_int().to_string()}
+                  </div>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Offset/>
+                  }
+                }
+            "#},
+            r#"<div>-3 -5</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Offset@f0(dx@v0: Int, scale@v1: Float) -> Html {
+                  write("<div")
+                  write(">")
+                  write_string((v0 * 3).to_string())
+                  write(" ")
+                  write_string((v1 * 2).to_int().to_string())
+                  write("</div>")
+                }
+                page Test() {
+                  call Offset@f0(dx = -1, scale = -2.5)
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div>-3 -5</div>")
+                }
+                -- expected output --
+                <div>-3 -5</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn function_with_default_parameter_overridden() {
         check(
             indoc! {r#"
@@ -15621,7 +15675,7 @@ mod tests {
                 fn Wrapper@f0() -> Html {
                   write("<div")
                   write(">")
-                  for v0 in 0..=call foo@f1(x = (-7)) {
+                  for v0 in 0..=call foo@f1(x = -7) {
                     write_string(v0.to_string())
                     write(",")
                   }

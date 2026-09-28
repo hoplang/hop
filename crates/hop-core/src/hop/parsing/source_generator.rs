@@ -32,9 +32,10 @@ const STRING_LITERALS: &[&str] = &[
 ];
 
 const INT_LITERALS_POSITIVE: &[&str] = &["0", "1", "42", "2147483647"];
-const INT_LITERALS_NEGATIVE: &[&str] = &["-2147483648"];
+const INT_LITERALS_NEGATIVE: &[&str] = &["-1", "-42", "-2147483648"];
 
-const FLOAT_LITERALS: &[&str] = &["0.5", "1.0", "3.25", "100.125"];
+const FLOAT_LITERALS_POSITIVE: &[&str] = &["0.5", "1.0", "3.25", "100.125"];
+const FLOAT_LITERALS_NEGATIVE: &[&str] = &["-0.5", "-3.25"];
 
 const BINARY_OPERATORS: &[&str] = &["==", "!=", "<", ">", "<=", ">=", "&&", "||", "+", "-", "*"];
 
@@ -330,7 +331,7 @@ fn unary(
         out.push_str(u.choose(&["!", "-", "- "])?);
     }
     // Decided before the primary: postfix binds tighter than unary minus,
-    // so a negative int literal cannot stand where a `.` chain follows.
+    // so a negative literal cannot stand where a `.` chain follows.
     let postfix_follows = u.int_in_range(0..=3)? == 3;
     primary(u, depth, restrictions, postfix_follows, out)?;
     if postfix_follows {
@@ -411,7 +412,15 @@ fn primary(
             };
             out.push_str(u.choose(literals)?);
         }
-        P::Float => out.push_str(u.choose(FLOAT_LITERALS)?),
+        P::Float => {
+            let negative = !postfix_follows && u.arbitrary()?;
+            let literals = if negative {
+                FLOAT_LITERALS_NEGATIVE
+            } else {
+                FLOAT_LITERALS_POSITIVE
+            };
+            out.push_str(u.choose(literals)?);
+        }
         P::None => out.push_str("None"),
         P::EnumUnit => {
             out.push_str(u.choose(TYPE_NAMES)?);

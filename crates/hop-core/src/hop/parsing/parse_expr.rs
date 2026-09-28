@@ -186,20 +186,32 @@ fn parse_unary(
             None
         } else {
             next_if_map(iter, comments, errors, |token| match token {
-                LangToken::IntLiteral(digits)
-                    if int_literal_value(digits.as_str(), false).is_none() =>
-                {
-                    Some(digits)
-                }
+                LangToken::IntLiteral(_) | LangToken::FloatLiteral(_) => Some(token),
                 _ => None,
             })
         };
-        if let Some((digits, lit_range)) = folded {
-            let range = operator_range.to(lit_range);
-            let value = int_literal_value(digits.as_str(), true).ok_or_else(|| {
-                errors.emit(ParseErrorKind::IntLiteralOutOfRange {}, range.clone())
-            })?;
-            Ok(ParsedExpr::IntLiteral { value, range })
+        if let Some((token, digits_range)) = folded {
+            let range = operator_range.clone().to(digits_range.clone());
+            match token {
+                LangToken::IntLiteral(digits) => {
+                    let value = int_literal_value(digits.as_str(), true).ok_or_else(|| {
+                        errors.emit(ParseErrorKind::IntLiteralOutOfRange {}, range.clone())
+                    })?;
+                    Ok(ParsedExpr::IntLiteral {
+                        value,
+                        minus_range: Some(operator_range),
+                        digits_range,
+                        range,
+                    })
+                }
+                LangToken::FloatLiteral(value) => Ok(ParsedExpr::FloatLiteral {
+                    value: -value,
+                    minus_range: Some(operator_range),
+                    digits_range,
+                    range,
+                }),
+                _ => unreachable!(),
+            }
         } else {
             // Right associative for multiple -
             let expr = parse_unary(iter, comments, errors, restrictions)?;
@@ -329,6 +341,8 @@ pub fn parse_primary(
         })?;
         ParsedExpr::IntLiteral {
             value,
+            minus_range: None,
+            digits_range: lit_range.clone(),
             range: lit_range,
         }
     } else if let Some((value, lit_range)) =
@@ -339,6 +353,8 @@ pub fn parse_primary(
     {
         ParsedExpr::FloatLiteral {
             value,
+            minus_range: None,
+            digits_range: lit_range.clone(),
             range: lit_range,
         }
     } else if let Some(left_bracket) = next_if_eq(iter, comments, errors, LangToken::LeftBracket) {
@@ -2316,6 +2332,16 @@ mod tests {
             "(-2147483648).abs()",
             expect![[r#"
                 (-2147483648).abs()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_negative_float_literal_with_space_after_minus() {
+        accept(
+            "- 1.5",
+            expect![[r#"
+                -1.5
             "#]],
         );
     }

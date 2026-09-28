@@ -4547,6 +4547,33 @@ mod tests {
     }
 
     #[test]
+    fn accepts_negative_numeric_literals_as_default_values() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Offset(dx: Int = -1, scale: Float = - 1.5) -> Html {
+                  <>
+                    {dx.to_string()} {scale.to_int().to_string()}
+                  </>
+                }
+                fn Main() -> Html {
+                  <Offset />
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  Offset(dx: -1, scale: -1.5)
+                }
+
+                fn Offset(dx: Int, scale: Float) -> Html {
+                  concat(escape(dx.to_string()), raw(" "), escape(scale.to_int().to_string()))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_when_required_param_is_missing_but_default_param_is_provided() {
         reject(
             indoc! {r#"
