@@ -8,7 +8,7 @@ use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::variable_scope::VariableScope;
-use crate::hop::typing::{TypedAttribute, TypedAttributeValue};
+use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedAttrs};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
@@ -135,12 +135,14 @@ pub fn typecheck_node(
                 asset_references,
             )?;
 
-            let mut args = resolved_args;
-
-            match callee_rest_param {
-                Some(rest_param) => {
-                    args.push((rest_param, attrs_expr(extra_attributes, rest_spread)));
-                }
+            let rest = match callee_rest_param {
+                Some(rest_param) => Some((
+                    rest_param,
+                    TypedAttrs {
+                        attributes: extra_attributes,
+                        spread: rest_spread,
+                    },
+                )),
                 None => {
                     // A spread into a callee that declares no rest is not a
                     // mistake: the spread was carrying typed parameters, and
@@ -151,13 +153,15 @@ pub fn typecheck_node(
                         "<{}> declares no rest, but the call site supplies attributes for one",
                         function_name.as_str()
                     );
+                    None
                 }
-            }
+            };
 
             Some(TypedExpr::FunctionCall {
                 function_name: function_name.clone(),
                 module: callee_module,
-                args,
+                args: resolved_args,
+                rest,
                 typ: Type::Html,
             })
         }
@@ -215,15 +219,15 @@ pub fn typecheck_node(
 
             Some(TypedExpr::HtmlElement {
                 element: element.clone(),
-                attrs: Box::new(attrs_expr(
-                    typed_attributes,
-                    attributes.iter().find_map(|a| match a {
+                attrs: TypedAttrs {
+                    attributes: typed_attributes,
+                    spread: attributes.iter().find_map(|a| match a {
                         ParsedAttribute::Spread { name, .. } => Some(name.clone()),
                         ParsedAttribute::KeyOnly { .. }
                         | ParsedAttribute::Expression { .. }
                         | ParsedAttribute::String { .. } => None,
                     }),
-                )),
+                },
                 children: Box::new(TypedExpr::HtmlConcat {
                     nodes: typed_children,
                 }),
@@ -320,22 +324,6 @@ fn typecheck_attribute_value(
             Some(TypedAttributeValue::String(string_span))
         }
         ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => None,
-    }
-}
-
-fn attrs_expr(attributes: Vec<TypedAttribute>, spread: Option<VarName>) -> TypedExpr {
-    let literal = TypedExpr::AttrsLiteral { attributes };
-    match spread {
-        Some(name) => TypedExpr::AttrsConcat {
-            parts: vec![
-                literal,
-                TypedExpr::Var {
-                    value: name,
-                    typ: Type::Attrs,
-                },
-            ],
-        },
-        None => literal,
     }
 }
 

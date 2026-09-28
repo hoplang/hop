@@ -16,10 +16,7 @@ use super::r#type::{ComparableType, EquatableType, NumericType, Type};
 #[derive(Debug, Clone)]
 pub enum TypedExpr {
     /// A variable expression, e.g. foo
-    Var {
-        value: VarName,
-        typ: Type,
-    },
+    Var { value: VarName, typ: Type },
 
     /// A field access expression, e.g. foo.bar
     FieldAccess {
@@ -29,30 +26,19 @@ pub enum TypedExpr {
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral {
-        value: CheapString,
-    },
+    StringLiteral { value: CheapString },
 
     /// A boolean literal expression, e.g. true
-    BooleanLiteral {
-        value: bool,
-    },
+    BooleanLiteral { value: bool },
 
     /// A float literal expression, e.g. 2.5
-    FloatLiteral {
-        value: f64,
-    },
+    FloatLiteral { value: f64 },
 
     /// An integer literal expression, e.g. 42
-    IntLiteral {
-        value: i32,
-    },
+    IntLiteral { value: i32 },
 
     /// An array literal expression, e.g. [1, 2, 3]
-    ArrayLiteral {
-        elements: Vec<Self>,
-        typ: Type,
-    },
+    ArrayLiteral { elements: Vec<Self>, typ: Type },
 
     /// A record literal expression, e.g. User(name: "John", age: 30)
     RecordLiteral {
@@ -85,9 +71,7 @@ pub enum TypedExpr {
 
     /// String concatenation expression for joining a sequence of string
     /// expressions.
-    StringConcat {
-        parts: Vec<Self>,
-    },
+    StringConcat { parts: Vec<Self> },
 
     /// Numeric addition expression for adding numeric values
     NumericAdd {
@@ -111,9 +95,7 @@ pub enum TypedExpr {
     },
 
     /// Boolean negation expression
-    BooleanNegation {
-        operand: Box<Self>,
-    },
+    BooleanNegation { operand: Box<Self> },
 
     /// Numeric negation expression
     NumericNegation {
@@ -122,16 +104,10 @@ pub enum TypedExpr {
     },
 
     /// Boolean logical AND expression
-    BooleanLogicalAnd {
-        left: Box<Self>,
-        right: Box<Self>,
-    },
+    BooleanLogicalAnd { left: Box<Self>, right: Box<Self> },
 
     /// Boolean logical OR expression
-    BooleanLogicalOr {
-        left: Box<Self>,
-        right: Box<Self>,
-    },
+    BooleanLogicalOr { left: Box<Self>, right: Box<Self> },
 
     /// Equals expression
     Equals {
@@ -192,82 +168,50 @@ pub enum TypedExpr {
     },
 
     /// Array length expression, e.g. items.len()
-    ArrayLength {
-        array: Box<Self>,
-    },
+    ArrayLength { array: Box<Self> },
 
     /// Array is empty expression, e.g. items.is_empty()
-    ArrayIsEmpty {
-        array: Box<Self>,
-    },
+    ArrayIsEmpty { array: Box<Self> },
 
     /// String is empty expression, e.g. name.is_empty()
-    StringIsEmpty {
-        string: Box<Self>,
-    },
+    StringIsEmpty { string: Box<Self> },
 
     /// Option is_some expression, e.g. maybe_value.is_some()
-    OptionIsSome {
-        option: Box<Self>,
-    },
+    OptionIsSome { option: Box<Self> },
 
     /// Option is_none expression, e.g. maybe_value.is_none()
-    OptionIsNone {
-        option: Box<Self>,
-    },
+    OptionIsNone { option: Box<Self> },
 
     /// Int to string conversion, e.g. count.to_string()
-    IntToString {
-        value: Box<Self>,
-    },
+    IntToString { value: Box<Self> },
 
     /// Float to int conversion, e.g. price.to_int()
-    FloatToInt {
-        value: Box<Self>,
-    },
+    FloatToInt { value: Box<Self> },
 
     /// Int to float conversion, e.g. count.to_float()
-    IntToFloat {
-        value: Box<Self>,
-    },
+    IntToFloat { value: Box<Self> },
 
     /// Concatenation of Html
-    HtmlConcat {
-        nodes: Vec<Self>,
-    },
+    HtmlConcat { nodes: Vec<Self> },
 
     /// Literal markup text, e.g. `Hello`.
     /// Trusted and emitted without escaping.
-    HtmlRaw {
-        value: CheapString,
-    },
+    HtmlRaw { value: CheapString },
 
     /// An interpolation in markup, e.g. `{name}`.
     /// HTML-escapes a String-typed expression into Html.
-    HtmlEscape {
-        expr: Box<Self>,
-    },
+    HtmlEscape { expr: Box<Self> },
 
     /// An HTML element, e.g. `<div class="x">...</div>`
     HtmlElement {
         element: HtmlElementKind,
-        attrs: Box<Self>,
+        attrs: TypedAttrs,
         children: Box<Self>,
-    },
-
-    AttrsConcat {
-        parts: Vec<Self>,
-    },
-
-    AttrsLiteral {
-        attributes: Vec<TypedAttribute>,
     },
 
     /// An asset reference, e.g. asset!("/logo.svg"), resolved to a path
     /// relative to the project root.
-    Asset {
-        path: RootRelativeFilePath,
-    },
+    Asset { path: RootRelativeFilePath },
 
     /// A function call expression, e.g. foo(1, 2)
     FunctionCall {
@@ -275,6 +219,8 @@ pub enum TypedExpr {
         /// The module that declares the callee.
         module: RootContainedFilePath,
         args: Vec<(VarName, Self)>,
+        /// The callee's rest parameter and the attributes it receives.
+        rest: Option<(VarName, TypedAttrs)>,
         typ: Type,
     },
 }
@@ -297,12 +243,46 @@ pub struct TypedAttribute {
     pub value: Option<TypedAttributeValue>,
 }
 
+/// The attributes an element or a rest parameter receives: those written at
+/// the site, followed by those forwarded through a `{...rest}` spread.
+#[derive(Debug, Clone)]
+pub struct TypedAttrs {
+    pub attributes: Vec<TypedAttribute>,
+    pub spread: Option<VarName>,
+}
+
 impl TypedAttribute {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let name_doc = BoxDoc::text(self.name.as_str());
         match &self.value {
             Some(value) => name_doc.append(BoxDoc::text(": ")).append(value.to_doc()),
             None => name_doc,
+        }
+    }
+}
+
+impl TypedAttrs {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        let mut items: Vec<BoxDoc<'_>> = self.attributes.iter().map(|attr| attr.to_doc()).collect();
+        if let Some(spread) = &self.spread {
+            items.push(BoxDoc::text(format!("...{}", spread.as_str())));
+        }
+        if items.is_empty() {
+            BoxDoc::text("[]")
+        } else {
+            BoxDoc::text("[")
+                .append(
+                    BoxDoc::line_()
+                        .append(BoxDoc::intersperse(
+                            items,
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(BoxDoc::text("]"))
         }
     }
 }
@@ -372,8 +352,6 @@ impl TypedExpr {
             | TypedExpr::HtmlRaw { .. }
             | TypedExpr::HtmlEscape { .. }
             | TypedExpr::HtmlElement { .. } => Type::Html,
-
-            TypedExpr::AttrsConcat { .. } | TypedExpr::AttrsLiteral { .. } => Type::Attrs,
         }
     }
 
@@ -395,26 +373,6 @@ impl TypedExpr {
                             .group(),
                     )
                     .append(BoxDoc::text(")"))
-            }
-        }
-
-        fn bracketed_to_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
-            if items.is_empty() {
-                BoxDoc::text("[]")
-            } else {
-                BoxDoc::text("[")
-                    .append(
-                        BoxDoc::line_()
-                            .append(BoxDoc::intersperse(
-                                items,
-                                BoxDoc::text(",").append(BoxDoc::line()),
-                            ))
-                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                            .append(BoxDoc::line_())
-                            .nest(2)
-                            .group(),
-                    )
-                    .append(BoxDoc::text("]"))
             }
         }
 
@@ -695,10 +653,6 @@ impl TypedExpr {
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
             TypedExpr::HtmlConcat { nodes } => concat_to_doc(nodes),
-            TypedExpr::AttrsConcat { parts } => concat_to_doc(parts),
-            TypedExpr::AttrsLiteral { attributes } => {
-                bracketed_to_doc(attributes.iter().map(|attr| attr.to_doc()).collect())
-            }
             TypedExpr::HtmlRaw { value } => BoxDoc::text("raw(")
                 .append(BoxDoc::text(format!("{:?}", value.as_str())))
                 .append(")"),
@@ -763,17 +717,21 @@ impl TypedExpr {
             TypedExpr::FunctionCall {
                 function_name,
                 args,
+                rest,
                 ..
             } => BoxDoc::text(function_name.as_str())
                 .append(BoxDoc::text("("))
                 .append(
                     BoxDoc::line_()
                         .append(BoxDoc::intersperse(
-                            args.iter().map(|(name, e)| {
-                                BoxDoc::text(name.as_str())
-                                    .append(BoxDoc::text(": "))
-                                    .append(e.to_doc())
-                            }),
+                            args.iter()
+                                .map(|(name, e)| (name, e.to_doc()))
+                                .chain(rest.iter().map(|(name, attrs)| (name, attrs.to_doc())))
+                                .map(|(name, doc)| {
+                                    BoxDoc::text(name.as_str())
+                                        .append(BoxDoc::text(": "))
+                                        .append(doc)
+                                }),
                             BoxDoc::text(",").append(BoxDoc::line()),
                         ))
                         .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))

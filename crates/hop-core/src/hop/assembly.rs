@@ -1,7 +1,7 @@
 use crate::document::CheapString;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::typed_ast::{TypedPageDeclaration, TypedParameter};
-use crate::hop::typing::{TypedAttribute, TypedAttributeValue};
+use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedAttrs};
 use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use pretty::BoxDoc;
@@ -135,9 +135,10 @@ fn fragment_nodes(expr: TypedExpr) -> Vec<TypedExpr> {
 fn create_html_element(element: HtmlElementKind, children: Vec<TypedExpr>) -> TypedExpr {
     TypedExpr::HtmlElement {
         element,
-        attrs: Box::new(TypedExpr::AttrsLiteral {
+        attrs: TypedAttrs {
             attributes: Vec::new(),
-        }),
+            spread: None,
+        },
         children: Box::new(TypedExpr::HtmlConcat { nodes: children }),
     }
 }
@@ -155,19 +156,21 @@ fn create_meta_elements() -> Vec<TypedExpr> {
     vec![
         TypedExpr::HtmlElement {
             element: HtmlElementKind::Meta,
-            attrs: Box::new(TypedExpr::AttrsLiteral {
+            attrs: TypedAttrs {
                 attributes: vec![create_attribute("charset", "utf-8")],
-            }),
+                spread: None,
+            },
             children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
         },
         TypedExpr::HtmlElement {
             element: HtmlElementKind::Meta,
-            attrs: Box::new(TypedExpr::AttrsLiteral {
+            attrs: TypedAttrs {
                 attributes: vec![
                     create_attribute("content", "width=device-width, initial-scale=1"),
                     create_attribute("name", "viewport"),
                 ],
-            }),
+                spread: None,
+            },
             children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
         },
     ]
@@ -180,9 +183,10 @@ fn create_style_element(css_content: &str) -> TypedExpr {
 
     TypedExpr::HtmlElement {
         element: HtmlElementKind::Style,
-        attrs: Box::new(TypedExpr::AttrsLiteral {
+        attrs: TypedAttrs {
             attributes: Vec::new(),
-        }),
+            spread: None,
+        },
         children: Box::new(TypedExpr::HtmlConcat {
             nodes: vec![css_text],
         }),
@@ -192,12 +196,13 @@ fn create_style_element(css_content: &str) -> TypedExpr {
 fn create_link_element(href: &str) -> TypedExpr {
     TypedExpr::HtmlElement {
         element: HtmlElementKind::Link,
-        attrs: Box::new(TypedExpr::AttrsLiteral {
+        attrs: TypedAttrs {
             attributes: vec![
                 create_attribute("rel", "stylesheet"),
                 create_attribute("href", href),
             ],
-        }),
+            spread: None,
+        },
         children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
     }
 }
@@ -212,12 +217,13 @@ fn create_tailwind_element(injection: TailwindInjection<'_>) -> TypedExpr {
 fn create_script_element(src: &str) -> TypedExpr {
     TypedExpr::HtmlElement {
         element: HtmlElementKind::Script,
-        attrs: Box::new(TypedExpr::AttrsLiteral {
+        attrs: TypedAttrs {
             attributes: vec![
                 create_attribute("type", "module"),
                 create_attribute("src", src),
             ],
-        }),
+            spread: None,
+        },
         children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
     }
 }
@@ -236,9 +242,10 @@ mod tests {
     fn element(tag_name: &str, children: Vec<TypedExpr>) -> TypedExpr {
         TypedExpr::HtmlElement {
             element: HtmlElementKind::parse(tag_name).expect("unrecognized tag name"),
-            attrs: Box::new(TypedExpr::AttrsLiteral {
+            attrs: TypedAttrs {
                 attributes: Vec::new(),
-            }),
+                spread: None,
+            },
             children: Box::new(TypedExpr::HtmlConcat { nodes: children }),
         }
     }

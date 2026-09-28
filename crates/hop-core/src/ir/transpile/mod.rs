@@ -132,7 +132,6 @@ pub trait Transpiler {
             Type::Float => self.transpile_float_type(arena),
             Type::Int => self.transpile_int_type(arena),
             Type::Html => self.transpile_html_type(arena),
-            Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
             Type::Array(elem) => self.transpile_array_type(arena, elem),
             Type::Option(inner) => self.transpile_option_type(arena, inner),
             Type::Tuple(elements) => self.transpile_tuple_type(arena, elements),

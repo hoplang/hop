@@ -2194,6 +2194,7 @@ pub fn typecheck_expr(
                 function_name: callee,
                 module: callee_module,
                 args: typed_args?,
+                rest: None,
                 typ: signature.return_type.clone(),
             })
         }

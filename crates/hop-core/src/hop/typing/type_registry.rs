@@ -110,7 +110,6 @@ impl TypeRegistry {
             Type::Int => Some(ResolvedType::Int),
             Type::Float => Some(ResolvedType::Float),
             Type::Html => Some(ResolvedType::Html),
-            Type::Attrs => None,
             Type::Array(inner) => Some(ResolvedType::Array(inner)),
             Type::Option(inner) => Some(ResolvedType::Option(inner)),
             Type::Tuple(elements) => Some(ResolvedType::Tuple(elements)),

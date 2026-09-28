@@ -32,6 +32,7 @@ pub struct TypedParameter {
 pub struct TypedFunctionDeclaration {
     pub name: FunctionName,
     pub params: Vec<TypedParameter>,
+    pub rest_param: Option<VarName>,
     pub return_type: Type,
     pub body: TypedExpr,
 }
@@ -136,11 +137,18 @@ impl TypedPageDeclaration {
 impl TypedFunctionDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let params_doc = BoxDoc::intersperse(
-            self.params.iter().map(|param| {
-                BoxDoc::text(param.var_name.as_str())
-                    .append(BoxDoc::text(": "))
-                    .append(param.var_type.to_doc())
-            }),
+            self.params
+                .iter()
+                .map(|param| {
+                    BoxDoc::text(param.var_name.as_str())
+                        .append(BoxDoc::text(": "))
+                        .append(param.var_type.to_doc())
+                })
+                .chain(
+                    self.rest_param
+                        .iter()
+                        .map(|rest| BoxDoc::text(format!("...{}", rest.as_str()))),
+                ),
             BoxDoc::text(", "),
         );
 

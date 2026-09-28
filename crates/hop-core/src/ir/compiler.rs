@@ -95,18 +95,20 @@ impl<'a> Compiler<'a> {
     ) -> PureFunctionDeclaration {
         self.push_scope();
 
-        let mut parameters = Vec::with_capacity(decl.params.len());
+        let mut parameters = Vec::with_capacity(decl.params.len() + 1);
         for param in &decl.params {
             parameters.push(WriterParameter {
                 var: self.bind(&param.var_name),
                 name: param.var_name.clone(),
-                typ: {
-                    let typ: &Type = &param.var_type;
-                    match *typ {
-                        Type::Attrs => Type::Html,
-                        _ => typ.clone(),
-                    }
-                },
+                typ: param.var_type.clone(),
+            });
+        }
+        // The rest parameter receives its attributes pre-rendered as Html.
+        if let Some(rest) = &decl.rest_param {
+            parameters.push(WriterParameter {
+                var: self.bind(rest),
+                name: rest.clone(),
+                typ: Type::Html,
             });
         }
 
@@ -214,10 +216,7 @@ impl<'a> Compiler<'a> {
         match expr {
             TypedExpr::Var { value, typ, .. } => PureExpr::VariableReference {
                 value: self.resolve(value),
-                typ: match *typ {
-                    Type::Attrs => Type::Html,
-                    _ => typ.clone(),
-                },
+                typ: typ.clone(),
                 id: expr_id,
             },
             TypedExpr::FieldAccess {
@@ -503,17 +502,6 @@ impl<'a> Compiler<'a> {
                 }
                 PureExpr::HtmlConcat { parts, id: expr_id }
             }
-            TypedExpr::AttrsConcat { parts } => PureExpr::HtmlConcat {
-                parts: parts.iter().map(|part| self.compile_expr(part)).collect(),
-                id: expr_id,
-            },
-            TypedExpr::AttrsLiteral { attributes } => {
-                let mut parts = Vec::new();
-                for attr in attributes {
-                    self.compile_attribute(attr, &mut parts);
-                }
-                PureExpr::HtmlConcat { parts, id: expr_id }
-            }
             TypedExpr::HtmlRaw { value } => PureExpr::HtmlRaw {
                 content: value.to_string(),
                 id: expr_id,
@@ -538,7 +526,16 @@ impl<'a> Compiler<'a> {
                     content: format!("<{}", element.as_str()),
                     id: self.next_expr_id(),
                 }];
-                parts.push(self.compile_expr(attrs));
+                for attr in &attrs.attributes {
+                    self.compile_attribute(attr, &mut parts);
+                }
+                if let Some(spread) = &attrs.spread {
+                    parts.push(PureExpr::VariableReference {
+                        value: self.resolve(spread),
+                        typ: Type::Html,
+                        id: self.next_expr_id(),
+                    });
+                }
                 parts.push(PureExpr::HtmlRaw {
                     content: ">".to_string(),
                     id: self.next_expr_id(),
@@ -556,19 +553,41 @@ impl<'a> Compiler<'a> {
                 function_name,
                 module,
                 args,
+                rest,
                 typ,
-            } => PureExpr::FunctionCall {
-                function: self.declared[&(module.clone(), function_name.clone())].clone(),
-                args: args
+            } => {
+                let mut compiled_args: Vec<PureArgument> = args
                     .iter()
                     .map(|(name, value)| PureArgument {
                         name: name.clone(),
                         expr: self.compile_expr(value),
                     })
-                    .collect(),
-                typ: typ.clone(),
-                id: expr_id,
-            },
+                    .collect();
+                if let Some((rest_param, attrs)) = rest {
+                    let id = self.next_expr_id();
+                    let mut parts = Vec::new();
+                    for attr in &attrs.attributes {
+                        self.compile_attribute(attr, &mut parts);
+                    }
+                    if let Some(spread) = &attrs.spread {
+                        parts.push(PureExpr::VariableReference {
+                            value: self.resolve(spread),
+                            typ: Type::Html,
+                            id: self.next_expr_id(),
+                        });
+                    }
+                    compiled_args.push(PureArgument {
+                        name: rest_param.clone(),
+                        expr: PureExpr::HtmlConcat { parts, id },
+                    });
+                }
+                PureExpr::FunctionCall {
+                    function: self.declared[&(module.clone(), function_name.clone())].clone(),
+                    args: compiled_args,
+                    typ: typ.clone(),
+                    id: expr_id,
+                }
+            }
             TypedExpr::Let {
                 var,
                 value,
@@ -748,7 +767,6 @@ mod tests {
                   concat(
                     concat(
                       raw("<div"),
-                      concat(),
                       raw(">"),
                       concat(raw("Content")),
                       raw("</div>"),
@@ -796,7 +814,6 @@ mod tests {
                         concat(
                           concat(
                             raw("<div"),
-                            concat(),
                             raw(">"),
                             concat(raw("Visible")),
                             raw("</div>"),
@@ -856,14 +873,12 @@ mod tests {
                   concat(
                     concat(
                       raw("<ul"),
-                      concat(),
                       raw(">"),
                       concat(
                         for v1 in v0 {
                           concat(
                             concat(
                               raw("<li"),
-                              concat(),
                               raw(">"),
                               concat(escape(v1)),
                               raw("</li>"),
@@ -909,7 +924,8 @@ mod tests {
                   concat(
                     concat(
                       raw("<div"),
-                      concat(raw(" class=\"base\""), raw(" id=\"test\"")),
+                      raw(" class=\"base\""),
+                      raw(" id=\"test\""),
                       raw(">"),
                       concat(raw("Content")),
                       raw("</div>"),
@@ -956,12 +972,10 @@ mod tests {
                   concat(
                     concat(
                       raw("<div"),
-                      concat(
-                        raw(" class=\"base\""),
-                        raw(" data-value=\""),
-                        escape(v0),
-                        raw("\""),
-                      ),
+                      raw(" class=\"base\""),
+                      raw(" data-value=\""),
+                      escape(v0),
+                      raw("\""),
                       raw(">"),
                       concat(raw("Content")),
                       raw("</div>"),
@@ -1011,7 +1025,6 @@ mod tests {
                   concat(
                     concat(
                       raw("<div"),
-                      concat(),
                       raw(">"),
                       concat(
                         raw("Hello "),
@@ -1094,7 +1107,6 @@ mod tests {
                   concat(
                     concat(
                       raw("<script"),
-                      concat(),
                       raw(">"),
                       concat(raw("alert(\"hi\")")),
                       raw("</script>"),
@@ -1121,7 +1133,7 @@ mod tests {
 
                 -- after --
                 page MainComp() {
-                  concat(concat(raw("<br"), concat(), raw(">")))
+                  concat(concat(raw("<br"), raw(">")))
                 }
             "#]],
         );

@@ -5,7 +5,7 @@ use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::typed_ast::TypedParameter;
-use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
+use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedAttrs, TypedLoopSource};
 use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -172,7 +172,10 @@ impl TypedAstBuilder {
         self.children.push(TypedExpr::HtmlElement {
             element: HtmlElementKind::parse(tag_name)
                 .expect("builder html() called with an unrecognized tag name"),
-            attrs: Box::new(TypedExpr::AttrsLiteral { attributes: attrs }),
+            attrs: TypedAttrs {
+                attributes: attrs,
+                spread: None,
+            },
             children: Box::new(TypedExpr::HtmlConcat {
                 nodes: inner_builder.children,
             }),

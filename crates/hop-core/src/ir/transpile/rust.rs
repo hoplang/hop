@@ -416,7 +416,6 @@ impl RustTranspiler {
             | Type::Tuple(_)
             | Type::Named { .. }
             | Type::Option(_) => false,
-            Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
         }
     }
 
@@ -431,7 +430,6 @@ impl RustTranspiler {
                 self.needs_html = true;
                 arena.text("&Html")
             }
-            Type::Attrs => unreachable!("Attrs is erased to Html before the IR"),
             Type::Array(elem) => arena
                 .text("&[")
                 .append(self.transpile_type(arena, elem))

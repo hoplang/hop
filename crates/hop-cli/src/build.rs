@@ -606,9 +606,10 @@ mod tests {
                     output += "<!doctype html><html><head><meta charset=\"utf-8\">";
                     output += "<meta content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\">";
-                    output += "<link rel=\"icon\" href=\"/static/v1/logo-ffe99b60.svg\"><link";
-                    output += " rel=\"stylesheet\" href=\"/static/v1/styles-00000000.css\">";
-                    output += "</head><body></body></html>";
+                    output += "<link rel=\"icon\" href=\"/static/v1/logo-ffe99b60.svg\">";
+                    output += "<link rel=\"stylesheet\"";
+                    output += " href=\"/static/v1/styles-00000000.css\"></head><body></body>";
+                    output += "</html>";
                     return output;
                 }
                 -- dist/public/logo-ffe99b60.svg --
@@ -1283,10 +1284,9 @@ mod tests {
                     let output: string = "";
                     output += "<!doctype html><html><head><meta charset=\"utf-8\">";
                     output += "<meta content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link";
-                    output += " rel=\"stylesheet\" href=\"/static/v1/styles-00000000.css\">";
-                    output += "</head><body><div class=\"text-red-500\">hi</div></body>";
-                    output += "</html>";
+                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
+                    output += " href=\"/static/v1/styles-00000000.css\"></head>";
+                    output += "<body><div class=\"text-red-500\">hi</div></body></html>";
                     return output;
                 }
                 -- dist/public/styles-00000000.css --
@@ -1369,8 +1369,8 @@ mod tests {
                     fn write(self, output: &mut String) {
                         output.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
                         output.push_str("<meta content=\"width=device-width, initial-scale=1\"");
-                        output.push_str(" name=\"viewport\"><link");
-                        output.push_str(" rel=\"stylesheet\" href=\"/static/v1/styles-00000000.css\">");
+                        output.push_str(" name=\"viewport\"><link rel=\"stylesheet\"");
+                        output.push_str(" href=\"/static/v1/styles-00000000.css\">");
                         output.push_str("<script type=\"module\" src=\"/static/v1/scripts-27809078.js\">");
                         output.push_str("</script></head>");
                         output.push_str("<body><div class=\"text-red-500\">hi</div></body></html>");
@@ -1592,9 +1592,9 @@ mod tests {
                     let output: string = "";
                     output += "<!doctype html><html><head><meta charset=\"utf-8\">";
                     output += "<meta content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link";
-                    output += " rel=\"stylesheet\" href=\"/static/v1/styles-19d4bb7c.css\">";
-                    output += "</head><body><div>hi</div></body></html>";
+                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
+                    output += " href=\"/static/v1/styles-19d4bb7c.css\"></head>";
+                    output += "<body><div>hi</div></body></html>";
                     return output;
                 }
                 -- dist/public/inter-1c757f7b.woff2 --

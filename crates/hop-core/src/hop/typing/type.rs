@@ -12,7 +12,6 @@ pub enum Type {
     Int,
     Float,
     Html,
-    Attrs,
     Array(Box<Type>),
     Option(Box<Type>),
     Tuple(Vec<Type>),
@@ -55,12 +54,9 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::Option(_)
-            | Type::Html
-            | Type::Attrs
-            | Type::Array(_)
-            | Type::Tuple(_)
-            | Type::Named { .. } => None,
+            Type::Option(_) | Type::Html | Type::Array(_) | Type::Tuple(_) | Type::Named { .. } => {
+                None
+            }
         }
     }
 
@@ -71,7 +67,6 @@ impl Type {
             Type::Bool
             | Type::String
             | Type::Html
-            | Type::Attrs
             | Type::Array(_)
             | Type::Option(_)
             | Type::Tuple(_)
@@ -87,7 +82,6 @@ impl Type {
             | Type::Int
             | Type::Float
             | Type::Html
-            | Type::Attrs
             | Type::Array(_)
             | Type::Tuple(_) => false,
         }
@@ -108,7 +102,6 @@ impl<'a> Type {
             Type::Int => BoxDoc::text("Int"),
             Type::Bool => BoxDoc::text("Bool"),
             Type::Html => BoxDoc::text("Html"),
-            Type::Attrs => BoxDoc::text("Attrs"),
             Type::Array(elem_type) => BoxDoc::nil()
                 .append(BoxDoc::text("Array["))
                 .append(elem_type.to_doc())
