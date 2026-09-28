@@ -3421,7 +3421,7 @@ mod tests {
             &[],
             r#"User {name: "John", name: "Jane"}"#,
             expect![[r#"
-                error: Duplicate field 'name' in record literal for 'User'
+                error: Duplicate field 'name' in record 'User'
                 User {name: "John", name: "Jane"}
                                     ^^^^
             "#]],
@@ -3435,7 +3435,7 @@ mod tests {
             &[],
             r#"User {name: "John", name: 42}"#,
             expect![[r#"
-                error: Duplicate field 'name' in record literal for 'User'
+                error: Duplicate field 'name' in record 'User'
                 User {name: "John", name: 42}
                                     ^^^^
             "#]],
@@ -3539,7 +3539,7 @@ mod tests {
             &[("user", "User")],
             r#"User {...user, name: "John", name: "Jane"}"#,
             expect![[r#"
-                error: Duplicate field 'name' in record literal for 'User'
+                error: Duplicate field 'name' in record 'User'
                 User {...user, name: "John", name: "Jane"}
                                              ^^^^
             "#]],
@@ -3790,7 +3790,7 @@ mod tests {
             &[],
             "Point::XY {x: 1, x: 2, y: 3}",
             expect![[r#"
-                error: Duplicate field 'x' in enum variant literal for 'Point::XY'
+                error: Duplicate field 'x' in enum variant 'Point::XY'
                 Point::XY {x: 1, x: 2, y: 3}
                                  ^
             "#]],

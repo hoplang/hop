@@ -265,7 +265,7 @@ pub(crate) enum TypeErrorKind {
         found: Type,
     },
 
-    #[error("Duplicate field '{field_name}' in record literal for '{record_name}'")]
+    #[error("Duplicate field '{field_name}' in record '{record_name}'")]
     RecordDuplicateField {
         field_name: FieldName,
         record_name: TypeName,
@@ -306,9 +306,7 @@ pub(crate) enum TypeErrorKind {
         found: Type,
     },
 
-    #[error(
-        "Duplicate field '{field_name}' in enum variant literal for '{enum_name}::{variant_name}'"
-    )]
+    #[error("Duplicate field '{field_name}' in enum variant '{enum_name}::{variant_name}'")]
     EnumVariantDuplicateField {
         enum_name: TypeName,
         variant_name: TypeName,

@@ -218,7 +218,7 @@ pub fn typecheck_pattern(
                     return None;
                 };
 
-                let mut typed_fields = Vec::new();
+                let mut typed_fields: Vec<TypedField> = Vec::new();
                 for (field_name, field_name_range, field_pattern) in fields {
                     let found = variant_fields
                         .iter()
@@ -226,6 +226,17 @@ pub fn typecheck_pattern(
                         .find(|(_, f)| &f.name == field_name);
 
                     match found {
+                        Some(_) if typed_fields.iter().any(|f| &f.name == field_name) => {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::EnumVariantDuplicateField {
+                                    enum_name: pattern_enum_name.clone(),
+                                    variant_name: pattern_variant_name.clone(),
+                                    field_name: field_name.clone(),
+                                },
+                                field_name_range.clone(),
+                            ));
+                            return None;
+                        }
                         Some((index, field)) => {
                             typed_fields.push(TypedField {
                                 name: field_name.clone(),
@@ -301,7 +312,7 @@ pub fn typecheck_pattern(
                     return None;
                 }
 
-                let mut typed_fields = Vec::new();
+                let mut typed_fields: Vec<TypedField> = Vec::new();
                 for (field_name, field_name_range, field_pattern) in fields {
                     let found = subject_fields
                         .iter()
@@ -309,6 +320,16 @@ pub fn typecheck_pattern(
                         .find(|(_, f)| &f.name == field_name);
 
                     match found {
+                        Some(_) if typed_fields.iter().any(|f| &f.name == field_name) => {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::RecordDuplicateField {
+                                    field_name: field_name.clone(),
+                                    record_name: pattern_type_name.clone(),
+                                },
+                                field_name_range.clone(),
+                            ));
+                            return None;
+                        }
                         Some((index, field)) => {
                             typed_fields.push(TypedField {
                                 name: field_name.clone(),
@@ -603,6 +624,40 @@ mod tests {
                 error: Record 'User' is missing fields: age
                     User{name: n} => 0,
                     ^^^^
+            "#]],
+        );
+    }
+    #[test]
+    fn rejects_record_duplicate_field_in_pattern() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            "User",
+            indoc! {"
+                match x {
+                    User{name: _, name: _} => 0,
+                }
+            "},
+            expect![[r#"
+                error: Duplicate field 'name' in record 'User'
+                    User{name: _, name: _} => 0,
+                                  ^^^^
+            "#]],
+        );
+    }
+    #[test]
+    fn rejects_enum_variant_duplicate_field_in_pattern() {
+        reject(
+            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
+            "Point",
+            indoc! {"
+                match x {
+                    Point::XY{x: _, x: _} => 0,
+                }
+            "},
+            expect![[r#"
+                error: Duplicate field 'x' in enum variant 'Point::XY'
+                    Point::XY{x: _, x: _} => 0,
+                                    ^
             "#]],
         );
     }
