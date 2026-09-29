@@ -176,7 +176,7 @@ fn parse_unary(
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     if let Some(operator_range) = next_if_eq(iter, comments, errors, LangToken::Not) {
-        let expr = parse_unary(iter, comments, errors, restrictions)?; // Right associative for multiple !
+        let expr = parse_unary(iter, comments, errors, restrictions)?;
         Ok(ParsedExpr::BooleanNegation {
             range: operator_range.to(expr.range().clone()),
             operand: Box::new(expr),
@@ -213,7 +213,6 @@ fn parse_unary(
                 _ => unreachable!(),
             }
         } else {
-            // Right associative for multiple -
             let expr = parse_unary(iter, comments, errors, restrictions)?;
             Ok(ParsedExpr::NumericNegation {
                 range: operator_range.to(expr.range().clone()),
