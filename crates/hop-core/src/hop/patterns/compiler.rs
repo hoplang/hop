@@ -873,8 +873,8 @@ mod tests {
     use crate::document_annotator::DocumentAnnotator;
     use crate::hop::parsing::parse_expr;
     use crate::hop::parsing::parsed_expr::ParsedExpr;
-    use crate::hop::patterns::typed::typecheck_pattern;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::hop::typing::typecheck_pattern::typecheck_pattern;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

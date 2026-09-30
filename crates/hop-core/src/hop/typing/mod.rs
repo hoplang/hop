@@ -12,6 +12,7 @@ pub mod typecheck_call;
 pub mod typecheck_expr;
 pub mod typecheck_match;
 pub mod typecheck_node;
+pub mod typecheck_pattern;
 pub mod typed_ast;
 #[cfg(test)]
 pub mod typed_ast_builder;

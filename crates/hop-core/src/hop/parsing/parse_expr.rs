@@ -796,7 +796,7 @@ fn parse_match(
     })
 }
 
-fn parse_match_pattern(
+pub fn parse_match_pattern(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,

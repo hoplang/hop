@@ -1,6 +1,7 @@
 use super::r#type::Type;
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
+use super::typecheck_pattern::typecheck_pattern;
 use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
@@ -8,7 +9,7 @@ use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use crate::hop::patterns::compiler::{Decision, compile_match};
-use crate::hop::patterns::typed::{TypedMatchPattern, typecheck_pattern};
+use crate::hop::patterns::typed::TypedMatchPattern;
 use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::type_env::TypeEnv;
