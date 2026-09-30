@@ -5537,6 +5537,294 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn option_match_test_and_wildcard_in_some() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    for x in [Some(true), Some(false), None] {
+                      match x {
+                        Some(true) => <>a</>,
+                        Some(_) => <>b</>,
+                        None => <>c</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "abc",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in [
+                    Option[Bool]::Some(true),
+                    Option[Bool]::Some(false),
+                    Option[Bool]::None,
+                  ] {
+                    match v0 {
+                      Some(v1) => {
+                        match v1 {
+                          true => {
+                            write("a")
+                          }
+                          false => {
+                            write("b")
+                          }
+                        }
+                      }
+                      None => {
+                        write("c")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [
+                    Option[Bool]::Some(true),
+                    Option[Bool]::Some(false),
+                    Option[Bool]::None,
+                  ] {
+                    match v0 {
+                      Some(v1) => {
+                        match v1 {
+                          true => {
+                            write("a")
+                          }
+                          false => {
+                            write("b")
+                          }
+                        }
+                      }
+                      None => {
+                        write("c")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                abc
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_match_test_and_wildcard_in_field() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record Foo {
+                  a: Bool,
+                  b: Option[String],
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    for x in [
+                      Foo {a: true, b: Some("a")},
+                      Foo {a: true, b: None},
+                      Foo {a: false, b: Some("x")},
+                    ] {
+                      match x {
+                        Foo {a: true, b: Some(n)} => <>{n}</>,
+                        Foo {a: true, b: None} => <>b</>,
+                        Foo {a: false, b: _} => <>c</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "abc",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in [
+                    Foo {a: true, b: Option[String]::Some("a")},
+                    Foo {a: true, b: Option[String]::None},
+                    Foo {a: false, b: Option[String]::Some("x")},
+                  ] {
+                    let v1 = v0.a in {
+                      let v2 = v0.b in {
+                        match v1 {
+                          true => {
+                            match v2 {
+                              Some(v3) => {
+                                let v4 = v3 in {
+                                  write_string(v4)
+                                }
+                              }
+                              None => {
+                                write("b")
+                              }
+                            }
+                          }
+                          false => {
+                            write("c")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [
+                    Foo {a: true, b: Option[String]::Some("a")},
+                    Foo {a: true, b: Option[String]::None},
+                    Foo {a: false, b: Option[String]::Some("x")},
+                  ] {
+                    let v1 = v0.a in {
+                      let v2 = v0.b in {
+                        match v1 {
+                          true => {
+                            match v2 {
+                              Some(v3) => {
+                                write_string(v3)
+                              }
+                              None => {
+                                write("b")
+                              }
+                            }
+                          }
+                          false => {
+                            write("c")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                abc
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_match_test_and_wildcard_in_field() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Status {
+                  Active {
+                    admin: Bool,
+                  },
+                  Inactive,
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    for x in [
+                      Status::Active {admin: true},
+                      Status::Active {admin: false},
+                      Status::Inactive,
+                    ] {
+                      match x {
+                        Status::Active {admin: true} => <>a</>,
+                        Status::Active {admin: _} => <>b</>,
+                        Status::Inactive => <>c</>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "abc",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  for v0 in [
+                    Status::Active {admin: true},
+                    Status::Active {admin: false},
+                    Status::Inactive,
+                  ] {
+                    match v0 {
+                      Status::Active(admin: v1) => {
+                        match v1 {
+                          true => {
+                            write("a")
+                          }
+                          false => {
+                            write("b")
+                          }
+                        }
+                      }
+                      Status::Inactive => {
+                        write("c")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v0 in [
+                    Status::Active {admin: true},
+                    Status::Active {admin: false},
+                    Status::Inactive,
+                  ] {
+                    match v0 {
+                      Status::Active(admin: v1) => {
+                        match v1 {
+                          true => {
+                            write("a")
+                          }
+                          false => {
+                            write("b")
+                          }
+                        }
+                      }
+                      Status::Inactive => {
+                        write("c")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                abc
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn option_match_nested_constant_folding() {
         check(
             indoc! {r#"
@@ -16329,10 +16617,10 @@ mod tests {
                 fn f@f0() -> String {
                   let v0 = call mk@f1() in {
                     match v0 {
-                      Some(v1) => {
-                        let v2 = v0 in {
-                          match v2 {
-                            Some(v3) => { let v4 = v3 in { v4 } }
+                      Some(_) => {
+                        let v1 = v0 in {
+                          match v1 {
+                            Some(v2) => { let v3 = v2 in { v3 } }
                             None => { "never" }
                           }
                         }

@@ -68,19 +68,10 @@ impl Body {
 pub struct Variable {
     pub name: VarName,
     pub typ: Type,
-    /// Whether this variable's pattern introduces no bindings.
-    /// When true, the variable should not generate a binding in the output.
+    /// Whether every pattern tested against this variable is irrefutable and
+    /// introduces no bindings. When true, the variable should not generate a
+    /// binding in the output.
     is_free_from_bindings: bool,
-}
-
-impl Variable {
-    pub fn new(name: VarName, typ: Type) -> Self {
-        Self {
-            name,
-            typ,
-            is_free_from_bindings: false,
-        }
-    }
 }
 
 /// A single case (or row) in a match expression/table.
@@ -272,7 +263,11 @@ pub fn compile_match(
         return None;
     }
 
-    let subject_var = Variable::new(subject_name, subject_type);
+    let subject_var = Variable {
+        name: subject_name,
+        typ: subject_type,
+        is_free_from_bindings: false,
+    };
 
     let rows: Vec<Row> = patterns
         .iter()
@@ -478,16 +473,16 @@ fn compile_rows(
                     // Field patterns: index is resolved on the typed field.
                     for field in fields {
                         let var = &mut cases[idx].1[field.index];
-                        if is_free_from_bindings(registry, &field.pattern) {
-                            var.is_free_from_bindings = true;
+                        if !is_free_from_bindings(registry, &field.pattern) {
+                            var.is_free_from_bindings = false;
                         }
                         cols.push(Column::new(var.clone(), field.pattern));
                     }
                 } else {
                     // Positional args (Option Some, etc.)
                     for (var, pat) in cases[idx].1.iter_mut().zip(args) {
-                        if is_free_from_bindings(registry, &pat) {
-                            var.is_free_from_bindings = true;
+                        if !is_free_from_bindings(registry, &pat) {
+                            var.is_free_from_bindings = false;
                         }
                         cols.push(Column::new(var.clone(), pat));
                     }
@@ -703,9 +698,14 @@ fn find_branch_variable(rows: &[Row]) -> Variable {
         .unwrap()
 }
 
-/// Returns a new variable to use in the decision tree.
+/// Returns a new case variable to use in the decision tree. It starts out
+/// free from bindings until a row tests a pattern against it that is not.
 fn fresh_var(fresh_vars: &mut FreshVarCounter, typ: Type) -> Variable {
-    Variable::new(fresh_vars.fresh_var(), typ)
+    Variable {
+        name: fresh_vars.fresh_var(),
+        typ,
+        is_free_from_bindings: true,
+    }
 }
 
 /// Builds a pattern string for a variable by recursively looking up constructor info.
@@ -1451,7 +1451,7 @@ mod tests {
                 v__0 is Status::Pending{since: v__1}
                   let s = v__1
                   branch 0
-                v__0 is Status::Active{id: v__2}
+                v__0 is Status::Active{id: _}
                   branch 1
                 v__0 is Status::Inactive
                   branch 1
@@ -2501,6 +2501,105 @@ mod tests {
                 error: Match expression is missing arms for: Node{value: _, next: Some(Node{value: _, next: Some(_)})}
                 match x {
                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_option_test_and_wildcard_in_some() {
+        accept(
+            TypeRegistryBuilder::new(),
+            "Option[Bool]",
+            indoc! {"
+                match x {
+                    Some(true) => 0,
+                    Some(_) => 1,
+                    None => 2,
+                }
+            "},
+            expect![[r#"
+                v__0 is Some(v__1)
+                  v__1 is false
+                    branch 1
+                  v__1 is true
+                    branch 0
+                v__0 is None
+                  branch 2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_test_and_wildcard_in_field() {
+        accept(
+            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "Option[String]")]),
+            "Foo",
+            indoc! {"
+                match x {
+                    Foo{a: true, b: Some(n)} => 0,
+                    Foo{a: true, b: None} => 1,
+                    Foo{a: false, b: _} => 2,
+                }
+            "},
+            expect![[r#"
+                v__0 is Foo{a: v__1, b: v__2}
+                  v__1 is false
+                    branch 2
+                  v__1 is true
+                    v__2 is Some(v__3)
+                      let n = v__3
+                      branch 0
+                    v__2 is None
+                      branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_binding_and_wildcard_in_field() {
+        accept(
+            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "String")]),
+            "Foo",
+            indoc! {"
+                match x {
+                    Foo{a: true, b: _} => 0,
+                    Foo{a: false, b: n} => 1,
+                }
+            "},
+            expect![[r#"
+                v__0 is Foo{a: v__1, b: v__2}
+                  v__1 is false
+                    let n = v__2
+                    branch 1
+                  v__1 is true
+                    branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_enum_variant_test_and_wildcard_in_field() {
+        accept(
+            TypeRegistryBuilder::new().enum_(
+                "Status",
+                [("Active", vec![("admin", "Bool")]), ("Inactive", vec![])],
+            ),
+            "Status",
+            indoc! {"
+                match x {
+                    Status::Active{admin: true} => 0,
+                    Status::Active{admin: _} => 1,
+                    Status::Inactive => 2,
+                }
+            "},
+            expect![[r#"
+                v__0 is Status::Active{admin: v__1}
+                  v__1 is false
+                    branch 1
+                  v__1 is true
+                    branch 0
+                v__0 is Status::Inactive
+                  branch 2
             "#]],
         );
     }
