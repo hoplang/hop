@@ -1,0 +1,95 @@
+:root {
+  color-scheme: light dark;
+  --page-width: 60rem;
+  --border: color-mix(in srgb, currentColor 20%, transparent);
+  --shade: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+body {
+  max-width: var(--page-width);
+  margin: 2rem auto;
+  padding: 0 1rem;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+/* The first heading is the title, which pandoc renders as h1.title, so the
+   top-level sections are h1 too. */
+h1:not(.title) {
+  font-size: 1.5em;
+  margin-top: 2.5em;
+  border-bottom: 1px solid var(--border);
+}
+
+h2 {
+  font-size: 1.17em;
+  margin-top: 2em;
+}
+
+h3,
+h4 {
+  font-size: 1em;
+}
+
+/* An anchor on its own line above a heading becomes an empty paragraph. */
+p:has(> a[id]:only-child:empty) {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+#TOC ul {
+  list-style: none;
+  padding-left: 1.2rem;
+}
+
+#TOC > ul {
+  padding-left: 0;
+}
+
+#TOC a {
+  text-decoration: none;
+}
+
+/* With room to the left of the page, the table of contents stays in view
+   there while the page scrolls. */
+@media (min-width: 96rem) {
+  #TOC {
+    position: fixed;
+    top: 2rem;
+    left: 1.5rem;
+    width: calc((100vw - var(--page-width)) / 2 - 3rem);
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+    font-size: 0.9em;
+  }
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+:not(pre) > code {
+  padding: 0.1em 0.3em;
+  background: var(--shade);
+}
+
+pre {
+  padding: 0.6rem 0.8rem;
+  background: var(--shade);
+}
