@@ -22,7 +22,7 @@ shows the [rendering](#rendering) of an `Html` value.
 
 <a id="lexical-structure"></a>
 
-## 1 Lexical structure
+## Lexical structure
 
 A module is a UTF-8 text file. Outside markup and string literals, whitespace
 is ignored except as it separates tokens.
@@ -37,7 +37,7 @@ Comment ::= "//" [^\n]*
 
 <a id="identifiers"></a>
 
-### 1.1 Identifiers
+### Identifiers
 
 Identifiers have two forms. A lowercase identifier names a variable, a field, a
 function or a macro, and an uppercase identifier names a record, an enum, a
@@ -50,7 +50,7 @@ UppercaseIdentifier ::= [A-Z] [A-Za-z0-9]*
 
 <a id="keywords"></a>
 
-### 1.2 Keywords and reserved words
+### Keywords and reserved words
 
 None of the words below can be used as an identifier.
 
@@ -68,7 +68,7 @@ Further words are reserved for future use. They are listed in
 
 <a id="types"></a>
 
-## 2 Types
+## Types
 
 Every value has a type: one of the built-in types below, or a record or enum
 type declared in a module.
@@ -100,7 +100,7 @@ An `UppercaseIdentifier` names a [record](#record-declarations) or
 
 <a id="expressions"></a>
 
-## 3 Expressions
+## Expressions
 
 An expression computes a value. Evaluation has no side effects and cannot
 fail: the value of an expression depends only on the values of its parts, and
@@ -131,7 +131,7 @@ Expr ::= LiteralExpr
 
 <a id="literal-expressions"></a>
 
-### 3.1 Literal expressions
+### Literal expressions
 
 A literal expression evaluates to the `Bool`, `Int`, `Float` or `String` value
 it denotes, and has that type.
@@ -154,7 +154,7 @@ the immediate operand of `-`, which lets `-2147483648` be written.
 
 <a id="array-expressions"></a>
 
-### 3.2 Array expressions
+### Array expressions
 
 An array expression `[a, b, …]` evaluates to the array of its elements in
 order, and has the type `Array[T]`, where every element must have type `T`.
@@ -173,7 +173,7 @@ let tags = []; // error: Cannot infer type of empty array
 
 <a id="option-expressions"></a>
 
-### 3.3 Option expressions
+### Option expressions
 
 An option expression is `None` or `Some(e)`. `None` evaluates to the option
 with no value, and `Some(e)` to the option holding the value of `e`. Both have
@@ -193,7 +193,7 @@ let nickname = None; // error: Cannot infer type of None without context
 
 <a id="record-expressions"></a>
 
-### 3.4 Record expressions
+### Record expressions
 
 A record expression `R {f: e, …}` evaluates to a record of type `R`. Each
 entry `f: e` gives the field `f` the value of `e`.
@@ -224,7 +224,7 @@ User {...u, age: u.age + 1}  // User {name: "Alice", age: 37}
 
 <a id="enum-expressions"></a>
 
-### 3.5 Enum expressions
+### Enum expressions
 
 An enum expression `E::V` or `E::V {f: e, …}` evaluates to the variant `V` of
 the enum type `E`, and has that type.
@@ -241,7 +241,7 @@ For example, with `enum Status {Active, Away {since: String}}`, both
 
 <a id="variable-reference-expressions"></a>
 
-### 3.6 Variable reference expressions
+### Variable reference expressions
 
 A variable reference expression `x` evaluates to the value that `x` is bound
 to, by a parameter, a let binding, a `for` or a pattern.
@@ -269,7 +269,7 @@ fn double(x: Int) -> Int {
 
 <a id="parenthesized-expressions"></a>
 
-### 3.7 Parenthesized expressions
+### Parenthesized expressions
 
 A parenthesized expression evaluates to the value of the expression inside the
 parentheses, and has its type.
@@ -283,7 +283,7 @@ Parentheses group an expression to override the
 
 <a id="call-expressions"></a>
 
-### 3.8 Call expressions
+### Call expressions
 
 A call expression `f(…)` evaluates to the value that the function `f` returns
 for its arguments, and has the return type of `f`.
@@ -302,7 +302,7 @@ uppercase names are called as [function elements](#function-elements).
 
 <a id="macro-expressions"></a>
 
-### 3.9 Macro expressions
+### Macro expressions
 
 A macro expression `name!(…)` calls one of the three macros [`join!`](#join),
 [`format!`](#format) and [`asset!`](#asset). Any other macro name is an error.
@@ -313,7 +313,7 @@ MacroExpr ::= LowercaseIdentifier "!" "(" ( Expr ( "," Expr )* ","? )? ")"
 
 <a id="join"></a>
 
-#### 3.9.1 The join macro
+#### The join macro
 
 The join macro takes any number of values of type `String` and evaluates to the
 `String` that joins them with single spaces. Empty strings are not skipped, and
@@ -328,7 +328,7 @@ join!("btn", 1)          // error: Mismatched type for 'join': expected String g
 
 <a id="format"></a>
 
-#### 3.9.2 The format macro
+#### The format macro
 
 The format macro fills in the placeholders of a template and evaluates to the
 resulting `String`. The first argument is the template, which must be a string
@@ -351,7 +351,7 @@ format!("{}", 1.5)                          // error: format! arguments must be 
 
 <a id="asset"></a>
 
-#### 3.9.3 The asset macro
+#### The asset macro
 
 The asset macro takes one string literal, the path of a file in the project, and
 evaluates to the URL of that file as a `String`. The path must start with `/`,
@@ -365,7 +365,7 @@ asset!("/icons/" + "star.svg")  // error: asset! argument must be a string liter
 
 <a id="field-access-expressions"></a>
 
-### 3.10 Field access expressions
+### Field access expressions
 
 A field access expression `r.f` evaluates to the value of the field `f` of the
 record `r`, and has the type of that field.
@@ -388,7 +388,7 @@ u.email  // error: Field 'email' not found in record 'User'
 
 <a id="method-call-expressions"></a>
 
-### 3.11 Method call expressions
+### Method call expressions
 
 A method call expression `v.m()` calls one of the built-in methods below on
 the value `v`, and evaluates to the result in the table. Any other method name
@@ -411,7 +411,7 @@ MethodCallExpr ::= Expr "." LowercaseIdentifier "(" ")"
 
 <a id="operator-expressions"></a>
 
-### 3.12 Operator expressions
+### Operator expressions
 
 An operator expression combines values with the prefix operators `!` and `-`, or
 with a binary operator for comparison, arithmetic or logic.
@@ -470,7 +470,7 @@ error. Whether an option is `None` is tested with `is_none()` or a `match`.
 
 <a id="block-expressions"></a>
 
-### 3.13 Block expressions
+### Block expressions
 
 A block expression evaluates its let bindings in order, and each binding is in
 scope for the rest of the block. It evaluates to the value of its last
@@ -496,7 +496,7 @@ val // "Alice has 0 tags"
 
 <a id="match-expressions"></a>
 
-### 3.14 Match expressions
+### Match expressions
 
 A `match` expression compares a value, the subject, with the patterns of its
 arms, and evaluates to the value of the first arm whose pattern matches.
@@ -522,7 +522,7 @@ must have the same type, which is the type of the `match` expression.
 
 <a id="wildcard-and-variable-patterns"></a>
 
-#### 3.14.1 Wildcard and variable patterns
+#### Wildcard and variable patterns
 
 The wildcard pattern `_` and a variable pattern `x` both match any value. The
 wildcard binds nothing, while the variable binds the value to `x` in the arm.
@@ -558,7 +558,7 @@ match b {
 
 <a id="bool-patterns"></a>
 
-#### 3.14.2 Bool patterns
+#### Bool patterns
 
 The patterns `true` and `false` match a `Bool` with that value and bind nothing.
 
@@ -578,7 +578,7 @@ match signed_in {
 
 <a id="option-patterns"></a>
 
-#### 3.14.3 Option patterns
+#### Option patterns
 
 The pattern `None` matches `None`, and `Some(p)` matches `Some(v)` where `v`
 matches the pattern `p`, binding what `p` binds.
@@ -599,7 +599,7 @@ match nickname {
 
 <a id="record-patterns"></a>
 
-#### 3.14.4 Record patterns
+#### Record patterns
 
 A record pattern `R {f: p, …}` matches a record of type `R` whose fields match
 their patterns, and binds what its field patterns bind. A field pattern `f`
@@ -631,7 +631,7 @@ match u {
 
 <a id="enum-patterns"></a>
 
-#### 3.14.5 Enum patterns
+#### Enum patterns
 
 An enum pattern `E::V` or `E::V {f: p, …}` matches the variant `V` of the enum
 `E` whose fields match their patterns, and binds what its field patterns bind.
@@ -658,7 +658,7 @@ match status {
 
 <a id="exhaustiveness"></a>
 
-#### 3.14.6 Exhaustiveness
+#### Exhaustiveness
 
 The arms of a `match` must together cover every value of the subject: both
 `true` and `false` for a `Bool`, both `None` and `Some` for an option, every
@@ -680,7 +680,7 @@ match flag {
 
 <a id="reachability"></a>
 
-#### 3.14.7 Reachability
+#### Reachability
 
 The arms are tried in order. An arm is unreachable, and an error, if every
 value it matches is matched by an arm before it:
@@ -696,7 +696,7 @@ match b {
 
 <a id="for-expressions"></a>
 
-### 3.15 For expressions
+### For expressions
 
 A `for` expression evaluates its body, which must have type `Html`, once for
 each element of an array, and evaluates to the results concatenated in order.
@@ -752,7 +752,7 @@ fn Stars() -> Html {
 
 <a id="markup-expressions"></a>
 
-### 3.16 Markup expressions
+### Markup expressions
 
 An `Html` value is a sequence of elements and text. An element has a name,
 attributes in the order written, and content, which is itself a sequence of
@@ -774,7 +774,7 @@ MarkupExpr ::= HtmlElementExpr | FunctionElementExpr | FragmentExpr
 
 <a id="html-elements"></a>
 
-#### 3.16.1 HTML element expressions
+#### HTML element expressions
 
 An HTML element expression `<x …>…</x>` evaluates to the element with that
 name, those attributes and that content. An element without content can be
@@ -830,7 +830,7 @@ let section = (
 
 <a id="function-elements"></a>
 
-#### 3.16.2 Function element expressions
+#### Function element expressions
 
 A function element is written like an [HTML element](#html-elements), with an
 `UppercaseIdentifier` as its name. It calls the
@@ -886,7 +886,7 @@ content optional.
 
 <a id="fragments"></a>
 
-#### 3.16.3 Fragment expressions
+#### Fragment expressions
 
 A fragment `<>…</>` groups nodes without an element around them, so that
 several nodes can be used where one expression is expected. It evaluates to its
@@ -916,7 +916,7 @@ let entry = (
 
 <a id="markup-nodes"></a>
 
-#### 3.16.4 Markup nodes
+#### Markup nodes
 
 The content of an element or fragment is a sequence of markup nodes. A node is
 text, an [interpolation](#interpolation), a comment, or a nested
@@ -938,7 +938,7 @@ are written `&lt;`, `&lbrace;` and `&rbrace;`. A comment evaluates to nothing.
 
 <a id="interpolation"></a>
 
-#### 3.16.5 Interpolation
+#### Interpolation
 
 An interpolation `{e}` is a [block expression](#block-expressions) whose value
 is inserted into the content of an element or fragment.
@@ -980,7 +980,7 @@ let display = (
 
 <a id="attributes"></a>
 
-#### 3.16.6 Attributes
+#### Attributes
 
 An attribute is written in the opening tag of an element, as a name alone, or as
 a name with a value in double quotes or in a [block](#block-expressions). A
@@ -1016,7 +1016,7 @@ SVG and custom elements accept any attribute, including event handlers.
 
 <a id="rest-parameters"></a>
 
-#### 3.16.7 Rest parameters
+#### Rest parameters
 
 A rest parameter `...rest`, which must be the last parameter, collects the
 attributes a caller passes that are not parameters of the function. The body
@@ -1088,7 +1088,7 @@ fn B(...rest) -> Html {
 
 <a id="whitespace"></a>
 
-#### 3.16.8 Whitespace
+#### Whitespace
 
 The content of every element and fragment is normalized before it is evaluated:
 
@@ -1117,7 +1117,7 @@ remove.
 
 <a id="escaping"></a>
 
-#### 3.16.9 Escaping
+#### Escaping
 
 A `String` value inserted into markup, as an [interpolation](#interpolation) or
 as an [attribute value](#attributes), is escaped: each character below is
@@ -1144,7 +1144,7 @@ let p = (
 
 <a id="modules-and-declarations"></a>
 
-## 4 Modules and declarations
+## Modules and declarations
 
 A module is a sequence of imports, records, enums, functions and pages. A
 declaration marked `pub` can be imported by other modules, and no two
@@ -1159,7 +1159,7 @@ Module ::= ( ImportDecl | RecordDecl | EnumDecl | FunctionDecl | PageDecl )*
 
 <a id="import-declarations"></a>
 
-### 4.1 Import declarations
+### Import declarations
 
 An import makes a public declaration of another module available.
 
@@ -1174,7 +1174,7 @@ as `pub`. A module cannot re-export what it imports.
 
 <a id="record-declarations"></a>
 
-### 4.2 Record declarations
+### Record declarations
 
 A record declaration `record R {…}` declares the record type `R`, with the
 fields listed between the braces. The fields must have different names, and a
@@ -1188,7 +1188,7 @@ FieldDecl  ::= LowercaseIdentifier ":" Type
 
 <a id="enum-declarations"></a>
 
-### 4.3 Enum declarations
+### Enum declarations
 
 An enum declaration `enum E {…}` declares the enum type `E`, with the variants
 listed between the braces. The variants must have different names. A variant can
@@ -1201,7 +1201,7 @@ Variant  ::= UppercaseIdentifier ( "{" ( FieldDecl ( "," FieldDecl )* ","? )? "}
 
 <a id="function-declarations"></a>
 
-### 4.4 Function declarations
+### Function declarations
 
 A function declaration `fn f(…) -> T { … }` declares the function `f`. A
 lowercase function is [called as `f(…)`](#call-expressions), and an uppercase
@@ -1277,7 +1277,7 @@ fn Form() -> Html {
 
 <a id="page-declarations"></a>
 
-### 4.5 Page declarations
+### Page declarations
 
 A page declaration `page P(…) { … }` declares the page `P`. Its parameters are
 in scope in `head` and `body`, and [rendering](#rendering) the page produces an
@@ -1305,7 +1305,7 @@ page Home {
 
 <a id="rendering"></a>
 
-### 4.6 Rendering
+### Rendering
 
 A page is rendered by the host, which supplies its arguments and receives the
 resulting document as UTF-8 text. The document is, with nothing between the
@@ -1338,7 +1338,7 @@ value of `v` [escaped](#escaping).
 
 <a id="reserved-words"></a>
 
-## Appendix: Reserved words
+## Appendix: Reserved words {.unnumbered}
 
 A `LowercaseIdentifier` or `ModuleSegment` cannot be one of:
 

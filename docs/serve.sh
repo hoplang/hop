@@ -45,7 +45,7 @@ setInterval(async () => {
 }, 500);
 </script>"
 
-if html="$(pandoc -f gfm -s --toc --shift-heading-level-by=-1 -M document-css=false -M pagetitle="Language Reference" -H <(echo "$header") "$docs/reference.md" 2>&1)"; then
+if html="$(pandoc -f gfm+attributes -s --toc -N --shift-heading-level-by=-1 -M document-css=false -M pagetitle="Language Reference" -H <(echo "$header") "$docs/reference.md" 2>&1)"; then
   printf 'Content-Type: text/html; charset=utf-8\r\n\r\n%s\n' "$html"
 else
   printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\n%s\n' "$html"
