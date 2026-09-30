@@ -364,6 +364,7 @@ fn primary(
         Call,
         Macro,
         Array,
+        Tuple,
         Paren,
         Block,
         Some,
@@ -387,6 +388,7 @@ fn primary(
             P::Call,
             P::Macro,
             P::Array,
+            P::Tuple,
             P::Paren,
             P::Block,
             P::Some,
@@ -450,6 +452,11 @@ fn primary(
             out.push('[');
             list(u, 0..=3, out, |u, _, out| expr(u, depth - 1, inner, out))?;
             out.push(']');
+        }
+        P::Tuple => {
+            out.push('(');
+            list(u, 0..=3, out, |u, _, out| expr(u, depth - 1, inner, out))?;
+            out.push(')');
         }
         P::Paren => {
             out.push('(');
@@ -552,6 +559,7 @@ fn pattern(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<(
         Some,
         VariantFields,
         Record,
+        Tuple,
     }
     let mut kinds = vec![
         P::Wildcard,
@@ -562,7 +570,7 @@ fn pattern(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<(
         P::Variant,
     ];
     if depth > 0 {
-        kinds.extend([P::Some, P::VariantFields, P::Record]);
+        kinds.extend([P::Some, P::VariantFields, P::Record, P::Tuple]);
     }
     let p = u.choose(&kinds)?;
     match p {
@@ -597,6 +605,11 @@ fn pattern(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<(
                 Ok(())
             })?;
             out.push('}');
+        }
+        P::Tuple => {
+            out.push('(');
+            list(u, 0..=3, out, |u, _, out| pattern(u, depth - 1, out))?;
+            out.push(')');
         }
     }
     Ok(())

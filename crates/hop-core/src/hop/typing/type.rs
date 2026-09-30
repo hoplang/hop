@@ -77,13 +77,8 @@ impl Type {
     /// Whether values of this type can be destructured by a `match` expression.
     pub fn is_matchable(&self) -> bool {
         match self {
-            Type::Bool | Type::Option(_) | Type::Named { .. } => true,
-            Type::String
-            | Type::Int
-            | Type::Float
-            | Type::Html
-            | Type::Array(_)
-            | Type::Tuple(_) => false,
+            Type::Bool | Type::Option(_) | Type::Tuple(_) | Type::Named { .. } => true,
+            Type::String | Type::Int | Type::Float | Type::Html | Type::Array(_) => false,
         }
     }
 }

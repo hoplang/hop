@@ -81,22 +81,23 @@ Type ::= "Bool"
        | "Html"
        | "Array" "[" Type "]"
        | "Option" "[" Type "]"
-       | "(" Type ")"
+       | "(" ( Type ( "," Type )* ","? )? ")"
        | UppercaseIdentifier
 ```
 
 An `UppercaseIdentifier` names a [record](#record-declarations) or
 [enum](#enum-declarations) type. The built-in types have these values:
 
-| Type        | Values                                  |
-| ----------- | --------------------------------------- |
-| `Bool`      | `true`, `false`                         |
-| `Int`       | 32-bit signed integers                  |
-| `Float`     | IEEE 754 binary64, including ±∞ and NaN |
-| `String`    | sequences of Unicode scalar values      |
-| `Html`      | sequences of HTML elements and text     |
-| `Array[T]`  | sequences of `T`                        |
-| `Option[T]` | `None`, `Some(v)`                       |
+| Type          | Values                                  |
+| ------------- | --------------------------------------- |
+| `Bool`        | `true`, `false`                         |
+| `Int`         | 32-bit signed integers                  |
+| `Float`       | IEEE 754 binary64, including ±∞ and NaN |
+| `String`      | sequences of Unicode scalar values      |
+| `Html`        | sequences of HTML elements and text     |
+| `Array[T]`    | sequences of `T`                        |
+| `Option[T]`   | `None`, `Some(v)`                       |
+| `(T1, T2, …)` | `(v1, v2, …)`                           |
 
 <a id="expressions"></a>
 
@@ -113,6 +114,7 @@ An expression is one of the forms below:
 ```ebnf
 Expr ::= LiteralExpr
        | ArrayExpr
+       | TupleExpr
        | OptionExpr
        | RecordExpr
        | EnumExpr
@@ -170,6 +172,44 @@ array with no such context is an error:
 ```hop
 let tags = []; // error: Cannot infer type of empty array
 ```
+
+<a id="tuple-expressions"></a>
+
+### Tuple expressions
+
+A tuple expression `(a, b, …)` evaluates to the tuple of its elements in order.
+Its type is the tuple type of the types of its elements, so `(1, "a")` has the
+type `(Int, String)`.
+
+```ebnf
+TupleExpr ::= "(" ")"
+            | "(" Expr "," ")"
+            | "(" Expr ( "," Expr )+ ","? ")"
+```
+
+A tuple of one element is written with a trailing comma, since `(a)` is a
+[parenthesized expression](#parenthesized-expressions):
+
+```hop
+let name = "Alice";
+
+(name, 36)  // ("Alice", 36), of type (String, Int)
+(name,)     // ("Alice",), of type (String,)
+(name)      // "Alice", of type String
+()          // (), of type ()
+```
+
+When the context of a tuple expression expects a tuple type with as many
+elements, each element takes its context from the element type at its position,
+as in `let pair: (Option[String], Array[Int]) = (None, []);`. Without such a
+context, an element that cannot determine its own type is an error:
+
+```hop
+let counts = (1, []); // error: Cannot infer type of empty array
+```
+
+A tuple has no fields, methods or operators. Its elements are read with a
+[tuple pattern](#tuple-patterns).
 
 <a id="option-expressions"></a>
 
@@ -508,17 +548,20 @@ Pattern         ::= WildcardPattern
                   | VariablePattern
                   | BoolPattern
                   | OptionPattern
+                  | TuplePattern
                   | RecordPattern
                   | EnumPattern
+                  | "(" Pattern ")"
 ```
 
 The subject cannot be a [record](#record-expressions) or
 [enum expression](#enum-expressions) with fields unless it is wrapped in
 parentheses, since its `{` would be read as the start of the arms.
 
-The subject must have type `Bool` or `Option[T]`, or a record or enum type, and
-every pattern must have the type of the subject. The expressions of all arms
-must have the same type, which is the type of the `match` expression.
+The subject must have type `Bool`, `Option[T]` or a tuple type, or a record or
+enum type, and every pattern must have the type of the subject. A pattern in
+parentheses, `(p)`, is the same as `p`. The expressions of all arms must have
+the same type, which is the type of the `match` expression.
 
 <a id="wildcard-and-variable-patterns"></a>
 
@@ -597,6 +640,43 @@ match nickname {
 }
 ```
 
+<a id="tuple-patterns"></a>
+
+#### Tuple patterns
+
+A tuple pattern `(p, q, …)` matches a tuple whose elements match the patterns
+at the same positions, and binds what its element patterns bind.
+
+```ebnf
+TuplePattern ::= "(" ")"
+               | "(" Pattern "," ")"
+               | "(" Pattern ( "," Pattern )+ ","? ")"
+```
+
+As in [tuple expressions](#tuple-expressions), a pattern of one element is
+written with a trailing comma, `(p,)`. A `match` on a tuple expression tests
+several values at once:
+
+```hop
+let signed_in = true;
+let nickname = Some("Alice");
+match (signed_in, nickname) {
+  (true, Some(name)) => name,
+  (true, None) => "member",
+  (false, _) => "guest",
+}
+```
+
+A tuple pattern must have one pattern for each element of its type:
+
+```hop
+let pair = ("Alice", 36);
+match pair {
+  // error: Mismatched pattern type: expected (String, Int) got (name, _, _)
+  (name, _, _) => name,
+}
+```
+
 <a id="record-patterns"></a>
 
 #### Record patterns
@@ -660,14 +740,9 @@ match status {
 
 #### Exhaustiveness
 
-The arms of a `match` must together cover every value of the subject: both
-`true` and `false` for a `Bool`, both `None` and `Some` for an option, every
-variant of an enum, and a record pattern for a record. A wildcard or a variable
-covers every value. Coverage is checked recursively: `Some(p)`, a variant or a
-record pattern covers only the values whose parts are covered by its inner
-patterns, so `Some(true)` covers half of the `Some` values, and `Some(true)`
-together with `Some(false)` covers them all. The compiler names the values that
-no arm covers:
+The arms of a `match` must together cover every value of the subject. A wildcard
+or a variable covers every value. Coverage is checked recursively. The compiler
+names the values that no arm covers:
 
 ```hop
 let flag = Some(true);
@@ -1220,8 +1295,8 @@ Param        ::= LowercaseIdentifier ":" Type ( "=" Expr )? | "..." LowercaseIde
 | `...x`     | a [rest parameter](#rest-parameters)   |
 
 A default value must be constant: a literal, a numeric literal preceded by `-`,
-`<></>`, or an array, record, enum or option built from constants, without a
-`...` spread:
+`<></>`, or an array, tuple, record, enum or option built from constants,
+without a `...` spread:
 
 ```hop
 // error: Default values must be constant

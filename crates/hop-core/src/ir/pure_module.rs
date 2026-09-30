@@ -172,7 +172,6 @@ pub enum PureExpr {
     },
 
     /// A TupleLiteral expression.
-    #[allow(dead_code)]
     TupleLiteral {
         elements: Vec<PureExpr>,
         typ: Type,
@@ -180,7 +179,6 @@ pub enum PureExpr {
     },
 
     /// A TupleIndex expression.
-    #[allow(dead_code)]
     TupleIndex {
         tuple: Box<PureExpr>,
         index: usize,

@@ -230,6 +230,12 @@ impl<'a> Compiler<'a> {
                 typ: typ.clone(),
                 id: expr_id,
             },
+            TypedExpr::TupleIndex { tuple, index, typ } => PureExpr::TupleIndex {
+                tuple: Box::new(self.compile_expr(tuple)),
+                index: *index,
+                typ: typ.clone(),
+                id: expr_id,
+            },
             TypedExpr::BooleanNegation { operand, .. } => PureExpr::BooleanNegation {
                 operand: Box::new(self.compile_expr(operand)),
                 id: expr_id,
@@ -243,6 +249,11 @@ impl<'a> Compiler<'a> {
                 id: expr_id,
             },
             TypedExpr::ArrayLiteral { elements, typ, .. } => PureExpr::ArrayLiteral {
+                elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
+                typ: typ.clone(),
+                id: expr_id,
+            },
+            TypedExpr::TupleLiteral { elements, typ } => PureExpr::TupleLiteral {
                 elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
                 typ: typ.clone(),
                 id: expr_id,

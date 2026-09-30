@@ -66,7 +66,20 @@ impl TypedMatchPattern {
                 ..
             } => {
                 let base = constructor.to_doc();
-                if !fields.is_empty() {
+                if matches!(constructor, Constructor::Tuple) {
+                    // Tuple pattern: (x, _)
+                    BoxDoc::text("(")
+                        .append(BoxDoc::intersperse(
+                            args.iter().map(|a| a.to_doc()),
+                            BoxDoc::text(", "),
+                        ))
+                        .append(if args.len() == 1 {
+                            BoxDoc::text(",")
+                        } else {
+                            BoxDoc::nil()
+                        })
+                        .append(BoxDoc::text(")"))
+                } else if !fields.is_empty() {
                     // Record pattern: User {name: x, age: y}
                     let fields_doc = BoxDoc::intersperse(
                         fields.iter().map(|field| {
@@ -378,6 +391,23 @@ pub fn typecheck_pattern(
                     typ: subject_type.clone(),
                     args: Vec::new(),
                     fields: typed_fields,
+                    range: range.clone(),
+                })
+            }
+
+            (Constructor::Tuple, Some(ResolvedType::Tuple(elements)))
+                if args.len() == elements.len() =>
+            {
+                let typed_args = args
+                    .iter()
+                    .zip(elements)
+                    .map(|(arg, element)| typecheck_pattern(arg, element.clone(), registry, errors))
+                    .collect::<Option<Vec<_>>>()?;
+                Some(TypedMatchPattern::Constructor {
+                    constructor: constructor.clone(),
+                    typ: subject_type.clone(),
+                    args: typed_args,
+                    fields: Vec::new(),
                     range: range.clone(),
                 })
             }
@@ -729,6 +759,97 @@ mod tests {
                 error: Mismatched pattern type: expected Bool got Some(v)
                     Some(Some(v)) => 0,
                          ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_pattern_with_too_many_elements() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "(Bool, Bool)",
+            indoc! {"
+                match x {
+                    (a, b, c) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Mismatched pattern type: expected (Bool, Bool) got (a, b, c)
+                    (a, b, c) => 0,
+                    ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_pattern_with_too_few_elements() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "(Bool, Bool)",
+            indoc! {"
+                match x {
+                    (a,) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Mismatched pattern type: expected (Bool, Bool) got (a,)
+                    (a,) => 0,
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_pattern_with_wrong_element_type() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "(Bool, Int)",
+            indoc! {"
+                match x {
+                    (true, None) => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                error: Mismatched pattern type: expected Int got None
+                    (true, None) => 0,
+                           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_pattern_on_record() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
+            "User",
+            indoc! {"
+                match x {
+                    (name,) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Mismatched pattern type: expected User got (name,)
+                    (name,) => 0,
+                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_pattern_on_tuple() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
+            "(String,)",
+            indoc! {"
+                match x {
+                    User{name} => 0,
+                }
+            "},
+            expect![[r#"
+                error: Mismatched pattern type: expected (String,) got User{name}
+                    User{name} => 0,
+                    ^^^^^^^^^^
             "#]],
         );
     }

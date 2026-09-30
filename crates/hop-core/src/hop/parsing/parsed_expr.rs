@@ -59,6 +59,11 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
+    TupleLiteral {
+        elements: Vec<Self>,
+        range: DocumentRange,
+    },
+
     RecordLiteral {
         record_name: TypeName,
         record_name_range: DocumentRange,
@@ -285,6 +290,8 @@ pub enum Constructor {
     },
     /// A record pattern, e.g. `User {name: x, age: y}`
     Record { type_name: TypeName },
+    /// A tuple pattern, e.g. `(x, _)`
+    Tuple,
 }
 
 impl Constructor {
@@ -301,13 +308,8 @@ impl Constructor {
             Constructor::OptionSome => BoxDoc::text("Some"),
             Constructor::OptionNone => BoxDoc::text("None"),
             Constructor::Record { type_name } => BoxDoc::text(type_name.as_str().to_string()),
+            Constructor::Tuple => BoxDoc::nil(),
         }
-    }
-}
-
-impl std::fmt::Display for Constructor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(80))
     }
 }
 
@@ -329,7 +331,20 @@ impl ParsedMatchPattern {
                 ..
             } => {
                 let base = constructor.to_doc();
-                if !fields.is_empty() {
+                if matches!(constructor, Constructor::Tuple) {
+                    // Tuple pattern: (x, _)
+                    BoxDoc::text("(")
+                        .append(BoxDoc::intersperse(
+                            args.iter().map(|a| a.to_doc()),
+                            BoxDoc::text(", "),
+                        ))
+                        .append(if args.len() == 1 {
+                            BoxDoc::text(",")
+                        } else {
+                            BoxDoc::nil()
+                        })
+                        .append(BoxDoc::text(")"))
+                } else if !fields.is_empty() {
                     // Record pattern: User {name: x, age: y}
                     let fields_doc = BoxDoc::intersperse(
                         fields.iter().map(|(name, _, pat)| {
@@ -408,6 +423,7 @@ impl ParsedExpr {
                 f(right);
             }
             ParsedExpr::ArrayLiteral { elements, .. }
+            | ParsedExpr::TupleLiteral { elements, .. }
             | ParsedExpr::MacroInvocation { args: elements, .. } => {
                 for element in elements {
                     f(element);
@@ -499,7 +515,8 @@ impl ParsedExpr {
             ParsedExpr::Markup { node } => {
                 matches!(node.as_ref(), ParsedNode::Fragment { children, .. } if children.is_empty())
             }
-            ParsedExpr::ArrayLiteral { elements, .. } => {
+            ParsedExpr::ArrayLiteral { elements, .. }
+            | ParsedExpr::TupleLiteral { elements, .. } => {
                 elements.iter().all(|element| element.is_constant())
             }
             ParsedExpr::RecordLiteral { fields, spread, .. } => {
@@ -534,6 +551,7 @@ impl ParsedExpr {
             | ParsedExpr::IntLiteral { range, .. }
             | ParsedExpr::FloatLiteral { range, .. }
             | ParsedExpr::ArrayLiteral { range, .. }
+            | ParsedExpr::TupleLiteral { range, .. }
             | ParsedExpr::RecordLiteral { range, .. }
             | ParsedExpr::EnumLiteral { range, .. }
             | ParsedExpr::BinaryOp { range, .. }
@@ -648,6 +666,23 @@ impl ParsedExpr {
                         .append(BoxDoc::text("]"))
                 }
             }
+            ParsedExpr::TupleLiteral { elements, .. } => BoxDoc::text("(")
+                .append(
+                    BoxDoc::line_()
+                        .append(BoxDoc::intersperse(
+                            elements.iter().map(|e| e.to_doc()),
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(if elements.len() == 1 {
+                            BoxDoc::text(",")
+                        } else {
+                            BoxDoc::text(",").flat_alt(BoxDoc::nil())
+                        })
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(BoxDoc::text(")")),
             ParsedExpr::RecordLiteral {
                 record_name,
                 fields,

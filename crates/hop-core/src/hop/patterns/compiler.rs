@@ -10,7 +10,9 @@
 //! necessary to not generate useless variable bindings (which is compile
 //! errors in some languages). Make sure that this invariant holds when
 //! introducing new match subjects.
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+
+use pretty::BoxDoc;
 
 use crate::document::DocumentRange;
 use crate::hop::parsing::parsed_expr::Constructor;
@@ -162,6 +164,25 @@ pub struct RecordCase {
     pub body: Decision,
 }
 
+/// A binding for an element in a tuple.
+#[derive(Debug, Clone)]
+pub struct ElementBinding {
+    /// The index of the element this binding corresponds to.
+    pub index: usize,
+    /// The name to bind this element's value to, or None if wildcard pattern.
+    pub bound_name: Option<VarName>,
+    /// The type of the element.
+    pub typ: Type,
+}
+
+/// A case for tuple destructuring - has bindings for each element.
+#[derive(Debug)]
+pub struct TupleCase {
+    /// Bindings for each element in the tuple.
+    pub bindings: Vec<ElementBinding>,
+    pub body: Decision,
+}
+
 /// A decision tree compiled from a list of match cases.
 #[derive(Debug)]
 pub enum Decision {
@@ -193,29 +214,105 @@ pub enum Decision {
         variable: Variable,
         case: Box<RecordCase>,
     },
+
+    /// Match a tuple (single case, destructures elements).
+    SwitchTuple {
+        variable: Variable,
+        case: Box<TupleCase>,
+    },
 }
 
 /// Information about a matched constructor for a variable.
 struct VarInfo {
-    /// The constructor name (e.g., "Some", "None", "Color::Red", "User").
-    constructor: String,
+    /// The constructor (e.g., `Some`, `None`, `Color::Red`, `User`).
+    constructor: Constructor,
     /// Constructor arguments: (sub_var_name, optional_field_name).
     /// - `Some(v0)` → `[("v0", None)]`
     /// - `None` → `[]`
     /// - `Foo{a: v0, b: v1}` → `[("v0", Some("a")), ("v1", Some("b"))]`
+    /// - `(v0, v1)` → `[("v0", None), ("v1", None)]`
     args: Vec<(VarName, Option<FieldName>)>,
 }
 
+/// A pattern that no arm of a match covers, reported as a missing arm.
+#[derive(Debug)]
+enum Witness {
+    Wildcard,
+    Constructor {
+        constructor: Constructor,
+        /// Positional arguments, e.g. the inner witness of `Some(_)`.
+        args: Vec<Witness>,
+        /// Named fields of a record or enum variant.
+        fields: Vec<(FieldName, Witness)>,
+    },
+}
+
+impl Witness {
+    fn to_doc(&self) -> BoxDoc<'_> {
+        let Witness::Constructor {
+            constructor,
+            args,
+            fields,
+        } = self
+        else {
+            return BoxDoc::text("_");
+        };
+        let fields_doc = BoxDoc::text("{")
+            .append(BoxDoc::intersperse(
+                fields.iter().map(|(name, witness)| {
+                    BoxDoc::text(name.as_str())
+                        .append(BoxDoc::text(": "))
+                        .append(witness.to_doc())
+                }),
+                BoxDoc::text(", "),
+            ))
+            .append(BoxDoc::text("}"));
+        match constructor {
+            Constructor::BooleanTrue | Constructor::BooleanFalse | Constructor::OptionNone => {
+                constructor.to_doc()
+            }
+            Constructor::OptionSome => constructor
+                .to_doc()
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::intersperse(
+                    args.iter().map(|arg| arg.to_doc()),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(")")),
+            Constructor::EnumVariant { .. } if fields.is_empty() => constructor.to_doc(),
+            Constructor::EnumVariant { .. } | Constructor::Record { .. } => {
+                constructor.to_doc().append(fields_doc)
+            }
+            Constructor::Tuple => BoxDoc::text("(")
+                .append(BoxDoc::intersperse(
+                    args.iter().map(|arg| arg.to_doc()),
+                    BoxDoc::text(", "),
+                ))
+                .append(if args.len() == 1 {
+                    BoxDoc::text(",")
+                } else {
+                    BoxDoc::nil()
+                })
+                .append(BoxDoc::text(")")),
+        }
+    }
+}
+
 /// Checks if a pattern introduces no bindings and requires no runtime discrimination.
-/// This is true for wildcards and for record patterns where all fields are free from bindings
-/// (since records have only one constructor).
+/// This is true for wildcards and for record and tuple patterns where all fields or
+/// elements are free from bindings (since records and tuples have only one constructor).
 fn is_free_from_bindings(registry: &TypeRegistry, pattern: &TypedMatchPattern) -> bool {
     match pattern {
         TypedMatchPattern::Wildcard { .. } => true,
         TypedMatchPattern::Binding { .. } => false,
-        TypedMatchPattern::Constructor { typ, fields, .. } => {
-            // Only records can be free from bindings since they have one constructor
-            matches!(registry.resolve(typ), Some(ResolvedType::Record { .. }))
+        TypedMatchPattern::Constructor {
+            typ, args, fields, ..
+        } => {
+            // Only records and tuples can be free from bindings since they have one constructor
+            matches!(
+                registry.resolve(typ),
+                Some(ResolvedType::Record { .. } | ResolvedType::Tuple(_))
+            ) && args.iter().all(|arg| is_free_from_bindings(registry, arg))
                 && fields
                     .iter()
                     .all(|field| is_free_from_bindings(registry, &field.pattern))
@@ -239,8 +336,8 @@ fn constructor_index(registry: &TypeRegistry, cons: &Constructor, typ: &Type) ->
                 .position(|variant| variant.name == *variant_name)
                 .expect("unknown variant")
         }
-        // Records have only one constructor, so index is always 0
-        Constructor::Record { .. } => 0,
+        // Records and tuples have only one constructor, so index is always 0
+        Constructor::Record { .. } | Constructor::Tuple => 0,
     }
 }
 
@@ -281,7 +378,7 @@ pub fn compile_match(
         .collect();
 
     let mut reachable = Vec::new();
-    let mut missing_patterns = HashSet::new();
+    let mut missing_patterns = Vec::new();
     let mut var_info = HashMap::new();
 
     let tree = compile_rows(
@@ -311,8 +408,12 @@ pub fn compile_match(
 
     // Check for missing patterns
     if !missing_patterns.is_empty() {
-        let mut missing: Vec<String> = missing_patterns.into_iter().collect();
+        let mut missing: Vec<String> = missing_patterns
+            .iter()
+            .map(|witness| witness.to_doc().pretty(80).to_string())
+            .collect();
         missing.sort();
+        missing.dedup();
         errors.push(TypeError::new(
             TypeErrorKind::MatchMissingVariants { variants: missing },
             subject_range.clone(),
@@ -341,13 +442,13 @@ fn compile_rows(
     fresh_vars: &mut FreshVarCounter,
     registry: &TypeRegistry,
     reachable: &mut Vec<usize>,
-    missing_patterns: &mut HashSet<String>,
+    missing_patterns: &mut Vec<Witness>,
     var_info: &mut HashMap<VarName, VarInfo>,
     root_var: &VarName,
     mut rows: Vec<Row>,
 ) -> Option<Decision> {
     if rows.is_empty() {
-        missing_patterns.insert(build_pattern_for_var(var_info, root_var));
+        missing_patterns.push(witness_for_var(var_info, root_var));
         return None;
     }
 
@@ -431,12 +532,19 @@ fn compile_rows(
                 Vec::new(),
             )]
         }
+        ResolvedType::Tuple(elements) => {
+            // Tuples have a single constructor with fresh variables for each element
+            let element_vars: Vec<Variable> = elements
+                .iter()
+                .map(|element| fresh_var(fresh_vars, element.clone()))
+                .collect();
+            vec![(Constructor::Tuple, element_vars, Vec::new())]
+        }
         ResolvedType::String
         | ResolvedType::Int
         | ResolvedType::Float
         | ResolvedType::Html
-        | ResolvedType::Array(_)
-        | ResolvedType::Tuple(_) => {
+        | ResolvedType::Array(_) => {
             panic!("pattern matching not supported for this type")
         }
     };
@@ -534,7 +642,7 @@ fn compile_rows(
         var_info.insert(
             branch_var.name.clone(),
             VarInfo {
-                constructor: cons.to_string(),
+                constructor: cons.clone(),
                 args,
             },
         );
@@ -677,6 +785,31 @@ fn compile_rows(
                 }),
             })
         }
+        ResolvedType::Tuple(_) => {
+            // Tuples have exactly one case
+            let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
+
+            let bindings = vars
+                .into_iter()
+                .enumerate()
+                .map(|(index, var)| ElementBinding {
+                    index,
+                    bound_name: if var.is_free_from_bindings {
+                        None
+                    } else {
+                        Some(var.name)
+                    },
+                    typ: var.typ,
+                })
+                .collect();
+            Some(Decision::SwitchTuple {
+                variable: branch_var,
+                case: Box::new(TupleCase {
+                    bindings,
+                    body: body.unwrap(),
+                }),
+            })
+        }
         _ => unreachable!("Unsupported type for pattern matching"),
     }
 }
@@ -708,36 +841,28 @@ fn fresh_var(fresh_vars: &mut FreshVarCounter, typ: Type) -> Variable {
     }
 }
 
-/// Builds a pattern string for a variable by recursively looking up constructor info.
+/// Builds the witness for a variable by recursively looking up constructor info.
 ///
-/// This is used to generate human-readable missing pattern messages. Starting from
-/// the root variable, it traverses `var_info` to reconstruct the pattern that would
-/// be needed to make the match exhaustive.
-fn build_pattern_for_var(var_info: &HashMap<VarName, VarInfo>, var_name: &VarName) -> String {
+/// Starting from the root variable, it traverses `var_info` to reconstruct the
+/// pattern that would be needed to make the match exhaustive. A variable that
+/// no switch has tested is a wildcard.
+fn witness_for_var(var_info: &HashMap<VarName, VarInfo>, var_name: &VarName) -> Witness {
     let Some(info) = var_info.get(var_name) else {
-        return "_".to_string();
+        return Witness::Wildcard;
     };
-    if info.args.is_empty() {
-        return info.constructor.clone();
+    let mut args = Vec::new();
+    let mut fields = Vec::new();
+    for (sub_var, field_name) in &info.args {
+        let witness = witness_for_var(var_info, sub_var);
+        match field_name {
+            Some(name) => fields.push((name.clone(), witness)),
+            None => args.push(witness),
+        }
     }
-    let has_named_fields = info.args.iter().any(|(_, f)| f.is_some());
-    let args = info
-        .args
-        .iter()
-        .map(|(sub_var, field_name)| {
-            let pattern = build_pattern_for_var(var_info, sub_var);
-            match field_name {
-                Some(name) => format!("{}: {}", name, pattern),
-                None => pattern,
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    if has_named_fields {
-        format!("{}{{{}}}", info.constructor, args)
-    } else {
-        format!("{}({})", info.constructor, args)
+    Witness::Constructor {
+        constructor: info.constructor.clone(),
+        args,
+        fields,
     }
 }
 
@@ -923,6 +1048,24 @@ mod tests {
                 out.push_str(&format!(
                     "{}{} is {}{}\n",
                     pad, variable.name, case._type_name, args
+                ));
+                out.push_str(&format_decision(&case.body, indent + 1));
+                out
+            }
+            Decision::SwitchTuple { variable, case } => {
+                let mut out = String::new();
+                let elements: Vec<_> = case
+                    .bindings
+                    .iter()
+                    .map(|b| b.bound_name.as_ref().map(|v| v.as_str()).unwrap_or("_"))
+                    .collect();
+                let trailing_comma = if elements.len() == 1 { "," } else { "" };
+                out.push_str(&format!(
+                    "{}{} is ({}{})\n",
+                    pad,
+                    variable.name,
+                    elements.join(", "),
+                    trailing_comma
                 ));
                 out.push_str(&format_decision(&case.body, indent + 1));
                 out
@@ -2600,6 +2743,385 @@ mod tests {
                     branch 0
                 v__0 is Status::Inactive
                   branch 2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_of_bools_exhaustive() {
+        accept(
+            TypeRegistryBuilder::new(),
+            "(Bool, Bool)",
+            indoc! {"
+                match x {
+                    (true, true) => 0,
+                    (true, false) => 1,
+                    (false, _) => 2,
+                }
+            "},
+            expect![[r#"
+                v__0 is (v__1, v__2)
+                  v__1 is false
+                    branch 2
+                  v__1 is true
+                    v__2 is false
+                      branch 1
+                    v__2 is true
+                      branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_of_bools_missing_case() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "(Bool, Bool)",
+            indoc! {"
+                match x {
+                    (true, _) => 0,
+                    (false, true) => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: (false, false)
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_with_binding_and_wildcard() {
+        accept(
+            TypeRegistryBuilder::new(),
+            "(Bool, String, Int)",
+            indoc! {"
+                match x {
+                    (true, s, _) => 0,
+                    (false, _, n) => 1,
+                }
+            "},
+            expect![[r#"
+                v__0 is (v__1, v__2, v__3)
+                  v__1 is false
+                    let n = v__3
+                    branch 1
+                  v__1 is true
+                    let s = v__2
+                    branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_with_only_bindings() {
+        accept(
+            TypeRegistryBuilder::new(),
+            "(String, Int)",
+            indoc! {"
+                match x {
+                    (s, n) => 0,
+                }
+            "},
+            expect![[r#"
+                v__0 is (v__1, v__2)
+                  let s = v__1
+                  let n = v__2
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_with_wildcard_elements() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "(Bool, Bool)",
+            indoc! {"
+                match x {
+                    (_, _) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_empty_tuple_pattern() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "()",
+            indoc! {"
+                match x {
+                    () => 0,
+                }
+            "},
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_unreachable_arm() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "(Bool, Bool)",
+            indoc! {"
+                match x {
+                    (a, _) => 0,
+                    (true, _) => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for pattern '(true, _)'
+                    (true, _) => 1,
+                    ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_one_tuple() {
+        accept(
+            TypeRegistryBuilder::new(),
+            "(Bool,)",
+            indoc! {"
+                match x {
+                    (true,) => 0,
+                    (false,) => 1,
+                }
+            "},
+            expect![[r#"
+                v__0 is (v__1,)
+                  v__1 is false
+                    branch 1
+                  v__1 is true
+                    branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_one_tuple_missing_case() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "(Bool,)",
+            indoc! {"
+                match x {
+                    (true,) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: (false,)
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_nested_tuple() {
+        accept(
+            TypeRegistryBuilder::new(),
+            "((Bool, Int), Option[String])",
+            indoc! {"
+                match x {
+                    ((true, n), Some(s)) => 0,
+                    ((false, _), Some(_)) => 1,
+                    (_, None) => 2,
+                }
+            "},
+            expect![[r#"
+                v__0 is (v__1, v__2)
+                  v__2 is Some(v__3)
+                    v__1 is (v__4, v__5)
+                      v__4 is false
+                        branch 1
+                      v__4 is true
+                        let s = v__3
+                        let n = v__5
+                        branch 0
+                  v__2 is None
+                    branch 2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_nested_tuple_missing_case() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "((Bool, Bool), Bool)",
+            indoc! {"
+                match x {
+                    ((true, _), _) => 0,
+                    ((false, true), true) => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: ((false, false), _), ((false, true), false)
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_nested_tuple_with_wildcard_elements_followed_by_wildcard() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "((Bool, Bool), Bool)",
+            indoc! {"
+                match x {
+                    ((_, _), _) => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for pattern '_'
+                    _ => 1,
+                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_with_binding_and_nested_wildcard_tuple() {
+        accept(
+            TypeRegistryBuilder::new(),
+            "((Bool, Bool), String)",
+            indoc! {"
+                match x {
+                    ((_, _), s) => 0,
+                }
+            "},
+            expect![[r#"
+                v__0 is (_, v__2)
+                  let s = v__2
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_option_of_tuple_exhaustive() {
+        accept(
+            TypeRegistryBuilder::new(),
+            "Option[(Bool, Int)]",
+            indoc! {"
+                match x {
+                    Some((true, n)) => 0,
+                    Some((false, _)) => 1,
+                    None => 2,
+                }
+            "},
+            expect![[r#"
+                v__0 is Some(v__1)
+                  v__1 is (v__2, v__3)
+                    v__2 is false
+                      branch 1
+                    v__2 is true
+                      let n = v__3
+                      branch 0
+                v__0 is None
+                  branch 2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_option_of_tuple_missing_case() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "Option[(Bool, Int)]",
+            indoc! {"
+                match x {
+                    Some((true, n)) => 0,
+                    None => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Some((false, _))
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_with_tuple_field() {
+        accept(
+            TypeRegistryBuilder::new().record("Point", [("xy", "(Int, Bool)")]),
+            "Point",
+            indoc! {"
+                match x {
+                    Point{xy: (n, true)} => 0,
+                    Point{xy: (_, false)} => 1,
+                }
+            "},
+            expect![[r#"
+                v__0 is Point{xy: v__1}
+                  v__1 is (v__2, v__3)
+                    v__3 is false
+                      branch 1
+                    v__3 is true
+                      let n = v__2
+                      branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_of_enums() {
+        accept(
+            TypeRegistryBuilder::new().enum_("Color", [("Red", vec![]), ("Green", vec![])]),
+            "(Color, Color)",
+            indoc! {"
+                match x {
+                    (Color::Red, Color::Red) => 0,
+                    (Color::Green, Color::Green) => 1,
+                    (_, _) => 2,
+                }
+            "},
+            expect![[r#"
+                v__0 is (v__1, v__2)
+                  v__2 is Color::Red
+                    v__1 is Color::Red
+                      branch 0
+                    v__1 is Color::Green
+                      branch 2
+                  v__2 is Color::Green
+                    v__1 is Color::Red
+                      branch 2
+                    v__1 is Color::Green
+                      branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_of_enums_missing_case() {
+        reject(
+            TypeRegistryBuilder::new().enum_("Color", [("Red", vec![]), ("Green", vec![])]),
+            "(Color, Color)",
+            indoc! {"
+                match x {
+                    (Color::Red, _) => 0,
+                    (_, Color::Red) => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: (Color::Green, Color::Green)
+                match x {
+                      ^
             "#]],
         );
     }

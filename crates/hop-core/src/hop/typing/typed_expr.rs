@@ -25,6 +25,13 @@ pub enum TypedExpr {
         typ: Type,
     },
 
+    /// A tuple index expression, e.g. foo.0
+    TupleIndex {
+        tuple: Box<Self>,
+        index: usize,
+        typ: Type,
+    },
+
     /// A string literal expression, e.g. "foo bar"
     StringLiteral { value: CheapString },
 
@@ -39,6 +46,9 @@ pub enum TypedExpr {
 
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral { elements: Vec<Self>, typ: Type },
+
+    /// A tuple literal expression, e.g. (foo, bar)
+    TupleLiteral { elements: Vec<Self>, typ: Type },
 
     /// A record literal expression, e.g. User(name: "John", age: 30)
     RecordLiteral {
@@ -303,7 +313,9 @@ impl TypedExpr {
         match self {
             TypedExpr::Var { typ, .. }
             | TypedExpr::FieldAccess { typ, .. }
+            | TypedExpr::TupleIndex { typ, .. }
             | TypedExpr::ArrayLiteral { typ, .. }
+            | TypedExpr::TupleLiteral { typ, .. }
             | TypedExpr::RecordLiteral { typ, .. }
             | TypedExpr::EnumLiteral { typ, .. }
             | TypedExpr::OptionLiteral { typ, .. }
@@ -386,6 +398,10 @@ impl TypedExpr {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
+            TypedExpr::TupleIndex { tuple, index, .. } => tuple
+                .to_doc()
+                .append(BoxDoc::text("."))
+                .append(BoxDoc::text(index.to_string())),
             TypedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             TypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
@@ -403,6 +419,23 @@ impl TypedExpr {
                         .group(),
                 )
                 .append(BoxDoc::text("]")),
+            TypedExpr::TupleLiteral { elements, .. } => BoxDoc::text("(")
+                .append(
+                    BoxDoc::line_()
+                        .append(BoxDoc::intersperse(
+                            elements.iter().map(|e| e.to_doc()),
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(if elements.len() == 1 {
+                            BoxDoc::text(",")
+                        } else {
+                            BoxDoc::text(",").flat_alt(BoxDoc::nil())
+                        })
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(BoxDoc::text(")")),
             TypedExpr::RecordLiteral {
                 record_name,
                 fields,

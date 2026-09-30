@@ -368,15 +368,29 @@ pub fn parse_primary(
         )?;
         ParsedExpr::ArrayLiteral { elements, range }
     } else if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
-        let (inner, _) = parse_delimited(
+        let mut trailing_comma = false;
+        let (mut elements, parens) = parse_delimited_list(
             iter,
             comments,
             errors,
             LangTokenPair::Parens,
             &left_paren,
-            parse_expr,
+            &[],
+            |iter, comments, errors| {
+                let element = parse_expr(iter, comments, errors)?;
+                trailing_comma = matches!(peek(iter), Some((LangToken::Comma, _)))
+                    && matches!(peek2(iter), Some((LangToken::RightParen, _)));
+                Ok(element)
+            },
         )?;
-        inner
+        if elements.len() == 1 && !trailing_comma {
+            elements.remove(0)
+        } else {
+            ParsedExpr::TupleLiteral {
+                elements,
+                range: left_paren.to(parens),
+            }
+        }
     } else if let Some(match_range) = next_if_eq(iter, comments, errors, LangToken::Match) {
         parse_match(iter, comments, errors, match_range)?
     } else if let Some(for_range) = next_if_eq(iter, comments, errors, LangToken::For) {
@@ -826,6 +840,35 @@ fn parse_match_pattern(
             constructor_range: some_range.clone(),
             enum_name_range: None,
             range: some_range.to(parens),
+        });
+    }
+    if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
+        let mut trailing_comma = false;
+        let (mut args, parens) = parse_delimited_list(
+            iter,
+            comments,
+            errors,
+            LangTokenPair::Parens,
+            &left_paren,
+            &[],
+            |iter, comments, errors| {
+                let pattern = parse_match_pattern(iter, comments, errors)?;
+                trailing_comma = matches!(peek(iter), Some((LangToken::Comma, _)))
+                    && matches!(peek2(iter), Some((LangToken::RightParen, _)));
+                Ok(pattern)
+            },
+        )?;
+        if args.len() == 1 && !trailing_comma {
+            return Ok(args.remove(0));
+        }
+        let tuple_range = left_paren.to(parens);
+        return Ok(ParsedMatchPattern::Constructor {
+            constructor: Constructor::Tuple,
+            args,
+            fields: Vec::new(),
+            constructor_range: tuple_range.clone(),
+            enum_name_range: None,
+            range: tuple_range,
         });
     }
     if let Some((type_name_str, type_name_range)) =
@@ -1374,14 +1417,96 @@ mod tests {
     }
 
     #[test]
-    fn rejects_expr_when_parens_are_empty() {
-        reject(
+    fn accepts_empty_tuple_literal() {
+        accept(
             "()",
             expect![[r#"
-                -- errors --
-                error: Unexpected token ')'
                 ()
-                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_literal() {
+        accept(
+            r#"(1, "two", [3])"#,
+            expect![[r#"
+                (1, "two", [3])
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_one_tuple_literal() {
+        accept(
+            "(x,)",
+            expect![[r#"
+                (x,)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_literal_with_trailing_comma() {
+        accept(
+            "(x, y,)",
+            expect![[r#"
+                (x, y)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_nested_tuple_literal() {
+        accept(
+            "((a, b), (c,), ())",
+            expect![[r#"
+                ((a, b), (c,), ())
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_parenthesized_expr_as_grouping_not_tuple() {
+        accept(
+            "(x)",
+            expect![[r#"
+                x
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_literal_as_match_subject() {
+        accept(
+            "match (a, b) { (true, _) => 0, (false, _) => 1 }",
+            expect![[r#"
+                match (a, b) {(true, _) => 0, (false, _) => 1}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_field_access_on_tuple_element() {
+        accept(
+            "(user, 1).name",
+            expect![[r#"
+                (user, 1).name
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_literal_with_missing_element() {
+        reject(
+            "(a, , b)",
+            expect![[r#"
+                -- errors --
+                error: Unexpected token ','
+                (a, , b)
+                    ^
+                -- ast --
+                (a, b)
             "#]],
         );
     }
@@ -2875,6 +3000,83 @@ mod tests {
             "match event { Event::Click{x, y: b} => x + b }",
             expect![[r#"
                 match event {Event::Click{x, y: b} => x + b}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_match_with_tuple_pattern() {
+        accept(
+            "match pair { (true, x) => x, (false, _) => 0 }",
+            expect![[r#"
+                match pair {(true, x) => x, (false, _) => 0}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_match_with_nested_tuple_pattern() {
+        accept(
+            "match pair { ((a, b), Some((c, _))) => a, _ => 0 }",
+            expect![[r#"
+                match pair {((a, b), Some((c, _))) => a, _ => 0}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_match_with_one_tuple_pattern() {
+        accept(
+            "match single { (x,) => x }",
+            expect![[r#"
+                match single {(x,) => x}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_match_with_empty_tuple_pattern() {
+        accept(
+            "match unit { () => 0 }",
+            expect![[r#"
+                match unit {() => 0}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_match_with_trailing_comma_in_tuple_pattern() {
+        accept(
+            "match pair { (a, b,) => a }",
+            expect![[r#"
+                match pair {(a, b) => a}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_match_with_parenthesized_pattern() {
+        // Parentheses around a single pattern without a trailing comma group
+        // the pattern instead of making a 1-tuple
+        accept(
+            "match maybe { (Some(x)) => x, (_) => 0 }",
+            expect![[r#"
+                match maybe {Some(x) => x, _ => 0}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_match_when_tuple_pattern_parenthesis_is_unmatched() {
+        reject(
+            "match pair { (a, b => a }",
+            expect![[r#"
+                -- errors --
+                error: Expected token ',' but got '=>'
+                match pair { (a, b => a }
+                                   ^^
+                -- ast --
+                match pair {}
             "#]],
         );
     }

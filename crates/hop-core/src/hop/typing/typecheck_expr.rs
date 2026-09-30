@@ -1024,6 +1024,44 @@ pub fn typecheck_expr(
                 })
             }
         }
+        ParsedExpr::TupleLiteral { elements, .. } => {
+            // Determine expected element types from context if available
+            let expected_element_types: Option<&[Type]> = match inferred_type {
+                Some(Type::Tuple(element_types)) if element_types.len() == elements.len() => {
+                    Some(element_types)
+                }
+                _ => None,
+            };
+
+            let mut typed_elements = Vec::with_capacity(elements.len());
+            for (index, element) in elements.iter().enumerate() {
+                let Some(typed_element) = typecheck_expr(
+                    element,
+                    expected_element_types.map(|types| &types[index]),
+                    forwarded_params,
+                    var_env,
+                    type_env,
+                    registry,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                    errors,
+                ) else {
+                    continue;
+                };
+                typed_elements.push(typed_element);
+            }
+
+            if typed_elements.len() != elements.len() {
+                return None;
+            }
+
+            let typ = Type::Tuple(typed_elements.iter().map(|e| e.typ()).collect());
+            Some(TypedExpr::TupleLiteral {
+                elements: typed_elements,
+                typ,
+            })
+        }
         ParsedExpr::RecordLiteral {
             record_name,
             record_name_range,

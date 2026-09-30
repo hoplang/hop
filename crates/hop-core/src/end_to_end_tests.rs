@@ -655,6 +655,185 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn tuple_literal_as_match_subject() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Badge(admin: Bool, name: Option[String]) -> Html {
+                  match (admin, name) {
+                    (true, Some(n)) => <p>admin {n}</p>,
+                    (true, None) => <p>admin</p>,
+                    (false, _) => <p>guest</p>,
+                  }
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <>
+                      <Badge admin={true} name={Some("ada")}/>
+                      <Badge admin={true} name={None}/>
+                      <Badge admin={false} name={Some("bob")}/>
+                    </>
+                  }
+                }
+            "#},
+            "<p>admin ada</p><p>admin</p><p>guest</p>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Badge@f0(
+                  admin@v0: Bool,
+                  name@v1: Option[String],
+                ) -> Html {
+                  let v2 = (v0, v1) in {
+                    let v3 = v2.0 in {
+                      let v4 = v2.1 in {
+                        match v3 {
+                          true => {
+                            match v4 {
+                              Some(v5) => {
+                                let v6 = v5 in {
+                                  write("<p")
+                                  write(">")
+                                  write("admin ")
+                                  write_string(v6)
+                                  write("</p>")
+                                }
+                              }
+                              None => {
+                                write("<p")
+                                write(">")
+                                write("admin")
+                                write("</p>")
+                              }
+                            }
+                          }
+                          false => {
+                            write("<p")
+                            write(">")
+                            write("guest")
+                            write("</p>")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                page Test() {
+                  call Badge@f0(admin = true, name = Option[String]::Some("ada"))
+                  call Badge@f0(admin = true, name = Option[String]::None)
+                  call Badge@f0(admin = false, name = Option[String]::Some("bob"))
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<p>admin ada</p><p>admin</p><p>guest</p>")
+                }
+                -- expected output --
+                <p>admin ada</p><p>admin</p><p>guest</p>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn nested_tuple_literal_argument_destructured_by_match() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Row(cell: ((String, Int), (Bool,))) -> Html {
+                  match cell {
+                    ((label, count), (true,)) => <p>{label}: {count.to_string()}</p>,
+                    ((label, _), (false,)) => <p>{label}</p>,
+                  }
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <>
+                      <Row cell={(("apples", 3), (true,))}/>
+                      <Row cell={(("pears", 0), (false,))}/>
+                    </>
+                  }
+                }
+            "#},
+            "<p>apples: 3</p><p>pears</p>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Row@f0(cell@v0: ((String, Int), (Bool,))) -> Html {
+                  let v1 = v0.0 in {
+                    let v2 = v0.1 in {
+                      let v3 = v2.0 in {
+                        match v3 {
+                          true => {
+                            let v4 = v1.0 in {
+                              let v5 = v1.1 in {
+                                let v6 = v4 in {
+                                  let v7 = v5 in {
+                                    write("<p")
+                                    write(">")
+                                    write_string(v6)
+                                    write(": ")
+                                    write_string(v7.to_string())
+                                    write("</p>")
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          false => {
+                            let v8 = v1.0 in {
+                              let v9 = v8 in {
+                                write("<p")
+                                write(">")
+                                write_string(v9)
+                                write("</p>")
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                page Test() {
+                  call Row@f0(cell = (("apples", 3), (true,)))
+                  call Row@f0(cell = (("pears", 0), (false,)))
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<p>apples: 3</p><p>pears</p>")
+                }
+                -- expected output --
+                <p>apples: 3</p><p>pears</p>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn let_in_interpolation_with_markup_tail() {
         check(
             indoc! {r#"

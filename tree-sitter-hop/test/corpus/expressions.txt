@@ -173,3 +173,82 @@ fn f() -> Int {
               (string_content)
               (escape_sequence)
               (string_content))))))))
+
+================================================================================
+tuple expressions and a parenthesized expression
+================================================================================
+
+fn f() -> Int {
+  let a = ();
+  let b = (1,);
+  let c = (1, "two",);
+  let d = ((1, 2), (x));
+  0
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (let_statement
+        (identifier)
+        (tuple_expression))
+      (let_statement
+        (identifier)
+        (tuple_expression
+          (integer_literal)))
+      (let_statement
+        (identifier)
+        (tuple_expression
+          (integer_literal)
+          (string_literal
+            (string_content))))
+      (let_statement
+        (identifier)
+        (tuple_expression
+          (tuple_expression
+            (integer_literal)
+            (integer_literal))
+          (parenthesized_expression
+            (identifier))))
+      (integer_literal))))
+
+================================================================================
+match on a tuple expression with tuple patterns
+================================================================================
+
+fn f() -> Int {
+  match (a, b) { (true, Some((x,))) => x, ((_), ()) => 0 }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (match_expression
+        (tuple_expression
+          (identifier)
+          (identifier))
+        (match_block
+          (match_arm
+            (tuple_pattern
+              (boolean_literal)
+              (variant_pattern
+                (type_identifier)
+                (tuple_pattern
+                  (identifier))))
+            (identifier))
+          (match_arm
+            (tuple_pattern
+              (tuple_pattern
+                (wildcard_pattern))
+              (tuple_pattern))
+            (integer_literal)))))))

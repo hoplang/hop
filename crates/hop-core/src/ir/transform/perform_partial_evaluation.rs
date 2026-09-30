@@ -17,7 +17,8 @@ use crate::ir::var_id::VarId;
 ///   all of which match on a literal node directly.
 /// - A match with a known subject is replaced by the selected arm, with the
 ///   arm's bindings turned into ordinary lets.
-/// - A field access on a record literal projects the field.
+/// - A field access on a record literal projects the field, and a tuple
+///   index on a tuple literal projects the element.
 pub fn perform_partial_evaluation(expr: PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
     let mut env = HashMap::new();
     eval(expr, &mut env, expr_ids)
@@ -327,6 +328,27 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             record => PureExpr::FieldAccess {
                 record: Box::new(record),
                 field,
+                typ,
+                id,
+            },
+        },
+
+        PureExpr::TupleIndex {
+            tuple,
+            index,
+            typ,
+            id,
+        } => match *tuple {
+            PureExpr::TupleLiteral { elements, .. } => {
+                let len = elements.len();
+                elements
+                    .into_iter()
+                    .nth(index)
+                    .unwrap_or_else(|| panic!("index {index} is out of range for a tuple of {len}"))
+            }
+            tuple => PureExpr::TupleIndex {
+                tuple: Box::new(tuple),
+                index,
                 typ,
                 id,
             },
@@ -1275,6 +1297,83 @@ mod tests {
                 -- after --
                 page Test(dynamic@v0: String) {
                   concat(escape("Ada"))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_project_tuple_index_on_tuple_literal() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("dynamic", "String")], |t| {
+                    t.concat(vec![t.escape(
+                        t.tuple_index(t.tuple(vec![t.str("Ada"), t.var("dynamic")]), 0),
+                    )])
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test(dynamic@v0: String) {
+                  concat(escape(("Ada", v0).0))
+                }
+
+                -- after --
+                page Test(dynamic@v0: String) {
+                  concat(escape("Ada"))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_project_tuple_index_on_nested_tuple_literal() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("dynamic", "String")], |t| {
+                    t.concat(vec![t.escape(t.tuple_index(
+                        t.tuple_index(
+                            t.tuple(vec![
+                                t.tuple(vec![t.var("dynamic"), t.str("deep")]),
+                                t.str("shallow"),
+                            ]),
+                            0,
+                        ),
+                        1,
+                    ))])
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test(dynamic@v0: String) {
+                  concat(escape(((v0, "deep"), "shallow").0.1))
+                }
+
+                -- after --
+                page Test(dynamic@v0: String) {
+                  concat(escape("deep"))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_keep_tuple_index_on_dynamic_tuple() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("pair", "(String, Int)")], |t| {
+                    t.concat(vec![t.escape(t.tuple_index(t.var("pair"), 0))])
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test(pair@v0: (String, Int)) {
+                  concat(escape(v0.0))
+                }
+
+                -- after --
+                page Test(pair@v0: (String, Int)) {
+                  concat(escape(v0.0))
                 }
             "#]],
         );

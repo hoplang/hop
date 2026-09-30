@@ -188,6 +188,7 @@ module.exports = grammar({
         $.float_literal,
         $.boolean_literal,
         $.array_literal,
+        $.tuple_expression,
         $.record_literal,
         $.parenthesized_expression,
         $.block,
@@ -209,6 +210,15 @@ module.exports = grammar({
       ),
 
     parenthesized_expression: ($) => seq("(", $._expression, ")"),
+
+    // A single element without a trailing comma is a parenthesized
+    // expression, not a tuple.
+    tuple_expression: ($) =>
+      seq(
+        "(",
+        optional(seq($._expression, ",", commaSep($._expression))),
+        ")",
+      ),
 
     array_literal: ($) => seq("[", commaSep($._expression), "]"),
 
@@ -316,6 +326,7 @@ module.exports = grammar({
         $.scoped_identifier,
         $.variant_pattern,
         $.record_pattern,
+        $.tuple_pattern,
       ),
 
     wildcard_pattern: (_) => "_",
@@ -328,6 +339,10 @@ module.exports = grammar({
         commaSep($._pattern),
         ")",
       ),
+
+    // Permissive: the parser reads a single pattern without a trailing comma
+    // as a parenthesized pattern rather than a tuple.
+    tuple_pattern: ($) => seq("(", commaSep($._pattern), ")"),
 
     record_pattern: ($) =>
       seq(

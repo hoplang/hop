@@ -112,6 +112,10 @@
         "named": true
       },
       {
+        "type": "tuple_expression",
+        "named": true
+      },
+      {
         "type": "type_identifier",
         "named": true
       },
@@ -179,6 +183,10 @@
       },
       {
         "type": "scoped_identifier",
+        "named": true
+      },
+      {
+        "type": "tuple_pattern",
         "named": true
       },
       {
@@ -1472,6 +1480,36 @@
         },
         {
           "type": "string_content",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "tuple_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "tuple_pattern",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "_pattern",
           "named": true
         }
       ]

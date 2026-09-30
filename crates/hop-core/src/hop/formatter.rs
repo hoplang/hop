@@ -1012,6 +1012,28 @@ fn format_expr<'a>(
                     .append(arena.text("]"))
             }
         }
+        ParsedExpr::TupleLiteral { elements, .. } => {
+            if elements.is_empty() {
+                arena.text("()")
+            } else if elements.len() == 1 {
+                arena
+                    .text("(")
+                    .append(format_expr(arena, &elements[0], comments))
+                    .append(arena.text(",)"))
+            } else {
+                let mut elements_doc = arena.nil();
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        elements_doc = elements_doc.append(arena.text(",")).append(arena.line());
+                    }
+                    elements_doc = elements_doc.append(format_expr(arena, elem, comments));
+                }
+                arena
+                    .text("(")
+                    .append(soft_block(arena, elements_doc))
+                    .append(arena.text(")"))
+            }
+        }
         ParsedExpr::RecordLiteral {
             record_name,
             fields,
@@ -1334,7 +1356,20 @@ fn format_match_pattern<'a>(
             ..
         } => {
             let base = format_constructor(arena, constructor);
-            if !fields.is_empty() {
+            if matches!(constructor, Constructor::Tuple) {
+                arena
+                    .text("(")
+                    .append(arena.intersperse(
+                        args.iter().map(|p| format_match_pattern(arena, p)),
+                        arena.text(", "),
+                    ))
+                    .append(if args.len() == 1 {
+                        arena.text(",")
+                    } else {
+                        arena.nil()
+                    })
+                    .append(arena.text(")"))
+            } else if !fields.is_empty() {
                 let mut fields_doc = arena.nil();
                 for (i, (name, _, pat)) in fields.iter().enumerate() {
                     if i > 0 {
@@ -1394,6 +1429,7 @@ fn format_constructor<'a>(
         Constructor::OptionSome => arena.text("Some"),
         Constructor::OptionNone => arena.text("None"),
         Constructor::Record { type_name } => arena.text(type_name.as_str()),
+        Constructor::Tuple => arena.nil(),
     }
 }
 
@@ -3013,6 +3049,124 @@ mod tests {
                   only: (Int,),
                   plain: Int,
                 ) -> Html {
+                  <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn match_with_tuple_pattern() {
+        check(
+            indoc! {r#"
+                fn Main(pair: (Bool, String)) -> Html {
+                  <div class={match pair { ( true ,name ) => name, (false,_) => "none" }}>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                fn Main(pair: (Bool, String)) -> Html {
+                  <div class={
+                    match pair {(true, name) => name, (false, _) => "none"}
+                  }>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn match_with_one_tuple_pattern_keeps_the_trailing_comma() {
+        check(
+            indoc! {r#"
+                fn Main(single: (String,)) -> Html {
+                  <div class={match single { ( name , ) => name }}>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                fn Main(single: (String,)) -> Html {
+                  <div class={match single {(name,) => name}}>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn match_with_parenthesized_pattern_drops_the_parentheses() {
+        check(
+            indoc! {r#"
+                fn Main(maybe: Option[String]) -> Html {
+                  <div class={match maybe { (Some(name)) => name, (None) => "none" }}>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                fn Main(maybe: Option[String]) -> Html {
+                  <div class={
+                    match maybe {Some(name) => name, None => "none"}
+                  }>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn tuple_literals() {
+        check(
+            indoc! {r#"
+                fn Main() -> Html {
+                  let pair = ( 1 ,"two" );
+                  let single = ( pair , );
+                  let empty = (  );
+                  let grouped = ( 1 );
+                  <></>
+                }
+            "#},
+            expect![[r#"
+                fn Main() -> Html {
+                  let pair = (1, "two");
+                  let single = (pair,);
+                  let empty = ();
+                  let grouped = 1;
+                  <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn long_tuple_literal_breaks_over_multiple_lines() {
+        check(
+            indoc! {r#"
+                fn Main() -> Html {
+                  let row = ("a very long string value", "another very long string value", 1234567);
+                  <></>
+                }
+            "#},
+            expect![[r#"
+                fn Main() -> Html {
+                  let row = (
+                    "a very long string value",
+                    "another very long string value",
+                    1234567,
+                  );
+                  <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_default_tuple_parameter() {
+        check(
+            indoc! {"
+                fn Point(xy: (Int, Int) = (0,0)) -> Html {<></>}
+            "},
+            expect![[r#"
+                fn Point(xy: (Int, Int) = (0, 0)) -> Html {
                   <></>
                 }
             "#]],

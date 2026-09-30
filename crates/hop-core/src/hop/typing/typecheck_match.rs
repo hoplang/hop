@@ -390,5 +390,38 @@ fn decision_to_typed_expr(
 
             body
         }
+
+        Decision::SwitchTuple { variable, case } => {
+            let mut body = decision_to_typed_expr(&case.body, typed_bodies, result_type);
+
+            // Wrap with Let expressions for each element (using TupleIndex)
+            // Iterate in reverse so bindings are in the correct order
+            // Skip wildcard bindings (bound_name is None)
+            for binding in case.bindings.iter().rev() {
+                let Some(bound_name) = &binding.bound_name else {
+                    continue;
+                };
+
+                // Create tuple index: subject.index
+                let tuple_index = TypedExpr::TupleIndex {
+                    tuple: Box::new(TypedExpr::Var {
+                        value: variable.name.clone(),
+                        typ: variable.typ.clone(),
+                    }),
+                    index: binding.index,
+                    typ: binding.typ.clone(),
+                };
+
+                let typ = body.typ();
+                body = TypedExpr::Let {
+                    var: bound_name.clone(),
+                    value: Box::new(tuple_index),
+                    body: Box::new(body),
+                    typ,
+                };
+            }
+
+            body
+        }
     }
 }

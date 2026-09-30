@@ -1057,7 +1057,8 @@ fn collect_names_in_pattern(pattern: &ParsedMatchPattern, out: &mut HashSet<Chea
         Constructor::BooleanTrue
         | Constructor::BooleanFalse
         | Constructor::OptionSome
-        | Constructor::OptionNone => {}
+        | Constructor::OptionNone
+        | Constructor::Tuple => {}
     }
     for arg in args {
         collect_names_in_pattern(arg, out);
@@ -2276,6 +2277,237 @@ mod tests {
                 record User {
                   name: String,
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_match_with_tuple_pattern() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(pair: (Bool, String)) -> Html {
+                  match pair {
+                    (true, name) => <>{name}</>,
+                    (false, _) => <>none</>,
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(pair: (Bool, String)) -> Html {
+                  let v__0 = pair.0 in let v__1 = pair.1 in match v__0 {
+                    true => let name = v__1 in concat(escape(name)),
+                    false => concat(raw("none")),
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_match_on_tuple_literal() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(admin: Bool, name: Option[String]) -> Html {
+                  match (admin, name) {
+                    (true, Some(n)) => <>admin {n}</>,
+                    (true, None) => <>admin</>,
+                    (false, _) => <>guest</>,
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(admin: Bool, name: Option[String]) -> Html {
+                  let v__0 = (
+                    admin,
+                    name,
+                  ) in let v__1 = v__0.0 in let v__2 = v__0.1 in match v__1 {
+                    true => match v__2 {
+                      Some(v__3) => let n = v__3 in concat(raw("admin "), escape(n)),
+                      None => concat(raw("admin")),
+                    },
+                    false => concat(raw("guest")),
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_literal_argument() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Cell(pair: (String, Int)) -> Html {
+                  match pair {
+                    (label, _) => <>{label}</>,
+                  }
+                }
+                fn Main() -> Html {
+                  <Cell pair={("a", 1)}/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Cell(pair: (String, Int)) -> Html {
+                  let v__0 = pair.0 in let label = v__0 in concat(escape(label))
+                }
+
+                fn Main() -> Html {
+                  Cell(pair: ("a", 1))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_tuple_literal_with_element_types_inferred_from_context() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Cell(pair: (Option[String], Array[Int])) -> Html {
+                  match pair {
+                    (label, _) => match label {
+                      Some(l) => <>{l}</>,
+                      None => <></>,
+                    },
+                  }
+                }
+                fn Main() -> Html {
+                  <Cell pair={(None, [])}/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Cell(pair: (Option[String], Array[Int])) -> Html {
+                  let v__0 = pair.0 in let label = v__0 in match label {
+                    Some(v__2) => let l = v__2 in concat(escape(l)),
+                    None => concat(),
+                  }
+                }
+
+                fn Main() -> Html {
+                  Cell(pair: (None, []))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_with_default_tuple_parameter() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Cell(pair: (String, Int) = ("a", 1)) -> Html {
+                  match pair {
+                    (label, _) => <>{label}</>,
+                  }
+                }
+                fn Main() -> Html {
+                  <Cell/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Cell(pair: (String, Int)) -> Html {
+                  let v__0 = pair.0 in let label = v__0 in concat(escape(label))
+                }
+
+                fn Main() -> Html {
+                  Cell(pair: ("a", 1))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_literal_argument_with_wrong_element_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Cell(pair: (String, Int)) -> Html {
+                  match pair {
+                    (label, _) => <>{label}</>,
+                  }
+                }
+                fn Main() -> Html {
+                  <Cell pair={("a", "b")}/>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for argument 'pair' of function 'Cell': expected (String, Int) got (String, String)
+                  --> main.hop (line 7, col 15)
+                6 | fn Main() -> Html {
+                7 |   <Cell pair={("a", "b")}/>
+                  |               ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_literal_argument_with_wrong_arity() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Cell(pair: (String, Int)) -> Html {
+                  match pair {
+                    (label, _) => <>{label}</>,
+                  }
+                }
+                fn Main() -> Html {
+                  <Cell pair={("a", 1, true)}/>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for argument 'pair' of function 'Cell': expected (String, Int) got (String, Int, Bool)
+                  --> main.hop (line 7, col 15)
+                6 | fn Main() -> Html {
+                7 |   <Cell pair={("a", 1, true)}/>
+                  |               ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_inferring_empty_array_in_tuple_literal() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let pair = (1, []);
+                  match pair {
+                    (n, _) => <>{n.to_string()}</>,
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Cannot infer type of empty array
+                  --> main.hop (line 2, col 18)
+                1 | fn Main() -> Html {
+                2 |   let pair = (1, []);
+                  |                  ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_tuple_literal_in_text_expression() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  <div>{("a", "b")}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for interpolation: expected String or Html got (String, String)
+                  --> main.hop (line 2, col 9)
+                1 | fn Main() -> Html {
+                2 |   <div>{("a", "b")}</div>
+                  |         ^^^^^^^^^^
             "#]],
         );
     }
