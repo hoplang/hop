@@ -24,8 +24,9 @@ shows the [rendering](#rendering) of an `Html` value.
 
 ## Lexical structure
 
-A module is a UTF-8 text file. Outside markup and string literals, whitespace
-is ignored except as it separates tokens.
+A module is a UTF-8 text file. Outside [markup text](#markup-nodes), string
+literals and the values of [quoted attributes](#attributes), whitespace is
+ignored except as it separates tokens.
 
 A comment starts with `//` and runs to the end of the line. It can appear
 wherever whitespace can, except inside markup, where a
@@ -811,43 +812,14 @@ else, such as an expression on its own, is a compile error.
 ForExpr ::= "for" ( LowercaseIdentifier | "_" ) "in" Expr ( "..=" Expr )? BlockExpr
 ```
 
-For example:
+`_` in place of the variable binds nothing. Looping over anything other than an
+array or a range of `Int` values is a compile error. So is a body whose type is not `Html`.
 
 ```hop
-let items = for name in ["Alice", "Bob"] {
-  <li>
-    {name}
-  </li>
-};
-let bold = for i in 1..=3 {
-  <b>
-    {i.to_string()}
-  </b>
-};
-// items: <li>Alice</li><li>Bob</li>
-// bold:  <b>1</b><b>2</b><b>3</b>
-```
-
-`_` in place of the variable binds nothing.
-
-Looping over anything other than an array or a range of `Int` values is a
-compile error:
-
-```hop
-// error: Mismatched type: expected Array[...] got String
-for tag in "a, b" {
-  <li>
-    {tag}
-  </li>
-}
-```
-
-So is a body whose type is not `Html`:
-
-```hop
-for _ in 1..=3 {
-  "*" // error: Mismatched type for for body: expected Html got String
-}
+for name in ["Alice", "Bob"] { <li>{name}</li> } // <li>Alice</li><li>Bob</li>
+for i in 1..=3 { <b>{i.to_string()}</b> }        // <b>1</b><b>2</b><b>3</b>
+for tag in "a, b" { <br> }                       // error: Mismatched type: expected Array[...] got String
+for _ in 1..=3 { "*" }                           // error: Mismatched type for for body: expected Html got String
 ```
 
 <a id="markup-expressions"></a>
@@ -893,30 +865,17 @@ VoidElementName ::= "area"
 ```
 
 The name is that of an HTML or SVG element, such as `div` or `path`, or of a
-custom element, which contains `-`, such as `my-widget`. Any other name, such as
-`widget`, is a compile error.
+custom element, which contains `-`, such as `my-widget`. Any other name is a
+compile error.
 
 Using `<html>`, `<head>` or `<body>` is a compile error, since a
 [page](#page-declarations) provides them, and so is using `<style>`: styles go
 in the project stylesheet. Further elements, and `<script>` with content, are
 compile errors for [XSS safety](#xss-safety).
 
-An element is an expression: it can be bound with `let` and inserted into other
-markup. For example:
-
 ```hop
-let title = (
-  <h2>
-    Note
-  </h2>
-);
-let section = (
-  <section>
-    {title}
-  </section>
-);
-// title:   <h2>Note</h2>
-// section: <section><h2>Note</h2></section>
+let b = true;
+match b { true => <b>ok</b>, false => <i>not ok</i> } // <b>ok</b>
 ```
 
 <a id="function-elements"></a>
@@ -935,7 +894,14 @@ FunctionElementExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupNode* "</" 
                       | "<" UppercaseIdentifier Attribute* "/>"
 ```
 
-For example, with
+Leaving out a parameter that has no default value is a compile error. So is an
+argument that does not have the type of its parameter, and an attribute that
+names no parameter, unless a [rest parameter](#rest-parameters) accepts it.
+
+Content between the tags requires a `children: Html` parameter, and is a compile
+error without one. Giving content both between the tags and as a `children`
+attribute is a compile error too. Like any parameter, `children` can have a
+default value, which makes the content optional.
 
 ```hop
 fn Badge(
@@ -947,58 +913,26 @@ fn Badge(
     {children}
   </span>
 }
+
+<Badge label="new"><b>!</b></Badge> // <span>new<b>!</b></span>
 ```
-
-```hop
-<Badge label="new">
-  <b>
-    !
-  </b>
-</Badge>
-```
-
-evaluates to `<span>new<b>!</b></span>`.
-
-Leaving out a parameter that has no default value is a compile error, as in
-`<Badge/>`. So is an argument that does not have the type of its parameter, as
-in `<Badge label={1}/>`, and an attribute that names no parameter, unless a
-[rest parameter](#rest-parameters) accepts it, as in
-`<Badge label="a" size="x"/>`.
-
-Content between the tags requires a `children: Html` parameter. With
-`fn Label(text: String) -> Html { … }`, `<Label text="a">x</Label>` is a compile
-error. Giving content both between the tags and as a `children` attribute is a
-compile error too. Like any parameter, `children` can have a default value,
-which makes the content optional.
 
 <a id="fragments"></a>
 
 #### Fragment expressions
 
 A fragment `<>…</>` groups nodes without an element around them, so that
-several nodes can be used where one expression is expected. It evaluates to its
-content, and `<></>` to the empty sequence.
+several nodes can be used where one expression is expected.
 
 ```ebnf
 FragmentExpr ::= "<>" MarkupNode* "</>"
 ```
 
-For example:
+A fragment expression evaluates to its content, and `<></>` to the empty
+sequence.
 
 ```hop
-let term = "hop";
-let definition = "a template language";
-let entry = (
-  <>
-    <dt>
-      {term}
-    </dt>
-    <dd>
-      {definition}
-    </dd>
-  </>
-);
-// entry: <dt>hop</dt><dd>a template language</dd>
+<><i>hello</i> <b>world</b></> // <i>hello</i> <b>world</b>
 ```
 
 <a id="markup-nodes"></a>
@@ -1006,12 +940,12 @@ let entry = (
 #### Markup nodes
 
 The content of an element or fragment is a sequence of markup nodes. A node is
-text, an [interpolation](#interpolation), a comment, or a nested
+text, a [markup interpolation](#markup-interpolation), a comment, or a nested
 [markup expression](#markup-expressions).
 
 ```ebnf
 MarkupNode    ::= MarkupText
-                | Interpolation
+                | MarkupInterpolation
                 | MarkupComment
                 | MarkupExpr
 MarkupText    ::= [^<{}]+
@@ -1024,56 +958,38 @@ Text evaluates to its characters as written, after its
 `<`, `{` or `}`, which are written `&lt;`, `&lbrace;` and `&rbrace;`. A comment
 evaluates to nothing.
 
-<a id="interpolation"></a>
+<a id="markup-interpolation"></a>
 
-#### Interpolation
+#### Markup interpolation
 
-An interpolation `{e}` is a [block expression](#block-expressions) whose value
-is inserted into the content of an element or fragment.
+A markup interpolation `{e}` is a [block expression](#block-expressions) whose
+value is inserted into the content of an element or fragment.
 
 ```ebnf
-Interpolation ::= BlockExpr
+MarkupInterpolation ::= BlockExpr
 ```
 
-The block expression has type `String` or `Html`, and any other type is a
+The block expression must have type `String` or `Html`. Any other type is a
 compile error. If it has type `Html`, its value is inserted as the elements and
 text it consists of. If it has type `String`, its value is inserted as text,
 [escaped](#escaping):
 
 ```hop
-let text = "<p>hello</p>";
-let greeting = (
-  <div>
-    {text}
-  </div>
-);
-// greeting: <div>&lt;p&gt;hello&lt;/p&gt;</div>
-```
+let text = "a < b";
+let ok = <div>ok</div>;
 
-`for` and `match` are expressions, not markup, and are written in braces like
-any other interpolation. This `match` has type `String`, so its value is
-escaped:
-
-```hop
-let o = Some("<3");
-let display = (
-  <p>
-    {match o {
-      Some(nickname) => nickname,
-      None => "anonymous",
-    }}
-  </p>
-);
-// display: <p>&lt;3</p>
+<div>{text}</div> // <div>a &lt; b</div>
+<div>{ok}</div>   // <div><div>ok</div></div>
 ```
 
 <a id="attributes"></a>
 
 #### Attributes
 
-An attribute is written in the opening tag of an element, as a name alone, or as
-a name with a value in double quotes or in a [block](#block-expressions). A
-spread `...rest` adds the attributes collected by a
+An attribute is written in the start tag of an element. An empty attribute
+`name` is a name alone, a quoted attribute `name="text"` has a value in double
+quotes, a block attribute `name={e}` has a value in a
+[block](#block-expressions), and a spread attribute `...rest` names a
 [rest parameter](#rest-parameters).
 
 ```ebnf
@@ -1088,52 +1004,49 @@ SpreadAttribute ::= "..." LowercaseIdentifier
 AttributeName   ::= [A-Za-z] [A-Za-z0-9_:.-]*
 ```
 
-A value in double quotes is the `String` of the characters between the quotes,
-exactly as written, and `name="text"` is the same as `name={e}` where `e` is
-that `String`. Character references are not decoded in a value in double
-quotes, unlike in [markup text](#markup-nodes), and a backslash is a backslash.
-A value that contains a double quote is written in a block, as in
-`title={"say \"hi\""}`.
+A value in single quotes, as in `id='a'`, or without quotes, as in `id=a`, is a
+compile error.
 
-An attribute that appears more than once on an element is a compile error, and
-so are single-quoted values such as `id='a'` and unquoted values such as
-`id=a`.
+On an [HTML element](#html-elements), an attribute renders in the start tag,
+with any value [escaped](#escaping), and the value of a block attribute must
+have type `String`, so `<div id={1}>` is a compile error. On a
+[function element](#function-elements), an attribute passes an argument to the
+function:
 
-On an [HTML element](#html-elements), the forms evaluate as follows:
+| Attribute     | HTML element                              | Function element                              |
+| ------------- | ----------------------------------------- | --------------------------------------------- |
+| `name`        | `name`                                    | `true` for the parameter `name`               |
+| `name="text"` | `name="…"`, with `text` escaped           | `text` as a `String` for the parameter `name` |
+| `name={e}`    | `name="…"`, with the value of `e` escaped | the value of `e` for the parameter `name`     |
+| `...rest`     | the attributes collected by `rest`        | the attributes collected by `rest`            |
 
-| Attribute  | Evaluates to                                                           |
-| ---------- | ---------------------------------------------------------------------- |
-| `name`     | `name`                                                                 |
-| `name={e}` | `name="…"`, with the `String` value of `e` [escaped](#escaping)        |
-| `...rest`  | the attributes passed in the [rest parameter](#rest-parameters) `rest` |
-
-An `e` that does not have type `String` is a compile error, as in
-`<div id={1}>`. A value in double quotes is escaped like any other `String`:
+The value of a quoted attribute `name="text"` is a `String` of the characters
+of `text`, exactly as written. A backslash does not start an
+[escape sequence](#literal-expressions), and a character reference is not
+decoded, so `&amp;` renders as `&amp;amp;`. In [markup text](#markup-nodes),
+which is not escaped, `&amp;` renders as written. A value that contains a
+double quote must be written as a block attribute:
 
 ```hop
-let a = <span title="Tom & Jerry"></span>;
-let b = <span title="Tom &amp; Jerry"></span>;
-let c = <input pattern="\d+">;
-// a: <span title="Tom &amp; Jerry"></span>
-// b: <span title="Tom &amp;amp; Jerry"></span>
-// c: <input pattern="\d+">
+<input pattern="\d+">              // <input pattern="\d+">
+<input pattern={"\\d+"}>           // <input pattern="\d+">
+<abbr title="R&D"></abbr>          // <abbr title="R&amp;D"></abbr>
+<abbr title="R&amp;D"></abbr>      // <abbr title="R&amp;amp;D"></abbr>
+<span title={"say \"hi\""}></span> // <span title="say &quot;hi&quot;"></span>
 ```
 
-The `title` of `a` is `Tom & Jerry`, the `title` of `b` is `Tom &amp; Jerry`,
-and the `pattern` of `c` is `\d+`.
+An element defined by HTML, such as `div`, accepts the global attributes of
+HTML, the attributes HTML defines for that element, and any attribute whose name
+starts with `data-` or `aria-`. Any other attribute is a compile error, such as
+`href` on a `div`. An SVG element, such as `path`, or a custom element accepts
+any attribute, except as follows.
 
-An HTML element accepts the global attributes, its own attributes, and any
-attribute starting with `data-` or `aria-`. SVG and custom elements accept any
-attribute, except an event handler such as `onclick`, which no element accepts
-for [XSS safety](#xss-safety). So `<div href="x">` is a compile error. Some
-attributes, such as the `src` of a `<script>`, accept only a string literal, as
-described in [XSS safety](#xss-safety).
+For [XSS safety](#xss-safety), no element accepts an attribute whose name
+starts with `on`, such as `onclick`. Some attributes, such as the `src` of a
+`<script>`, accept only a string literal, written as `src="…"` or `src={"…"}`.
 
-On a [function element](#function-elements), an attribute is the argument for
-the parameter it names, and its value has the type of that parameter. A name
-alone passes `true`, so `name` is the same as `name={true}`. An attribute that
-names no parameter is collected by a [rest parameter](#rest-parameters), and is
-checked as if written on the element where the rest parameter is spread.
+An attribute written more than once on an element, as in `<div id="a" id="b">`,
+is a compile error.
 
 <a id="rest-parameters"></a>
 
@@ -1141,7 +1054,7 @@ checked as if written on the element where the rest parameter is spread.
 
 A rest parameter `...rest` is the last parameter, and collects the attributes a
 caller passes that are not parameters of the function. The body spreads it, as
-`...rest`, in the opening tag of an element, where the collected attributes are
+`...rest`, in the start tag of an element, where the collected attributes are
 placed as if written there. A rest parameter that is not the last parameter, or
 that the body does not spread exactly once, is a compile error. For example:
 
@@ -1159,10 +1072,8 @@ fn PrimaryButton(...rest) -> Html {
   <Button kind="primary" ...rest/>
 }
 
-let button = <Button kind="k" id="x" disabled/>;
-let primary = <PrimaryButton type="submit"/>;
-// button:  <button class="k" id="x" disabled>k</button>
-// primary: <button class="primary" type="submit">primary</button>
+<Button kind="k" id="x" disabled/> // <button class="k" id="x" disabled>k</button>
+<PrimaryButton type="submit"/>     // <button class="primary" type="submit">primary</button>
 ```
 
 Exactly once means once in the source text, not once per evaluation: a spread
@@ -1190,21 +1101,18 @@ fn Button(
   </button>
 }
 
-// error: Function Button does not accept attribute 'class'
-<Button kind="k" class="c"/>
+<Button kind="k" class="c"/> // error: Function Button does not accept attribute 'class'
 ```
 
 Spreading rest parameters in a cycle is a compile error:
 
 ```hop
 fn A(...rest) -> Html {
-  // error: Rest spread of A forms a cycle and never reaches an element
-  <B ...rest/>
+  <B ...rest/> // error: Rest spread of A forms a cycle and never reaches an element
 }
 
 fn B(...rest) -> Html {
-  // error: Rest spread of B forms a cycle and never reaches an element
-  <A ...rest/>
+  <A ...rest/> // error: Rest spread of B forms a cycle and never reaches an element
 }
 ```
 
@@ -1216,8 +1124,8 @@ Whitespace in markup is normalized at compile time. Normalization applies to
 the content of each element and fragment as it is written in the source:
 
 - Text is trimmed at the start and end of the content, and next to line breaks.
-  Whitespace inside a line, and between text and an element or interpolation on
-  the same line, is kept as written.
+  Whitespace inside a line, and between text and an element or markup
+  interpolation on the same line, is kept as written.
 - A line break between two pieces of text becomes a single space, and blank
   lines count as one line break. Any other line break is removed.
 
@@ -1235,28 +1143,25 @@ In the table, ⏎ marks a line break and `name` is `"Alice"`.
 | `<p>⏎  Hi⏎  {name}⏎</p>`                  | `<p>HiAlice</p>`                  |
 | `<p>⏎  <b>x</b> <i>y</i>⏎</p>`            | `<p><b>x</b> <i>y</i></p>`        |
 
-Normalization does not apply to values. The value of an interpolation is
-inserted with its whitespace unchanged, so an interpolation `{" "}` inserts a
-space that a line break would otherwise remove:
+Normalization does not apply to values. The value of a markup interpolation is
+inserted with its whitespace unchanged, so a markup interpolation `{" "}`
+inserts a space that a line break would otherwise remove:
 
 ```hop
 let padded = "  Alice  ";
-let p = (
-  <p>
-    {padded}
-  </p>
-);
-// p: <p>  Alice  </p>
+
+<p>{padded}</p> // <p>  Alice  </p>
 ```
 
 <a id="escaping"></a>
 
 #### Escaping
 
-A `String` value inserted into markup, as an [interpolation](#interpolation) or
-as an [attribute value](#attributes) in double quotes or in a block, is escaped:
-each character below is replaced by the character reference next to it, and
-every other character is kept as written.
+A `String` value inserted into markup, as a
+[markup interpolation](#markup-interpolation) or as an
+[attribute value](#attributes) in double quotes or in a block, is escaped: each
+character below is replaced by the character reference next to it, and every
+other character is kept as written.
 
 | Character | Replaced by |
 | --------- | ----------- |
@@ -1268,12 +1173,8 @@ every other character is kept as written.
 
 ```hop
 let s = "a < b & \"c\" > 'd'";
-let p = (
-  <p title="<'d'> & c">
-    {s}
-  </p>
-);
-// p: <p title="&lt;&#39;d&#39;&gt; &amp; c">a &lt; b &amp; &quot;c&quot; &gt; &#39;d&#39;</p>
+
+<p title="<'d'> & c">{s}</p> // <p title="&lt;&#39;d&#39;&gt; &amp; c">a &lt; b &amp; &quot;c&quot; &gt; &#39;d&#39;</p>
 ```
 
 <a id="modules-and-declarations"></a>
@@ -1496,7 +1397,7 @@ value of `v` [escaped](#escaping).
 The rendering of a page consists of markup written in the modules of the
 project and of `String` values, such as the arguments of the page. Markup text
 is not [escaped](#escaping) and renders as written. A `String` value is escaped
-wherever it is inserted, as an [interpolation](#interpolation) or as an
+wherever it is inserted, as a [markup interpolation](#markup-interpolation) or as an
 [attribute value](#attributes), so it renders as text or as the value of a
 single attribute, and cannot start or end an element or an attribute.
 
