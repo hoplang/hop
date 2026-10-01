@@ -895,10 +895,8 @@ custom element, which contains `-`, such as `my-widget`. Any other name, such as
 
 Using `<html>`, `<head>` or `<body>` is a compile error, since a
 [page](#page-declarations) provides them, and so is using `<style>`: styles go
-in the project stylesheet. Using `<base>`, `<embed>` or `<object>` is a compile
-error too. A `<script>` that has content, or that does not reference a file
-with `src`, is a compile error. A script is written as in
-`<script src="/app.js"></script>`.
+in the project stylesheet. Further elements, and `<script>` with content, are
+compile errors for [XSS safety](#xss-safety).
 
 An element is an expression: it can be bound with `let` and inserted into other
 markup. For example:
@@ -1116,29 +1114,10 @@ and the `pattern` of `c` is `\d+`.
 
 An HTML element accepts the global attributes, its own attributes, and any
 attribute starting with `data-` or `aria-`. SVG and custom elements accept any
-attribute. No element accepts an attribute whose name starts with `on`, in any
-mix of upper and lower case, such as the event handler `onclick`. So
-`<div href="x">`, `<button onclick="go()">` and `<svg onload="init()">` are
-compile errors.
-
-The attributes below load a script or a document, or set the value of another
-attribute, so [escaping](#escaping) does not make a value safe in them. Their
-value is a string literal, written as `name="text"` or `name={"text"}`, and any
-other expression is a compile error, whether it is written on the element or
-passed through a [rest parameter](#rest-parameters). The names match in any mix
-of upper and lower case.
-
-| Element          | Attributes                                    |
-| ---------------- | --------------------------------------------- |
-| `animate`, `set` | `attributeName`, `by`, `from`, `to`, `values` |
-| `iframe`         | `srcdoc`                                      |
-| `script`         | `src`                                         |
-
-```hop
-let url = "/app.js";
-// error: <script> requires a string literal for attribute 'src'
-<script src={url}></script>
-```
+attribute, except an event handler such as `onclick`, which no element accepts
+for [XSS safety](#xss-safety). So `<div href="x">` is a compile error. Some
+attributes, such as the `src` of a `<script>`, accept only a string literal, as
+described in [XSS safety](#xss-safety).
 
 On a [function element](#function-elements), an attribute is the argument for
 the parameter it names, and its value has the type of that parameter. A name
@@ -1451,21 +1430,8 @@ page Home {
 ```
 
 A page parameter whose type is `Html`, or contains `Html` as an element, a
-field or a variant field, is a compile error:
-
-```hop
-record Post {
-  title: String,
-  content: Html,
-}
-
-// error: Html is not allowed in page parameters
-page Show(post: Post) {
-  fn body() -> Html {
-    post.content
-  }
-}
-```
+field or a variant field, is a compile error, for
+[XSS safety](#xss-safety).
 
 <a id="rendering"></a>
 
@@ -1498,8 +1464,7 @@ The document is, with nothing between the parts:
 7. the rendering of the value of `body`
 8. `</body></html>`
 
-The two `<meta>` elements come first, so a page cannot place anything before
-the character set declaration. A host can add further elements to the end of
+A host can add further elements to the end of
 the `<head>`, such as a stylesheet or a script. What it adds is not part of the
 language.
 
@@ -1513,6 +1478,90 @@ the value and `"`. The end tag is `</`, the name and `>`.
 So `<br/>` renders as `<br>`, `<div/>` renders as `<div></div>`, and
 `<input disabled value={v}>` renders as `<input disabled value="…">`, with the
 value of `v` [escaped](#escaping).
+
+<a id="xss-safety"></a>
+
+## XSS safety
+
+The rendering of a page consists of markup written in the modules of the
+project and of `String` values, such as the arguments of the page. Markup text
+is not [escaped](#escaping) and renders as written. A `String` value is escaped
+wherever it is inserted, as an [interpolation](#interpolation) or as an
+[attribute value](#attributes), so it renders as text or as the value of a
+single attribute, and cannot start or end an element or an attribute.
+
+The rules below are compile errors that keep the arguments of a page out of
+places where escaping is not enough.
+
+An `Html` value is built only by markup expressions, so a page parameter whose
+type is `Html`, or contains `Html` as an element, a field or a variant field,
+is a compile error:
+
+```hop
+record Post {
+  title: String,
+  content: Html,
+}
+
+// error: Html is not allowed in page parameters
+page Show(post: Post) {
+  fn body() -> Html {
+    post.content
+  }
+}
+```
+
+Using `<base>`, `<embed>` or `<object>` is a compile error, and so is a
+`<script>` that has content. A script is written as a reference to a file, as
+in `<script src="/app.js"></script>`:
+
+```hop
+// error: Inline <script> content is not allowed: move the code to a file and reference it with <script src="...">
+<script>alert(1)</script>
+```
+
+No element accepts an attribute whose name starts with `on`, in any mix of upper
+and lower case, such as the event handler `onclick`. This includes SVG and
+custom elements, which otherwise accept any attribute. So
+`<button onclick="go()">` and `<svg onload="init()">` are compile errors.
+
+The attributes below load a script or a document, or set the value of another
+attribute. Their value is a string literal, written as `name="text"` or
+`name={"text"}`, and any other expression is a compile error, whether it is
+written on the element or passed through a [rest parameter](#rest-parameters).
+The names match in any mix of upper and lower case.
+
+| Element          | Attributes                                    |
+| ---------------- | --------------------------------------------- |
+| `animate`, `set` | `attributeName`, `by`, `from`, `to`, `values` |
+| `iframe`         | `srcdoc`                                      |
+| `script`         | `src`                                         |
+
+```hop
+let url = "/app.js";
+// error: <script> requires a string literal for attribute 'src'
+<script src={url}></script>
+```
+
+In the [rendering](#rendering) of a page, `<meta charset="utf-8">` comes before
+the value of `head`, so a page cannot place anything before the character set
+declaration.
+
+Other attributes accept any `String`, escaped but otherwise unchecked. In
+particular, the scheme of a URL is not checked, so an `href`, `src`, `action`
+or `formaction` can hold a `javascript:` URL, and a `style` can hold any CSS:
+
+```hop
+let url = "javascript:alert(1)";
+let link = (
+  <a href={url}>
+    Home
+  </a>
+);
+// link: <a href="javascript:alert(1)">Home</a>
+```
+
+A host that passes such a value to a page is responsible for checking it.
 
 <a id="reserved-words"></a>
 
