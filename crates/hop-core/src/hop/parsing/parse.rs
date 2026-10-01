@@ -1661,6 +1661,42 @@ mod tests {
     }
 
     #[test]
+    fn rejects_base_embed_and_object_elements() {
+        reject(
+            indoc! {"
+                fn Main() -> Html {
+                    <>
+                        <base href=\"/\">
+                        <embed src=\"/a.pdf\">
+                        <object data=\"/a.pdf\"></object>
+                    </>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: <base> elements are not allowed
+                2 |     <>
+                3 |         <base href="/">
+                  |          ^^^^
+
+                error: <embed> elements are not allowed
+                3 |         <base href="/">
+                4 |         <embed src="/a.pdf">
+                  |          ^^^^^
+
+                error: <object> elements are not allowed
+                4 |         <embed src="/a.pdf">
+                5 |         <object data="/a.pdf"></object>
+                  |          ^^^^^^
+                -- ast --
+                fn Main() -> Html {
+                  fragment()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_empty_style_element() {
         reject(
             indoc! {"

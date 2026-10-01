@@ -70,7 +70,6 @@ fn element_specific_attribute(element: &HtmlElementKind, name: &str) -> bool {
             name,
             "autoplay" | "controls" | "crossorigin" | "loop" | "muted" | "preload" | "src"
         ),
-        HtmlElementKind::Base => matches!(name, "href" | "target"),
         HtmlElementKind::Blockquote => matches!(name, "cite"),
         HtmlElementKind::Button => matches!(
             name,
@@ -96,7 +95,6 @@ fn element_specific_attribute(element: &HtmlElementKind, name: &str) -> bool {
         HtmlElementKind::Del => matches!(name, "cite" | "datetime"),
         HtmlElementKind::Details => matches!(name, "name" | "open"),
         HtmlElementKind::Dialog => matches!(name, "closedby" | "open"),
-        HtmlElementKind::Embed => matches!(name, "height" | "src" | "type" | "width"),
         HtmlElementKind::Fieldset => matches!(name, "disabled" | "form" | "name"),
         HtmlElementKind::Form => matches!(
             name,
@@ -206,10 +204,6 @@ fn element_specific_attribute(element: &HtmlElementKind, name: &str) -> bool {
         HtmlElementKind::Meter => {
             matches!(name, "high" | "low" | "max" | "min" | "optimum" | "value")
         }
-        HtmlElementKind::Object => matches!(
-            name,
-            "data" | "form" | "height" | "name" | "type" | "usemap" | "width"
-        ),
         HtmlElementKind::Ol => matches!(name, "reversed" | "start" | "type"),
         HtmlElementKind::Optgroup => matches!(name, "disabled" | "label"),
         HtmlElementKind::Option => matches!(name, "disabled" | "label" | "selected" | "value"),

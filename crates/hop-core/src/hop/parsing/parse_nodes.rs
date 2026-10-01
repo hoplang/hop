@@ -434,6 +434,18 @@ fn parse_opening_tag(
                 attributes,
             }
         }
+        // A <base> changes how every URL on the page resolves, and <embed>
+        // and <object> load external documents that <iframe>, <img> and
+        // <video> cover, so they are rejected.
+        "base" | "embed" | "object" => ElementHeader::Html {
+            element: Err(errors.emit(
+                ParseErrorKind::ElementNotAllowed {
+                    tag: tag_name_range.to_cheap_string(),
+                },
+                tag_name_range.clone(),
+            )),
+            attributes,
+        },
         _ => ElementHeader::Html {
             element: HtmlElementKind::parse(tag_name_range.as_str()).ok_or_else(|| {
                 errors.emit(

@@ -29,7 +29,6 @@ pub fn is_raw_content_tag(tag_name: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HtmlElementKind {
     Html,
-    Base,
     Head,
     Link,
     Meta,
@@ -101,9 +100,7 @@ pub enum HtmlElementKind {
     Map,
     Track,
     Video,
-    Embed,
     Iframe,
-    Object,
     Picture,
     Source,
     Canvas,
@@ -174,7 +171,6 @@ impl HtmlElementKind {
     pub fn as_str(&self) -> &str {
         match self {
             HtmlElementKind::Html => "html",
-            HtmlElementKind::Base => "base",
             HtmlElementKind::Head => "head",
             HtmlElementKind::Link => "link",
             HtmlElementKind::Meta => "meta",
@@ -246,9 +242,7 @@ impl HtmlElementKind {
             HtmlElementKind::Map => "map",
             HtmlElementKind::Track => "track",
             HtmlElementKind::Video => "video",
-            HtmlElementKind::Embed => "embed",
             HtmlElementKind::Iframe => "iframe",
-            HtmlElementKind::Object => "object",
             HtmlElementKind::Picture => "picture",
             HtmlElementKind::Source => "source",
             HtmlElementKind::Canvas => "canvas",
@@ -319,7 +313,6 @@ impl HtmlElementKind {
     fn known(name: &str) -> Option<HtmlElementKind> {
         let element = match name {
             "html" => HtmlElementKind::Html,
-            "base" => HtmlElementKind::Base,
             "head" => HtmlElementKind::Head,
             "link" => HtmlElementKind::Link,
             "meta" => HtmlElementKind::Meta,
@@ -391,9 +384,7 @@ impl HtmlElementKind {
             "map" => HtmlElementKind::Map,
             "track" => HtmlElementKind::Track,
             "video" => HtmlElementKind::Video,
-            "embed" => HtmlElementKind::Embed,
             "iframe" => HtmlElementKind::Iframe,
-            "object" => HtmlElementKind::Object,
             "picture" => HtmlElementKind::Picture,
             "source" => HtmlElementKind::Source,
             "canvas" => HtmlElementKind::Canvas,

@@ -110,6 +110,9 @@ pub(crate) enum ParseErrorKind {
     )]
     StyleElementNotAllowed,
 
+    #[error("<{tag}> elements are not allowed")]
+    ElementNotAllowed { tag: CheapString },
+
     #[error("Unterminated comment")]
     UnterminatedComment,
 

@@ -282,6 +282,7 @@ pub fn typecheck_node(
 }
 
 fn typecheck_attribute_value(
+    element: &HtmlElementKind,
     attribute: &ParsedAttribute,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
@@ -293,7 +294,31 @@ fn typecheck_attribute_value(
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttributeValue> {
     match attribute {
-        ParsedAttribute::Expression { value, .. } => {
+        ParsedAttribute::Expression { name, value } => {
+            // These attributes load script or documents, or animate other
+            // attributes. Escaping does not make a value safe there, so their
+            // value must be written in the source.
+            let attr = name.as_str().to_ascii_lowercase();
+            let literal_only = match element {
+                HtmlElementKind::Script => attr == "src",
+                HtmlElementKind::Iframe => attr == "srcdoc",
+                HtmlElementKind::Animate | HtmlElementKind::Set => {
+                    matches!(
+                        attr.as_str(),
+                        "attributename" | "by" | "from" | "to" | "values"
+                    )
+                }
+                _ => false,
+            };
+            if literal_only {
+                errors.push(TypeError::new(
+                    TypeErrorKind::ElementDoesNotAcceptAttributeExpression {
+                        element: element.as_str().to_string(),
+                        attr: name.as_str().to_string(),
+                    },
+                    value.range().clone(),
+                ));
+            }
             let typed_expr = typecheck_expr(
                 value,
                 None,
@@ -383,15 +408,18 @@ fn typecheck_arguments(
         let arg_name = arg_name_range.as_str();
 
         let Some(param) = callee_params.iter().find(|p| p.name.as_str() == arg_name) else {
-            let accepted = match &callee_tail {
-                Tail::Html { element, reserved } => {
-                    element.accepts_attribute(arg_name)
-                        && !reserved.iter().any(|r| r.as_str() == arg_name)
+            let accepting_element = match &callee_tail {
+                Tail::Html { element, reserved }
+                    if element.accepts_attribute(arg_name)
+                        && !reserved.iter().any(|r| r.as_str() == arg_name) =>
+                {
+                    Some(element)
                 }
-                Tail::Closed => false,
+                Tail::Html { .. } | Tail::Closed => None,
             };
-            if accepted {
+            if let Some(element) = accepting_element {
                 let value = typecheck_attribute_value(
+                    element,
                     arg,
                     forwarded_params,
                     registry,
@@ -554,6 +582,7 @@ fn typecheck_html_attribute(
     }
 
     let typed_value = typecheck_attribute_value(
+        element,
         attribute,
         forwarded_params,
         registry,

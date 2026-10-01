@@ -174,6 +174,9 @@ pub(crate) enum TypeErrorKind {
     #[error("<{element}> does not accept attribute '{attr}'")]
     ElementDoesNotAcceptAttribute { element: String, attr: String },
 
+    #[error("<{element}> does not accept an expression for attribute '{attr}'")]
+    ElementDoesNotAcceptAttributeExpression { element: String, attr: String },
+
     #[error("Mismatched type: expected Array[...] got {found}")]
     IterateeTypeMismatch { found: Type },
 

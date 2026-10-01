@@ -895,8 +895,9 @@ custom element, which contains `-`, such as `my-widget`. Any other name, such as
 
 Using `<html>`, `<head>` or `<body>` is a compile error, since a
 [page](#page-declarations) provides them, and so is using `<style>`: styles go
-in the project stylesheet. A `<script>` that has content, or that does not
-reference a file with `src`, is a compile error. A script is written as in
+in the project stylesheet. Using `<base>`, `<embed>` or `<object>` is a compile
+error too. A `<script>` that has content, or that does not reference a file
+with `src`, is a compile error. A script is written as in
 `<script src="/app.js"></script>`.
 
 An element is an expression: it can be bound with `let` and inserted into other
@@ -1108,6 +1109,25 @@ attribute. No element accepts an attribute whose name starts with `on`, in any
 mix of upper and lower case, such as the event handler `onclick`. So
 `<div href="x">`, `<button onclick="go()">` and `<svg onload="init()">` are
 compile errors.
+
+The attributes below load a script or a document, or set the value of another
+attribute, so [escaping](#escaping) does not make a value safe in them. Their
+value is written as `name="text"`, and `name={e}` is a compile error, whether
+it is written on the element or passed through a
+[rest parameter](#rest-parameters). The names match in any mix of upper and
+lower case.
+
+| Element          | Attributes                                    |
+| ---------------- | --------------------------------------------- |
+| `animate`, `set` | `attributeName`, `by`, `from`, `to`, `values` |
+| `iframe`         | `srcdoc`                                      |
+| `script`         | `src`                                         |
+
+```hop
+let url = "/app.js";
+// error: <script> does not accept an expression for attribute 'src'
+<script src={url}></script>
+```
 
 <a id="rest-parameters"></a>
 

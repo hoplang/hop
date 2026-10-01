@@ -6727,6 +6727,147 @@ mod tests {
     }
 
     #[test]
+    fn rejects_expressions_for_attributes_that_load_or_animate_content() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(u: String) -> Html {
+                  <>
+                    <script SRC={u}></script>
+                    <iframe srcdoc={u}></iframe>
+                    <svg>
+                      <animate attributeName={u} from={u} to={u} values={u} by={u}/>
+                      <set attributename={u}/>
+                    </svg>
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: <script> does not accept an expression for attribute 'SRC'
+                  --> main.hop (line 3, col 18)
+                 2 |   <>
+                 3 |     <script SRC={u}></script>
+                   |                  ^
+
+                error: <iframe> does not accept an expression for attribute 'srcdoc'
+                  --> main.hop (line 4, col 21)
+                 3 |     <script SRC={u}></script>
+                 4 |     <iframe srcdoc={u}></iframe>
+                   |                     ^
+
+                error: <animate> does not accept an expression for attribute 'attributeName'
+                  --> main.hop (line 6, col 31)
+                 5 |     <svg>
+                 6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
+                   |                               ^
+
+                error: <animate> does not accept an expression for attribute 'from'
+                  --> main.hop (line 6, col 40)
+                 5 |     <svg>
+                 6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
+                   |                                        ^
+
+                error: <animate> does not accept an expression for attribute 'to'
+                  --> main.hop (line 6, col 47)
+                 5 |     <svg>
+                 6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
+                   |                                               ^
+
+                error: <animate> does not accept an expression for attribute 'values'
+                  --> main.hop (line 6, col 58)
+                 5 |     <svg>
+                 6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
+                   |                                                          ^
+
+                error: <animate> does not accept an expression for attribute 'by'
+                  --> main.hop (line 6, col 65)
+                 5 |     <svg>
+                 6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
+                   |                                                                 ^
+
+                error: <set> does not accept an expression for attribute 'attributename'
+                  --> main.hop (line 7, col 27)
+                 6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
+                 7 |       <set attributename={u}/>
+                   |                           ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_forwarded_expression_for_script_src() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Script(...rest) -> Html {
+                  <script ...rest></script>
+                }
+
+                fn Main(u: String) -> Html {
+                  <Script src={u}/>
+                }
+            "#},
+            expect![[r#"
+                error: <script> does not accept an expression for attribute 'src'
+                  --> main.hop (line 6, col 16)
+                5 | fn Main(u: String) -> Html {
+                6 |   <Script src={u}/>
+                  |                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_strings_for_attributes_that_load_or_animate_content() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Script(...rest) -> Html {
+                  <script ...rest></script>
+                }
+
+                fn Main(u: String) -> Html {
+                  <>
+                    <Script src="/app.js"/>
+                    <iframe src={u} srcdoc="<p>hi</p>"></iframe>
+                    <svg>
+                      <set attributeName="fill" to="red"/>
+                    </svg>
+                  </>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(u: String) -> Html {
+                  concat(
+                    Script(rest: [src: raw("/app.js")]),
+                    html(
+                      tag: "iframe",
+                      attrs: [src: escape(u), srcdoc: raw("<p>hi</p>")],
+                      children: concat(),
+                    ),
+                    html(
+                      tag: "svg",
+                      attrs: [],
+                      children: concat(
+                        html(
+                          tag: "set",
+                          attrs: [attributeName: raw("fill"), to: raw("red")],
+                          children: concat(),
+                        ),
+                      ),
+                    ),
+                  )
+                }
+
+                fn Script(...rest) -> Html {
+                  html(tag: "script", attrs: [...rest], children: concat())
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_attribute_on_wrong_element() {
         reject(
             indoc! {r#"
