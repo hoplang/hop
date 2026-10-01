@@ -6669,7 +6669,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  html(tag: "my-widget", attrs: [foo: raw("x")], children: concat())
+                  html(tag: "my-widget", attrs: [foo: escape("x")], children: concat())
                 }
             "#]],
         );
@@ -6727,7 +6727,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_expressions_for_attributes_that_load_or_animate_content() {
+    fn rejects_non_literals_for_attributes_that_load_or_animate_content() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6739,63 +6739,70 @@ mod tests {
                       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
                       <set attributename={u}/>
                     </svg>
+                    <script src={"/" + "app.js"}></script>
                   </>
                 }
             "#},
             expect![[r#"
-                error: <script> does not accept an expression for attribute 'SRC'
+                error: <script> requires a string literal for attribute 'SRC'
                   --> main.hop (line 3, col 18)
                  2 |   <>
                  3 |     <script SRC={u}></script>
                    |                  ^
 
-                error: <iframe> does not accept an expression for attribute 'srcdoc'
+                error: <iframe> requires a string literal for attribute 'srcdoc'
                   --> main.hop (line 4, col 21)
                  3 |     <script SRC={u}></script>
                  4 |     <iframe srcdoc={u}></iframe>
                    |                     ^
 
-                error: <animate> does not accept an expression for attribute 'attributeName'
+                error: <animate> requires a string literal for attribute 'attributeName'
                   --> main.hop (line 6, col 31)
                  5 |     <svg>
                  6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
                    |                               ^
 
-                error: <animate> does not accept an expression for attribute 'from'
+                error: <animate> requires a string literal for attribute 'from'
                   --> main.hop (line 6, col 40)
                  5 |     <svg>
                  6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
                    |                                        ^
 
-                error: <animate> does not accept an expression for attribute 'to'
+                error: <animate> requires a string literal for attribute 'to'
                   --> main.hop (line 6, col 47)
                  5 |     <svg>
                  6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
                    |                                               ^
 
-                error: <animate> does not accept an expression for attribute 'values'
+                error: <animate> requires a string literal for attribute 'values'
                   --> main.hop (line 6, col 58)
                  5 |     <svg>
                  6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
                    |                                                          ^
 
-                error: <animate> does not accept an expression for attribute 'by'
+                error: <animate> requires a string literal for attribute 'by'
                   --> main.hop (line 6, col 65)
                  5 |     <svg>
                  6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
                    |                                                                 ^
 
-                error: <set> does not accept an expression for attribute 'attributename'
+                error: <set> requires a string literal for attribute 'attributename'
                   --> main.hop (line 7, col 27)
                  6 |       <animate attributeName={u} from={u} to={u} values={u} by={u}/>
                  7 |       <set attributename={u}/>
                    |                           ^
+
+                error: <script> requires a string literal for attribute 'src'
+                  --> main.hop (line 9, col 18)
+                 8 |     </svg>
+                 9 |     <script src={"/" + "app.js"}></script>
+                   |                  ^^^^^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_forwarded_expression_for_script_src() {
+    fn rejects_forwarded_non_literal_for_script_src() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6808,7 +6815,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: <script> does not accept an expression for attribute 'src'
+                error: <script> requires a string literal for attribute 'src'
                   --> main.hop (line 6, col 16)
                 5 | fn Main(u: String) -> Html {
                 6 |   <Script src={u}/>
@@ -6818,7 +6825,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_strings_for_attributes_that_load_or_animate_content() {
+    fn accepts_string_literals_for_attributes_that_load_or_animate_content() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6829,9 +6836,10 @@ mod tests {
                 fn Main(u: String) -> Html {
                   <>
                     <Script src="/app.js"/>
+                    <script src={"/app.js"}></script>
                     <iframe src={u} srcdoc="<p>hi</p>"></iframe>
                     <svg>
-                      <set attributeName="fill" to="red"/>
+                      <set attributeName="fill" to={"red"}/>
                     </svg>
                   </>
                 }
@@ -6840,10 +6848,11 @@ mod tests {
                 -- main.hop --
                 fn Main(u: String) -> Html {
                   concat(
-                    Script(rest: [src: raw("/app.js")]),
+                    Script(rest: [src: escape("/app.js")]),
+                    html(tag: "script", attrs: [src: escape("/app.js")], children: concat()),
                     html(
                       tag: "iframe",
-                      attrs: [src: escape(u), srcdoc: raw("<p>hi</p>")],
+                      attrs: [src: escape(u), srcdoc: escape("<p>hi</p>")],
                       children: concat(),
                     ),
                     html(
@@ -6852,7 +6861,7 @@ mod tests {
                       children: concat(
                         html(
                           tag: "set",
-                          attrs: [attributeName: raw("fill"), to: raw("red")],
+                          attrs: [attributeName: escape("fill"), to: escape("red")],
                           children: concat(),
                         ),
                       ),
@@ -6898,7 +6907,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  html(tag: "a", attrs: [href: raw("/")], children: concat(raw("link")))
+                  html(tag: "a", attrs: [href: escape("/")], children: concat(raw("link")))
                 }
             "#]],
         );
@@ -6967,7 +6976,7 @@ mod tests {
                 fn Main() -> Html {
                   html(
                     tag: "div",
-                    attrs: [data-x: raw("1"), aria-label: raw("hello")],
+                    attrs: [data-x: escape("1"), aria-label: escape("hello")],
                     children: concat(),
                   )
                 }
@@ -6989,9 +6998,9 @@ mod tests {
                 fn Main() -> Html {
                   html(
                     tag: "svg",
-                    attrs: [viewBox: raw("0 0 10 10")],
+                    attrs: [viewBox: escape("0 0 10 10")],
                     children: concat(
-                      html(tag: "path", attrs: [d: raw("M0 0 L10 10")], children: concat()),
+                      html(tag: "path", attrs: [d: escape("M0 0 L10 10")], children: concat()),
                     ),
                   )
                 }
@@ -8341,7 +8350,7 @@ mod tests {
                     Button(
                       class: "p-2",
                       children: concat(raw("Hi")),
-                      rest: [data-foo: raw("bar")],
+                      rest: [data-foo: escape("bar")],
                     )
                   }
                 }
@@ -8375,14 +8384,14 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   fn body() -> Html {
-                    Button(children: concat(raw("Hi")), rest: [data-x: raw("y")])
+                    Button(children: concat(raw("Hi")), rest: [data-x: escape("y")])
                   }
                 }
 
                 fn Button(children: Html, ...rest) -> Html {
                   html(
                     tag: "button",
-                    attrs: [class: raw("builtin"), ...rest],
+                    attrs: [class: escape("builtin"), ...rest],
                     children: concat(children),
                   )
                 }
@@ -8456,7 +8465,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   fn body() -> Html {
-                    Svg(rest: [viewBox: raw("0 0 100 100")])
+                    Svg(rest: [viewBox: escape("0 0 100 100")])
                   }
                 }
 
@@ -8881,7 +8890,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   fn body() -> Html {
-                    B(count: 3, rest: [data-foo: raw("bar")])
+                    B(count: 3, rest: [data-foo: escape("bar")])
                   }
                 }
 
@@ -9407,7 +9416,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   fn body() -> Html {
-                    Wrapper(rest: [lang: raw("en")])
+                    Wrapper(rest: [lang: escape("en")])
                   }
                 }
 
@@ -9416,7 +9425,7 @@ mod tests {
                 }
 
                 fn Wrapper(...rest) -> Html {
-                  Inner(rest: [title: raw("a"), ...rest])
+                  Inner(rest: [title: escape("a"), ...rest])
                 }
             "#]],
         );
@@ -9510,7 +9519,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   fn body() -> Html {
-                    B(tabindex: 2, rest: [data-x: raw("y")])
+                    B(tabindex: 2, rest: [data-x: escape("y")])
                   }
                 }
 
@@ -9727,7 +9736,7 @@ mod tests {
                   html(
                     tag: "div",
                     attrs: [...rest],
-                    children: concat(Foo(rest: [id: raw("x")])),
+                    children: concat(Foo(rest: [id: escape("x")])),
                   )
                 }
             "#]],

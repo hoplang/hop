@@ -1064,7 +1064,9 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Button@f0(label@v0: String, rest@v1: Html) -> Html {
                   write("<button")
-                  write(" class=\"btn\"")
+                  write(" class=\"")
+                  write_string("btn")
+                  write("\"")
                   write_html(v1)
                   write(">")
                   write_string(v0)
@@ -1072,7 +1074,9 @@ mod tests {
                 }
                 page Test() {
                   call Button@f0(label = "Hi", rest = {
-                    write(" id=\"submit\"")
+                    write(" id=\"")
+                    write_string("submit")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -1275,8 +1279,12 @@ mod tests {
                 }
                 page Test() {
                   call Card@f1(title = "Hi", rest = {
-                    write(" id=\"x\"")
-                    write(" data-k=\"v\"")
+                    write(" id=\"")
+                    write_string("x")
+                    write("\"")
+                    write(" data-k=\"")
+                    write_string("v")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -1343,7 +1351,9 @@ mod tests {
                 }
                 page Test() {
                   call Wrapper@f0(show = true, rest = {
-                    write(" id=\"x\"")
+                    write(" id=\"")
+                    write_string("x")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -1463,7 +1473,9 @@ mod tests {
                 }
                 page Test() {
                   call Wrapper@f0(show = true, rest = {
-                    write(" id=\"x\"")
+                    write(" id=\"")
+                    write_string("x")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -1545,6 +1557,118 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn quoted_attribute_values_are_escaped() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    <>
+                      <span title="Tom &amp; Jerry" data-x="x<y"></span>
+                      <input pattern="\d+">
+                    </>
+                  }
+                }
+            "#},
+            r#"<span title="Tom &amp;amp; Jerry" data-x="x&lt;y"></span><input pattern="\d+">"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  write("<span")
+                  write(" title=\"")
+                  write_string("Tom &amp; Jerry")
+                  write("\"")
+                  write(" data-x=\"")
+                  write_string("x<y")
+                  write("\"")
+                  write(">")
+                  write("</span>")
+                  write("<input")
+                  write(" pattern=\"")
+                  write_string("\\d+")
+                  write("\"")
+                  write(">")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<span title=\"Tom &amp;amp; Jerry\" data-x=\"x&lt;y\"></span>")
+                  write("<input pattern=\"\\d+\">")
+                }
+                -- expected output --
+                <span title="Tom &amp;amp; Jerry" data-x="x&lt;y"></span><input pattern="\d+">
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_escapes_quoted_attribute_values() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Panel(...rest) -> Html {
+                  <div ...rest>
+                  </div>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Panel title="a &amp; b"/>
+                  }
+                }
+            "#},
+            r#"<div title="a &amp;amp; b"></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Panel@f0(rest@v0: Html) -> Html {
+                  write("<div")
+                  write_html(v0)
+                  write(">")
+                  write("</div>")
+                }
+                page Test() {
+                  call Panel@f0(rest = {
+                    write(" title=\"")
+                    write_string("a &amp; b")
+                    write("\"")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div title=\"a &amp;amp; b\"></div>")
+                }
+                -- expected output --
+                <div title="a &amp;amp; b"></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn rest_reaches_a_void_element() {
         check(
             indoc! {r#"
@@ -1569,8 +1693,12 @@ mod tests {
                 }
                 page Test() {
                   call Icon@f0(rest = {
-                    write(" src=\"a.png\"")
-                    write(" alt=\"a\"")
+                    write(" src=\"")
+                    write_string("a.png")
+                    write("\"")
+                    write(" alt=\"")
+                    write_string("a")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -1691,7 +1819,9 @@ mod tests {
                   call Button@f0(class = "p-2", children = {
                     write("Hi")
                   }, rest = {
-                    write(" data-foo=\"bar\"")
+                    write(" data-foo=\"")
+                    write_string("bar")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -1744,7 +1874,9 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Button@f0(children@v0: Html, rest@v1: Html) -> Html {
                   write("<button")
-                  write(" class=\"builtin\"")
+                  write(" class=\"")
+                  write_string("builtin")
+                  write("\"")
                   write_html(v1)
                   write(">")
                   write_html(v0)
@@ -1754,7 +1886,9 @@ mod tests {
                   call Button@f0(children = {
                     write("Hi")
                   }, rest = {
-                    write(" data-x=\"y\"")
+                    write(" data-x=\"")
+                    write_string("y")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -1807,7 +1941,9 @@ mod tests {
                 }
                 page Test() {
                   call Svg@f0(rest = {
-                    write(" viewBox=\"0 0 100 100\"")
+                    write(" viewBox=\"")
+                    write_string("0 0 100 100")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -2295,7 +2431,9 @@ mod tests {
                 }
                 page Test() {
                   call B@f1(count = 3, rest = {
-                    write(" data-foo=\"bar\"")
+                    write(" data-foo=\"")
+                    write_string("bar")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -2933,13 +3071,17 @@ mod tests {
                 }
                 fn Wrapper@f1(rest@v1: Html) -> Html {
                   call Inner@f0(rest = {
-                    write(" title=\"a\"")
+                    write(" title=\"")
+                    write_string("a")
+                    write("\"")
                     write_html(v1)
                   })
                 }
                 page Test() {
                   call Wrapper@f1(rest = {
-                    write(" lang=\"en\"")
+                    write(" lang=\"")
+                    write_string("en")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -3017,7 +3159,9 @@ mod tests {
                 }
                 page Test() {
                   call B@f1(tabindex = 2, rest = {
-                    write(" data-x=\"y\"")
+                    write(" data-x=\"")
+                    write_string("y")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --
@@ -8945,7 +9089,9 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   write("<label")
-                  write(" for=\"email\"")
+                  write(" for=\"")
+                  write_string("email")
+                  write("\"")
                   write(">")
                   write("Email")
                   write("</label>")
@@ -11814,7 +11960,9 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String, children@v1: Html) -> Html {
                   write("<div")
-                  write(" class=\"card\"")
+                  write(" class=\"")
+                  write_string("card")
+                  write("\"")
                   write(">")
                   write("<h2")
                   write(">")
@@ -11888,14 +12036,18 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Inner@f0(children@v0: Html) -> Html {
                   write("<div")
-                  write(" class=\"inner\"")
+                  write(" class=\"")
+                  write_string("inner")
+                  write("\"")
                   write(">")
                   write_html(v0)
                   write("</div>")
                 }
                 fn Outer@f1(children@v1: Html) -> Html {
                   write("<div")
-                  write(" class=\"outer\"")
+                  write(" class=\"")
+                  write_string("outer")
+                  write("\"")
                   write(">")
                   call Inner@f0(children = {
                     write_html(v1)
@@ -11998,7 +12150,9 @@ mod tests {
                 }
                 fn Layout@f2(children@v1: Html) -> Html {
                   write("<div")
-                  write(" class=\"layout\"")
+                  write(" class=\"")
+                  write_string("layout")
+                  write("\"")
                   write(">")
                   write_html(v1)
                   write("</div>")
@@ -12072,12 +12226,16 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Repeat@f0(children@v0: Html) -> Html {
                   write("<div")
-                  write(" class=\"first\"")
+                  write(" class=\"")
+                  write_string("first")
+                  write("\"")
                   write(">")
                   write_html(v0)
                   write("</div>")
                   write("<div")
-                  write(" class=\"second\"")
+                  write(" class=\"")
+                  write_string("second")
+                  write("\"")
                   write(">")
                   write_html(v0)
                   write("</div>")
@@ -12719,7 +12877,9 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String, children@v1: Html) -> Html {
                   write("<div")
-                  write(" class=\"card\"")
+                  write(" class=\"")
+                  write_string("card")
+                  write("\"")
                   write(">")
                   write("<h2")
                   write(">")
@@ -12789,7 +12949,9 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String, children@v1: Html) -> Html {
                   write("<div")
-                  write(" class=\"card\"")
+                  write(" class=\"")
+                  write_string("card")
+                  write("\"")
                   write(">")
                   write("<h2")
                   write(">")
@@ -14226,7 +14388,9 @@ mod tests {
                 }
                 page Test() {
                   call Nest@f0(n = 2, rest = {
-                    write(" id=\"root\"")
+                    write(" id=\"")
+                    write_string("root")
+                    write("\"")
                   })
                 }
                 -- ir (optimized) --

@@ -242,15 +242,9 @@ pub enum TypedLoopSource {
 }
 
 #[derive(Debug, Clone)]
-pub enum TypedAttributeValue {
-    Expression(TypedExpr),
-    String(CheapString),
-}
-
-#[derive(Debug, Clone)]
 pub struct TypedAttribute {
     pub name: CheapString,
-    pub value: Option<TypedAttributeValue>,
+    pub value: Option<TypedExpr>,
 }
 
 /// The attributes an element or a rest parameter receives: those written at
@@ -265,7 +259,10 @@ impl TypedAttribute {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let name_doc = BoxDoc::text(self.name.as_str());
         match &self.value {
-            Some(value) => name_doc.append(BoxDoc::text(": ")).append(value.to_doc()),
+            Some(value) => name_doc
+                .append(BoxDoc::text(": escape("))
+                .append(value.to_doc())
+                .append(BoxDoc::text(")")),
             None => name_doc,
         }
     }
@@ -293,17 +290,6 @@ impl TypedAttrs {
                         .group(),
                 )
                 .append(BoxDoc::text("]"))
-        }
-    }
-}
-
-impl TypedAttributeValue {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            TypedAttributeValue::Expression(expr) => BoxDoc::text("escape(")
-                .append(expr.to_doc())
-                .append(BoxDoc::text(")")),
-            TypedAttributeValue::String(s) => BoxDoc::text(format!("raw({:?})", s.as_str())),
         }
     }
 }

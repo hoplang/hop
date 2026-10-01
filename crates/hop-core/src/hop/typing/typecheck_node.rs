@@ -2,13 +2,14 @@ use super::{ParamEntry, Tail, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
+use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parsed_node::{ParsedAttribute, ParsedNode};
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::variable_scope::VariableScope;
-use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedAttrs};
+use crate::hop::typing::{TypedAttribute, TypedAttrs};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
@@ -292,7 +293,7 @@ fn typecheck_attribute_value(
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> Option<TypedAttributeValue> {
+) -> Option<TypedExpr> {
     match attribute {
         ParsedAttribute::Expression { name, value } => {
             // These attributes load script or documents, or animate other
@@ -310,9 +311,9 @@ fn typecheck_attribute_value(
                 }
                 _ => false,
             };
-            if literal_only {
+            if literal_only && !matches!(value, ParsedExpr::StringLiteral { .. }) {
                 errors.push(TypeError::new(
-                    TypeErrorKind::ElementDoesNotAcceptAttributeExpression {
+                    TypeErrorKind::AttributeRequiresStringLiteral {
                         element: element.as_str().to_string(),
                         attr: name.as_str().to_string(),
                     },
@@ -339,15 +340,15 @@ fn typecheck_attribute_value(
                     value.range().clone(),
                 ));
             }
-            Some(TypedAttributeValue::Expression(typed_expr))
+            Some(typed_expr)
         }
-        ParsedAttribute::String { content, .. } => {
-            let string_span = match content {
-                Some(range) => range.to_cheap_string(),
-                None => CheapString::new("".to_string()),
-            };
-            Some(TypedAttributeValue::String(string_span))
-        }
+        // A quoted value is the string between the quotes, exactly as written.
+        ParsedAttribute::String { content, .. } => Some(TypedExpr::StringLiteral {
+            value: content
+                .as_ref()
+                .map(|r| r.to_cheap_string())
+                .unwrap_or_else(|| CheapString::new(String::new())),
+        }),
         ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => None,
     }
 }

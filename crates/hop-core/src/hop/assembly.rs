@@ -1,7 +1,7 @@
 use crate::document::CheapString;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::typed_ast::{TypedPageDeclaration, TypedParameter};
-use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedAttrs};
+use crate::hop::typing::{TypedAttribute, TypedAttrs};
 use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use pretty::BoxDoc;
@@ -146,9 +146,9 @@ fn create_html_element(element: HtmlElementKind, children: Vec<TypedExpr>) -> Ty
 fn create_attribute(name: &str, value: &str) -> TypedAttribute {
     TypedAttribute {
         name: CheapString::new(name.to_string()),
-        value: Some(TypedAttributeValue::String(CheapString::new(
-            value.to_string(),
-        ))),
+        value: Some(TypedExpr::StringLiteral {
+            value: CheapString::new(value.to_string()),
+        }),
     }
 }
 
@@ -296,12 +296,15 @@ mod tests {
                       tag: "head",
                       attrs: [],
                       children: concat(
-                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [charset: escape("utf-8")],
+                        ),
                         html(
                           tag: "meta",
                           attrs: [
-                            content: raw("width=device-width, initial-scale=1"),
-                            name: raw("viewport"),
+                            content: escape("width=device-width, initial-scale=1"),
+                            name: escape("viewport"),
                           ],
                         ),
                       ),
@@ -333,12 +336,15 @@ mod tests {
                       tag: "head",
                       attrs: [],
                       children: concat(
-                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [charset: escape("utf-8")],
+                        ),
                         html(
                           tag: "meta",
                           attrs: [
-                            content: raw("width=device-width, initial-scale=1"),
-                            name: raw("viewport"),
+                            content: escape("width=device-width, initial-scale=1"),
+                            name: escape("viewport"),
                           ],
                         ),
                         html(
@@ -377,12 +383,15 @@ mod tests {
                       tag: "head",
                       attrs: [],
                       children: concat(
-                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [charset: escape("utf-8")],
+                        ),
                         html(
                           tag: "meta",
                           attrs: [
-                            content: raw("width=device-width, initial-scale=1"),
-                            name: raw("viewport"),
+                            content: escape("width=device-width, initial-scale=1"),
+                            name: escape("viewport"),
                           ],
                         ),
                         html(
@@ -419,19 +428,22 @@ mod tests {
                       tag: "head",
                       attrs: [],
                       children: concat(
-                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [charset: escape("utf-8")],
+                        ),
                         html(
                           tag: "meta",
                           attrs: [
-                            content: raw("width=device-width, initial-scale=1"),
-                            name: raw("viewport"),
+                            content: escape("width=device-width, initial-scale=1"),
+                            name: escape("viewport"),
                           ],
                         ),
                         html(
                           tag: "link",
                           attrs: [
-                            rel: raw("stylesheet"),
-                            href: raw("/styles-deadbeef.css"),
+                            rel: escape("stylesheet"),
+                            href: escape("/styles-deadbeef.css"),
                           ],
                         ),
                       ),
@@ -459,19 +471,22 @@ mod tests {
                       tag: "head",
                       attrs: [],
                       children: concat(
-                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [charset: escape("utf-8")],
+                        ),
                         html(
                           tag: "meta",
                           attrs: [
-                            content: raw("width=device-width, initial-scale=1"),
-                            name: raw("viewport"),
+                            content: escape("width=device-width, initial-scale=1"),
+                            name: escape("viewport"),
                           ],
                         ),
                         html(
                           tag: "script",
                           attrs: [
-                            type: raw("module"),
-                            src: raw("/scripts-deadbeef.js"),
+                            type: escape("module"),
+                            src: escape("/scripts-deadbeef.js"),
                           ],
                           children: concat(),
                         ),
@@ -500,12 +515,15 @@ mod tests {
                       tag: "head",
                       attrs: [],
                       children: concat(
-                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [charset: escape("utf-8")],
+                        ),
                         html(
                           tag: "meta",
                           attrs: [
-                            content: raw("width=device-width, initial-scale=1"),
-                            name: raw("viewport"),
+                            content: escape("width=device-width, initial-scale=1"),
+                            name: escape("viewport"),
                           ],
                         ),
                       ),

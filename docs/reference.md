@@ -925,19 +925,13 @@ let section = (
 A function element is written like an [HTML element](#html-elements), with an
 `UppercaseIdentifier` as its name. It calls the
 [function](#function-declarations) of that name, and is a compile error if the
-function does not return `Html`. The attributes and content of the element are
-the arguments of the call.
+function does not return `Html`. Each [attribute](#attributes) is the argument
+for the parameter it names, and the content between the tags is the argument
+for the parameter `children: Html`.
 
 ```ebnf
 FunctionElementExpr ::= "<" UppercaseIdentifier Attribute* ( "/>" | ">" MarkupNode* "</" UppercaseIdentifier ">" )
 ```
-
-| Written as               | Passes                                         |
-| ------------------------ | ---------------------------------------------- |
-| `name={e}`               | the value of `e` for the parameter `name`      |
-| `name="text"`            | the `String` `"text"` for the parameter `name` |
-| `name`                   | `true` for the parameter `name`                |
-| content between the tags | the content for the parameter `children: Html` |
 
 For example, with
 
@@ -1086,22 +1080,39 @@ Attribute     ::= AttributeName ( "=" ( '"' [^"]* '"' | BlockExpr ) )?
 AttributeName ::= [A-Za-z] [A-Za-z0-9_:.-]*
 ```
 
-On an [HTML element](#html-elements), the forms evaluate as follows:
-
-| Attribute     | Evaluates to                                                           |
-| ------------- | ---------------------------------------------------------------------- |
-| `name`        | `name`                                                                 |
-| `name="text"` | `name="text"`                                                          |
-| `name={e}`    | `name="…"`, with the `String` value of `e` [escaped](#escaping)        |
-| `...rest`     | the attributes passed in the [rest parameter](#rest-parameters) `rest` |
-
-An `e` that does not have type `String` is a compile error, as in
-`<div id={1}>`. On a [function element](#function-elements), `name={e}` is
-passed as an argument and can have any type.
+A value in double quotes is the `String` of the characters between the quotes,
+exactly as written, and `name="text"` is the same as `name={e}` where `e` is
+that `String`. Character references are not decoded in a value in double
+quotes, unlike in [markup text](#markup-nodes), and a backslash is a backslash.
+A value that contains a double quote is written in a block, as in
+`title={"say \"hi\""}`.
 
 An attribute that appears more than once on an element is a compile error, and
 so are single-quoted values such as `id='a'` and unquoted values such as
 `id=a`.
+
+On an [HTML element](#html-elements), the forms evaluate as follows:
+
+| Attribute  | Evaluates to                                                           |
+| ---------- | ---------------------------------------------------------------------- |
+| `name`     | `name`                                                                 |
+| `name={e}` | `name="…"`, with the `String` value of `e` [escaped](#escaping)        |
+| `...rest`  | the attributes passed in the [rest parameter](#rest-parameters) `rest` |
+
+An `e` that does not have type `String` is a compile error, as in
+`<div id={1}>`. A value in double quotes is escaped like any other `String`:
+
+```hop
+let a = <span title="Tom & Jerry"></span>;
+let b = <span title="Tom &amp; Jerry"></span>;
+let c = <input pattern="\d+">;
+// a: <span title="Tom &amp; Jerry"></span>
+// b: <span title="Tom &amp;amp; Jerry"></span>
+// c: <input pattern="\d+">
+```
+
+The `title` of `a` is `Tom & Jerry`, the `title` of `b` is `Tom &amp; Jerry`,
+and the `pattern` of `c` is `\d+`.
 
 An HTML element accepts the global attributes, its own attributes, and any
 attribute starting with `data-` or `aria-`. SVG and custom elements accept any
@@ -1112,10 +1123,10 @@ compile errors.
 
 The attributes below load a script or a document, or set the value of another
 attribute, so [escaping](#escaping) does not make a value safe in them. Their
-value is written as `name="text"`, and `name={e}` is a compile error, whether
-it is written on the element or passed through a
-[rest parameter](#rest-parameters). The names match in any mix of upper and
-lower case.
+value is a string literal, written as `name="text"` or `name={"text"}`, and any
+other expression is a compile error, whether it is written on the element or
+passed through a [rest parameter](#rest-parameters). The names match in any mix
+of upper and lower case.
 
 | Element          | Attributes                                    |
 | ---------------- | --------------------------------------------- |
@@ -1125,9 +1136,15 @@ lower case.
 
 ```hop
 let url = "/app.js";
-// error: <script> does not accept an expression for attribute 'src'
+// error: <script> requires a string literal for attribute 'src'
 <script src={url}></script>
 ```
+
+On a [function element](#function-elements), an attribute is the argument for
+the parameter it names, and its value has the type of that parameter. A name
+alone passes `true`, so `name` is the same as `name={true}`. An attribute that
+names no parameter is collected by a [rest parameter](#rest-parameters), and is
+checked as if written on the element where the rest parameter is spread.
 
 <a id="rest-parameters"></a>
 
@@ -1248,9 +1265,9 @@ let p = (
 #### Escaping
 
 A `String` value inserted into markup, as an [interpolation](#interpolation) or
-as an [attribute value](#attributes), is escaped: each character below is
-replaced by the character reference next to it, and every other character is
-kept as written.
+as an [attribute value](#attributes) in double quotes or in a block, is escaped:
+each character below is replaced by the character reference next to it, and
+every other character is kept as written.
 
 | Character | Replaced by |
 | --------- | ----------- |
@@ -1263,11 +1280,11 @@ kept as written.
 ```hop
 let s = "a < b & \"c\" > 'd'";
 let p = (
-  <p title={s}>
+  <p title="<'d'> & c">
     {s}
   </p>
 );
-// p: <p title="a &lt; b &amp; &quot;c&quot; &gt; &#39;d&#39;">a &lt; b &amp; &quot;c&quot; &gt; &#39;d&#39;</p>
+// p: <p title="&lt;&#39;d&#39;&gt; &amp; c">a &lt; b &amp; &quot;c&quot; &gt; &#39;d&#39;</p>
 ```
 
 <a id="modules-and-declarations"></a>

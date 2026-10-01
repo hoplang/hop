@@ -21,4 +21,4 @@ pub mod variable_scope;
 
 pub use r#type::Type;
 pub use type_env::{FunctionSignature, ParamEntry, Tail};
-pub use typed_expr::{TypedAttribute, TypedAttributeValue, TypedAttrs, TypedExpr, TypedLoopSource};
+pub use typed_expr::{TypedAttribute, TypedAttrs, TypedExpr, TypedLoopSource};

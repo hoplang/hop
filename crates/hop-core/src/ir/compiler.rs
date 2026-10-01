@@ -7,7 +7,7 @@ use crate::hop::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::typed_ast::TypedFunctionDeclaration;
-use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
+use crate::hop::typing::{TypedAttribute, TypedLoopSource};
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
 use crate::ir::function_id::FunctionIdCounter;
@@ -183,11 +183,7 @@ impl<'a> Compiler<'a> {
                 content: format!(" {}", attr.name.as_str()),
                 id: self.next_expr_id(),
             }),
-            Some(TypedAttributeValue::String(s)) => output.push(PureExpr::HtmlRaw {
-                content: format!(" {}=\"{}\"", attr.name.as_str(), s.as_str()),
-                id: self.next_expr_id(),
-            }),
-            Some(TypedAttributeValue::Expression(expr)) => {
+            Some(expr) => {
                 assert!(
                     expr.typ() == Type::String,
                     "attribute `{}` holds {}, but attribute values must be String",
@@ -923,7 +919,7 @@ mod tests {
                     concat(
                       html(
                         tag: "div",
-                        attrs: [class: raw("base"), id: raw("test")],
+                        attrs: [class: escape("base"), id: escape("test")],
                         children: concat(raw("Content")),
                       ),
                     )
@@ -935,8 +931,12 @@ mod tests {
                   concat(
                     concat(
                       raw("<div"),
-                      raw(" class=\"base\""),
-                      raw(" id=\"test\""),
+                      raw(" class=\""),
+                      escape("base"),
+                      raw("\""),
+                      raw(" id=\""),
+                      escape("test"),
+                      raw("\""),
                       raw(">"),
                       concat(raw("Content")),
                       raw("</div>"),
@@ -969,7 +969,7 @@ mod tests {
                       html(
                         tag: "div",
                         attrs: [
-                          class: raw("base"),
+                          class: escape("base"),
                           data-value: escape(cls),
                         ],
                         children: concat(raw("Content")),
@@ -983,7 +983,9 @@ mod tests {
                   concat(
                     concat(
                       raw("<div"),
-                      raw(" class=\"base\""),
+                      raw(" class=\""),
+                      escape("base"),
+                      raw("\""),
                       raw(" data-value=\""),
                       escape(v0),
                       raw("\""),

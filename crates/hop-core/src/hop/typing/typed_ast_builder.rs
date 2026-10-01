@@ -5,7 +5,7 @@ use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::typed_ast::TypedParameter;
-use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedAttrs, TypedLoopSource};
+use crate::hop::typing::{TypedAttribute, TypedAttrs, TypedLoopSource};
 use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -206,16 +206,16 @@ impl TypedAstBuilder {
     pub fn attr_str(&self, value: &str) -> TypedAttribute {
         TypedAttribute {
             name: CheapString::new(String::new()),
-            value: Some(TypedAttributeValue::String(CheapString::new(
-                value.to_string(),
-            ))),
+            value: Some(TypedExpr::StringLiteral {
+                value: CheapString::new(value.to_string()),
+            }),
         }
     }
 
     pub fn attr_expr(&self, expr: TypedExpr) -> TypedAttribute {
         TypedAttribute {
             name: CheapString::new(String::new()),
-            value: Some(TypedAttributeValue::Expression(expr)),
+            value: Some(expr),
         }
     }
 
@@ -289,7 +289,7 @@ mod tests {
                     concat(
                       html(
                         tag: "div",
-                        attrs: [class: raw("container")],
+                        attrs: [class: escape("container")],
                         children: concat(raw("Content")),
                       ),
                     )
