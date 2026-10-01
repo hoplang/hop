@@ -4175,7 +4175,7 @@ mod tests {
             &[],
             "None",
             expect![[r#"
-                error: Cannot infer type of None without context
+                error: Cannot infer type of None
                 None
                 ^^^^
             "#]],
@@ -4259,7 +4259,7 @@ mod tests {
             &[],
             "None == Some(1)",
             expect![[r#"
-                error: Cannot infer type of None without context
+                error: Cannot infer type of None
                 None == Some(1)
                 ^^^^
             "#]],

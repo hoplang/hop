@@ -210,10 +210,10 @@ pub(crate) enum TypeErrorKind {
     #[error("Mismatched type for array element: expected {expected} got {found}")]
     ArrayElementTypeMismatch { expected: Type, found: Type },
 
-    #[error("Cannot infer type of empty array")]
+    #[error("Cannot infer type of []")]
     CannotInferEmptyArrayType,
 
-    #[error("Cannot infer type of None without context")]
+    #[error("Cannot infer type of None")]
     CannotInferNoneType,
 
     #[error("Type {t} is not comparable")]

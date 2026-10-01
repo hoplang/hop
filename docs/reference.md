@@ -52,7 +52,7 @@ UppercaseIdentifier ::= [A-Z] [A-Za-z0-9]*
 
 ### Keywords and reserved words
 
-None of the words below can be used as an identifier.
+Using any of the words below as an identifier is a compile error.
 
 ```
 enum    false   fn      for     import  in
@@ -70,8 +70,9 @@ Further words are reserved for future use. They are listed in
 
 ## Types
 
-Every value has a type: one of the built-in types below, or a record or enum
-type declared in a module.
+Every expression has a type, determined at compile time: one of the built-in
+types below, or a record or enum type declared in a module. An expression
+evaluates to a value of its type.
 
 ```ebnf
 Type ::= "Bool"
@@ -151,15 +152,28 @@ StringChar     ::= [^"\] | EscapeSequence
 EscapeSequence ::= "\" [ntr\"]
 ```
 
-An integer literal must fit in an `Int`. The one exception is `2147483648` as
-the immediate operand of `-`, which lets `-2147483648` be written.
+An integer literal that does not fit in an `Int` is a compile error. The one
+exception is `2147483648` as the immediate operand of `-`, which lets
+`-2147483648` be written:
+
+```hop
+0             // 0, of type Int
+0.0           // 0.0, of type Float
+2147483648    // error: Integer literal is out of range for Int (-2147483648 to 2147483647)
+-2147483648   // -2147483648, of type Int
+2147483648.0  // 2147483648.0, of type Float
+```
+
+A float literal is rounded to a `Float` as in IEEE 754, so a literal that is too
+large is ∞.
 
 <a id="array-expressions"></a>
 
 ### Array expressions
 
 An array expression `[a, b, …]` evaluates to the array of its elements in
-order, and has the type `Array[T]`, where every element must have type `T`.
+order, and has the type `Array[T]`, where `T` is the type of its elements.
+Elements of different types are a compile error.
 
 ```ebnf
 ArrayExpr ::= "[" ( Expr ( "," Expr )* ","? )? "]"
@@ -167,10 +181,10 @@ ArrayExpr ::= "[" ( Expr ( "," Expr )* ","? )? "]"
 
 An empty array `[]` does not determine `T`. It takes its type from its
 context, such as the annotation in `let tags: Array[String] = [];`. An empty
-array with no such context is an error:
+array with no such context is a compile error:
 
 ```hop
-let tags = []; // error: Cannot infer type of empty array
+let tags = []; // error: Cannot infer type of []
 ```
 
 <a id="tuple-expressions"></a>
@@ -202,10 +216,10 @@ let name = "Alice";
 When the context of a tuple expression expects a tuple type with as many
 elements, each element takes its context from the element type at its position,
 as in `let pair: (Option[String], Array[Int]) = (None, []);`. Without such a
-context, an element that cannot determine its own type is an error:
+context, an element that cannot determine its own type is a compile error:
 
 ```hop
-let counts = (1, []); // error: Cannot infer type of empty array
+let counts = (1, []); // error: Cannot infer type of []
 ```
 
 A tuple has no fields, methods or operators. Its elements are read with a
@@ -217,7 +231,7 @@ A tuple has no fields, methods or operators. Its elements are read with a
 
 An option expression is `None` or `Some(e)`. `None` evaluates to the option
 with no value, and `Some(e)` to the option holding the value of `e`. Both have
-the type `Option[T]`, where `e` must have type `T`.
+the type `Option[T]`, where `T` is the type of `e`.
 
 ```ebnf
 OptionExpr ::= "None" | "Some" "(" Expr ")"
@@ -225,10 +239,10 @@ OptionExpr ::= "None" | "Some" "(" Expr ")"
 
 Like an empty array, `None` does not determine `T` and takes its type from
 its context, such as the annotation in `let nickname: Option[String] = None;`.
-A `None` with no such context is an error:
+A `None` with no such context is a compile error:
 
 ```hop
-let nickname = None; // error: Cannot infer type of None without context
+let nickname = None; // error: Cannot infer type of None
 ```
 
 <a id="record-expressions"></a>
@@ -244,11 +258,12 @@ FieldValue ::= LowercaseIdentifier ":" Expr
 Spread     ::= "..." Expr
 ```
 
-A record expression must give every field of `R` a value, and no field more
-than once.
+Leaving a field of `R` without a value, or giving a field a value more than
+once, is a compile error.
 
-A spread `...r` copies from `r` the fields that are not written. `r` must have
-type `R`, and a record expression can have at most one spread.
+A spread `...r` copies from `r` the fields that are not written. It is a
+compile error if `r` does not have type `R`, or if a record expression has more
+than one spread.
 
 ```hop
 record User {
@@ -274,7 +289,7 @@ EnumExpr ::= UppercaseIdentifier "::" UppercaseIdentifier ( "{" ( FieldValue ( "
 ```
 
 The fields are written as in [record expressions](#record-expressions), except
-that a spread is not allowed.
+that a spread is a compile error.
 
 For example, with `enum Status {Active, Away {since: String}}`, both
 `Status::Active` and `Status::Away {since: "Monday"}` are `Status` values.
@@ -290,15 +305,13 @@ to, by a parameter, a let binding, a `for` or a pattern.
 VariableReferenceExpr ::= LowercaseIdentifier
 ```
 
-A variable must be in scope:
+A variable that is not in scope is a compile error:
 
 ```hop
-fn answer() -> Int {
-  z // error: Undefined variable: z
-}
+z // error: Undefined variable: z
 ```
 
-A binding cannot reuse a name that is already in scope:
+A binding that reuses a name already in scope is a compile error:
 
 ```hop
 fn double(x: Int) -> Int {
@@ -335,7 +348,8 @@ Arguments ::= Expr ( "," Expr )* ","?
 ```
 
 `f(a, b)` passes its arguments by position, and `f(x: a, y: b)` by name. A call
-cannot mix the two. Parameters with a default value can be left out.
+that mixes the two is a compile error, and so is leaving out a parameter that
+has no default value.
 
 Only functions with lowercase names can be called this way. Functions with
 uppercase names are called as [function elements](#function-elements).
@@ -345,7 +359,8 @@ uppercase names are called as [function elements](#function-elements).
 ### Macro expressions
 
 A macro expression `name!(…)` calls one of the three macros [`join!`](#join),
-[`format!`](#format) and [`asset!`](#asset). Any other macro name is an error.
+[`format!`](#format) and [`asset!`](#asset). Any other macro name is a compile
+error.
 
 ```ebnf
 MacroExpr ::= LowercaseIdentifier "!" "(" ( Expr ( "," Expr )* ","? )? ")"
@@ -371,15 +386,16 @@ join!("btn", 1)          // error: Mismatched type for 'join': expected String g
 #### The format macro
 
 The format macro fills in the placeholders of a template and evaluates to the
-resulting `String`. The first argument is the template, which must be a string
-literal, and each `{}` in it is a placeholder.
+resulting `String`. The first argument is the template, and each `{}` in it is
+a placeholder. A template that is not a string literal is a compile error.
 
-The other arguments fill in the placeholders in order, exactly one for each
-`{}`. Each argument must have type `String` or `Int`, and an `Int` value is
-converted to a `String` as if by `to_string()`.
+The other arguments fill in the placeholders in order, one for each `{}`, and
+a different number of arguments is a compile error. Each argument has type
+`String` or `Int`, and any other type is a compile error. An argument of type
+`Int` is converted to a `String` via `to_string()`.
 
 To write a brace in the template, double it: `{{` stands for `{` and `}}` for
-`}`. Any other brace in the template is an error.
+`}`. Any other brace in the template is a compile error.
 
 ```hop
 format!("{} is {} years old", "Alice", 36)  // "Alice is 36 years old"
@@ -394,11 +410,14 @@ format!("{}", 1.5)                          // error: format! arguments must be 
 #### The asset macro
 
 The asset macro takes one string literal, the path of a file in the project, and
-evaluates to the URL of that file as a `String`. The path must start with `/`,
-which stands for the project root.
+evaluates to the URL of that file as a `String`. The path starts with `/`, which
+stands for the project root. An argument that is not a string literal, a path
+that does not start with `/` and a path that does not name a file in the
+project are compile errors.
 
 ```hop
 asset!("/icons/star.svg")       // the URL of icons/star.svg
+asset!("/icons/missing.svg")    // error: asset `icons/missing.svg` was not found
 asset!("icons/star.svg")        // error: invalid asset! path: path must start with '/'
 asset!("/icons/" + "star.svg")  // error: asset! argument must be a string literal
 ```
@@ -432,7 +451,7 @@ u.email  // error: Field 'email' not found in record 'User'
 
 A method call expression `v.m()` calls one of the built-in methods below on
 the value `v`, and evaluates to the result in the table. Any other method name
-is an error.
+is a compile error.
 
 ```ebnf
 MethodCallExpr ::= Expr "." LowercaseIdentifier "(" ")"
@@ -477,12 +496,14 @@ Operators group by precedence, listed here from highest to lowest:
 | 7          | `&&`                  | binary  | left          |
 | 8          | `\|\|`                | binary  | left          |
 
-Both operands of a binary operator must have the same type. `1 + 1.0` is an
-error unless one side is converted with `to_float()` or `to_int()`.
+A binary operator whose operands have different types is a compile error, so
+`1 + 1.0` is a compile error unless one side is converted with `to_float()` or
+`to_int()`.
 
 The tables below list every combination of operator and type that is allowed,
-and any other is an error. In particular, comparing an option with `None` is an
-error. Whether an option is `None` is tested with `is_none()` or a `match`.
+and any other is a compile error. In particular, comparing an option with `None`
+is a compile error. Whether an option is `None` is tested with `is_none()` or a
+`match`.
 
 | Operator             | Operands | Result   | Semantics                         |
 | -------------------- | -------- | -------- | --------------------------------- |
@@ -522,7 +543,8 @@ LetBinding ::= "let" LowercaseIdentifier ( ":" Type )? "=" Expr ";"
 ```
 
 A let binding `let x = e;` binds `x` to the value of `e`. With a type
-annotation, as in `let x: T = e;`, `e` must have type `T`.
+annotation, as in `let x: T = e;`, it is a compile error if `e` does not have
+type `T`.
 
 ```hop
 let val = {
@@ -554,14 +576,15 @@ Pattern         ::= WildcardPattern
                   | "(" Pattern ")"
 ```
 
-The subject cannot be a [record](#record-expressions) or
-[enum expression](#enum-expressions) with fields unless it is wrapped in
-parentheses, since its `{` would be read as the start of the arms.
+A subject that is a [record](#record-expressions) or
+[enum expression](#enum-expressions) with fields is a compile error unless it is
+wrapped in parentheses, since its `{` would be read as the start of the arms.
 
-The subject must have type `Bool`, `Option[T]` or a tuple type, or a record or
-enum type, and every pattern must have the type of the subject. A pattern in
-parentheses, `(p)`, is the same as `p`. The expressions of all arms must have
-the same type, which is the type of the `match` expression.
+The subject has type `Bool`, `Option[T]`, a tuple type, or a record or enum
+type, and a subject of any other type is a compile error. So is a pattern that
+does not have the type of the subject. A pattern in parentheses, `(p)`, is the
+same as `p`. The expressions of all arms have the same type, which is the type
+of the `match` expression, and arms of different types are a compile error.
 
 <a id="wildcard-and-variable-patterns"></a>
 
@@ -588,8 +611,8 @@ match nickname {
 Inside another pattern, it ignores part of the value, as in `Some(_)` or the
 field pattern `age: _` of a [record pattern](#record-patterns).
 
-A `match` whose only arm matches every value without binding a variable is an
-error:
+A `match` whose only arm matches every value without binding a variable is a
+compile error:
 
 ```hop
 let b = true;
@@ -667,7 +690,8 @@ match (signed_in, nickname) {
 }
 ```
 
-A tuple pattern must have one pattern for each element of its type:
+A tuple pattern with a different number of patterns than its type has elements
+is a compile error:
 
 ```hop
 let pair = ("Alice", 36);
@@ -681,8 +705,8 @@ match pair {
 
 #### Record patterns
 
-A record pattern `R {f: p, …}` matches a record of type `R` whose fields match
-their patterns, and binds what its field patterns bind. A field pattern `f`
+A record pattern `R {f: p, …}` matches a record whose fields match their
+patterns, and binds what its field patterns bind. A field pattern `f`
 without `: p` is short for `f: f`: it binds the field to a variable of the same
 name.
 
@@ -692,9 +716,10 @@ FieldPatterns ::= "{" ( FieldPattern ( "," FieldPattern )* ","? )? "}"
 FieldPattern  ::= LowercaseIdentifier ( ":" Pattern )?
 ```
 
-A record pattern must list every field of its type, each once. A field pattern
-`f: _` matches the field without binding it. With the `User` below,
-`User {name, age: _}` matches, while `User {name}` leaves out `age`:
+A record pattern that leaves out a field of its type, or lists a field more
+than once, is a compile error. A field pattern `f: _` matches the field without
+binding it. With the `User` below, `User {name, age: _}` matches, while
+`User {name}` leaves out `age`:
 
 ```hop
 record User {
@@ -713,15 +738,15 @@ match u {
 
 #### Enum patterns
 
-An enum pattern `E::V` or `E::V {f: p, …}` matches the variant `V` of the enum
-`E` whose fields match their patterns, and binds what its field patterns bind.
+An enum pattern `E::V` or `E::V {f: p, …}` matches a value of the variant `V`
+whose fields match their patterns, and binds what its field patterns bind.
 
 ```ebnf
 EnumPattern ::= UppercaseIdentifier "::" UppercaseIdentifier FieldPatterns?
 ```
 
-The fields are written as in [record patterns](#record-patterns), and every
-field of the variant must be listed. For example:
+The fields are written as in [record patterns](#record-patterns), and leaving
+out a field of the variant is a compile error. For example:
 
 ```hop
 enum Status {
@@ -740,9 +765,9 @@ match status {
 
 #### Exhaustiveness
 
-The arms of a `match` must together cover every value of the subject. A wildcard
-or a variable covers every value. Coverage is checked recursively. The compiler
-names the values that no arm covers:
+It is a compile error if the arms of a `match` do not together cover every value
+of the type of the subject. A wildcard or a variable covers every value.
+Coverage is checked recursively:
 
 ```hop
 let flag = Some(true);
@@ -757,8 +782,8 @@ match flag {
 
 #### Reachability
 
-The arms are tried in order. An arm is unreachable, and an error, if every
-value it matches is matched by an arm before it:
+The arms are tried in order. An arm is unreachable, and a compile error, if
+every value it matches is matched by an arm before it:
 
 ```hop
 let b = true;
@@ -773,12 +798,12 @@ match b {
 
 ### For expressions
 
-A `for` expression evaluates its body, which must have type `Html`, once for
-each element of an array, and evaluates to the results concatenated in order.
+A `for` expression evaluates its body, which has type `Html`, once for each
+element of an array, and evaluates to the results concatenated in order.
 
 A `for` can also loop over a range `a..=b`: the `Int` values from `a` to `b`
-inclusive. The range is empty if `a` is greater than `b`. A range is only
-allowed here, not as an expression on its own.
+inclusive. The range is empty if `a` is greater than `b`. A range anywhere
+else, such as an expression on its own, is a compile error.
 
 ```ebnf
 ForExpr ::= "for" ( LowercaseIdentifier | "_" ) "in" Expr ( "..=" Expr )? BlockExpr
@@ -803,8 +828,8 @@ let bold = for i in 1..=3 {
 
 `_` in place of the variable binds nothing.
 
-Looping over anything other than an array or a range of `Int` values is an
-error:
+Looping over anything other than an array or a range of `Int` values is a
+compile error:
 
 ```hop
 // error: Mismatched type: expected Array[...] got String
@@ -818,10 +843,8 @@ for tag in "a, b" {
 So is a body whose type is not `Html`:
 
 ```hop
-fn Stars() -> Html {
-  for _ in 1..=3 {
-    "*" // error: Mismatched type for for body: expected Html got String
-  }
+for _ in 1..=3 {
+  "*" // error: Mismatched type for for body: expected Html got String
 }
 ```
 
@@ -831,17 +854,7 @@ fn Stars() -> Html {
 
 An `Html` value is a sequence of elements and text. An element has a name,
 attributes in the order written, and content, which is itself a sequence of
-elements and text. Text is HTML text as it appears in a document, so it can
-contain character references. How an `Html` value is represented during
-runtime is not specified: it is built by the expressions below, combined by
-placing it in the content of another expression or by a
-[`for` expression](#for-expressions), and observed only when a page is
-[rendered](#rendering). Rendering is deterministic: the same page with the same
-arguments renders to the same bytes in every implementation.
-
-Markup is written like HTML, with elements, attributes, text and comments, and
-with expressions in braces. A markup expression is a single HTML element,
-function element or fragment, and has the type `Html`.
+elements and text.
 
 ```ebnf
 MarkupExpr ::= HtmlElementExpr | FunctionElementExpr | FragmentExpr
@@ -876,14 +889,15 @@ VoidElementName ::= "area"
                   | "wbr"
 ```
 
-The name must be that of an HTML or SVG element, such as `div` or `path`, or of
-a custom element, which contains `-`, such as `my-widget`. Any other name, such
-as `widget`, is an error.
+The name is that of an HTML or SVG element, such as `div` or `path`, or of a
+custom element, which contains `-`, such as `my-widget`. Any other name, such as
+`widget`, is a compile error.
 
-`<html>`, `<head>` and `<body>` cannot be used, since a
-[page](#page-declarations) provides them. `<style>` cannot be used either:
-styles go in the project stylesheet. A `<script>` must be empty and reference a
-file with `src`, as in `<script src="/app.js"></script>`.
+Using `<html>`, `<head>` or `<body>` is a compile error, since a
+[page](#page-declarations) provides them, and so is using `<style>`: styles go
+in the project stylesheet. A `<script>` that has content, or that does not
+reference a file with `src`, is a compile error. A script is written as in
+`<script src="/app.js"></script>`.
 
 An element is an expression: it can be bound with `let` and inserted into other
 markup. For example:
@@ -909,8 +923,9 @@ let section = (
 
 A function element is written like an [HTML element](#html-elements), with an
 `UppercaseIdentifier` as its name. It calls the
-[function](#function-declarations) of that name, which must return `Html`. The
-attributes and content of the element are the arguments of the call.
+[function](#function-declarations) of that name, and is a compile error if the
+function does not return `Html`. The attributes and content of the element are
+the arguments of the call.
 
 ```ebnf
 FunctionElementExpr ::= "<" UppercaseIdentifier Attribute* ( "/>" | ">" MarkupNode* "</" UppercaseIdentifier ">" )
@@ -947,17 +962,17 @@ fn Badge(
 
 evaluates to `<span>new<b>!</b></span>`.
 
-Every parameter without a default value must be given an argument, so
-`<Badge/>` is an error. Every argument must have the type of its parameter, so
-`<Badge label={1}/>` is an error. An attribute must name a parameter, unless a
-[rest parameter](#rest-parameters) accepts it, so `<Badge label="a" size="x"/>`
-is an error.
+Leaving out a parameter that has no default value is a compile error, as in
+`<Badge/>`. So is an argument that does not have the type of its parameter, as
+in `<Badge label={1}/>`, and an attribute that names no parameter, unless a
+[rest parameter](#rest-parameters) accepts it, as in
+`<Badge label="a" size="x"/>`.
 
 Content between the tags requires a `children: Html` parameter. With
-`fn Label(text: String) -> Html { … }`, `<Label text="a">x</Label>` is an error.
-Content cannot be given both between the tags and as a `children` attribute.
-Like any parameter, `children` can have a default value, which makes the
-content optional.
+`fn Label(text: String) -> Html { … }`, `<Label text="a">x</Label>` is a compile
+error. Giving content both between the tags and as a `children` attribute is a
+compile error too. Like any parameter, `children` can have a default value,
+which makes the content optional.
 
 <a id="fragments"></a>
 
@@ -1006,10 +1021,11 @@ MarkupText    ::= [^<{}]+
 MarkupComment ::= "<!--" CommentText "-->"   /* CommentText is any text without "-->" */
 ```
 
-Text evaluates to its characters as written, except that its
-[whitespace](#whitespace) is normalized. It is not [escaped](#escaping), so
-`&amp;` passes through unchanged. Text cannot contain `<`, `{` or `}`, which
-are written `&lt;`, `&lbrace;` and `&rbrace;`. A comment evaluates to nothing.
+Text evaluates to its characters as written, after its
+[whitespace](#whitespace-normalization) is normalized at compile time. It is not
+[escaped](#escaping), so `&amp;` passes through unchanged. Text cannot contain
+`<`, `{` or `}`, which are written `&lt;`, `&lbrace;` and `&rbrace;`. A comment
+evaluates to nothing.
 
 <a id="interpolation"></a>
 
@@ -1022,8 +1038,9 @@ is inserted into the content of an element or fragment.
 Interpolation ::= BlockExpr
 ```
 
-The value must have type `String` or `Html`. An `Html` value is inserted as
-the elements and text it consists of. A `String` value is inserted as text,
+The block expression has type `String` or `Html`, and any other type is a
+compile error. If it has type `Html`, its value is inserted as the elements and
+text it consists of. If it has type `String`, its value is inserted as text,
 [escaped](#escaping):
 
 ```hop
@@ -1077,26 +1094,28 @@ On an [HTML element](#html-elements), the forms evaluate as follows:
 | `name={e}`    | `name="…"`, with the `String` value of `e` [escaped](#escaping)        |
 | `...rest`     | the attributes passed in the [rest parameter](#rest-parameters) `rest` |
 
-`e` must have type `String`. `<div id={1}>` is an error. On a
-[function element](#function-elements), `name={e}` is passed as an argument and
-can have any type.
+An `e` that does not have type `String` is a compile error, as in
+`<div id={1}>`. On a [function element](#function-elements), `name={e}` is
+passed as an argument and can have any type.
 
-An attribute can appear only once per element. Single-quoted values such as
-`id='a'` and unquoted values such as `id=a` are errors.
+An attribute that appears more than once on an element is a compile error, and
+so are single-quoted values such as `id='a'` and unquoted values such as
+`id=a`.
 
 An HTML element accepts the global attributes, its own attributes, and any
 attribute starting with `data-` or `aria-`, but not event handler attributes
-such as `onclick`. So `<div href="x">` and `<button onclick="go()">` are errors.
-SVG and custom elements accept any attribute, including event handlers.
+such as `onclick`. So `<div href="x">` and `<button onclick="go()">` are compile
+errors. SVG and custom elements accept any attribute, including event handlers.
 
 <a id="rest-parameters"></a>
 
 #### Rest parameters
 
-A rest parameter `...rest`, which must be the last parameter, collects the
-attributes a caller passes that are not parameters of the function. The body
-must spread it, as `...rest`, exactly once in the opening tag of an element,
-where the collected attributes are placed as if written there. For example:
+A rest parameter `...rest` is the last parameter, and collects the attributes a
+caller passes that are not parameters of the function. The body spreads it, as
+`...rest`, in the opening tag of an element, where the collected attributes are
+placed as if written there. A rest parameter that is not the last parameter, or
+that the body does not spread exactly once, is a compile error. For example:
 
 ```hop
 fn Button(
@@ -1119,8 +1138,8 @@ let primary = <PrimaryButton type="submit"/>;
 ```
 
 Exactly once means once in the source text, not once per evaluation: a spread
-in each arm of a `match` is an error, while a single spread inside a `for` body
-is allowed, and adds the attributes on every iteration.
+in each arm of a `match` is a compile error, while a single spread inside a
+`for` body is allowed, and adds the attributes on every iteration.
 
 Which extra attributes the function accepts depends on where the rest parameter
 is spread:
@@ -1130,8 +1149,8 @@ is spread:
 - When spread on a function element `<F … ...rest>`, the function accepts the
   parameters and extra attributes of `F`, except those written on `F`.
 
-An attribute written on the element where the rest parameter is spread cannot be
-passed through it:
+Passing an attribute through a rest parameter is a compile error if the
+attribute is written on the element where the rest parameter is spread:
 
 ```hop
 fn Button(
@@ -1147,7 +1166,7 @@ fn Button(
 <Button kind="k" class="c"/>
 ```
 
-Rest parameters cannot be spread in a cycle:
+Spreading rest parameters in a cycle is a compile error:
 
 ```hop
 fn A(...rest) -> Html {
@@ -1161,11 +1180,12 @@ fn B(...rest) -> Html {
 }
 ```
 
-<a id="whitespace"></a>
+<a id="whitespace-normalization"></a>
 
-#### Whitespace
+#### Whitespace normalization
 
-The content of every element and fragment is normalized before it is evaluated:
+Whitespace in markup is normalized at compile time. Normalization applies to
+the content of each element and fragment as it is written in the source:
 
 - Text is trimmed at the start and end of the content, and next to line breaks.
   Whitespace inside a line, and between text and an element or interpolation on
@@ -1187,8 +1207,19 @@ In the table, ⏎ marks a line break and `name` is `"Alice"`.
 | `<p>⏎  Hi⏎  {name}⏎</p>`                  | `<p>HiAlice</p>`                  |
 | `<p>⏎  <b>x</b> <i>y</i>⏎</p>`            | `<p><b>x</b> <i>y</i></p>`        |
 
-An interpolation `{" "}` inserts a space that a line break would otherwise
-remove.
+Normalization does not apply to values. The value of an interpolation is
+inserted with its whitespace unchanged, so an interpolation `{" "}` inserts a
+space that a line break would otherwise remove:
+
+```hop
+let padded = "  Alice  ";
+let p = (
+  <p>
+    {padded}
+  </p>
+);
+// p: <p>  Alice  </p>
+```
 
 <a id="escaping"></a>
 
@@ -1222,11 +1253,11 @@ let p = (
 ## Modules and declarations
 
 A module is a sequence of imports, records, enums, functions and pages. A
-declaration marked `pub` can be imported by other modules, and no two
-declarations in a module can have the same name. The declarations of a module
-can refer to each other in any order. Imports cannot form a cycle: a module
-cannot import from a module that imports from it, directly or through other
-modules.
+declaration marked `pub` can be imported by other modules, and two declarations
+with the same name in a module are a compile error. The declarations of a
+module can refer to each other in any order. Imports that form a cycle, where a
+module imports from a module that imports from it, directly or through other
+modules, are a compile error.
 
 ```ebnf
 Module ::= ( ImportDecl | RecordDecl | EnumDecl | FunctionDecl | PageDecl )*
@@ -1244,16 +1275,17 @@ ModuleSegment ::= [A-Za-z_] [A-Za-z0-9_]*
 ```
 
 `import a::b::Name` imports `Name` from the module `a::b`, which is the file
-`a/b.hop` relative to the project root. The module must exist and declare `Name`
-as `pub`. A module cannot re-export what it imports.
+`a/b.hop` relative to the project root. Importing from a module that does not
+exist, or a `Name` that the module does not declare as `pub`, is a compile
+error. A module does not re-export what it imports.
 
 <a id="record-declarations"></a>
 
 ### Record declarations
 
 A record declaration `record R {…}` declares the record type `R`, with the
-fields listed between the braces. The fields must have different names, and a
-field can refer to the type it belongs to, as in `children: Array[Item]` in a
+fields listed between the braces. Two fields with the same name are a compile
+error, and a field can refer to the type it belongs to, as in `children: Array[Item]` in a
 record `Item`.
 
 ```ebnf
@@ -1266,8 +1298,9 @@ FieldDecl  ::= LowercaseIdentifier ":" Type
 ### Enum declarations
 
 An enum declaration `enum E {…}` declares the enum type `E`, with the variants
-listed between the braces. The variants must have different names. A variant can
-have fields, declared as in [record declarations](#record-declarations).
+listed between the braces. Two variants with the same name are a compile error.
+A variant can have fields, declared as in
+[record declarations](#record-declarations).
 
 ```ebnf
 EnumDecl ::= "pub"? "enum" UppercaseIdentifier "{" ( Variant ( "," Variant )* ","? )? "}"
@@ -1294,9 +1327,9 @@ Param        ::= LowercaseIdentifier ":" Type ( "=" Expr )? | "..." LowercaseIde
 | `x: T = v` | a parameter with the default value `v` |
 | `...x`     | a [rest parameter](#rest-parameters)   |
 
-A default value must be constant: a literal, a numeric literal preceded by `-`,
-`<></>`, or an array, tuple, record, enum or option built from constants,
-without a `...` spread:
+A default value that is not constant is a compile error. A constant is a
+literal, a numeric literal preceded by `-`, `<></>`, or an array, tuple, record,
+enum or option built from constants, without a `...` spread:
 
 ```hop
 // error: Default values must be constant
@@ -1325,9 +1358,9 @@ fn Tree(item: Item) -> Html {
 }
 ```
 
-The compiler does not check that recursion terminates.
+An implementation does not check that recursion terminates.
 
-A function body must have the declared return type:
+A function body that does not have the declared return type is a compile error:
 
 ```hop
 fn answer() -> Int {
@@ -1336,8 +1369,8 @@ fn answer() -> Int {
 ```
 
 Only an uppercase function that returns `Html` can be used as a function
-element. An uppercase function that returns another type cannot be called at
-all:
+element, and calling an uppercase function that returns another type is a
+compile error:
 
 ```hop
 fn Label() -> String {
@@ -1356,8 +1389,8 @@ fn Form() -> Html {
 
 A page declaration `page P(…) { … }` declares the page `P`. Its parameters are
 in scope in `head` and `body`, and [rendering](#rendering) the page produces an
-HTML document. The parameters of a page cannot have default values, and a page
-has no rest parameter.
+HTML document. A default value for a page parameter is a compile error, and so
+is a rest parameter.
 
 ```ebnf
 PageDecl   ::= "pub"? "page" UppercaseIdentifier ( "(" ( PageParam ( "," PageParam )* ","? )? ")" )? "{" PageMember* "}"
@@ -1383,8 +1416,22 @@ page Home {
 ### Rendering
 
 A page is rendered by the host, which supplies its arguments and receives the
-resulting document as UTF-8 text. The document is, with nothing between the
-parts:
+resulting document as UTF-8 text.
+
+The host passes each argument as a value of its own language, which must
+represent a value of the type of the parameter, as described in
+[Types](#types). Not every host value does: a JavaScript string that contains a
+lone surrogate represents no `String`, since a lone surrogate is not a Unicode
+scalar value, and a JavaScript number represents an `Int` only if it is an
+integer from `-2147483648` to `2147483647`. An implementation need not check
+the arguments, and if one represents no value of the type of its parameter, the
+behavior of rendering is undefined.
+
+If every argument represents a value of the type of its parameter, rendering is
+deterministic: the same page renders to the same bytes for arguments that
+represent the same values, whatever the host and the implementation.
+
+The document is, with nothing between the parts:
 
 1. `<!doctype html>`
 2. `<html><head>`
@@ -1413,9 +1460,10 @@ value of `v` [escaped](#escaping).
 
 <a id="reserved-words"></a>
 
-## Appendix: Reserved words {.unnumbered}
+## Appendix: Reserved words
 
-A `LowercaseIdentifier` or `ModuleSegment` cannot be one of:
+A `LowercaseIdentifier` or `ModuleSegment` that is one of these words is a
+compile error:
 
 ```
 alias        and          as           assert       async        auto
@@ -1432,7 +1480,7 @@ undefined    use          val          var          view         void
 when         where        while        yield
 ```
 
-An `UppercaseIdentifier` cannot be one of:
+An `UppercaseIdentifier` that is one of these words is a compile error:
 
 ```
 Any       Arr       Async     Auto      Box       CSS       Class     Classes

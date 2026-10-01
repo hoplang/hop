@@ -2484,7 +2484,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Cannot infer type of empty array
+                error: Cannot infer type of []
                   --> main.hop (line 2, col 18)
                 1 | fn Main() -> Html {
                 2 |   let pair = (1, []);
@@ -3721,7 +3721,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Cannot infer type of empty array
+                error: Cannot infer type of []
                   --> main.hop (line 2, col 14)
                 1 | fn Main() -> Html {
                 2 |     for x in [] {
@@ -6944,7 +6944,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Cannot infer type of empty array
+                error: Cannot infer type of []
                   --> main.hop (line 2, col 15)
                 1 | fn Main() -> Html {
                 2 |   let items = [];
@@ -6964,7 +6964,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Cannot infer type of None without context
+                error: Cannot infer type of None
                   --> main.hop (line 2, col 15)
                 1 | fn Main() -> Html {
                 2 |   let maybe = None;

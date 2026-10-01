@@ -35,10 +35,13 @@ header="<style>
 $(<"$docs/style.css")
 </style>
 <script>
-setInterval(async () => {
+const timer = setInterval(async () => {
   try {
     const response = await fetch(\"?stamp\");
-    if ((await response.text()).trim() !== \"$stamp\") location.reload();
+    if ((await response.text()).trim() !== \"$stamp\") {
+      clearInterval(timer);
+      location.reload();
+    }
   } catch {
     // The server is down; keep polling until it comes back.
   }
