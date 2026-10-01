@@ -384,14 +384,19 @@ fn element_specific_attribute(element: &HtmlElementKind, name: &str) -> bool {
 
 impl HtmlElementKind {
     /// Return true if this element accepts an attribute named `name`
-    /// (case-insensitive). SVG and custom elements accept anything;
-    /// `data-`/`aria-` prefixes are always accepted; `on*` handlers are never
-    /// accepted (they are not in any list).
+    /// (case-insensitive). No element accepts an `on*` handler. SVG and custom
+    /// elements accept any other attribute, and every element accepts the
+    /// `data-` and `aria-` prefixes.
     pub fn accepts_attribute(&self, name: &str) -> bool {
+        let name = name.to_ascii_lowercase();
+        // Event handler attributes run their value as script, so no element
+        // accepts them.
+        if name.starts_with("on") {
+            return false;
+        }
         if self.is_svg() || matches!(self, HtmlElementKind::Custom(_)) {
             return true;
         }
-        let name = name.to_ascii_lowercase();
         if name.starts_with("data-") || name.starts_with("aria-") {
             return true;
         }
@@ -475,6 +480,19 @@ mod tests {
         let widget = HtmlElementKind::parse("my-widget").unwrap();
         assert!(circle.accepts_attribute("foobar"));
         assert!(widget.accepts_attribute("foobar"));
+    }
+
+    #[test]
+    fn rejects_event_handlers_on_svg_and_custom_elements() {
+        let circle = HtmlElementKind::parse("circle").unwrap();
+        let widget = HtmlElementKind::parse("my-widget").unwrap();
+        for name in ["onload", "onclick", "ONCLICK", "onFoo"] {
+            assert!(!circle.accepts_attribute(name), "<circle> accepted {name}");
+            assert!(
+                !widget.accepts_attribute(name),
+                "<my-widget> accepted {name}"
+            );
+        }
     }
 
     #[test]

@@ -6676,6 +6676,57 @@ mod tests {
     }
 
     #[test]
+    fn rejects_event_handler_attributes_on_svg_and_custom_elements() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(handler: String) -> Html {
+                  <>
+                    <svg onload="alert(1)"></svg>
+                    <my-widget title={handler} onclick={handler}></my-widget>
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: <svg> does not accept attribute 'onload'
+                  --> main.hop (line 3, col 10)
+                2 |   <>
+                3 |     <svg onload="alert(1)"></svg>
+                  |          ^^^^^^
+
+                error: <my-widget> does not accept attribute 'onclick'
+                  --> main.hop (line 4, col 32)
+                3 |     <svg onload="alert(1)"></svg>
+                4 |     <my-widget title={handler} onclick={handler}></my-widget>
+                  |                                ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_forwarded_event_handler_attribute_on_svg_root_element() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Icon(...rest) -> Html {
+                  <svg ...rest></svg>
+                }
+
+                fn Main() -> Html {
+                  <Icon onclick="alert(1)"/>
+                }
+            "#},
+            expect![[r#"
+                error: Function Icon does not accept attribute 'onclick'
+                  --> main.hop (line 6, col 9)
+                5 | fn Main() -> Html {
+                6 |   <Icon onclick="alert(1)"/>
+                  |         ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_attribute_on_wrong_element() {
         reject(
             indoc! {r#"

@@ -1103,9 +1103,11 @@ so are single-quoted values such as `id='a'` and unquoted values such as
 `id=a`.
 
 An HTML element accepts the global attributes, its own attributes, and any
-attribute starting with `data-` or `aria-`, but not event handler attributes
-such as `onclick`. So `<div href="x">` and `<button onclick="go()">` are compile
-errors. SVG and custom elements accept any attribute, including event handlers.
+attribute starting with `data-` or `aria-`. SVG and custom elements accept any
+attribute. No element accepts an attribute whose name starts with `on`, in any
+mix of upper and lower case, such as the event handler `onclick`. So
+`<div href="x">`, `<button onclick="go()">` and `<svg onload="init()">` are
+compile errors.
 
 <a id="rest-parameters"></a>
 
