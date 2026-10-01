@@ -667,6 +667,29 @@ impl<'a> Compiler<'a> {
                 option: Box::new(self.compile_expr(option)),
                 id: expr_id,
             },
+            TypedExpr::OptionUnwrapOr {
+                option,
+                default,
+                typ,
+            } => {
+                let subject = Box::new(self.compile_expr(option));
+                let binding = IrVar::new(self.next_var_id());
+                let reference_id = self.next_expr_id();
+                PureExpr::Match {
+                    match_: Match::Option {
+                        subject,
+                        some_arm_binding: Some(binding),
+                        some_arm_body: Box::new(PureExpr::VariableReference {
+                            value: binding,
+                            typ: typ.clone(),
+                            id: reference_id,
+                        }),
+                        none_arm_body: Box::new(self.compile_expr(default)),
+                    },
+                    typ: typ.clone(),
+                    id: expr_id,
+                }
+            }
             TypedExpr::IntToString { value } => PureExpr::IntToString {
                 value: Box::new(self.compile_expr(value)),
                 id: expr_id,

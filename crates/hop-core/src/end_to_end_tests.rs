@@ -13378,6 +13378,102 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn option_unwrap_or_some() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let name = Some("Alice");
+                    <>{name.unwrap_or("anonymous")}</>
+                  }
+                }
+            "#},
+            "Alice",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = Option[String]::Some("Alice") in {
+                    write_string(match v0 {
+                      Some(v1) => { v1 }
+                      None => { "anonymous" }
+                    })
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("Alice")
+                }
+                -- expected output --
+                Alice
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_unwrap_or_none() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Greeting(name: Option[String]) -> Html {
+                  <>{name.unwrap_or("anonymous")}</>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Greeting name={None} />
+                  }
+                }
+            "#},
+            "anonymous",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Greeting@f0(name@v0: Option[String]) -> Html {
+                  write_string(match v0 {
+                    Some(v1) => { v1 }
+                    None => { "anonymous" }
+                  })
+                }
+                page Test() {
+                  call Greeting@f0(name = Option[String]::None)
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("anonymous")
+                }
+                -- expected output --
+                anonymous
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn string_is_empty_as_comparison_operand() {
         check(
             indoc! {r#"

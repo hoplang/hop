@@ -2028,10 +2028,15 @@ pub fn typecheck_expr(
             )?;
             let receiver_type = typed_receiver.typ();
 
+            let (arity, arg_type) = match (&receiver_type, method.as_str()) {
+                (Type::Option(inner), "unwrap_or") => (1, Some(inner.as_ref())),
+                _ => (0, None),
+            };
+            let mut typed_args = Vec::with_capacity(args.len());
             for arg in args {
-                typecheck_expr(
+                typed_args.push(typecheck_expr(
                     arg,
-                    None,
+                    arg_type,
                     forwarded_params,
                     var_env,
                     type_env,
@@ -2040,7 +2045,7 @@ pub fn typecheck_expr(
                     definition_links,
                     asset_references,
                     errors,
-                );
+                ));
             }
 
             let typed = match (&receiver_type, method.as_str()) {
@@ -2103,6 +2108,37 @@ pub fn typecheck_expr(
                         option: Box::new(typed_receiver),
                     })
                 }
+                (Type::Option(inner), "unwrap_or") => {
+                    annotations.push(HoverAnnotation::Description {
+                        title: "Option::unwrap_or(default: T) -> T".to_string(),
+                        description: "Returns the contained value, or `default` if the option \
+                             is `None`."
+                            .to_string(),
+                        range: method_range.clone(),
+                    });
+                    match (args.as_slice(), typed_args.pop().flatten()) {
+                        ([default], Some(typed_default)) => {
+                            if typed_default.typ() != **inner {
+                                errors.push(TypeError::new(
+                                    TypeErrorKind::MethodArgumentTypeMismatch {
+                                        method: method.clone(),
+                                        expected: inner.as_ref().clone(),
+                                        found: typed_default.typ(),
+                                    },
+                                    default.range().clone(),
+                                ));
+                                None
+                            } else {
+                                Some(TypedExpr::OptionUnwrapOr {
+                                    option: Box::new(typed_receiver),
+                                    default: Box::new(typed_default),
+                                    typ: inner.as_ref().clone(),
+                                })
+                            }
+                        }
+                        _ => None,
+                    }
+                }
                 _ => {
                     errors.push(TypeError::new(
                         TypeErrorKind::MethodNotAvailable {
@@ -2111,16 +2147,21 @@ pub fn typecheck_expr(
                         },
                         range.clone(),
                     ));
-                    None
+                    return None;
                 }
             };
-            if let (true, Some(first), Some(last)) = (typed.is_some(), args.first(), args.last()) {
+            if args.len() != arity {
+                let error_range = match (args.first(), args.last()) {
+                    (Some(first), Some(last)) => first.range().clone().to(last.range().clone()),
+                    _ => range.clone(),
+                };
                 errors.push(TypeError::new(
-                    TypeErrorKind::MethodTakesNoArguments {
+                    TypeErrorKind::MethodArgumentCountMismatch {
                         method: method.clone(),
+                        expected: arity,
                         found: args.len(),
                     },
-                    first.range().clone().to(last.range().clone()),
+                    error_range,
                 ));
                 return None;
             }
@@ -5703,7 +5744,7 @@ mod tests {
             &[("items", "Array[String]")],
             "items.len(1)",
             expect![[r#"
-                error: Method 'len' takes no arguments, got 1
+                error: Method 'len' expects 0 argument(s), got 1
                 items.len(1)
                           ^
             "#]],
@@ -5721,7 +5762,7 @@ mod tests {
                 items.len(missing)
                           ^^^^^^^
 
-                error: Method 'len' takes no arguments, got 1
+                error: Method 'len' expects 0 argument(s), got 1
                 items.len(missing)
                           ^^^^^^^
             "#]],
@@ -5738,6 +5779,106 @@ mod tests {
                 error: Method 'foo' is not available on type Array[String]
                 items.foo()
                 ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_unwrap_or_on_option() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("name", "Option[String]")],
+            r#"name.unwrap_or("anonymous")"#,
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn accepts_unwrap_or_with_default_inferred_from_option() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("maybe_items", "Option[Array[Int]]")],
+            "maybe_items.unwrap_or([])",
+            expect!["Array[Int]"],
+        );
+    }
+
+    #[test]
+    fn accepts_unwrap_or_on_nested_option() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("nested", "Option[Option[Int]]")],
+            "nested.unwrap_or(None).unwrap_or(0)",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn rejects_unwrap_or_with_mismatched_default() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("count", "Option[Int]")],
+            r#"count.unwrap_or("zero")"#,
+            expect![[r#"
+                error: Mismatched type for 'unwrap_or': expected Int got String
+                count.unwrap_or("zero")
+                                ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unwrap_or_without_arguments() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("count", "Option[Int]")],
+            "count.unwrap_or()",
+            expect![[r#"
+                error: Method 'unwrap_or' expects 1 argument(s), got 0
+                count.unwrap_or()
+                ^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unwrap_or_with_two_arguments() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("count", "Option[Int]")],
+            "count.unwrap_or(1, 2)",
+            expect![[r#"
+                error: Method 'unwrap_or' expects 1 argument(s), got 2
+                count.unwrap_or(1, 2)
+                                ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_error_inside_unwrap_or_argument() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("count", "Option[Int]")],
+            "count.unwrap_or(missing)",
+            expect![[r#"
+                error: Undefined variable: missing
+                count.unwrap_or(missing)
+                                ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unwrap_or_on_non_option() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("count", "Int")],
+            "count.unwrap_or(0)",
+            expect![[r#"
+                error: Method 'unwrap_or' is not available on type Int
+                count.unwrap_or(0)
+                ^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

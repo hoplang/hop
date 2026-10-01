@@ -192,6 +192,13 @@ pub enum TypedExpr {
     /// Option is_none expression, e.g. maybe_value.is_none()
     OptionIsNone { option: Box<Self> },
 
+    /// Option unwrap_or expression, e.g. maybe_value.unwrap_or("default")
+    OptionUnwrapOr {
+        option: Box<Self>,
+        default: Box<Self>,
+        typ: Type,
+    },
+
     /// Int to string conversion, e.g. count.to_string()
     IntToString { value: Box<Self> },
 
@@ -308,6 +315,7 @@ impl TypedExpr {
             | TypedExpr::Match { typ, .. }
             | TypedExpr::Let { typ, .. }
             | TypedExpr::For { typ, .. }
+            | TypedExpr::OptionUnwrapOr { typ, .. }
             | TypedExpr::FunctionCall { typ, .. } => typ.clone(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::Float,
@@ -668,6 +676,11 @@ impl TypedExpr {
             TypedExpr::OptionIsNone { option } => {
                 option.to_doc().append(BoxDoc::text(".is_none()"))
             }
+            TypedExpr::OptionUnwrapOr { option, default, .. } => option
+                .to_doc()
+                .append(BoxDoc::text(".unwrap_or("))
+                .append(default.to_doc())
+                .append(BoxDoc::text(")")),
             TypedExpr::IntToString { value } => value.to_doc().append(BoxDoc::text(".to_string()")),
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
