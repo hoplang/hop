@@ -161,6 +161,9 @@ pub(crate) enum TypeErrorKind {
     #[error("Default values must be constant")]
     DefaultValueMustBeConstant,
 
+    #[error("Html is not allowed in page parameters")]
+    HtmlInPageParameter,
+
     #[error("Mismatched type: expected {expected} got {found}")]
     DefaultValueTypeMismatch {
         param_name: VarName,

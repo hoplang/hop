@@ -1411,6 +1411,23 @@ page Home {
 }
 ```
 
+A page parameter whose type is `Html`, or contains `Html` as an element, a
+field or a variant field, is a compile error:
+
+```hop
+record Post {
+  title: String,
+  content: Html,
+}
+
+// error: Html is not allowed in page parameters
+page Show(post: Post) {
+  fn body() -> Html {
+    post.content
+  }
+}
+```
+
 <a id="rendering"></a>
 
 ### Rendering

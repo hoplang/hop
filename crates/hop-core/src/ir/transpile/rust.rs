@@ -637,7 +637,7 @@ impl Transpiler for RustTranspiler {
                 .nil()
                 .append(arena.text("#[derive(Clone, Debug)]"))
                 .append(arena.line())
-                .append(arena.text("pub struct Html(pub String);"))
+                .append(arena.text("pub struct Html(String);"))
                 .append(arena.line())
                 .append(arena.line());
             result = fragment.append(result);
@@ -3823,7 +3823,7 @@ mod tests {
                 }
 
                 #[derive(Clone, Debug)]
-                pub struct Html(pub String);
+                pub struct Html(String);
 
                 pub struct Test {}
 
@@ -3880,7 +3880,7 @@ mod tests {
                 }
 
                 #[derive(Clone, Debug)]
-                pub struct Html(pub String);
+                pub struct Html(String);
 
                 pub struct Test {}
 

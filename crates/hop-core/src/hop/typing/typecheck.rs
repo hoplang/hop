@@ -18,7 +18,9 @@ use crate::hop::typing::rest_spread::{
     RestSpreadTarget, collect_spreads, pair_rest_spread, resolve_rest_targets,
 };
 use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
-use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
+use crate::hop::typing::type_registry::{
+    EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
+};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::typed_ast::{
     TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
@@ -597,6 +599,53 @@ fn typecheck_page_declaration(
         else {
             continue;
         };
+
+        // A host cannot construct Html, so no page parameter may contain it.
+        // Named types are visited once, which stops recursive types.
+        let mut pending = vec![&param_type];
+        let mut visited: Vec<&Type> = Vec::new();
+        let mut contains_html = false;
+        while let Some(typ) = pending.pop() {
+            match registry.resolve(typ) {
+                Some(ResolvedType::Html) => {
+                    contains_html = true;
+                    break;
+                }
+                Some(ResolvedType::Array(inner) | ResolvedType::Option(inner)) => {
+                    pending.push(inner);
+                }
+                Some(ResolvedType::Tuple(elements)) => pending.extend(elements),
+                Some(ResolvedType::Record { fields, .. }) => {
+                    if !visited.contains(&typ) {
+                        visited.push(typ);
+                        pending.extend(fields.iter().map(|field| &field.typ));
+                    }
+                }
+                Some(ResolvedType::Enum { variants, .. }) => {
+                    if !visited.contains(&typ) {
+                        visited.push(typ);
+                        pending.extend(
+                            variants
+                                .iter()
+                                .flat_map(|variant| variant.fields.iter().map(|field| &field.typ)),
+                        );
+                    }
+                }
+                Some(
+                    ResolvedType::String
+                    | ResolvedType::Bool
+                    | ResolvedType::Int
+                    | ResolvedType::Float,
+                )
+                | None => {}
+            }
+        }
+        if contains_html {
+            errors.push(TypeError::new(
+                TypeErrorKind::HtmlInPageParameter,
+                param.var_type.range().clone(),
+            ));
+        }
 
         annotations.push(HoverAnnotation::TypeForVarName {
             range: param.var_name_range.clone(),
@@ -1377,6 +1426,182 @@ mod tests {
                   --> main.hop (line 1, col 19)
                 1 | page Main(x: Int, x: String) {
                   |                   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_parameter_of_type_html() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                page Main(content: Html) {
+                  fn body() -> Html {
+                    content
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html is not allowed in page parameters
+                  --> main.hop (line 1, col 20)
+                1 | page Main(content: Html) {
+                  |                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_parameters_with_html_inside_arrays_options_and_tuples() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                page Main(
+                  items: Array[Html],
+                  footer: Option[Html],
+                  pair: (String, Html),
+                ) {
+                  fn body() -> Html {
+                    <>
+                      {for item in items {
+                        item
+                      }}
+                      {match footer {
+                        Some(f) => f,
+                        None => <></>,
+                      }}
+                      {match pair {
+                        (_, h) => h,
+                      }}
+                    </>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html is not allowed in page parameters
+                  --> main.hop (line 2, col 10)
+                 1 | page Main(
+                 2 |   items: Array[Html],
+                   |          ^^^^^^^^^^^
+
+                error: Html is not allowed in page parameters
+                  --> main.hop (line 3, col 11)
+                 2 |   items: Array[Html],
+                 3 |   footer: Option[Html],
+                   |           ^^^^^^^^^^^^
+
+                error: Html is not allowed in page parameters
+                  --> main.hop (line 4, col 9)
+                 3 |   footer: Option[Html],
+                 4 |   pair: (String, Html),
+                   |         ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_parameter_of_record_type_with_html_field() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record User {
+                  name: String,
+                  bio: Html,
+                }
+
+                page Main(user: User) {
+                  fn body() -> Html {
+                    user.bio
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html is not allowed in page parameters
+                  --> main.hop (line 6, col 17)
+                 5 | 
+                 6 | page Main(user: User) {
+                   |                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_parameter_of_enum_type_with_html_in_variant_field() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                enum Notice {
+                  Empty,
+                  Rich {content: Html},
+                }
+
+                page Main(notice: Notice) {
+                  fn body() -> Html {
+                    match notice {
+                      Notice::Empty => <></>,
+                      Notice::Rich {content} => content,
+                    }
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html is not allowed in page parameters
+                  --> main.hop (line 6, col 19)
+                 5 | 
+                 6 | page Main(notice: Notice) {
+                   |                   ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_parameter_of_imported_record_type_with_html_field() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub record Post {
+                  body: Html,
+                }
+                -- main.hop --
+                import other::Post
+
+                page Main(post: Post) {
+                  fn body() -> Html {
+                    post.body
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html is not allowed in page parameters
+                  --> main.hop (line 3, col 17)
+                2 | 
+                3 | page Main(post: Post) {
+                  |                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_parameter_of_recursive_record_type_with_html_field() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Item {
+                  label: Html,
+                  children: Array[Item],
+                }
+
+                page Main(item: Item) {
+                  fn body() -> Html {
+                    item.label
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html is not allowed in page parameters
+                  --> main.hop (line 6, col 17)
+                 5 | 
+                 6 | page Main(item: Item) {
+                   |                 ^^^^
             "#]],
         );
     }
