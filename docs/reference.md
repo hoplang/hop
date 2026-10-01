@@ -196,9 +196,9 @@ Its type is the tuple type of the types of its elements, so `(1, "a")` has the
 type `(Int, String)`.
 
 ```ebnf
-TupleExpr ::= "(" ")"
+TupleExpr ::= "(" Expr ( "," Expr )+ ","? ")"
             | "(" Expr "," ")"
-            | "(" Expr ( "," Expr )+ ","? ")"
+            | "(" ")"
 ```
 
 A tuple of one element is written with a trailing comma, since `(a)` is a
@@ -482,7 +482,7 @@ OperatorExpr ::= PrefixExpr | BinaryExpr
 PrefixExpr   ::= PrefixOp Expr
 BinaryExpr   ::= Expr BinaryOp Expr
 PrefixOp     ::= "!" | "-"
-BinaryOp     ::= "||" | "&&" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "+" | "-" | "*"
+BinaryOp     ::= "==" | "!=" | "<" | ">" | "<=" | ">=" | "+" | "-" | "*" | "&&" | "||"
 ```
 
 Operators group by precedence, listed here from highest to lowest:
@@ -673,9 +673,9 @@ A tuple pattern `(p, q, …)` matches a tuple whose elements match the patterns
 at the same positions, and binds what its element patterns bind.
 
 ```ebnf
-TuplePattern ::= "(" ")"
+TuplePattern ::= "(" Pattern ( "," Pattern )+ ","? ")"
                | "(" Pattern "," ")"
-               | "(" Pattern ( "," Pattern )+ ","? ")"
+               | "(" ")"
 ```
 
 As in [tuple expressions](#tuple-expressions), a pattern of one element is
@@ -873,7 +873,8 @@ A void element such as `<br>` never has content and is written as a single tag,
 `<br>` or `<br/>`.
 
 ```ebnf
-HtmlElementExpr ::= "<" HtmlElementName Attribute* ( "/>" | ">" MarkupNode* "</" HtmlElementName ">" )
+HtmlElementExpr ::= "<" HtmlElementName Attribute* ">" MarkupNode* "</" HtmlElementName ">"
+                  | "<" HtmlElementName Attribute* "/>"
                   | "<" VoidElementName Attribute* "/"? ">"
 HtmlElementName ::= [a-z] [A-Za-z0-9-]*   /* except a VoidElementName */
 VoidElementName ::= "area"
@@ -930,7 +931,8 @@ for the parameter it names, and the content between the tags is the argument
 for the parameter `children: Html`.
 
 ```ebnf
-FunctionElementExpr ::= "<" UppercaseIdentifier Attribute* ( "/>" | ">" MarkupNode* "</" UppercaseIdentifier ">" )
+FunctionElementExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupNode* "</" UppercaseIdentifier ">"
+                      | "<" UppercaseIdentifier Attribute* "/>"
 ```
 
 For example, with
@@ -1010,8 +1012,8 @@ text, an [interpolation](#interpolation), a comment, or a nested
 ```ebnf
 MarkupNode    ::= MarkupText
                 | Interpolation
-                | MarkupExpr
                 | MarkupComment
+                | MarkupExpr
 MarkupText    ::= [^<{}]+
 MarkupComment ::= "<!--" CommentText "-->"   /* CommentText is any text without "-->" */
 ```
@@ -1075,9 +1077,15 @@ spread `...rest` adds the attributes collected by a
 [rest parameter](#rest-parameters).
 
 ```ebnf
-Attribute     ::= AttributeName ( "=" ( '"' [^"]* '"' | BlockExpr ) )?
-                | "..." LowercaseIdentifier
-AttributeName ::= [A-Za-z] [A-Za-z0-9_:.-]*
+Attribute       ::= EmptyAttribute
+                  | QuotedAttribute
+                  | BlockAttribute
+                  | SpreadAttribute
+EmptyAttribute  ::= AttributeName
+QuotedAttribute ::= AttributeName "=" '"' [^"]* '"'
+BlockAttribute  ::= AttributeName "=" BlockExpr
+SpreadAttribute ::= "..." LowercaseIdentifier
+AttributeName   ::= [A-Za-z] [A-Za-z0-9_:.-]*
 ```
 
 A value in double quotes is the `String` of the characters between the quotes,
@@ -1337,7 +1345,7 @@ function returning `Html` is
 [called as a function element](#function-elements).
 
 ```ebnf
-FunctionDecl ::= "pub"? "fn" ( UppercaseIdentifier | LowercaseIdentifier ) "(" ( Param ( "," Param )* ","? )? ")" "->" Type BlockExpr
+FunctionDecl ::= "pub"? "fn" ( LowercaseIdentifier | UppercaseIdentifier ) "(" ( Param ( "," Param )* ","? )? ")" "->" Type BlockExpr
 Param        ::= LowercaseIdentifier ":" Type ( "=" Expr )? | "..." LowercaseIdentifier
 ```
 
