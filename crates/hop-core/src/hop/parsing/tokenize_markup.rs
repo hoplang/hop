@@ -1,6 +1,7 @@
 use crate::hop::parsing::token::{AttributeString, MarkupToken, RawTextToken, TagToken};
 
 use crate::document::{DocumentCursor, DocumentRange};
+use crate::hop::uncooked_string::UncookedString;
 use crate::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
 
 /// Lex the next token in text position.
@@ -425,8 +426,14 @@ fn lex_attribute(
     let Some(open_quote) = iter.next_if(|s| s.ch() == '"') else {
         return Err(errors.emit(ParseErrorKind::ExpectedQuotedAttributeValue {}, name.to(eq)));
     };
-    // consume: [^"]*
-    let content: Option<DocumentRange> = iter.peeking_take_while(|s| s.ch() != '"').collect();
+    let mut after_backslash = false;
+    let content: Option<DocumentRange> = iter
+        .peeking_take_while(|s| {
+            let taken = after_backslash || s.ch() != '"';
+            after_backslash = !after_backslash && s.ch() == '\\';
+            taken
+        })
+        .collect();
     let Some(close_quote) = iter.next_if(|s| s.ch() == '"') else {
         return Err(errors.emit(
             ParseErrorKind::UnmatchedCharacter {
@@ -440,7 +447,7 @@ fn lex_attribute(
     Ok(TagToken::Attribute {
         name,
         value: Some(AttributeString {
-            content_range: content,
+            value: UncookedString::new(content),
             quoted_range: open_quote.to(close_quote),
         }),
     })

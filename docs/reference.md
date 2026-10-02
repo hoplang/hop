@@ -24,9 +24,8 @@ shows the [rendering](#rendering) of an `Html` value.
 
 ## Lexical structure
 
-A module is a UTF-8 text file. Outside [markup text](#markup-nodes), string
-literals and the values of [quoted attributes](#attributes), whitespace is
-ignored except as it separates tokens.
+A module is a UTF-8 text file. Outside [markup text](#markup-nodes) and string
+literals, whitespace is ignored except as it separates tokens.
 
 A comment starts with `//` and runs to the end of the line. It can appear
 wherever whitespace can, except inside markup, where a
@@ -585,9 +584,10 @@ wrapped in parentheses, since its `{` would be read as the start of the arms.
 
 The subject has type `Bool`, `Option[T]`, a tuple type, or a record or enum
 type, and a subject of any other type is a compile error. So is a pattern that
-does not have the type of the subject. A pattern in parentheses, `(p)`, is the
-same as `p`. The expressions of all arms have the same type, which is the type
-of the `match` expression, and arms of different types are a compile error.
+does not have the type of the subject. A pattern in parentheses, `(p)`, matches
+what `p` matches and binds what `p` binds. The expressions of all arms have the
+same type, which is the type of the `match` expression, and arms of different
+types are a compile error.
 
 <a id="wildcard-and-variable-patterns"></a>
 
@@ -709,8 +709,8 @@ match pair {
 #### Record patterns
 
 A record pattern `R {f: p, …}` matches a record whose fields match their
-patterns, and binds what its field patterns bind. A field pattern `f`
-without `: p` is short for `f: f`: it binds the field to a variable of the same
+patterns, and binds what its field patterns bind. A field pattern `f` without
+`: p` is shorthand for `f: f`: it binds the field to a variable of the same
 name.
 
 ```ebnf
@@ -840,9 +840,9 @@ MarkupExpr ::= HtmlElementExpr | FunctionElementExpr | FragmentExpr
 
 An HTML element expression `<x …>…</x>` evaluates to the element with that
 name, those attributes and that content. An element without content can be
-written with a single self-closing tag, `<x/>`, which is the same as `<x></x>`.
-A void element such as `<br>` never has content and is written as a single tag,
-`<br>` or `<br/>`.
+written with a single self-closing tag, `<x/>`, which is shorthand for
+`<x></x>`. A void element such as `<br>` never has content and is written as a
+single tag, `<br>` or `<br/>`.
 
 ```ebnf
 HtmlElementExpr ::= "<" HtmlElementName Attribute* ">" MarkupNode* "</" HtmlElementName ">"
@@ -986,62 +986,42 @@ let ok = <div>ok</div>;
 
 #### Attributes
 
-An attribute is written in the start tag of an element. An empty attribute
-`name` is a name alone, a quoted attribute `name="text"` has a value in double
-quotes, a block attribute `name={e}` has a value in a
-[block](#block-expressions), and a spread attribute `...rest` names a
-[rest parameter](#rest-parameters).
+An attribute is written in the start tag of an element. It is a name alone, as
+in `disabled`, a name with a value, as in `id={e}`, or a spread `...rest` of a
+[rest parameter](#rest-parameters). A value is a [block](#block-expressions) or
+a [string literal](#literal-expressions), and `id="main"` is shorthand for
+`id={"main"}`.
 
 ```ebnf
-Attribute       ::= EmptyAttribute
-                  | QuotedAttribute
-                  | BlockAttribute
-                  | SpreadAttribute
-EmptyAttribute  ::= AttributeName
-QuotedAttribute ::= AttributeName "=" '"' [^"]* '"'
-BlockAttribute  ::= AttributeName "=" BlockExpr
-SpreadAttribute ::= "..." LowercaseIdentifier
-AttributeName   ::= [A-Za-z] [A-Za-z0-9_:.-]*
+Attribute     ::= AttributeName
+                | AttributeName "=" BlockExpr
+                | AttributeName "=" StringLiteral
+                | "..." LowercaseIdentifier
+AttributeName ::= [A-Za-z] [A-Za-z0-9_:.-]*
 ```
 
-A value in single quotes, as in `id='a'`, or without quotes, as in `id=a`, is a
-compile error.
-
-On an [HTML element](#html-elements), an attribute renders in the start tag,
-with any value [escaped](#escaping), and the value of a block attribute must
-have type `String`, so `<div id={1}>` is a compile error. On a
-[function element](#function-elements), an attribute passes an argument to the
-function:
-
-| Attribute     | HTML element                              | Function element                              |
-| ------------- | ----------------------------------------- | --------------------------------------------- |
-| `name`        | `name`                                    | `true` for the parameter `name`               |
-| `name="text"` | `name="…"`, with `text` escaped           | `text` as a `String` for the parameter `name` |
-| `name={e}`    | `name="…"`, with the value of `e` escaped | the value of `e` for the parameter `name`     |
-| `...rest`     | the attributes collected by `rest`        | the attributes collected by `rest`            |
-
-The value of a quoted attribute `name="text"` is a `String` of the characters
-of `text`, exactly as written. A backslash does not start an
-[escape sequence](#literal-expressions), and a character reference is not
-decoded, so `&amp;` renders as `&amp;amp;`. In [markup text](#markup-nodes),
-which is not escaped, `&amp;` renders as written. A value that contains a
-double quote must be written as a block attribute:
+On an [HTML element](#html-elements), an attribute renders in the start tag. Its
+value must have type `String` and is [escaped](#escaping):
 
 ```hop
-<input pattern="\d+">              // <input pattern="\d+">
-<input pattern={"\\d+"}>           // <input pattern="\d+">
-<abbr title="R&D"></abbr>          // <abbr title="R&amp;D"></abbr>
-<abbr title="R&amp;D"></abbr>      // <abbr title="R&amp;amp;D"></abbr>
-<span title={"say \"hi\""}></span> // <span title="say &quot;hi&quot;"></span>
+<div id={1}></div>               // error: Mismatched type for attribute: expected String got Int
+<input disabled>                 // <input disabled>
+<input pattern="\\d+">           // <input pattern="\d+">
+<span title="say \"hi\""></span> // <span title="say &quot;hi&quot;"></span>
+<abbr title="R&D"></abbr>        // <abbr title="R&amp;D"></abbr>
+<abbr title="R&amp;D"></abbr>    // <abbr title="R&amp;amp;D"></abbr>
 ```
+
+On a [function element](#function-elements), an attribute is the argument for
+the parameter it names, and a name alone is the argument `true`.
 
 An element defined by HTML, such as `div`, accepts the global attributes of
 HTML, the attributes HTML defines for that element, and any attribute whose name
-starts with `data-` or `aria-`. Any other attribute is a compile error, such as
-`href` on a `div`. An SVG element, such as `path`, or a custom element accepts
+starts with `data-` or `aria-`. Any other attribute, such as `href` on a `div`,
+is a compile error. An SVG element, such as `path`, or a custom element accepts
 any attribute, except as follows.
 
-For [XSS safety](#xss-safety), no element accepts an attribute whose name
+For [XSS safety](#xss-safety), no HTML element accepts an attribute whose name
 starts with `on`, such as `onclick`. Some attributes, such as the `src` of a
 `<script>`, accept only a string literal, written as `src="…"` or `src={"…"}`.
 
@@ -1159,9 +1139,9 @@ let padded = "  Alice  ";
 
 A `String` value inserted into markup, as a
 [markup interpolation](#markup-interpolation) or as an
-[attribute value](#attributes) in double quotes or in a block, is escaped: each
-character below is replaced by the character reference next to it, and every
-other character is kept as written.
+[attribute value](#attributes), is escaped: each character below is replaced by
+the character reference next to it, and every other character is kept as
+written.
 
 | Character | Replaced by |
 | --------- | ----------- |

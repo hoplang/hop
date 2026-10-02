@@ -1347,6 +1347,60 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unknown_escape_sequence_in_quoted_attribute() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Label(text: String) -> Html {
+                  <span>{text}</span>
+                }
+
+                fn Foo() -> Html {
+                  <>
+                    <input pattern="\d+">
+                    <Label text="bad\qescape"/>
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: Invalid escape sequence '\d'
+                  --> main.hop (line 7, col 21)
+                 6 |   <>
+                 7 |     <input pattern="\d+">
+                   |                     ^^
+
+                error: Invalid escape sequence '\q'
+                  --> main.hop (line 8, col 21)
+                 7 |     <input pattern="\d+">
+                 8 |     <Label text="bad\qescape"/>
+                   |                     ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_known_escape_sequences_in_quoted_attribute() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Foo() -> Html {
+                  <div title="tab\there and \"quotes\" and back\\slash"></div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Foo() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [title: escape("tab	here and "quotes" and back\slash")],
+                    children: concat(),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_function_with_duplicate_parameter_names() {
         reject(
             indoc! {r#"

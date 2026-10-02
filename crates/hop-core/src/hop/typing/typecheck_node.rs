@@ -342,13 +342,17 @@ fn typecheck_attribute_value(
             }
             Some(typed_expr)
         }
-        // A quoted value is the string between the quotes, exactly as written.
-        ParsedAttribute::String { content, .. } => Some(TypedExpr::StringLiteral {
-            value: content
-                .as_ref()
-                .map(|r| r.to_cheap_string())
-                .unwrap_or_else(|| CheapString::new(String::new())),
-        }),
+        ParsedAttribute::String { value, .. } => {
+            let value = value
+                .cook(&mut |ch, range| {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::InvalidEscapeSequence { ch },
+                        range,
+                    ));
+                })
+                .unwrap_or_else(|| CheapString::new(String::new()));
+            Some(TypedExpr::StringLiteral { value })
+        }
         ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => None,
     }
 }
@@ -450,14 +454,18 @@ fn typecheck_arguments(
         let argument = match arg {
             ParsedAttribute::Expression { value, .. } => Argument::Expression(value),
             ParsedAttribute::String {
-                content,
+                value,
                 quoted_range,
                 ..
             } => Argument::Desugared(
                 TypedExpr::StringLiteral {
-                    value: content
-                        .as_ref()
-                        .map(|r| r.to_cheap_string())
+                    value: value
+                        .cook(&mut |ch, range| {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::InvalidEscapeSequence { ch },
+                                range,
+                            ));
+                        })
                         .unwrap_or_else(|| CheapString::new(String::new())),
                 },
                 quoted_range.clone(),

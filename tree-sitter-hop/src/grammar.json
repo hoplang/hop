@@ -2644,7 +2644,7 @@
                     "members": [
                       {
                         "type": "SYMBOL",
-                        "name": "quoted_attribute_value"
+                        "name": "string_literal"
                       },
                       {
                         "type": "ALIAS",
@@ -2683,38 +2683,6 @@
           }
         }
       ]
-    },
-    "quoted_attribute_value": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "\""
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "attribute_value"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "STRING",
-          "value": "\""
-        }
-      ]
-    },
-    "attribute_value": {
-      "type": "IMMEDIATE_TOKEN",
-      "content": {
-        "type": "PATTERN",
-        "value": "[^\"]+"
-      }
     },
     "text": {
       "type": "TOKEN",

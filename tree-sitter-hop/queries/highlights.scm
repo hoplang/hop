@@ -42,8 +42,6 @@
 
 (attribute "=" @punctuation.delimiter)
 
-(quoted_attribute_value) @string
-
 (start_tag ["<" ">"] @punctuation.bracket)
 (self_closing_tag ["<" "/>"] @punctuation.bracket)
 (end_tag ["</" ">"] @punctuation.bracket)

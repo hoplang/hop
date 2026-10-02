@@ -241,10 +241,9 @@ pub struct RawTextToken {
     pub closing_tag_end: Option<DocumentRange>,
 }
 
-/// A quoted attribute value.
-/// The `content` field is `None` for `a=""`.
+/// A quoted attribute value, which is a string literal.
 pub struct AttributeString {
-    pub content_range: Option<DocumentRange>,
+    pub value: UncookedString,
     pub quoted_range: DocumentRange,
 }
 

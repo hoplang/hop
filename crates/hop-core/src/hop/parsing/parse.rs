@@ -2368,6 +2368,55 @@ mod tests {
     }
 
     #[test]
+    fn accepts_escaped_double_quote_in_quoted_attribute_value() {
+        accept(
+            indoc! {r#"
+                fn Main() -> Html {
+                  <div title="say \"hi\"" class="a\\"></div>
+                }
+            "#},
+            expect![[r#"
+                fn Main() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [
+                      title: "say \\\"hi\\\"",
+                      class: "a\\\\",
+                    ],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_quoted_attribute_value_closed_by_escaped_double_quote() {
+        reject(
+            r#"fn Main() -> Html {<div title="a\"></div>}"#,
+            expect![[r#"
+                -- errors --
+                error: Unmatched '{'
+                1 | fn Main() -> Html {<div title="a\"></div>}
+                  |                   ^
+
+                error: Unterminated opening tag
+                1 | fn Main() -> Html {<div title="a\"></div>}
+                  |                     ^^^
+
+                error: Unclosed <div>
+                1 | fn Main() -> Html {<div title="a\"></div>}
+                  |                     ^^^
+
+                error: Unmatched "
+                1 | fn Main() -> Html {<div title="a\"></div>}
+                  |                               ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_invalid_markup_declaration() {
         reject(
             "fn Main() -> Html {<!foo>}",

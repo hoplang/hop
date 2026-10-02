@@ -30,8 +30,8 @@ fn f() -> Html {
           (tag_name)
           (attribute
             (attribute_name)
-            (quoted_attribute_value
-              (attribute_value))))
+            (string_literal
+              (string_content))))
         (text)
         (element
           (self_closing_tag
@@ -66,14 +66,14 @@ fn f() -> Html {
           (tag_name)
           (attribute
             (attribute_name)
-            (quoted_attribute_value
-              (attribute_value)))
+            (string_literal
+              (string_content)))
           (attribute
             (attribute_name))
           (attribute
             (attribute_name)
-            (quoted_attribute_value
-              (attribute_value)))
+            (string_literal
+              (string_content)))
           (spread_attribute
             (identifier))
           (attribute
@@ -82,6 +82,43 @@ fn f() -> Html {
               (field_expression
                 (identifier)
                 (field_identifier)))))
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+quoted attribute values are string literals with escape sequences
+================================================================================
+
+fn f() -> Html {
+  <span title="say \"hi\"" class="a\\" id=""></span>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name)
+          (attribute
+            (attribute_name)
+            (string_literal
+              (string_content)
+              (escape_sequence)
+              (string_content)
+              (escape_sequence)))
+          (attribute
+            (attribute_name)
+            (string_literal
+              (string_content)
+              (escape_sequence)))
+          (attribute
+            (attribute_name)
+            (string_literal)))
         (end_tag
           (tag_name))))))
 
@@ -179,8 +216,8 @@ fn f() -> Html {
           (tag_name)
           (attribute
             (attribute_name)
-            (quoted_attribute_value
-              (attribute_value))))
+            (string_literal
+              (string_content))))
         (end_tag
           (tag_name))))))
 

@@ -65,7 +65,16 @@ const RAW_TEXT: &[&str] = &["", " ", "\n", "\n  "];
 
 const ATTRIBUTE_NAMES: &[&str] = &["class", "id", "data-x", "aria:label", "x.y", "on_click"];
 
-const ATTRIBUTE_VALUES: &[&str] = &["", "a", "a b", "{x}", "it's", "<b>"];
+const ATTRIBUTE_VALUES: &[&str] = &[
+    "",
+    "a",
+    "a b",
+    "{x}",
+    "it's",
+    "<b>",
+    r#"a\"b"#,
+    r"back\\slash",
+];
 
 const MARKUP_COMMENTS: &[&str] = &["<!-- c -->", "<!---->", "<!-- a-b -- c -->"];
 

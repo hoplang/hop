@@ -340,7 +340,7 @@ fn parse_opening_tag(
                 let attribute = match value {
                     Some(value) => ParsedAttribute::String {
                         name,
-                        content: value.content_range,
+                        value: value.value,
                         quoted_range: value.quoted_range,
                     },
                     None => ParsedAttribute::KeyOnly { name },

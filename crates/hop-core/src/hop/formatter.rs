@@ -496,14 +496,11 @@ fn format_attribute<'a>(
             .append(arena.line_())
             .append(arena.text("}"))
             .group(),
-        ParsedAttribute::String { name, content, .. } => {
-            let content = content.as_ref().map(|r| r.as_str()).unwrap_or("");
-            arena
-                .text(name.as_str())
-                .append(arena.text("=\""))
-                .append(arena.text(content))
-                .append(arena.text("\""))
-        }
+        ParsedAttribute::String { name, value, .. } => arena
+            .text(name.as_str())
+            .append(arena.text("=\""))
+            .append(arena.text(value.as_raw_str()))
+            .append(arena.text("\"")),
         ParsedAttribute::Spread { name, .. } => arena.text("...").append(arena.text(name.as_str())),
     }
 }
@@ -3654,6 +3651,22 @@ mod tests {
 
                 fn ProductImage(product: Product) -> Html {
                   <img class="rounded-lg" src={product.img_src}>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn quoted_attribute_keeps_escape_sequences_as_written() {
+        check(
+            indoc! {r#"
+                fn Field() -> Html {
+                  <input title="say \"hi\"" pattern="\\d+">
+                }
+            "#},
+            expect![[r#"
+                fn Field() -> Html {
+                  <input title="say \"hi\"" pattern="\\d+">
                 }
             "#]],
         );

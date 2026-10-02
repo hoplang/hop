@@ -416,19 +416,13 @@ module.exports = grammar({
             "=",
             field(
               "value",
-              choice($.quoted_attribute_value, alias($.block, $.interpolation)),
+              choice($.string_literal, alias($.block, $.interpolation)),
             ),
           ),
         ),
       ),
 
     spread_attribute: ($) => seq("...", field("name", $.identifier)),
-
-    // Attribute values are raw: escape sequences are not interpreted, so
-    // nothing inside the quotes is highlighted as an escape.
-    quoted_attribute_value: ($) => seq('"', optional($.attribute_value), '"'),
-
-    attribute_value: (_) => token.immediate(/[^"]+/),
 
     // Text may contain `>`, `}` and slashes, including a leading `//`: hop has
     // no comments in text position, so `text` takes lexical precedence over

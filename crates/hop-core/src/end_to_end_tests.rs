@@ -1565,12 +1565,12 @@ mod tests {
                   fn body() -> Html {
                     <>
                       <span title="Tom &amp; Jerry" data-x="x<y"></span>
-                      <input pattern="\d+">
+                      <input pattern="\\d+" title="say \"hi\"">
                     </>
                   }
                 }
             "#},
-            r#"<span title="Tom &amp;amp; Jerry" data-x="x&lt;y"></span><input pattern="\d+">"#,
+            r#"<span title="Tom &amp;amp; Jerry" data-x="x&lt;y"></span><input pattern="\d+" title="say &quot;hi&quot;">"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
@@ -1587,15 +1587,18 @@ mod tests {
                   write(" pattern=\"")
                   write_string("\\d+")
                   write("\"")
+                  write(" title=\"")
+                  write_string("say \"hi\"")
+                  write("\"")
                   write(">")
                 }
                 -- ir (optimized) --
                 page Test() {
                   write("<span title=\"Tom &amp;amp; Jerry\" data-x=\"x&lt;y\"></span>")
-                  write("<input pattern=\"\\d+\">")
+                  write("<input pattern=\"\\d+\" title=\"say &quot;hi&quot;\">")
                 }
                 -- expected output --
-                <span title="Tom &amp;amp; Jerry" data-x="x&lt;y"></span><input pattern="\d+">
+                <span title="Tom &amp;amp; Jerry" data-x="x&lt;y"></span><input pattern="\d+" title="say &quot;hi&quot;">
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

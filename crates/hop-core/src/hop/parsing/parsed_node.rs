@@ -1,6 +1,7 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
+use crate::hop::uncooked_string::UncookedString;
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
@@ -104,7 +105,7 @@ pub enum ParsedAttribute {
         name: DocumentRange,
         value: ParsedExpr,
     },
-    /// An attribute containing a static string.
+    /// An attribute containing a string literal.
     ///
     /// ```text
     /// <div class="hidden">
@@ -112,8 +113,7 @@ pub enum ParsedAttribute {
     /// ```
     String {
         name: DocumentRange,
-        /// The inner content range, excluding quotes. None for empty strings like `attr=""`.
-        content: Option<DocumentRange>,
+        value: UncookedString,
         /// Range of the whole value including the surrounding quotes, e.g. `"bar"`.
         quoted_range: DocumentRange,
     },
@@ -215,12 +215,9 @@ impl ParsedAttribute {
             ParsedAttribute::Expression { name, value } => BoxDoc::text(name.as_str())
                 .append(": ")
                 .append(value.to_doc()),
-            ParsedAttribute::String { name, content, .. } => {
-                let content = content.as_ref().map(|r| r.as_str()).unwrap_or("");
-                BoxDoc::text(name.as_str())
-                    .append(": ")
-                    .append(format!("{content:?}"))
-            }
+            ParsedAttribute::String { name, value, .. } => BoxDoc::text(name.as_str())
+                .append(": ")
+                .append(format!("{value:?}")),
             ParsedAttribute::Spread { name, .. } => BoxDoc::text("...").append(name.as_str()),
         }
     }
