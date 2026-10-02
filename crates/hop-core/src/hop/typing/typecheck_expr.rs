@@ -153,78 +153,7 @@ pub fn typecheck_expr(
         }
         ParsedExpr::BinaryOp {
             left,
-            operator: ParsedBinaryOp::Eq,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            )?;
-            let typed_right = typecheck_expr(
-                right,
-                Some(&typed_left.typ()),
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            )?;
-
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            let Some(left_comparable) = left_type.as_equatable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.typ(),
-                    },
-                    left.range().clone(),
-                ));
-                return None;
-            };
-
-            let Some(right_comparable) = right_type.as_equatable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.typ(),
-                    },
-                    right.range().clone(),
-                ));
-                return None;
-            };
-
-            if left_comparable != right_comparable {
-                errors.push(TypeError::new(
-                    TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.typ(),
-                        right: typed_right.typ(),
-                    },
-                    parsed_expr.range().clone(),
-                ));
-                return None;
-            }
-
-            Some(TypedExpr::Equals {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-                operand_types: left_comparable,
-            })
-        }
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::NotEq,
+            operator,
             right,
             ..
         } => {
@@ -240,9 +169,16 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             );
+            // Equality checks the right operand against the left operand's type,
+            // so `xs != []` reports that arrays are not comparable rather than
+            // failing to infer the type of `[]`
+            let left_hint = typed_left.as_ref().map(|typed| typed.typ());
             let typed_right = typecheck_expr(
                 right,
-                None,
+                match operator {
+                    ParsedBinaryOp::Eq | ParsedBinaryOp::NotEq => left_hint.as_ref(),
+                    _ => None,
+                },
                 forwarded_params,
                 var_env,
                 type_env,
@@ -256,618 +192,177 @@ pub fn typecheck_expr(
             let left_type = typed_left.typ();
             let right_type = typed_right.typ();
 
-            let Some(left_comparable) = left_type.as_equatable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.typ(),
-                    },
-                    left.range().clone(),
-                ));
-                return None;
-            };
-
-            let Some(right_comparable) = right_type.as_equatable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.typ(),
-                    },
-                    right.range().clone(),
-                ));
-                return None;
-            };
-
-            if left_comparable != right_comparable {
-                errors.push(TypeError::new(
-                    TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.typ(),
-                        right: typed_right.typ(),
-                    },
-                    parsed_expr.range().clone(),
-                ));
-                return None;
-            }
-
-            Some(TypedExpr::NotEquals {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-                operand_types: left_comparable,
-            })
-        }
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::LessThan,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let typed_right = typecheck_expr(
-                right,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            let Some(left_comparable) = left_type.as_comparable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.typ(),
-                    },
-                    left.range().clone(),
-                ));
-                return None;
-            };
-
-            let Some(right_comparable) = right_type.as_comparable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.typ(),
-                    },
-                    right.range().clone(),
-                ));
-                return None;
-            };
-
-            // Both operands must be the same comparable type
-            if left_comparable != right_comparable {
-                errors.push(TypeError::new(
-                    TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.typ(),
-                        right: typed_right.typ(),
-                    },
-                    parsed_expr.range().clone(),
-                ));
-                return None;
-            }
-
-            Some(TypedExpr::LessThan {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-                operand_types: left_comparable,
-            })
-        }
-
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::GreaterThan,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let typed_right = typecheck_expr(
-                right,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            let Some(left_comparable) = left_type.as_comparable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.typ(),
-                    },
-                    left.range().clone(),
-                ));
-                return None;
-            };
-
-            let Some(right_comparable) = right_type.as_comparable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.typ(),
-                    },
-                    right.range().clone(),
-                ));
-                return None;
-            };
-
-            // Both operands must be the same comparable type
-            if left_comparable != right_comparable {
-                errors.push(TypeError::new(
-                    TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.typ(),
-                        right: typed_right.typ(),
-                    },
-                    parsed_expr.range().clone(),
-                ));
-                return None;
-            }
-
-            Some(TypedExpr::GreaterThan {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-                operand_types: left_comparable,
-            })
-        }
-
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::LessThanOrEqual,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let typed_right = typecheck_expr(
-                right,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            let Some(left_comparable) = left_type.as_comparable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.typ(),
-                    },
-                    left.range().clone(),
-                ));
-                return None;
-            };
-
-            let Some(right_comparable) = right_type.as_comparable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.typ(),
-                    },
-                    right.range().clone(),
-                ));
-                return None;
-            };
-
-            // Both operands must be the same comparable type
-            if left_comparable != right_comparable {
-                errors.push(TypeError::new(
-                    TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.typ(),
-                        right: typed_right.typ(),
-                    },
-                    parsed_expr.range().clone(),
-                ));
-                return None;
-            }
-
-            Some(TypedExpr::LessThanOrEqual {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-                operand_types: left_comparable,
-            })
-        }
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::GreaterThanOrEqual,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let typed_right = typecheck_expr(
-                right,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            let Some(left_comparable) = left_type.as_comparable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.typ(),
-                    },
-                    left.range().clone(),
-                ));
-                return None;
-            };
-
-            let Some(right_comparable) = right_type.as_comparable_type() else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.typ(),
-                    },
-                    right.range().clone(),
-                ));
-                return None;
-            };
-
-            // Both operands must be the same comparable type
-            if left_comparable != right_comparable {
-                errors.push(TypeError::new(
-                    TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.typ(),
-                        right: typed_right.typ(),
-                    },
-                    parsed_expr.range().clone(),
-                ));
-                return None;
-            }
-
-            Some(TypedExpr::GreaterThanOrEqual {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-                operand_types: left_comparable,
-            })
-        }
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::LogicalAnd,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let typed_right = typecheck_expr(
-                right,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            // LogicalAnd only works with Bool expressions
-            if left_type != Type::Bool {
-                errors.push(TypeError::new(
-                    TypeErrorKind::LogicalAndTypeMismatch {},
-                    left.range().clone(),
-                ));
-                return None;
-            }
-
-            if right_type != Type::Bool {
-                errors.push(TypeError::new(
-                    TypeErrorKind::LogicalAndTypeMismatch {},
-                    right.range().clone(),
-                ));
-                return None;
-            }
-
-            Some(TypedExpr::BooleanLogicalAnd {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-            })
-        }
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::LogicalOr,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let typed_right = typecheck_expr(
-                right,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            if left_type != Type::Bool {
-                errors.push(TypeError::new(
-                    TypeErrorKind::LogicalOrTypeMismatch {},
-                    left.range().clone(),
-                ));
-                return None;
-            }
-
-            if right_type != Type::Bool {
-                errors.push(TypeError::new(
-                    TypeErrorKind::LogicalOrTypeMismatch {},
-                    right.range().clone(),
-                ));
-                return None;
-            }
-
-            Some(TypedExpr::BooleanLogicalOr {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-            })
-        }
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::Plus,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let typed_right = typecheck_expr(
-                right,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            match (left_type, right_type) {
-                (Type::String, Type::String) => Some(TypedExpr::StringConcat {
-                    parts: vec![typed_left, typed_right],
-                }),
-                (Type::Int, Type::Int) => Some(TypedExpr::NumericAdd {
-                    left: Box::new(typed_left),
-                    right: Box::new(typed_right),
-                    operand_types: NumericType::Int,
-                }),
-                (Type::Float, Type::Float) => Some(TypedExpr::NumericAdd {
-                    left: Box::new(typed_left),
-                    right: Box::new(typed_right),
-                    operand_types: NumericType::Float,
-                }),
-                _ => {
-                    // Incompatible types for addition
-                    errors.push(TypeError::new(
-                        TypeErrorKind::IncompatibleTypesForAddition {
-                            left_type: typed_left.typ(),
-                            right_type: typed_right.typ(),
+            match operator {
+                ParsedBinaryOp::Eq | ParsedBinaryOp::NotEq => {
+                    let Some(left_comparable) = left_type.as_equatable_type() else {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::TypeIsNotComparable { t: left_type },
+                            left.range().clone(),
+                        ));
+                        return None;
+                    };
+                    let Some(right_comparable) = right_type.as_equatable_type() else {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::TypeIsNotComparable { t: right_type },
+                            right.range().clone(),
+                        ));
+                        return None;
+                    };
+                    if left_comparable != right_comparable {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::CannotCompareTypes {
+                                left: left_type,
+                                right: right_type,
+                            },
+                            parsed_expr.range().clone(),
+                        ));
+                        return None;
+                    }
+                    let (left, right) = (Box::new(typed_left), Box::new(typed_right));
+                    let operand_types = left_comparable;
+                    Some(match operator {
+                        ParsedBinaryOp::Eq => TypedExpr::Equals {
+                            left,
+                            right,
+                            operand_types,
                         },
-                        left.range().clone().to(right.range().clone()),
-                    ));
-                    None
+                        ParsedBinaryOp::NotEq => TypedExpr::NotEquals {
+                            left,
+                            right,
+                            operand_types,
+                        },
+                        _ => unreachable!(),
+                    })
                 }
-            }
-        }
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::Minus,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let typed_right = typecheck_expr(
-                right,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            match (left_type, right_type) {
-                (Type::Int, Type::Int) => Some(TypedExpr::NumericSubtract {
-                    left: Box::new(typed_left),
-                    right: Box::new(typed_right),
-                    operand_types: NumericType::Int,
-                }),
-                (Type::Float, Type::Float) => Some(TypedExpr::NumericSubtract {
-                    left: Box::new(typed_left),
-                    right: Box::new(typed_right),
-                    operand_types: NumericType::Float,
-                }),
-                _ => {
-                    // Incompatible types for subtraction
-                    errors.push(TypeError::new(
-                        TypeErrorKind::IncompatibleTypesForSubtraction {
-                            left_type: typed_left.typ(),
-                            right_type: typed_right.typ(),
+                ParsedBinaryOp::LessThan
+                | ParsedBinaryOp::GreaterThan
+                | ParsedBinaryOp::LessThanOrEqual
+                | ParsedBinaryOp::GreaterThanOrEqual => {
+                    let Some(left_comparable) = left_type.as_comparable_type() else {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::TypeIsNotComparable { t: left_type },
+                            left.range().clone(),
+                        ));
+                        return None;
+                    };
+                    let Some(right_comparable) = right_type.as_comparable_type() else {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::TypeIsNotComparable { t: right_type },
+                            right.range().clone(),
+                        ));
+                        return None;
+                    };
+                    if left_comparable != right_comparable {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::CannotCompareTypes {
+                                left: left_type,
+                                right: right_type,
+                            },
+                            parsed_expr.range().clone(),
+                        ));
+                        return None;
+                    }
+                    let (left, right) = (Box::new(typed_left), Box::new(typed_right));
+                    let operand_types = left_comparable;
+                    Some(match operator {
+                        ParsedBinaryOp::LessThan => TypedExpr::LessThan {
+                            left,
+                            right,
+                            operand_types,
                         },
-                        left.range().clone().to(right.range().clone()),
-                    ));
-                    None
+                        ParsedBinaryOp::GreaterThan => TypedExpr::GreaterThan {
+                            left,
+                            right,
+                            operand_types,
+                        },
+                        ParsedBinaryOp::LessThanOrEqual => TypedExpr::LessThanOrEqual {
+                            left,
+                            right,
+                            operand_types,
+                        },
+                        ParsedBinaryOp::GreaterThanOrEqual => TypedExpr::GreaterThanOrEqual {
+                            left,
+                            right,
+                            operand_types,
+                        },
+                        _ => unreachable!(),
+                    })
                 }
-            }
-        }
-        ParsedExpr::BinaryOp {
-            left,
-            operator: ParsedBinaryOp::Multiply,
-            right,
-            ..
-        } => {
-            let typed_left = typecheck_expr(
-                left,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let typed_right = typecheck_expr(
-                right,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.typ();
-            let right_type = typed_right.typ();
-
-            match (left_type, right_type) {
-                (Type::Int, Type::Int) => Some(TypedExpr::NumericMultiply {
-                    left: Box::new(typed_left),
-                    right: Box::new(typed_right),
-                    operand_types: NumericType::Int,
-                }),
-                (Type::Float, Type::Float) => Some(TypedExpr::NumericMultiply {
-                    left: Box::new(typed_left),
-                    right: Box::new(typed_right),
-                    operand_types: NumericType::Float,
-                }),
-                _ => {
-                    // Incompatible types for multiplication
-                    errors.push(TypeError::new(
-                        TypeErrorKind::IncompatibleTypesForMultiplication {
-                            left_type: typed_left.typ(),
-                            right_type: typed_right.typ(),
+                ParsedBinaryOp::LogicalAnd | ParsedBinaryOp::LogicalOr => {
+                    if left_type != Type::Bool || right_type != Type::Bool {
+                        errors.push(TypeError::new(
+                            match operator {
+                                ParsedBinaryOp::LogicalAnd => {
+                                    TypeErrorKind::LogicalAndTypeMismatch {}
+                                }
+                                _ => TypeErrorKind::LogicalOrTypeMismatch {},
+                            },
+                            if left_type != Type::Bool {
+                                left.range().clone()
+                            } else {
+                                right.range().clone()
+                            },
+                        ));
+                        return None;
+                    }
+                    let (left, right) = (Box::new(typed_left), Box::new(typed_right));
+                    Some(match operator {
+                        ParsedBinaryOp::LogicalAnd => TypedExpr::BooleanLogicalAnd { left, right },
+                        _ => TypedExpr::BooleanLogicalOr { left, right },
+                    })
+                }
+                ParsedBinaryOp::Plus | ParsedBinaryOp::Minus | ParsedBinaryOp::Multiply => {
+                    let operand_types = match (&left_type, &right_type) {
+                        (Type::String, Type::String) if *operator == ParsedBinaryOp::Plus => {
+                            return Some(TypedExpr::StringConcat {
+                                parts: vec![typed_left, typed_right],
+                            });
+                        }
+                        (Type::Int, Type::Int) => NumericType::Int,
+                        (Type::Float, Type::Float) => NumericType::Float,
+                        _ => {
+                            errors.push(TypeError::new(
+                                match operator {
+                                    ParsedBinaryOp::Plus => {
+                                        TypeErrorKind::IncompatibleTypesForAddition {
+                                            left_type,
+                                            right_type,
+                                        }
+                                    }
+                                    ParsedBinaryOp::Minus => {
+                                        TypeErrorKind::IncompatibleTypesForSubtraction {
+                                            left_type,
+                                            right_type,
+                                        }
+                                    }
+                                    _ => TypeErrorKind::IncompatibleTypesForMultiplication {
+                                        left_type,
+                                        right_type,
+                                    },
+                                },
+                                left.range().clone().to(right.range().clone()),
+                            ));
+                            return None;
+                        }
+                    };
+                    let (left, right) = (Box::new(typed_left), Box::new(typed_right));
+                    Some(match operator {
+                        ParsedBinaryOp::Plus => TypedExpr::NumericAdd {
+                            left,
+                            right,
+                            operand_types,
                         },
-                        left.range().clone().to(right.range().clone()),
-                    ));
-                    None
+                        ParsedBinaryOp::Minus => TypedExpr::NumericSubtract {
+                            left,
+                            right,
+                            operand_types,
+                        },
+                        _ => TypedExpr::NumericMultiply {
+                            left,
+                            right,
+                            operand_types,
+                        },
+                    })
                 }
             }
         }

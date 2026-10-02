@@ -3943,6 +3943,56 @@ mod tests {
     }
 
     #[test]
+    fn rejects_array_compared_to_empty_array_with_not_equals() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(xs: Array[Int]) -> Html {
+                  match xs != [] {
+                    true => <>nonempty</>,
+                    false => <></>,
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Type Array[Int] is not comparable
+                  --> main.hop (line 2, col 9)
+                1 | fn Main(xs: Array[Int]) -> Html {
+                2 |   match xs != [] {
+                  |         ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_both_operands_of_equals_expression() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  match a == b {
+                    true => <>eq</>,
+                    false => <></>,
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: a
+                  --> main.hop (line 2, col 9)
+                1 | fn Main() -> Html {
+                2 |   match a == b {
+                  |         ^
+
+                error: Undefined variable: b
+                  --> main.hop (line 2, col 14)
+                1 | fn Main() -> Html {
+                2 |   match a == b {
+                  |              ^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_when_an_int_is_passed_to_function_that_accepts_string() {
         reject(
             indoc! {r#"
