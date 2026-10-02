@@ -908,10 +908,11 @@ MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupContent "</" Upp
                  | "<" UppercaseIdentifier Attribute* "/>"
 ```
 
+The function `F` accepts its parameters and, if it has a
+[rest parameter](#rest-parameters), the attributes the rest parameter accepts.
 A markup call is a compile error if `F` does not return `Html`, if it leaves out
 a parameter that has no default value, if an argument does not have the type of
-its parameter, or if an attribute names no parameter and no
-[rest parameter](#rest-parameters) accepts it.
+its parameter, or if it has an attribute that `F` does not accept.
 
 ```hop
 fn Badge(
@@ -1050,16 +1051,10 @@ Exactly once means once in the source text, not once per evaluation: a spread
 in each arm of a `match` is a compile error, while a single spread inside a
 `for` body is allowed, and adds the attributes on every iteration.
 
-Which extra attributes the function accepts depends on where the rest parameter
-is spread:
-
-- When spread on an element `<x … ...rest>`, the function accepts the
-  [attributes `x` accepts](#attributes), except those written on `x`.
-- When spread on a markup call `<F … ...rest>`, the function accepts the
-  parameters and extra attributes of `F`, except those written on `F`.
-
-For example, `class` is written on the `<button>` where `Button` spreads
-`rest`, so `Button` does not accept it:
+A rest parameter spread in `<x … ...rest>` accepts the attributes that the
+[element](#attributes) or [function](#markup-call-expressions) `x` accepts,
+except those written on `x`. For example, `class` is written on the `<button>`
+where `Button` spreads `rest`, so `Button` does not accept it:
 
 ```hop
 fn Button(
