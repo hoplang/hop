@@ -3045,7 +3045,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Unknown HTML element <dvi>
+                error: Unknown element <dvi>
                 1 | fn Main() -> Html {
                 2 |     <dvi>oops</dvi>
                   |      ^^^
@@ -3064,7 +3064,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Unknown HTML element <math>
+                error: Unknown element <math>
                 1 | fn Main() -> Html {
                 2 |     <math></math>
                   |      ^^^^

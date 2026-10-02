@@ -95,7 +95,7 @@ An `UppercaseIdentifier` names a [record](#record-declarations) or
 | `Int`         | 32-bit signed integers                  |
 | `Float`       | IEEE 754 binary64, including ±∞ and NaN |
 | `String`      | sequences of Unicode scalar values      |
-| `Html`        | sequences of HTML elements and text     |
+| `Html`        | sequences of elements and text          |
 | `Array[T]`    | sequences of `T`                        |
 | `Option[T]`   | `None`, `Some(v)`                       |
 | `(T1, T2, …)` | `(v1, v2, …)`                           |
@@ -352,7 +352,7 @@ that mixes the two is a compile error, and so is leaving out a parameter that
 has no default value.
 
 Only functions with lowercase names can be called this way. Functions with
-uppercase names are called as [function elements](#function-elements).
+uppercase names are called by [markup calls](#markup-call-expressions).
 
 <a id="macro-expressions"></a>
 
@@ -831,24 +831,24 @@ attributes in the order written, and content, which is itself a sequence of
 elements and text.
 
 ```ebnf
-MarkupExpr ::= HtmlElementExpr | FunctionElementExpr | FragmentExpr
+MarkupExpr ::= ElementExpr | MarkupCallExpr | FragmentExpr
 ```
 
-<a id="html-elements"></a>
+<a id="element-expressions"></a>
 
-#### HTML element expressions
+#### Element expressions
 
-An HTML element expression `<x …>…</x>` evaluates to the element with that
-name, those attributes and that content. An element without content can be
-written with a single self-closing tag, `<x/>`, which is shorthand for
-`<x></x>`. A void element such as `<br>` never has content and is written as a
-single tag, `<br>` or `<br/>`.
+An element expression `<x …>…</x>` evaluates to the element with that name,
+those attributes and that content. An element without content can be written
+with a single self-closing tag, `<x/>`, which is shorthand for `<x></x>`. A void
+element such as `<br>` never has content and is written as a single tag, `<br>`
+or `<br/>`.
 
 ```ebnf
-HtmlElementExpr ::= "<" HtmlElementName Attribute* ">" MarkupNode* "</" HtmlElementName ">"
-                  | "<" HtmlElementName Attribute* "/>"
+ElementExpr     ::= "<" ElementName Attribute* ">" MarkupNode* "</" ElementName ">"
+                  | "<" ElementName Attribute* "/>"
                   | "<" VoidElementName Attribute* "/"? ">"
-HtmlElementName ::= [a-z] [A-Za-z0-9-]*   /* except a VoidElementName */
+ElementName     ::= [a-z] [A-Za-z0-9-]*   /* except a VoidElementName */
 VoidElementName ::= "area"
                   | "base"
                   | "br"
@@ -878,20 +878,19 @@ let b = true;
 match b { true => <b>ok</b>, false => <i>not ok</i> } // <b>ok</b>
 ```
 
-<a id="function-elements"></a>
+<a id="markup-call-expressions"></a>
 
-#### Function element expressions
+#### Markup call expressions
 
-A function element is written like an [HTML element](#html-elements), with an
-`UppercaseIdentifier` as its name. It calls the
-[function](#function-declarations) of that name, and is a compile error if the
-function does not return `Html`. Each [attribute](#attributes) is the argument
-for the parameter it names, and the content between the tags is the argument
-for the parameter `children: Html`.
+A markup call expression `<F …>…</F>` evaluates to the value that the
+[function](#function-declarations) `F` returns for its arguments. It is a
+compile error if `F` does not return `Html`. Each [attribute](#attributes) is
+the argument for the parameter it names, and the content between the tags is
+the argument for the parameter `children: Html`.
 
 ```ebnf
-FunctionElementExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupNode* "</" UppercaseIdentifier ">"
-                      | "<" UppercaseIdentifier Attribute* "/>"
+MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupNode* "</" UppercaseIdentifier ">"
+                 | "<" UppercaseIdentifier Attribute* "/>"
 ```
 
 Leaving out a parameter that has no default value is a compile error. So is an
@@ -917,7 +916,7 @@ fn Badge(
 <Badge label="new"><b>!</b></Badge> // <span>new<b>!</b></span>
 ```
 
-<a id="fragments"></a>
+<a id="fragment-expressions"></a>
 
 #### Fragment expressions
 
@@ -939,7 +938,7 @@ sequence.
 
 #### Markup nodes
 
-The content of an element or fragment is a sequence of markup nodes. A node is
+The content of a markup expression is a sequence of markup nodes. A node is
 text, a [markup interpolation](#markup-interpolation), a comment, or a nested
 [markup expression](#markup-expressions).
 
@@ -963,7 +962,7 @@ evaluates to nothing.
 #### Markup interpolation
 
 A markup interpolation `{e}` is a [block expression](#block-expressions) whose
-value is inserted into the content of an element or fragment.
+value is inserted into the content of a markup expression.
 
 ```ebnf
 MarkupInterpolation ::= BlockExpr
@@ -986,11 +985,11 @@ let ok = <div>ok</div>;
 
 #### Attributes
 
-An attribute is written in the start tag of an element. It is a name alone, as
-in `disabled`, a name with a value, as in `id={e}`, or a spread `...rest` of a
-[rest parameter](#rest-parameters). A value is a [block](#block-expressions) or
-a [string literal](#literal-expressions), and `id="main"` is shorthand for
-`id={"main"}`.
+An attribute is written in the start tag of an element or markup call. It is a
+name alone, as in `disabled`, a name with a value, as in `id={e}`, or a spread
+`...rest` of a [rest parameter](#rest-parameters). A value is a
+[block](#block-expressions) or a [string literal](#literal-expressions), and
+`id="main"` is shorthand for `id={"main"}`.
 
 ```ebnf
 Attribute     ::= AttributeName
@@ -1000,7 +999,7 @@ Attribute     ::= AttributeName
 AttributeName ::= [A-Za-z] [A-Za-z0-9_:.-]*
 ```
 
-On an [HTML element](#html-elements), an attribute renders in the start tag. Its
+On an [element](#element-expressions), an attribute renders in the start tag. Its
 value must have type `String` and is [escaped](#escaping):
 
 ```hop
@@ -1012,7 +1011,7 @@ value must have type `String` and is [escaped](#escaping):
 <abbr title="R&amp;D"></abbr>    // <abbr title="R&amp;amp;D"></abbr>
 ```
 
-On a [function element](#function-elements), an attribute is the argument for
+On a [markup call](#markup-call-expressions), an attribute is the argument for
 the parameter it names, and a name alone is the argument `true`.
 
 An element defined by HTML, such as `div`, accepts the global attributes of
@@ -1021,12 +1020,12 @@ starts with `data-` or `aria-`. Any other attribute, such as `href` on a `div`,
 is a compile error. An SVG element, such as `path`, or a custom element accepts
 any attribute, except as follows.
 
-For [XSS safety](#xss-safety), no HTML element accepts an attribute whose name
+For [XSS safety](#xss-safety), no element accepts an attribute whose name
 starts with `on`, such as `onclick`. Some attributes, such as the `src` of a
 `<script>`, accept only a string literal, written as `src="…"` or `src={"…"}`.
 
-An attribute written more than once on an element, as in `<div id="a" id="b">`,
-is a compile error.
+An attribute written more than once in a start tag, as in
+`<div id="a" id="b">`, is a compile error.
 
 <a id="rest-parameters"></a>
 
@@ -1034,8 +1033,8 @@ is a compile error.
 
 A rest parameter `...rest` is the last parameter, and collects the attributes a
 caller passes that are not parameters of the function. The body spreads it, as
-`...rest`, in the start tag of an element, where the collected attributes are
-placed as if written there. A rest parameter that is not the last parameter, or
+`...rest`, in the start tag of an element or markup call, where the collected
+attributes are placed as if written there. A rest parameter that is not the last parameter, or
 that the body does not spread exactly once, is a compile error. For example:
 
 ```hop
@@ -1063,13 +1062,13 @@ in each arm of a `match` is a compile error, while a single spread inside a
 Which extra attributes the function accepts depends on where the rest parameter
 is spread:
 
-- When spread on an HTML element `<x … ...rest>`, the function accepts the
+- When spread on an element `<x … ...rest>`, the function accepts the
   [attributes `x` accepts](#attributes), except those written on `x`.
-- When spread on a function element `<F … ...rest>`, the function accepts the
+- When spread on a markup call `<F … ...rest>`, the function accepts the
   parameters and extra attributes of `F`, except those written on `F`.
 
 Passing an attribute through a rest parameter is a compile error if the
-attribute is written on the element where the rest parameter is spread:
+attribute is written in the start tag where the rest parameter is spread:
 
 ```hop
 fn Button(
@@ -1101,10 +1100,10 @@ fn B(...rest) -> Html {
 #### Whitespace normalization
 
 Whitespace in markup is normalized at compile time. Normalization applies to
-the content of each element and fragment as it is written in the source:
+the content of each markup expression as it is written in the source:
 
 - Text is trimmed at the start and end of the content, and next to line breaks.
-  Whitespace inside a line, and between text and an element or markup
+  Whitespace inside a line, and between text and a markup expression or markup
   interpolation on the same line, is kept as written.
 - A line break between two pieces of text becomes a single space, and blank
   lines count as one line break. Any other line break is removed.
@@ -1223,7 +1222,7 @@ Variant  ::= UppercaseIdentifier ( "{" ( FieldDecl ( "," FieldDecl )* ","? )? "}
 A function declaration `fn f(…) -> T { … }` declares the function `f`. A
 lowercase function is [called as `f(…)`](#call-expressions), and an uppercase
 function returning `Html` is
-[called as a function element](#function-elements).
+[called by a markup call](#markup-call-expressions).
 
 ```ebnf
 FunctionDecl ::= "pub"? "fn" ( LowercaseIdentifier | UppercaseIdentifier ) "(" ( Param ( "," Param )* ","? )? ")" "->" Type BlockExpr
@@ -1277,9 +1276,8 @@ fn answer() -> Int {
 }
 ```
 
-Only an uppercase function that returns `Html` can be used as a function
-element, and calling an uppercase function that returns another type is a
-compile error:
+Only an uppercase function that returns `Html` can be called by a markup call,
+and calling an uppercase function that returns another type is a compile error:
 
 ```hop
 fn Label() -> String {
@@ -1287,7 +1285,7 @@ fn Label() -> String {
 }
 
 fn Form() -> Html {
-  // error: Only a function returning Html can be invoked as a tag
+  // error: Only a function returning Html can be called by a markup call
   <Label/>
 }
 ```
@@ -1361,7 +1359,7 @@ language.
 
 An `Html` value renders as the renderings of its elements and text in order.
 Text renders as its characters. An element renders as its start tag, its
-content and its end tag, except that a [void element](#html-elements) has no
+content and its end tag, except that a [void element](#element-expressions) has no
 end tag and no content. The start tag is `<`, the name, the attributes and `>`.
 Each attribute is a space followed by its name and, if it has a value, `="`,
 the value and `"`. The end tag is `</`, the name and `>`.

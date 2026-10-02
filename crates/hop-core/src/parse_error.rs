@@ -256,7 +256,7 @@ pub(crate) enum ParseErrorKind {
     #[error("Expected integer literal but got '{actual}'")]
     ExpectedIntLiteralButGot { actual: LangToken },
 
-    #[error("Unknown HTML element <{tag}>")]
+    #[error("Unknown element <{tag}>")]
     UnknownHtmlElement { tag: CheapString },
 
     #[error("Rest parameter must be the last parameter")]

@@ -2147,7 +2147,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Content provided both as an explicit 'children' argument and as element children
+                error: Content provided both as a 'children' attribute and between the tags
                   --> main.hop (line 6, col 6)
                 5 | fn Main(children: Html) -> Html {
                 6 |     <Card children={children}>children</Card>
