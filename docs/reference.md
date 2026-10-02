@@ -911,8 +911,7 @@ MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupNode* "</" Upper
 A markup call is a compile error if `F` does not return `Html`, if it leaves out
 a parameter that has no default value, if an argument does not have the type of
 its parameter, or if an attribute names no parameter and no
-[rest parameter](#rest-parameters) accepts it. Giving both content and a
-`children` attribute is a compile error too.
+[rest parameter](#rest-parameters) accepts it.
 
 ```hop
 fn Badge(
@@ -947,7 +946,7 @@ MarkupText ::= [^<{}]+
 ```
 
 Text evaluates to its characters as written, after its
-[whitespace](#whitespace-normalization) is normalized at compile time. It is not
+[whitespace](#whitespace-normalization) is normalized. It is not
 [escaped](#escaping), so `&amp;` passes through unchanged. Text cannot contain
 `<`, `{` or `}`. To display them, write the character references `&lt;`,
 `&lbrace;` and `&rbrace;`, which pass through like any other text.
@@ -1059,11 +1058,10 @@ is spread:
 - When spread on an element `<x … ...rest>`, the function accepts the
   [attributes `x` accepts](#attributes), except those written on `x`.
 - When spread on a markup call `<F … ...rest>`, the function accepts the
-  parameters and extra attributes of `F`, except those written on `F`, where
-  content between the tags counts as `children`.
+  parameters and extra attributes of `F`, except those written on `F`.
 
-Passing an attribute through a rest parameter is a compile error if the
-attribute is written in the start tag where the rest parameter is spread:
+For example, `class` is written on the `<button>` where `Button` spreads
+`rest`, so `Button` does not accept it:
 
 ```hop
 fn Button(
