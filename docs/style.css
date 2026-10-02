@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=Lato:wght@400;700&family=Source+Sans+3:ital,wght@0,400;0,700;1,400;1,700&display=swap");
+
 :root {
   color-scheme: light dark;
   --page-width: 60rem;
@@ -8,8 +10,16 @@ body {
   max-width: var(--page-width);
   margin: 2rem auto;
   padding: 0 1rem;
-  font-family: system-ui, sans-serif;
+  font-family: "Source Sans 3", system-ui, sans-serif;
   line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+h4,
+#TOC {
+  font-family: Lato, system-ui, sans-serif;
 }
 
 /* The first heading is the title, which pandoc renders as h1.title, so the
@@ -66,7 +76,7 @@ a {
 }
 
 code {
-  font-family: ui-monospace, monospace;
+  font-family: "Fira Code", ui-monospace, monospace;
   font-size: 0.9em;
 }
 
