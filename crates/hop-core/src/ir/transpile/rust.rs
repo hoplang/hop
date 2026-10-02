@@ -617,8 +617,6 @@ impl Transpiler for RustTranspiler {
                 .append(arena.line())
                 .append(arena.text("            '\"' => output.push_str(\"&quot;\"),"))
                 .append(arena.line())
-                .append(arena.text("            '\\'' => output.push_str(\"&#39;\"),"))
-                .append(arena.line())
                 .append(arena.text("            _ => output.push(c),"))
                 .append(arena.line())
                 .append(arena.text("        }"))
@@ -2074,7 +2072,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2140,7 +2137,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2206,7 +2202,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2305,7 +2300,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2428,7 +2422,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2495,7 +2488,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2568,7 +2560,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2633,7 +2624,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2760,7 +2750,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2849,7 +2838,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -2938,7 +2926,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -3304,7 +3291,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -3384,7 +3370,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -3464,7 +3449,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -3539,7 +3523,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -3676,7 +3659,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -3759,7 +3741,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -3945,7 +3926,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }
@@ -4024,7 +4004,6 @@ mod tests {
                             '<' => output.push_str("&lt;"),
                             '>' => output.push_str("&gt;"),
                             '"' => output.push_str("&quot;"),
-                            '\'' => output.push_str("&#39;"),
                             _ => output.push(c),
                         }
                     }

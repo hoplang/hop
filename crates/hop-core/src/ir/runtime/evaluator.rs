@@ -856,7 +856,7 @@ mod tests {
                 }
 
                 -- after --
-                &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;
+                &lt;script&gt;alert('xss')&lt;/script&gt;
             "#]],
         );
     }

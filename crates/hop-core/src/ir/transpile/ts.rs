@@ -494,8 +494,7 @@ impl Transpiler for TsTranspiler {
                                         arena.text(".replace(/&/g, '&amp;')"),
                                         arena.text(".replace(/</g, '&lt;')"),
                                         arena.text(".replace(/>/g, '&gt;')"),
-                                        arena.text(".replace(/\"/g, '&quot;')"),
-                                        arena.text(".replace(/'/g, '&#39;');"),
+                                        arena.text(".replace(/\"/g, '&quot;');"),
                                     ],
                                     arena.line(),
                                 ))
@@ -1897,8 +1896,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export class Holder {
@@ -1946,8 +1944,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function Row({cell: v_0}: {cell: [number, string]}): string {
@@ -2001,8 +1998,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function UserInfo({
@@ -2067,8 +2063,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function ConditionalDisplay({
@@ -2126,8 +2121,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function ListItems({items: v_0}: {items: string[]}): string {
@@ -2171,8 +2165,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function Counter(): string {
@@ -2223,8 +2216,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function GreetingCard(): string {
@@ -2277,8 +2269,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function TestMainComp(): string {
@@ -2333,8 +2324,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function RenderHtml({user_input: v_0}: {user_input: string}): string {
@@ -2387,8 +2377,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export class Address {
@@ -2453,8 +2442,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export class User {
@@ -2514,8 +2502,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export class Node {
@@ -2624,8 +2611,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export class Node {
@@ -2715,8 +2701,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export namespace Color {
@@ -2772,8 +2757,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function IsActive({active: v_0}: {active: boolean}): string {
@@ -2821,8 +2805,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function CheckOption({opt: v_0}: {opt: Option.Option<number>}): string {
@@ -2910,8 +2893,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function CheckNestedOption({
@@ -2965,8 +2947,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function LetExpr({name: v_0}: {name: string}): string {
@@ -3031,8 +3012,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function DisplayOption({
@@ -3114,8 +3094,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function TestOptionLiteral({
@@ -3192,8 +3171,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function TestInlineMatch(): string {
@@ -3275,8 +3253,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function Test(): string {
@@ -3335,8 +3312,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export function IsActive({active: v_0}: {active: boolean}): string {
@@ -3389,8 +3365,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export namespace Outcome {
@@ -3460,8 +3435,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 export namespace Outcome {
@@ -3606,8 +3580,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 function renderFormatPrice_0({price: v_0}: {price: number}): number {
@@ -3666,8 +3639,7 @@ mod tests {
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
+                        .replace(/"/g, '&quot;');
                 }
 
                 function renderFoo_0({x: v_0}: {x: number}): number {

@@ -1155,12 +1155,11 @@ written.
 | `<`       | `&lt;`      |
 | `>`       | `&gt;`      |
 | `"`       | `&quot;`    |
-| `'`       | `&#39;`     |
 
 ```hop
-let s = "a < b & \"c\" > 'd'";
+let s = "<b> & \"c\"";
 
-<p title="<'d'> & c">{s}</p> // <p title="&lt;&#39;d&#39;&gt; &amp; c">a &lt; b &amp; &quot;c&quot; &gt; &#39;d&#39;</p>
+<p>{s}</p> // <p>&lt;b&gt; &amp; &quot;c&quot;</p>
 ```
 
 <a id="modules-and-declarations"></a>

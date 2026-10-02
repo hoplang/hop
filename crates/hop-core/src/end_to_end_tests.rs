@@ -1517,7 +1517,7 @@ mod tests {
                   }
                 }
             "#},
-            r#"<div title="a&#39;b&lt;c&amp;d"></div>"#,
+            r#"<div title="a'b&lt;c&amp;d"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Panel@f0(rest@v0: Html) -> Html {
@@ -1535,10 +1535,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("<div title=\"a&#39;b&lt;c&amp;d\"></div>")
+                  write("<div title=\"a'b&lt;c&amp;d\"></div>")
                 }
                 -- expected output --
-                <div title="a&#39;b&lt;c&amp;d"></div>
+                <div title="a'b&lt;c&amp;d"></div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
