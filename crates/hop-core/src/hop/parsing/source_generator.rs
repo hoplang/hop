@@ -636,10 +636,17 @@ fn markup(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()
     let p = u.choose(&kinds)?;
     match p {
         P::Void => {
+            let tag = u.choose(VOID_TAGS)?;
             out.push('<');
-            out.push_str(u.choose(VOID_TAGS)?);
+            out.push_str(tag);
             attributes(u, depth, out)?;
-            out.push_str(u.choose(&[">", "/>", " />"])?);
+            if u.arbitrary()? {
+                out.push_str(u.choose(&["/>", " />"])?);
+            } else {
+                out.push_str("></");
+                out.push_str(tag);
+                out.push('>');
+            }
         }
         P::Element | P::Invocation => {
             let tag = if matches!(p, P::Element) {

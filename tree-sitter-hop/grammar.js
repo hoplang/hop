@@ -4,9 +4,8 @@
 // accepts. Return types may be omitted, blocks may be empty, closing tags need
 // not match their opening tag, etc.
 //
-// Two places stay strict, because looseness there creates real ambiguity rather
-// than removing work: the void-element list is fixed (otherwise element nesting
-// cannot be recovered), and text tokens are kept out of expression positions.
+// One place stays strict, because looseness there creates real ambiguity rather
+// than removing work: text tokens are kept out of expression positions.
 
 const PREC = {
   or: 1,
@@ -18,25 +17,6 @@ const PREC = {
   unary: 7,
   postfix: 8,
 };
-
-// The HTML void elements, from crates/hop-core/src/html/element_kind.rs.
-// These may close with a bare `>`, so they cannot be treated as ordinary
-// elements without making every `</tag>` ambiguous.
-const VOID_ELEMENTS = [
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "source",
-  "track",
-  "wbr",
-];
 
 module.exports = grammar({
   name: "hop",
@@ -358,7 +338,7 @@ module.exports = grammar({
         optional(seq(":", field("pattern", $._pattern))),
       ),
 
-    _markup: ($) => choice($.element, $.void_element, $.fragment),
+    _markup: ($) => choice($.element, $.fragment),
 
     // Permissive: the closing tag's name is not required to match the opening
     // tag's. Correlating them would need an external scanner to carry a tag
@@ -380,16 +360,6 @@ module.exports = grammar({
       seq("<", field("name", $._tag_name), repeat($._attribute), "/>"),
 
     end_tag: ($) => seq("</", field("name", $._tag_name), ">"),
-
-    // A void element takes no children and needs no closing tag, so a bare
-    // `>` ends it.
-    void_element: ($) =>
-      seq(
-        "<",
-        field("name", alias($.void_tag_name, $.tag_name)),
-        repeat($._attribute),
-        choice(">", "/>"),
-      ),
 
     fragment: ($) =>
       seq($.fragment_start, repeat($._markup_child), $.fragment_end),
@@ -436,10 +406,6 @@ module.exports = grammar({
 
     markup_comment: (_) =>
       token(seq("<!--", repeat(choice(/[^-]/, /-[^-]/, /--[^>]/)), "-->")),
-
-    // `void_tag_name` is declared before `tag_name` so that on an exact match,
-    // where the two tokens tie on length, rule order picks the void name.
-    void_tag_name: (_) => token(choice(...VOID_ELEMENTS)),
 
     tag_name: (_) => /[a-z][a-zA-Z0-9\-_.]*/,
 

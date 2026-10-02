@@ -4,7 +4,7 @@ elements, components, void elements and fragments
 
 fn f() -> Html {
   <div>
-    <br>
+    <br></br>
     <img src="a"/>
     <Card/>
     <>frag</>
@@ -23,15 +23,19 @@ fn f() -> Html {
         (start_tag
           (tag_name))
         (text)
-        (void_element
-          (tag_name))
+        (element
+          (start_tag
+            (tag_name))
+          (end_tag
+            (tag_name)))
         (text)
-        (void_element
-          (tag_name)
-          (attribute
-            (attribute_name)
-            (string_literal
-              (string_content))))
+        (element
+          (self_closing_tag
+            (tag_name)
+            (attribute
+              (attribute_name)
+              (string_literal
+                (string_content)))))
         (text)
         (element
           (self_closing_tag
@@ -218,38 +222,6 @@ fn f() -> Html {
             (attribute_name)
             (string_literal
               (string_content))))
-        (end_tag
-          (tag_name))))))
-
-================================================================================
-a tag name that begins with a void element name is an ordinary element
-================================================================================
-
-fn f() -> Html {
-  <table><colgroup><col></colgroup><metadata/></table>
-}
-
---------------------------------------------------------------------------------
-
-(source_file
-  (function_declaration
-    (identifier)
-    (parameters)
-    (type_identifier)
-    (block
-      (element
-        (start_tag
-          (tag_name))
-        (element
-          (start_tag
-            (tag_name))
-          (void_element
-            (tag_name))
-          (end_tag
-            (tag_name)))
-        (element
-          (self_closing_tag
-            (tag_name)))
         (end_tag
           (tag_name))))))
 

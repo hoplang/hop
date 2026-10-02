@@ -817,7 +817,7 @@ array or a range of `Int` values is a compile error. So is a body whose type is 
 ```hop
 for name in ["Alice", "Bob"] { <li>{name}</li> } // <li>Alice</li><li>Bob</li>
 for i in 1..=3 { <b>{i.to_string()}</b> }        // <b>1</b><b>2</b><b>3</b>
-for tag in "a, b" { <br> }                       // error: Mismatched type: expected Array[...] got String
+for tag in "a, b" { <br/> }                      // error: Mismatched type: expected Array[...] got String
 for _ in 1..=3 { "*" }                           // error: Mismatched type for for body: expected Html got String
 ```
 
@@ -843,28 +843,12 @@ An end tag that does not have the same name as its start tag is a compile error.
 
 An element expression `<x …>…</x>` evaluates to the element with that name,
 those attributes and that content. An element without content can be written
-with a single self-closing tag, `<x/>`, which is shorthand for `<x></x>`. A void
-element such as `<br>` never has content and is written as a single tag, `<br>`
-or `<br/>`, so `<br></br>` is a compile error.
+with a single self-closing tag, `<x/>`, which is shorthand for `<x></x>`.
 
 ```ebnf
-ElementExpr     ::= "<" ElementName Attribute* ">" MarkupNode* "</" ElementName ">"
-                  | "<" ElementName Attribute* "/>"
-                  | "<" VoidElementName Attribute* "/"? ">"
-ElementName     ::= [a-z] [A-Za-z0-9-]*   /* except a VoidElementName */
-VoidElementName ::= "area"
-                  | "base"
-                  | "br"
-                  | "col"
-                  | "embed"
-                  | "hr"
-                  | "img"
-                  | "input"
-                  | "link"
-                  | "meta"
-                  | "source"
-                  | "track"
-                  | "wbr"
+ElementExpr ::= "<" ElementName Attribute* ">" MarkupNode* "</" ElementName ">"
+              | "<" ElementName Attribute* "/>"
+ElementName ::= [a-z] [A-Za-z0-9-]*
 ```
 
 The name is that of an HTML or SVG element, such as `div` or `path`, or of a
@@ -876,11 +860,16 @@ Using `<html>`, `<head>` or `<body>` is a compile error, since a
 in the project stylesheet. Further elements, and `<script>` with content, are
 compile errors for [XSS safety](#xss-safety).
 
+A void element is one of `area`, `br`, `col`, `hr`, `img`, `input`, `link`,
+`meta`, `source`, `track` and `wbr`, and a void element with content is a
+compile error.
+
 ```hop
 <p class="note">Hello</p> // <p class="note">Hello</p>
 <div/>                    // <div></div>
-<br>                      // <br>
 <br/>                     // <br>
+<br></br>                 // <br>
+<br>text</br>             // error: <br> is a void element and cannot have content
 ```
 
 <a id="fragment-expressions"></a>
@@ -1010,8 +999,8 @@ value must have type `String` and is [escaped](#escaping):
 
 ```hop
 <div id={1}></div>               // error: Mismatched type for attribute: expected String got Int
-<input disabled>                 // <input disabled>
-<input pattern="\\d+">           // <input pattern="\d+">
+<input disabled/>                // <input disabled>
+<input pattern="\\d+"/>          // <input pattern="\d+">
 <span title="say \"hi\""></span> // <span title="say &quot;hi&quot;"></span>
 <abbr title="R&D"></abbr>        // <abbr title="R&amp;D"></abbr>
 <abbr title="R&amp;D"></abbr>    // <abbr title="R&amp;amp;D"></abbr>
@@ -1372,7 +1361,7 @@ Each attribute is a space followed by its name and, if it has a value, `="`,
 the value and `"`. The end tag is `</`, the name and `>`.
 
 So `<br/>` renders as `<br>`, `<div/>` renders as `<div></div>`, and
-`<input disabled value={v}>` renders as `<input disabled value="…">`, with the
+`<input disabled value={v}/>` renders as `<input disabled value="…">`, with the
 value of `v` [escaped](#escaping).
 
 <a id="xss-safety"></a>

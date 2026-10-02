@@ -45,7 +45,6 @@
 (start_tag ["<" ">"] @punctuation.bracket)
 (self_closing_tag ["<" "/>"] @punctuation.bracket)
 (end_tag ["</" ">"] @punctuation.bracket)
-(void_element ["<" ">" "/>"] @punctuation.bracket)
 (fragment_start ["<" ">"] @punctuation.bracket)
 (fragment_end ["</" ">"] @punctuation.bracket)
 

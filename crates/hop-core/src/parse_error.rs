@@ -79,9 +79,6 @@ pub(crate) enum ParseErrorKind {
     #[error("Function '{name}' has an empty body: a function body must be a single expression")]
     EmptyFunctionBody { name: CheapString },
 
-    #[error("<{tag}> should not be closed using a closing tag")]
-    ClosedVoidTag { tag: CheapString },
-
     #[error("Duplicate attribute '{name}'")]
     DuplicateAttribute { name: CheapString },
 
@@ -106,7 +103,7 @@ pub(crate) enum ParseErrorKind {
     InlineScriptNotAllowed,
 
     #[error(
-        "<style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel=\"stylesheet\">"
+        "<style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel=\"stylesheet\"/>"
     )]
     StyleElementNotAllowed,
 

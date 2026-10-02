@@ -194,6 +194,19 @@ pub fn typecheck_node(
                 ));
             }
 
+            // `<br></br>` is the same as `<br/>`, but a void element with
+            // content is rejected.
+            if element.is_void()
+                && let (Some(first), Some(last)) = (children.first(), children.last())
+            {
+                errors.push(TypeError::new(
+                    TypeErrorKind::VoidElementWithContent {
+                        tag: tag_name.to_cheap_string(),
+                    },
+                    first.range().clone().to(last.range().clone()),
+                ));
+            }
+
             let typed_attributes = typecheck_attributes(
                 attributes,
                 element,

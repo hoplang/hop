@@ -84,7 +84,7 @@ pub enum ParsedAttribute {
     /// An attribute containing only a key.
     ///
     /// ```text
-    /// <input required>
+    /// <input required/>
     ///        ^^^^^^^^
     /// ```
     KeyOnly { name: DocumentRange },

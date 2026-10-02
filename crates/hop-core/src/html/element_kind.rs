@@ -1,26 +1,5 @@
 use crate::document::CheapString;
 
-/// Return true if the string represents a void element.
-/// See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
-pub fn is_void_element_tag(tag_name: &str) -> bool {
-    matches!(
-        tag_name,
-        "area"
-            | "base"
-            | "br"
-            | "col"
-            | "embed"
-            | "hr"
-            | "img"
-            | "input"
-            | "link"
-            | "meta"
-            | "source"
-            | "track"
-            | "wbr"
-    )
-}
-
 /// Return true if the element's content is text rather than markup.
 pub fn is_raw_content_tag(tag_name: &str) -> bool {
     matches!(tag_name, "script" | "style")
@@ -453,8 +432,25 @@ impl HtmlElementKind {
         Some(element)
     }
 
+    /// Return true for a void element, which has no content and no end tag.
+    /// See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
     pub fn is_void(&self) -> bool {
-        is_void_element_tag(self.as_str())
+        matches!(
+            self.as_str(),
+            "area"
+                | "base"
+                | "br"
+                | "col"
+                | "embed"
+                | "hr"
+                | "img"
+                | "input"
+                | "link"
+                | "meta"
+                | "source"
+                | "track"
+                | "wbr"
+        )
     }
 
     /// Return true for SVG elements (attribute-name validation is skipped for them).
@@ -539,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn void_element_check_matches_helper() {
+    fn is_void_classifies_void_elements() {
         assert!(HtmlElementKind::parse("br").unwrap().is_void());
         assert!(!HtmlElementKind::parse("div").unwrap().is_void());
         assert!(!HtmlElementKind::parse("my-widget").unwrap().is_void());

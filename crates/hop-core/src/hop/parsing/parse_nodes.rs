@@ -7,7 +7,7 @@ use crate::document::{DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::MarkupToken;
 use crate::hop::parsing::token::RawTextToken;
 use crate::hop::parsing::token::TagToken;
-use crate::html::{HtmlElementKind, is_raw_content_tag, is_void_element_tag};
+use crate::html::{HtmlElementKind, is_raw_content_tag};
 use crate::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
@@ -247,24 +247,13 @@ fn parse_node(
                 }
             }
 
-            MarkupToken::ClosingTag { tag_name, range } => {
-                if is_void_element_tag(tag_name.as_str()) {
-                    builder.drop_item(errors.emit(
-                        ParseErrorKind::ClosedVoidTag {
-                            tag: tag_name.to_cheap_string(),
-                        },
-                        range,
-                    ))
-                } else {
-                    builder.close(
-                        ClosingTag {
-                            tag_name_range: Some(tag_name),
-                            range,
-                        },
-                        errors,
-                    )
-                }
-            }
+            MarkupToken::ClosingTag { tag_name, range } => builder.close(
+                ClosingTag {
+                    tag_name_range: Some(tag_name),
+                    range,
+                },
+                errors,
+            ),
 
             MarkupToken::FragmentStart { range } => {
                 builder.enter(OpenElement {
@@ -412,7 +401,7 @@ fn parse_opening_tag(
     // closing tag are read here.
     let raw_text = !self_closing && is_raw_content_tag(tag_name_range.as_str());
     let mut children = Vec::new();
-    let mut closed = self_closing || is_void_element_tag(tag_name_range.as_str());
+    let mut closed = self_closing;
     if raw_text {
         let RawTextToken {
             content,

@@ -600,10 +600,7 @@ fn format_node<'a>(
         } => {
             let element_str = element.as_str();
             let opening_tag_doc = if attributes.is_empty() {
-                arena
-                    .text("<")
-                    .append(arena.text(element_str))
-                    .append(arena.text(">"))
+                arena.text("<").append(arena.text(element_str))
             } else if attributes.len() == 1 {
                 // Single attribute: keep on same line as tag
                 arena
@@ -611,7 +608,6 @@ fn format_node<'a>(
                     .append(arena.text(element_str))
                     .append(arena.text(" "))
                     .append(format_attribute(arena, &attributes[0], comments))
-                    .append(arena.text(">"))
             } else {
                 let mut attrs_doc = arena.nil();
                 for (i, attr) in attributes.iter().enumerate() {
@@ -625,18 +621,17 @@ fn format_node<'a>(
                     .append(arena.text(element_str))
                     .append(arena.line().append(attrs_doc).nest(2))
                     .append(arena.line_())
-                    .append(arena.text(">"))
                     .group()
             };
-
-            if element.is_void() {
-                opening_tag_doc
-            } else if children.is_empty()
+            let empty = children.is_empty()
                 && !comments
                     .markup
                     .front()
-                    .is_some_and(|c| c.start() < range.end())
-            {
+                    .is_some_and(|c| c.start() < range.end());
+
+            if element.is_void() && empty {
+                opening_tag_doc.append(arena.text("/>"))
+            } else if empty {
                 // Empty element - put opening and closing tags on separate lines,
                 // except for script/style where whitespace would become content
                 let sep =
@@ -646,6 +641,7 @@ fn format_node<'a>(
                         arena.line()
                     };
                 opening_tag_doc
+                    .append(arena.text(">"))
                     .append(sep)
                     .append(arena.text("</"))
                     .append(arena.text(element_str))
@@ -653,7 +649,7 @@ fn format_node<'a>(
             } else if *element == HtmlElementKind::Script || *element == HtmlElementKind::Style {
                 // For script/style, preserve text content exactly as written
                 // to avoid altering semantically significant whitespace
-                let mut doc = opening_tag_doc;
+                let mut doc = opening_tag_doc.append(arena.text(">"));
                 for child in children {
                     if let ParsedNode::Text { range } = child {
                         doc = doc.append(arena.text(range.as_str()));
@@ -664,6 +660,7 @@ fn format_node<'a>(
                     .append(arena.text(">"))
             } else {
                 opening_tag_doc
+                    .append(arena.text(">"))
                     .append(format_children(arena, children, range.end(), comments))
                     .append(arena.text("</"))
                     .append(arena.text(element_str))
@@ -3698,7 +3695,7 @@ mod tests {
             indoc! {r#"
                 record Product { img_src: String }
                 fn ProductImage(product: Product) -> Html {
-                  <img class="rounded-lg" src={product.img_src}>
+                  <img class="rounded-lg" src={product.img_src}/>
                 }
             "#},
             expect![[r#"
@@ -3707,7 +3704,7 @@ mod tests {
                 }
 
                 fn ProductImage(product: Product) -> Html {
-                  <img class="rounded-lg" src={product.img_src}>
+                  <img class="rounded-lg" src={product.img_src}/>
                 }
             "#]],
         );
@@ -3718,12 +3715,12 @@ mod tests {
         check(
             indoc! {r#"
                 fn Field() -> Html {
-                  <input title="say \"hi\"" pattern="\\d+">
+                  <input title="say \"hi\"" pattern="\\d+"/>
                 }
             "#},
             expect![[r#"
                 fn Field() -> Html {
-                  <input title="say \"hi\"" pattern="\\d+">
+                  <input title="say \"hi\"" pattern="\\d+"/>
                 }
             "#]],
         );
@@ -3826,7 +3823,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  <img src={asset!("/logo.svg")}>
+                  <img src={asset!("/logo.svg")}/>
                 }
             "#]],
         );
@@ -4827,7 +4824,7 @@ mod tests {
         check(
             indoc! {"
                 fn Main() -> Html {
-                    <div>hello <br> world</div>
+                    <div>hello <br/> world</div>
                 }
             "},
             expect![[r#"
@@ -4835,7 +4832,7 @@ mod tests {
                   <div>
                     hello
                     {" "}
-                    <br>
+                    <br/>
                     {" "}
                     world
                   </div>
@@ -4851,7 +4848,7 @@ mod tests {
                 fn Main() -> Html {
                     <div>
                         hello
-                        <br>
+                        <br></br>
                         world
                     </div>
                 }
@@ -4860,7 +4857,7 @@ mod tests {
                 fn Main() -> Html {
                   <div>
                     hello
-                    <br>
+                    <br/>
                     world
                   </div>
                 }
@@ -4873,7 +4870,7 @@ mod tests {
         check(
             indoc! {r#"
                 fn Main() -> Html {
-                    <label>Name: <input type="text"> (required)</label>
+                    <label>Name: <input type="text"/> (required)</label>
                 }
             "#},
             expect![[r#"
@@ -4881,7 +4878,7 @@ mod tests {
                   <label>
                     Name:
                     {" "}
-                    <input type="text">
+                    <input type="text"/>
                     {" "}
                     (required)
                   </label>
@@ -4897,7 +4894,7 @@ mod tests {
                 fn Main() -> Html {
                     <label>
                         Name:
-                        <input type="text">
+                        <input type="text" />
                         (required)
                     </label>
                 }
@@ -4906,7 +4903,7 @@ mod tests {
                 fn Main() -> Html {
                   <label>
                     Name:
-                    <input type="text">
+                    <input type="text"/>
                     (required)
                   </label>
                 }

@@ -1565,7 +1565,7 @@ mod tests {
                   fn body() -> Html {
                     <>
                       <span title="Tom &amp; Jerry" data-x="x<y"></span>
-                      <input pattern="\\d+" title="say \"hi\"">
+                      <input pattern="\\d+" title="say \"hi\""/>
                     </>
                   }
                 }
@@ -1677,7 +1677,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Icon(...rest) -> Html {
-                  <img ...rest>
+                  <img ...rest/>
                 }
 
                 page Test() {
@@ -9035,7 +9035,7 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let type = "button";
-                    <input type={type}>
+                    <input type={type}/>
                   }
                 }
             "#},
@@ -14114,7 +14114,7 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <img src={asset!("/logo.svg")}>
+                    <img src={asset!("/logo.svg")}/>
                   }
                 }
             "#},
@@ -14161,7 +14161,7 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    <img src={asset!("/logo.svg")}>
+                    <img src={asset!("/logo.svg")}/>
                   }
                 }
             "#},

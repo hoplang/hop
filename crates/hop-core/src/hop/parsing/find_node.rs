@@ -232,14 +232,14 @@ mod tests {
         check_find_node_at_position(
             indoc! {"
                 fn Main() -> Html {
-                    <p>Some text <br> more text</p>
+                    <p>Some text <br/> more text</p>
                                   ^
                 }
             "},
             expect![[r#"
                 range
-                2 |     <p>Some text <br> more text</p>
-                  |                  ^^^^
+                2 |     <p>Some text <br/> more text</p>
+                  |                  ^^^^^
             "#]],
         );
     }

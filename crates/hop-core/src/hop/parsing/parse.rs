@@ -1414,7 +1414,7 @@ mod tests {
             indoc! {r#"
                 fn Main() -> Html {
                     <form id="form">
-                        <input type="text" required>
+                        <input type="text" required/>
                         <button type="submit">Send</button>
                     </form>
                 }
@@ -1642,7 +1642,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet">
+                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet"/>
                 1 | fn Main() -> Html {
                 2 |     <style>.a { color: red; }</style>
                   |      ^^^^^
@@ -1666,8 +1666,8 @@ mod tests {
             indoc! {"
                 fn Main() -> Html {
                     <>
-                        <base href=\"/\">
-                        <embed src=\"/a.pdf\">
+                        <base href=\"/\"/>
+                        <embed src=\"/a.pdf\"/>
                         <object data=\"/a.pdf\"></object>
                     </>
                 }
@@ -1676,16 +1676,16 @@ mod tests {
                 -- errors --
                 error: <base> elements are not allowed
                 2 |     <>
-                3 |         <base href="/">
+                3 |         <base href="/"/>
                   |          ^^^^
 
                 error: <embed> elements are not allowed
-                3 |         <base href="/">
-                4 |         <embed src="/a.pdf">
+                3 |         <base href="/"/>
+                4 |         <embed src="/a.pdf"/>
                   |          ^^^^^
 
                 error: <object> elements are not allowed
-                4 |         <embed src="/a.pdf">
+                4 |         <embed src="/a.pdf"/>
                 5 |         <object data="/a.pdf"></object>
                   |          ^^^^^^
                 -- ast --
@@ -1706,7 +1706,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet">
+                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet"/>
                 1 | fn Main() -> Html {
                 2 |     <style></style>
                   |      ^^^^^
@@ -1732,7 +1732,7 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet">
+                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet"/>
                 1 | fn Main() -> Html {
                 2 |     <style />
                   |      ^^^^^
@@ -2256,8 +2256,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_void_tag_is_closed_with_closing_tag() {
-        reject(
+    fn accepts_void_tags_with_closing_tags() {
+        accept(
             indoc! {"
                 fn Main() -> Html {
                     <>
@@ -2268,27 +2268,44 @@ mod tests {
                 }
             "},
             expect![[r#"
-                -- errors --
-                error: <hr> should not be closed using a closing tag
-                2 |     <>
-                3 |         <hr></hr>
-                  |             ^^^^^
-
-                error: <br> should not be closed using a closing tag
-                3 |         <hr></hr>
-                4 |         <br></br>
-                  |             ^^^^^
-
-                error: <input> should not be closed using a closing tag
-                4 |         <br></br>
-                5 |         <input></input>
-                  |                ^^^^^^^^
-                -- ast --
                 fn Main() -> Html {
                   fragment(
                     html(tag: "hr", attrs: []),
                     html(tag: "br", attrs: []),
                     html(tag: "input", attrs: []),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unclosed_void_tag() {
+        reject(
+            indoc! {"
+                fn Main() -> Html {
+                    <p>one<br>two</p>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unclosed <br>
+                1 | fn Main() -> Html {
+                2 |     <p>one<br>two</p>
+                  |            ^^
+                -- ast --
+                fn Main() -> Html {
+                  html(
+                    tag: "p",
+                    attrs: [],
+                    children: [
+                      text("one"),
+                      html(
+                        tag: "br",
+                        attrs: [],
+                        children: [text("two")],
+                      ),
+                    ],
                   )
                 }
             "#]],
@@ -6891,7 +6908,7 @@ mod tests {
                 1 | fn Main() -> Html {<style
                   |                     ^^^^^
 
-                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet">
+                error: <style> elements are not allowed: put the CSS in the project stylesheet, or reference it with <link rel="stylesheet"/>
                 1 | fn Main() -> Html {<style
                   |                     ^^^^^
 

@@ -1357,7 +1357,7 @@ mod tests {
 
                 fn Foo() -> Html {
                   <>
-                    <input pattern="\d+">
+                    <input pattern="\d+"/>
                     <Label text="bad\qescape"/>
                   </>
                 }
@@ -1366,12 +1366,12 @@ mod tests {
                 error: Invalid escape sequence '\d'
                   --> main.hop (line 7, col 21)
                  6 |   <>
-                 7 |     <input pattern="\d+">
+                 7 |     <input pattern="\d+"/>
                    |                     ^^
 
                 error: Invalid escape sequence '\q'
                   --> main.hop (line 8, col 21)
-                 7 |     <input pattern="\d+">
+                 7 |     <input pattern="\d+"/>
                  8 |     <Label text="bad\qescape"/>
                    |                     ^^
             "#]],
@@ -6555,14 +6555,14 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(is_required: Bool) -> Html {
-                  <input required={is_required}>
+                  <input required={is_required}/>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected String got Bool
                   --> main.hop (line 2, col 20)
                 1 | fn Main(is_required: Bool) -> Html {
-                2 |   <input required={is_required}>
+                2 |   <input required={is_required}/>
                   |                    ^^^^^^^^^^^
             "#]],
         );
@@ -6574,14 +6574,14 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  <input required={true}>
+                  <input required={true}/>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for attribute: expected String got Bool
                   --> main.hop (line 2, col 20)
                 1 | fn Main() -> Html {
-                2 |   <input required={true}>
+                2 |   <input required={true}/>
                   |                    ^^^^
             "#]],
         );
@@ -7892,6 +7892,38 @@ mod tests {
                 3 |   fn body() -> Html {
                 4 |     <head></head>
                   |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_void_element_with_content() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(name: String) -> Html {
+                  <p>
+                    <br></br>
+                    <br>
+                    </br>
+                    <br><!-- comment --></br>
+                    <br>text</br>
+                    <img src="a.png">{name}</img>
+                  </p>
+                }
+            "#},
+            expect![[r#"
+                error: <br> is a void element and cannot have content
+                  --> main.hop (line 7, col 9)
+                 6 |     <br><!-- comment --></br>
+                 7 |     <br>text</br>
+                   |         ^^^^
+
+                error: <img> is a void element and cannot have content
+                  --> main.hop (line 8, col 22)
+                 7 |     <br>text</br>
+                 8 |     <img src="a.png">{name}</img>
+                   |                      ^^^^^^
             "#]],
         );
     }

@@ -136,10 +136,6 @@
       {
         "type": "fragment",
         "named": true
-      },
-      {
-        "type": "void_element",
-        "named": true
       }
     ]
   },
@@ -1570,32 +1566,6 @@
       "types": [
         {
           "type": "_pattern",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "void_element",
-    "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "tag_name",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "_attribute",
           "named": true
         }
       ]

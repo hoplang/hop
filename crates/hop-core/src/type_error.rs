@@ -116,6 +116,9 @@ pub(crate) enum TypeErrorKind {
     #[error("<{tag}> is not allowed here")]
     HtmlStructureTagNotAllowed { tag: &'static str },
 
+    #[error("<{tag}> is a void element and cannot have content")]
+    VoidElementWithContent { tag: CheapString },
+
     #[error("Unused import '{import_name}'")]
     UnusedImport { import_name: CheapString },
 
