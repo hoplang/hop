@@ -67,18 +67,6 @@ a {
   }
 }
 
-table {
-  border-collapse: collapse;
-}
-
-th,
-td {
-  border: 1px solid var(--border);
-  padding: 0.3rem 0.6rem;
-  text-align: left;
-  vertical-align: top;
-}
-
 code {
   font-family: ui-monospace, monospace;
   font-size: 0.9em;
@@ -90,6 +78,6 @@ code {
 }
 
 pre {
-  padding: 0.6rem 0.8rem;
+  padding: 0.6rem 1.5rem;
   background: var(--shade);
 }

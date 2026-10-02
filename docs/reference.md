@@ -4,18 +4,18 @@
 
 The grammars use W3C-style EBNF:
 
-| Notation        | Meaning                          |
-| --------------- | -------------------------------- |
-| `A ::= …`       | the rule `A`                     |
-| `"x"`, `'x'`    | the text `x`                     |
-| `A B`           | `A` followed by `B`              |
-| `A \| B`        | `A` or `B`                       |
-| `A?`            | `A` or nothing                   |
-| `A*`            | `A` repeated zero or more times  |
-| `A+`            | `A` repeated one or more times   |
-| `( … )`         | grouping                         |
-| `[a-z]`, `[^"]` | a character in, or not in, a set |
-| `/* … */`       | a comment                        |
+```
+A ::= …       the rule A
+"x", 'x'      the text x
+A B           A followed by B
+A | B         A or B
+A?            A or nothing
+A*            A repeated zero or more times
+A+            A repeated one or more times
+( … )         grouping
+[a-z], [^"]   a character in, or not in, a set
+/* … */       a comment
+```
 
 <a id="lexical-structure"></a>
 
@@ -88,16 +88,16 @@ Type ::= "Bool"
 An `UppercaseIdentifier` names a [record](#record-declarations) or
 [enum](#enum-declarations) type. The built-in types have these values:
 
-| Type          | Values                                  |
-| ------------- | --------------------------------------- |
-| `Bool`        | `true`, `false`                         |
-| `Int`         | 32-bit signed integers                  |
-| `Float`       | IEEE 754 binary64, including ±∞ and NaN |
-| `String`      | sequences of Unicode scalar values      |
-| `Html`        | sequences of elements and text          |
-| `Array[T]`    | sequences of `T`                        |
-| `Option[T]`   | `None`, `Some(v)`                       |
-| `(T1, T2, …)` | `(v1, v2, …)`                           |
+```
+Bool          true, false
+Int           32-bit signed integers
+Float         IEEE 754 binary64, including ±∞ and NaN
+String        sequences of Unicode scalar values
+Html          sequences of elements and text
+Array[T]      sequences of T
+Option[T]     None, Some(v)
+(T1, T2, …)   (v1, v2, …)
+```
 
 <a id="expressions"></a>
 
@@ -457,17 +457,18 @@ error.
 MethodCallExpr ::= Expr "." LowercaseIdentifier "(" ( Expr ( "," Expr )* ","? )? ")"
 ```
 
-| Receiver    | Method         | Result   | Semantics                                                             |
-| ----------- | -------------- | -------- | --------------------------------------------------------------------- |
-| `Array[T]`  | `len()`        | `Int`    | number of elements                                                    |
-| `Array[T]`  | `is_empty()`   | `Bool`   | `true` if the array has no elements                                   |
-| `String`    | `is_empty()`   | `Bool`   | `true` if the string is `""`                                          |
-| `Int`       | `to_string()`  | `String` | decimal representation, such as `-42`                                 |
-| `Int`       | `to_float()`   | `Float`  | the same value as a float (exact, since `Int` is 32-bit)              |
-| `Float`     | `to_int()`     | `Int`    | truncates toward zero, saturates at the `Int` bounds, NaN becomes `0` |
-| `Option[T]` | `is_some()`    | `Bool`   | `true` if the option is `Some(_)`                                     |
-| `Option[T]` | `is_none()`    | `Bool`   | `true` if the option is `None`                                        |
-| `Option[T]` | `unwrap_or(d)` | `T`      | `x` if the option is `Some(x)`, otherwise `d`                         |
+```
+Receiver    Method         Result   Semantics
+Array[T]    len()          Int      number of elements
+Array[T]    is_empty()     Bool     true if the array has no elements
+String      is_empty()     Bool     true if the string is ""
+Int         to_string()    String   decimal representation, such as -42
+Int         to_float()     Float    the same value as a float (exact, since Int is 32-bit)
+Float       to_int()       Int      truncates toward zero, saturates at the Int bounds, NaN becomes 0
+Option[T]   is_some()      Bool     true if the option is Some(_)
+Option[T]   is_none()      Bool     true if the option is None
+Option[T]   unwrap_or(d)   T        x if the option is Some(x), otherwise d
+```
 
 <a id="operator-expressions"></a>
 
@@ -486,16 +487,17 @@ BinaryOp     ::= "==" | "!=" | "<" | ">" | "<=" | ">=" | "+" | "-" | "*" | "&&" 
 
 Operators group by precedence, listed here from highest to lowest:
 
-| Precedence | Operators             | Kind    | Associativity |
-| ---------- | --------------------- | ------- | ------------- |
-| 1          | `.field`, `.method()` | postfix | –             |
-| 2          | `!`, `-`              | prefix  | –             |
-| 3          | `*`                   | binary  | left          |
-| 4          | `+`, `-`              | binary  | left          |
-| 5          | `<`, `>`, `<=`, `>=`  | binary  | left          |
-| 6          | `==`, `!=`            | binary  | left          |
-| 7          | `&&`                  | binary  | left          |
-| 8          | `\|\|`                | binary  | left          |
+```
+Precedence   Operators           Kind      Associativity
+1            .field, .method()   postfix   –
+2            !, -                prefix    –
+3            *                   binary    left
+4            +, -                binary    left
+5            <, >, <=, >=        binary    left
+6            ==, !=              binary    left
+7            &&                  binary    left
+8            ||                  binary    left
+```
 
 A binary operator whose operands have different types is a compile error, so
 `1 + 1.0` is a compile error unless one side is converted with `to_float()` or
@@ -506,29 +508,31 @@ and any other is a compile error. In particular, comparing an option with `None`
 is a compile error. Whether an option is `None` is tested with `is_none()` or a
 `match`.
 
-| Operator             | Operands | Result   | Semantics                         |
-| -------------------- | -------- | -------- | --------------------------------- |
-| `==`, `!=`           | `String` | `Bool`   | equality                          |
-|                      | `Bool`   | `Bool`   | equality                          |
-|                      | `Int`    | `Bool`   | equality                          |
-|                      | `Float`  | `Bool`   | IEEE 754 equality                 |
-| `<`, `>`, `<=`, `>=` | `Int`    | `Bool`   | numeric ordering                  |
-|                      | `Float`  | `Bool`   | IEEE 754 ordering                 |
-| `+`                  | `Int`    | `Int`    | addition, wraps on overflow       |
-|                      | `Float`  | `Float`  | addition                          |
-|                      | `String` | `String` | concatenation                     |
-| `-`                  | `Int`    | `Int`    | subtraction, wraps on overflow    |
-|                      | `Float`  | `Float`  | subtraction                       |
-| `*`                  | `Int`    | `Int`    | multiplication, wraps on overflow |
-|                      | `Float`  | `Float`  | multiplication                    |
-| `&&`                 | `Bool`   | `Bool`   | logical and, short-circuiting     |
-| `\|\|`               | `Bool`   | `Bool`   | logical or, short-circuiting      |
+```
+Binary
+Operator       Operands   Result   Semantics
+==, !=         String     Bool     equality
+               Bool       Bool     equality
+               Int        Bool     equality
+               Float      Bool     IEEE 754 equality
+<, >, <=, >=   Int        Bool     numeric ordering
+               Float      Bool     IEEE 754 ordering
++              Int        Int      addition, wraps on overflow
+               Float      Float    addition
+               String     String   concatenation
+-              Int        Int      subtraction, wraps on overflow
+               Float      Float    subtraction
+*              Int        Int      multiplication, wraps on overflow
+               Float      Float    multiplication
+&&             Bool       Bool     logical and, short-circuiting
+||             Bool       Bool     logical or, short-circuiting
 
-| Operator | Operand | Result  | Semantics                   |
-| -------- | ------- | ------- | --------------------------- |
-| `!`      | `Bool`  | `Bool`  | logical not                 |
-| `-`      | `Int`   | `Int`   | negation, wraps on overflow |
-|          | `Float` | `Float` | negation                    |
+Unary
+Operator       Operand    Result   Semantics
+!              Bool       Bool     logical not
+-              Int        Int      negation, wraps on overflow
+               Float      Float    negation
+```
 
 <a id="block-expressions"></a>
 
@@ -1147,12 +1151,12 @@ A `String` value inserted into markup, as a
 the character reference next to it, and every other character is kept as
 written.
 
-| Character | Replaced by |
-| --------- | ----------- |
-| `&`       | `&amp;`     |
-| `<`       | `&lt;`      |
-| `>`       | `&gt;`      |
-| `"`       | `&quot;`    |
+```
+&   &amp;
+<   &lt;
+>   &gt;
+"   &quot;
+```
 
 ```hop
 let s = "<b> & \"c\"";
@@ -1233,11 +1237,11 @@ FunctionDecl ::= "pub"? "fn" ( LowercaseIdentifier | UppercaseIdentifier ) "(" (
 Param        ::= LowercaseIdentifier ":" Type ( "=" Expr )? | "..." LowercaseIdentifier
 ```
 
-| Parameter  | Semantics                              |
-| ---------- | -------------------------------------- |
-| `x: T`     | a parameter of type `T`                |
-| `x: T = v` | a parameter with the default value `v` |
-| `...x`     | a [rest parameter](#rest-parameters)   |
+```
+x: T       a parameter of type T
+x: T = v   a parameter with the default value v
+...x       a rest parameter
+```
 
 A default value that is not constant is a compile error. A constant is a
 literal, a numeric literal preceded by `-`, `<></>`, or an array, tuple, record,
@@ -1424,11 +1428,12 @@ attribute. Their value is a string literal, written as `name="text"` or
 written on the element or passed through a [rest parameter](#rest-parameters).
 The names match in any mix of upper and lower case.
 
-| Element          | Attributes                                    |
-| ---------------- | --------------------------------------------- |
-| `animate`, `set` | `attributeName`, `by`, `from`, `to`, `values` |
-| `iframe`         | `srcdoc`                                      |
-| `script`         | `src`                                         |
+```
+Element        Attributes
+animate, set   attributeName, by, from, to, values
+iframe         srcdoc
+script         src
+```
 
 ```hop
 let url = "/app.js";
