@@ -21,12 +21,12 @@ The grammars use W3C-style EBNF:
 
 ## Lexical structure
 
-A module is a UTF-8 text file. Outside [markup text](#markup-nodes) and string
+A module is a UTF-8 text file. Outside [markup text](#markup-content) and string
 literals, whitespace is ignored except as it separates tokens.
 
 A comment starts with `//` and runs to the end of the line. It can appear
 wherever whitespace can, except directly in a tag or in
-[markup content](#markup-nodes). In markup content, a comment is written
+[markup content](#markup-content). In markup content, a comment is written
 `<!-- … -->`. A comment is removed from the source as if it were not written.
 
 ```ebnf
@@ -846,7 +846,7 @@ those attributes and that content. An element without content can be written
 with a single self-closing tag, `<x/>`, which is shorthand for `<x></x>`.
 
 ```ebnf
-ElementExpr ::= "<" ElementName Attribute* ">" MarkupNode* "</" ElementName ">"
+ElementExpr ::= "<" ElementName Attribute* ">" MarkupContent "</" ElementName ">"
               | "<" ElementName Attribute* "/>"
 ElementName ::= [a-z] [A-Za-z0-9-]*
 ```
@@ -880,10 +880,10 @@ A fragment expression `<>…</>` evaluates to its content, without an element
 around it, and `<></>` evaluates to the empty sequence.
 
 ```ebnf
-FragmentExpr ::= "<>" MarkupNode* "</>"
+FragmentExpr ::= "<>" MarkupContent "</>"
 ```
 
-A fragment lets several nodes be used where one expression is expected:
+A fragment lets markup content be used where one expression is expected:
 
 ```hop
 <><i>hello</i> <b>world</b></> // <i>hello</i> <b>world</b>
@@ -904,7 +904,7 @@ can be written with a single self-closing tag, `<F …/>`, which is shorthand fo
 `<F …></F>`.
 
 ```ebnf
-MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupNode* "</" UppercaseIdentifier ">"
+MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupContent "</" UppercaseIdentifier ">"
                  | "<" UppercaseIdentifier Attribute* "/>"
 ```
 
@@ -929,20 +929,18 @@ fn Badge(
 <Badge label="new"></Badge>                   // error: Function Badge requires arguments: children
 ```
 
-<a id="markup-nodes"></a>
+<a id="markup-content"></a>
 
-#### Markup nodes
+#### Markup content
 
-The content of a markup expression is a sequence of markup nodes, between
-which [comments](#lexical-structure) can appear. A node is text, a
-[markup interpolation](#markup-interpolations) or a nested
-[markup expression](#markup-expressions).
+The content of a markup expression is a sequence of text,
+[markup interpolations](#markup-interpolations) and nested
+[markup expressions](#markup-expressions), between which
+[comments](#lexical-structure) can appear.
 
 ```ebnf
-MarkupNode ::= MarkupText
-             | MarkupInterpolation
-             | MarkupExpr
-MarkupText ::= [^<{}]+
+MarkupContent ::= ( MarkupText | MarkupInterpolation | MarkupExpr )*
+MarkupText    ::= [^<{}]+
 ```
 
 Text evaluates to its characters as written, after its
