@@ -987,11 +987,10 @@ name alone, as in `disabled`, a name with a value, as in `id={e}`, or a spread
 `id="main"` is shorthand for `id={"main"}`.
 
 ```ebnf
-Attribute     ::= AttributeName
-                | AttributeName "=" BlockExpr
-                | AttributeName "=" StringLiteral
-                | "..." LowercaseIdentifier
-AttributeName ::= [A-Za-z] [A-Za-z0-9_:.-]*
+Attribute      ::= AttributeName ( "=" AttributeValue )?
+                 | "..." LowercaseIdentifier
+AttributeName  ::= [A-Za-z] [A-Za-z0-9_:.-]*
+AttributeValue ::= BlockExpr | StringLiteral
 ```
 
 On an [element](#element-expressions), an attribute renders in the start tag. Its
