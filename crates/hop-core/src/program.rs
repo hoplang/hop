@@ -891,6 +891,7 @@ mod tests {
 
                 fn Main() -> Html {
                   <HelloWorld>
+                    World
                   </HelloWorld>
                      ^
                 }

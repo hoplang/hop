@@ -119,11 +119,17 @@ pub fn typecheck_node(
                 });
             }
 
+            // Empty content is no content, so `<F></F>` is the same as `<F/>`.
+            let content = if children.as_ref().is_some_and(|c| !c.is_empty()) {
+                Some(typed_children)
+            } else {
+                None
+            };
             let (resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
                 attributes,
                 &callee_params,
                 &callee_tail,
-                children.is_some().then_some(typed_children),
+                content,
                 function_name,
                 function_name_opening_range,
                 forwarded_params,

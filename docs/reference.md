@@ -17,9 +17,6 @@ The grammars use W3C-style EBNF:
 | `[a-z]`, `[^"]` | a character in, or not in, a set |
 | `/* … */`       | a comment                        |
 
-A comment in an example that shows markup, such as `// items: <li>Alice</li>`,
-shows the [rendering](#rendering) of an `Html` value.
-
 <a id="lexical-structure"></a>
 
 ## Lexical structure
@@ -826,13 +823,17 @@ for _ in 1..=3 { "*" }                           // error: Mismatched type for f
 
 ### Markup expressions
 
-An `Html` value is a sequence of elements and text. An element has a name,
-attributes in the order written, and content, which is itself a sequence of
-elements and text.
+A markup expression is an element, fragment or markup call expression, and has
+type `Html`. An `Html` value is a sequence of elements and text. An element has
+a name, attributes in the order written, and content, which is itself a
+sequence of elements and text. An attribute has a name and an optional `String`
+value.
 
 ```ebnf
-MarkupExpr ::= ElementExpr | MarkupCallExpr | FragmentExpr
+MarkupExpr ::= ElementExpr | FragmentExpr | MarkupCallExpr
 ```
+
+An end tag that does not have the same name as its start tag is a compile error.
 
 <a id="element-expressions"></a>
 
@@ -842,7 +843,7 @@ An element expression `<x …>…</x>` evaluates to the element with that name,
 those attributes and that content. An element without content can be written
 with a single self-closing tag, `<x/>`, which is shorthand for `<x></x>`. A void
 element such as `<br>` never has content and is written as a single tag, `<br>`
-or `<br/>`.
+or `<br/>`, so `<br></br>` is a compile error.
 
 ```ebnf
 ElementExpr     ::= "<" ElementName Attribute* ">" MarkupNode* "</" ElementName ">"
@@ -874,33 +875,53 @@ in the project stylesheet. Further elements, and `<script>` with content, are
 compile errors for [XSS safety](#xss-safety).
 
 ```hop
-let b = true;
-match b { true => <b>ok</b>, false => <i>not ok</i> } // <b>ok</b>
+<p class="note">Hello</p> // <p class="note">Hello</p>
+<div/>                    // <div></div>
+<br>                      // <br>
+<br/>                     // <br>
+```
+
+<a id="fragment-expressions"></a>
+
+#### Fragment expressions
+
+A fragment expression `<>…</>` evaluates to its content, without an element
+around it, and `<></>` evaluates to the empty sequence.
+
+```ebnf
+FragmentExpr ::= "<>" MarkupNode* "</>"
+```
+
+A fragment lets several nodes be used where one expression is expected:
+
+```hop
+<><i>hello</i> <b>world</b></> // <i>hello</i> <b>world</b>
 ```
 
 <a id="markup-call-expressions"></a>
 
 #### Markup call expressions
 
-A markup call expression `<F …>…</F>` evaluates to the value that the
-[function](#function-declarations) `F` returns for its arguments. It is a
-compile error if `F` does not return `Html`. Each [attribute](#attributes) is
-the argument for the parameter it names, and the content between the tags is
-the argument for the parameter `children: Html`.
+A markup call expression `<F …></F>` evaluates to the value that the
+[function](#function-declarations) `F` returns for its arguments. Each
+[attribute](#attributes) is the argument for the parameter it names.
+
+Content between the tags is shorthand for a `children` attribute: `<F …>…</F>`
+is the same as `<F … children={<>…</>}></F>`. A markup call without content
+passes no `children` argument. Like an element, a markup call without content
+can be written with a single self-closing tag, `<F …/>`, which is shorthand for
+`<F …></F>`.
 
 ```ebnf
 MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupNode* "</" UppercaseIdentifier ">"
                  | "<" UppercaseIdentifier Attribute* "/>"
 ```
 
-Leaving out a parameter that has no default value is a compile error. So is an
-argument that does not have the type of its parameter, and an attribute that
-names no parameter, unless a [rest parameter](#rest-parameters) accepts it.
-
-Content between the tags requires a `children: Html` parameter, and is a compile
-error without one. Giving content both between the tags and as a `children`
-attribute is a compile error too. Like any parameter, `children` can have a
-default value, which makes the content optional.
+A markup call is a compile error if `F` does not return `Html`, if it leaves out
+a parameter that has no default value, if an argument does not have the type of
+its parameter, or if an attribute names no parameter and no
+[rest parameter](#rest-parameters) accepts it. Giving both content and a
+`children` attribute is a compile error too.
 
 ```hop
 fn Badge(
@@ -913,25 +934,9 @@ fn Badge(
   </span>
 }
 
-<Badge label="new"><b>!</b></Badge> // <span>new<b>!</b></span>
-```
-
-<a id="fragment-expressions"></a>
-
-#### Fragment expressions
-
-A fragment `<>…</>` groups nodes without an element around them, so that
-several nodes can be used where one expression is expected.
-
-```ebnf
-FragmentExpr ::= "<>" MarkupNode* "</>"
-```
-
-A fragment expression evaluates to its content, and `<></>` to the empty
-sequence.
-
-```hop
-<><i>hello</i> <b>world</b></> // <i>hello</i> <b>world</b>
+<Badge label="new"><b>!</b></Badge>           // <span>new<b>!</b></span>
+<Badge label="new" children={<><b>!</b></>}/> // <span>new<b>!</b></span>
+<Badge label="new"></Badge>                   // error: Function Badge requires arguments: children
 ```
 
 <a id="markup-nodes"></a>
@@ -939,7 +944,7 @@ sequence.
 #### Markup nodes
 
 The content of a markup expression is a sequence of markup nodes. A node is
-text, a [markup interpolation](#markup-interpolation), a comment, or a nested
+text, a [markup interpolation](#markup-interpolations), a comment, or a nested
 [markup expression](#markup-expressions).
 
 ```ebnf
@@ -954,12 +959,13 @@ MarkupComment ::= "<!--" CommentText "-->"   /* CommentText is any text without 
 Text evaluates to its characters as written, after its
 [whitespace](#whitespace-normalization) is normalized at compile time. It is not
 [escaped](#escaping), so `&amp;` passes through unchanged. Text cannot contain
-`<`, `{` or `}`, which are written `&lt;`, `&lbrace;` and `&rbrace;`. A comment
+`<`, `{` or `}`. To display them, write the character references `&lt;`,
+`&lbrace;` and `&rbrace;`, which pass through like any other text. A comment
 evaluates to nothing.
 
-<a id="markup-interpolation"></a>
+<a id="markup-interpolations"></a>
 
-#### Markup interpolation
+#### Markup interpolations
 
 A markup interpolation `{e}` is a [block expression](#block-expressions) whose
 value is inserted into the content of a markup expression.
@@ -1011,9 +1017,6 @@ value must have type `String` and is [escaped](#escaping):
 <abbr title="R&amp;D"></abbr>    // <abbr title="R&amp;amp;D"></abbr>
 ```
 
-On a [markup call](#markup-call-expressions), an attribute is the argument for
-the parameter it names, and a name alone is the argument `true`.
-
 An element defined by HTML, such as `div`, accepts the global attributes of
 HTML, the attributes HTML defines for that element, and any attribute whose name
 starts with `data-` or `aria-`. Any other attribute, such as `href` on a `div`,
@@ -1023,6 +1026,9 @@ any attribute, except as follows.
 For [XSS safety](#xss-safety), no element accepts an attribute whose name
 starts with `on`, such as `onclick`. Some attributes, such as the `src` of a
 `<script>`, accept only a string literal, written as `src="…"` or `src={"…"}`.
+
+On a [markup call](#markup-call-expressions), a name alone is the argument
+`true`.
 
 An attribute written more than once in a start tag, as in
 `<div id="a" id="b">`, is a compile error.
@@ -1065,7 +1071,8 @@ is spread:
 - When spread on an element `<x … ...rest>`, the function accepts the
   [attributes `x` accepts](#attributes), except those written on `x`.
 - When spread on a markup call `<F … ...rest>`, the function accepts the
-  parameters and extra attributes of `F`, except those written on `F`.
+  parameters and extra attributes of `F`, except those written on `F`, where
+  content between the tags counts as `children`.
 
 Passing an attribute through a rest parameter is a compile error if the
 attribute is written in the start tag where the rest parameter is spread:
@@ -1137,7 +1144,7 @@ let padded = "  Alice  ";
 #### Escaping
 
 A `String` value inserted into markup, as a
-[markup interpolation](#markup-interpolation) or as an
+[markup interpolation](#markup-interpolations) or as an
 [attribute value](#attributes), is escaped: each character below is replaced by
 the character reference next to it, and every other character is kept as
 written.
@@ -1375,7 +1382,7 @@ value of `v` [escaped](#escaping).
 The rendering of a page consists of markup written in the modules of the
 project and of `String` values, such as the arguments of the page. Markup text
 is not [escaped](#escaping) and renders as written. A `String` value is escaped
-wherever it is inserted, as a [markup interpolation](#markup-interpolation) or as an
+wherever it is inserted, as a [markup interpolation](#markup-interpolations) or as an
 [attribute value](#attributes), so it renders as text or as the value of a
 single attribute, and cannot start or end an element or an attribute.
 
@@ -1442,12 +1449,7 @@ or `formaction` can hold a `javascript:` URL, and a `style` can hold any CSS:
 
 ```hop
 let url = "javascript:alert(1)";
-let link = (
-  <a href={url}>
-    Home
-  </a>
-);
-// link: <a href="javascript:alert(1)">Home</a>
+<a href={url}>Home</a> // <a href="javascript:alert(1)">Home</a>
 ```
 
 A host that passes such a value to a page is responsible for checking it.

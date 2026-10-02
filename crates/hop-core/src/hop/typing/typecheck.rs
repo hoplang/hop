@@ -1956,7 +1956,7 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                    <Card></Card>
+                    <Card>hello</Card>
                 }
             "#},
             expect![[r#"
@@ -1966,7 +1966,7 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  Card(children: concat())
+                  Card(children: concat(raw("hello")))
                 }
             "#]],
         );
@@ -1996,8 +1996,8 @@ mod tests {
     }
 
     #[test]
-    fn accepts_empty_body_supplies_empty_children() {
-        accept(
+    fn rejects_empty_content_for_required_children() {
+        reject(
             indoc! {r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
@@ -2009,14 +2009,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                -- main.hop --
-                fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
-                }
-
-                fn Main() -> Html {
-                  Card(children: concat())
-                }
+                error: Function Card requires arguments: children
+                  --> main.hop (line 6, col 6)
+                5 | fn Main() -> Html {
+                6 |     <Card></Card>
+                  |      ^^^^
             "#]],
         );
     }
@@ -2857,6 +2854,40 @@ mod tests {
                 5 | fn Bar() -> Html {
                 6 |     <Main>
                   |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_empty_content_for_function_that_does_not_accept_children() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                    <strong>No children parameter here</strong>
+                }
+
+                fn Bar() -> Html {
+                    <>
+                        <Main></Main>
+                        <Main>
+                        </Main>
+                    </>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Bar() -> Html {
+                  concat(Main(), Main())
+                }
+
+                fn Main() -> Html {
+                  html(
+                    tag: "strong",
+                    attrs: [],
+                    children: concat(raw("No children parameter here")),
+                  )
+                }
             "#]],
         );
     }
@@ -9096,6 +9127,46 @@ mod tests {
     }
 
     #[test]
+    fn accepts_children_content_when_inner_body_has_empty_content() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Foo(children: Html, class: String, ...rest) -> Html {
+                    <div class={class} ...rest>{children}</div>
+                }
+                fn Card(...rest) -> Html {
+                    <Foo ...rest></Foo>
+                }
+                page Main() {
+                  fn body() -> Html {
+                      <Card class="a">hi</Card>
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                page Main() {
+                  fn body() -> Html {
+                    Card(children: concat(raw("hi")), class: "a", rest: [])
+                  }
+                }
+
+                fn Card(children: Html, class: String, ...rest) -> Html {
+                  Foo(children: children, class: class, rest: [...rest])
+                }
+
+                fn Foo(children: Html, class: String, ...rest) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [class: escape(class), ...rest],
+                    children: concat(children),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_children_content_when_callee_children_consumed_by_inner_body() {
         reject(
             indoc! {r#"
@@ -9951,12 +10022,6 @@ mod tests {
                 1 | import other::Foo
                 2 | import other::Foo
                   |               ^^^
-
-                error: Function Foo does not accept content (missing 'children: Html' parameter)
-                  --> main.hop (line 5, col 3)
-                4 | fn Main() -> Html {
-                5 |     <Foo></Foo>
-                  |      ^^^
             "#]],
         );
     }

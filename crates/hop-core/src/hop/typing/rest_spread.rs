@@ -99,7 +99,7 @@ fn collect_spreads_in_node(node: &ParsedNode, out: &mut Vec<SpreadOccurrence>) {
                         target: RestSpreadTarget::Function {
                             callee: function_name.clone(),
                             supplied_attrs: named_attrs(attributes),
-                            has_children: children.is_some(),
+                            has_children: children.as_ref().is_some_and(|c| !c.is_empty()),
                             spread_range: range.clone(),
                         },
                     });
