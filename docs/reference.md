@@ -943,11 +943,11 @@ MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupContent "</" Upp
                  | "<" UppercaseIdentifier Attribute* "/>"
 ```
 
-Content between the tags is shorthand for a `children` attribute: `<F …>…</F>`
-is the same as `<F … children={<>…</>}></F>`. A markup call without content
-passes no `children` argument. Like an element, a markup call without content
-can be written with a single self-closing tag, `<F …/>`, which is shorthand for
-`<F …></F>`.
+Like an element, a markup call without content can be written with a single
+self-closing tag, `<F/>`, which is shorthand for `<F></F>`. Content between the
+tags is shorthand for a `children` attribute: `<F>…</F>` is the same as `<F
+children={<>…</>}/>`. A markup call without content passes no `children`
+argument.
 
 The function `F` accepts an attribute for each of its parameters and, if it has
 a [rest parameter](#rest-parameters), the attributes the rest parameter accepts.
