@@ -25,11 +25,13 @@ A module is a UTF-8 text file. Outside [markup text](#markup-nodes) and string
 literals, whitespace is ignored except as it separates tokens.
 
 A comment starts with `//` and runs to the end of the line. It can appear
-wherever whitespace can, except inside markup, where a
-[markup comment](#markup-nodes) is written `<!-- … -->`.
+wherever whitespace can, except directly in a tag or in
+[markup content](#markup-nodes). In markup content, a comment is written
+`<!-- … -->`. A comment is removed from the source as if it were not written.
 
 ```ebnf
-Comment ::= "//" [^\n]*
+Comment       ::= "//" [^\n]*
+MarkupComment ::= "<!--" CommentText "-->"   /* CommentText is any text without "-->" */
 ```
 
 <a id="identifiers"></a>
@@ -943,25 +945,23 @@ fn Badge(
 
 #### Markup nodes
 
-The content of a markup expression is a sequence of markup nodes. A node is
-text, a [markup interpolation](#markup-interpolations), a comment, or a nested
+The content of a markup expression is a sequence of markup nodes, between
+which [comments](#lexical-structure) can appear. A node is text, a
+[markup interpolation](#markup-interpolations) or a nested
 [markup expression](#markup-expressions).
 
 ```ebnf
-MarkupNode    ::= MarkupText
-                | MarkupInterpolation
-                | MarkupComment
-                | MarkupExpr
-MarkupText    ::= [^<{}]+
-MarkupComment ::= "<!--" CommentText "-->"   /* CommentText is any text without "-->" */
+MarkupNode ::= MarkupText
+             | MarkupInterpolation
+             | MarkupExpr
+MarkupText ::= [^<{}]+
 ```
 
 Text evaluates to its characters as written, after its
 [whitespace](#whitespace-normalization) is normalized at compile time. It is not
 [escaped](#escaping), so `&amp;` passes through unchanged. Text cannot contain
 `<`, `{` or `}`. To display them, write the character references `&lt;`,
-`&lbrace;` and `&rbrace;`, which pass through like any other text. A comment
-evaluates to nothing.
+`&lbrace;` and `&rbrace;`, which pass through like any other text.
 
 <a id="markup-interpolations"></a>
 
@@ -1122,6 +1122,7 @@ In the table, ⏎ marks a line break and `name` is `"Alice"`.
 | `<p>   padded   </p>`                     | `<p>padded</p>`                   |
 | `<p>⏎  one⏎  two⏎</p>`                    | `<p>one two</p>`                  |
 | `<p>one⏎⏎  two</p>`                       | `<p>one two</p>`                  |
+| `<p>one⏎  <!-- two -->⏎  three</p>`       | `<p>one three</p>`                |
 | `<p>a    b</p>`                           | `<p>a    b</p>`                   |
 | `<p>Hello <b>world</b> again</p>`         | `<p>Hello <b>world</b> again</p>` |
 | `<p>⏎  Hello⏎  <b>world</b>⏎  again⏎</p>` | `<p>Hello<b>world</b>again</p>`   |

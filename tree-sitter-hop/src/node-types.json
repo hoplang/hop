@@ -138,10 +138,6 @@
         "named": true
       },
       {
-        "type": "markup_comment",
-        "named": true
-      },
-      {
         "type": "void_element",
         "named": true
       }
@@ -157,6 +153,10 @@
       },
       {
         "type": "interpolation",
+        "named": true
+      },
+      {
+        "type": "markup_comment",
         "named": true
       },
       {

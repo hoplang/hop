@@ -14,7 +14,6 @@ use crate::document::CheapString;
 use crate::hop::parsing::parsed_expr::{
     ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource,
 };
-use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::{TypedExpr, TypedLoopSource};
 use crate::hover_annotation::HoverAnnotation;
@@ -41,9 +40,6 @@ pub fn typecheck_expr(
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
     match parsed_expr {
-        ParsedExpr::Markup { node } if matches!(**node, ParsedNode::Comment { .. }) => {
-            Some(TypedExpr::HtmlConcat { nodes: Vec::new() })
-        }
         ParsedExpr::Markup { node } => typecheck_node(
             node,
             forwarded_params,

@@ -2019,6 +2019,31 @@ mod tests {
     }
 
     #[test]
+    fn rejects_comment_only_content_for_required_children() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(children: Html) -> Html {
+                    <div>{children}</div>
+                }
+
+                fn Main() -> Html {
+                    <Card>
+                        <!-- nothing yet -->
+                    </Card>
+                }
+            "#},
+            expect![[r#"
+                error: Function Card requires arguments: children
+                  --> main.hop (line 6, col 6)
+                5 | fn Main() -> Html {
+                6 |     <Card>
+                  |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_explicit_children_argument() {
         accept(
             indoc! {r#"
@@ -11327,66 +11352,6 @@ mod tests {
                 2 |   fn head() -> Html {
                 3 |     "hello"
                   |     ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_a_comment_as_a_function_body() {
-        accept(
-            indoc! {"
-                -- main.hop --
-                fn f() -> Html {
-                  <!-- nothing yet -->
-                }
-
-                pub page Test() {
-                  fn body() -> Html {
-                    <>{f()}</>
-                  }
-                }
-            "},
-            expect![[r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    concat(f())
-                  }
-                }
-
-                fn f() -> Html {
-                  concat()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_a_comment_as_a_call_argument() {
-        accept(
-            indoc! {"
-                -- main.hop --
-                fn wrap(slot: Html) -> Html {
-                  <div>{slot}</div>
-                }
-
-                pub page Test() {
-                  fn body() -> Html {
-                    <>{wrap(<!-- nothing yet -->)}</>
-                  }
-                }
-            "},
-            expect![[r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    concat(wrap(slot: concat()))
-                  }
-                }
-
-                fn wrap(slot: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(slot))
-                }
             "#]],
         );
     }

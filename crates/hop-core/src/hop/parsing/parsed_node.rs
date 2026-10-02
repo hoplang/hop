@@ -67,13 +67,6 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// An HTML comment.
-    ///
-    /// ```text
-    /// <!-- This is a comment -->
-    /// ```
-    Comment { range: DocumentRange },
-
     /// A fragment.
     ///
     /// ```text
@@ -230,7 +223,6 @@ impl ParsedNode {
             | ParsedNode::Newline { range }
             | ParsedNode::Interpolation { range, .. }
             | ParsedNode::FunctionInvocation { range, .. }
-            | ParsedNode::Comment { range }
             | ParsedNode::Fragment { range, .. }
             | ParsedNode::HtmlElement { range, .. } => range,
         }
@@ -243,8 +235,7 @@ impl ParsedNode {
             ParsedNode::HtmlElement { children, .. } | ParsedNode::Fragment { children, .. } => {
                 children.iter().collect()
             }
-            ParsedNode::Comment { .. }
-            | ParsedNode::Text { .. }
+            ParsedNode::Text { .. }
             | ParsedNode::Newline { .. }
             | ParsedNode::Interpolation { .. } => Vec::new(),
         }
@@ -263,10 +254,9 @@ impl ParsedNode {
                     | ParsedAttribute::Spread { .. } => None,
                 })
                 .collect(),
-            ParsedNode::Text { .. }
-            | ParsedNode::Newline { .. }
-            | ParsedNode::Comment { .. }
-            | ParsedNode::Fragment { .. } => Vec::new(),
+            ParsedNode::Text { .. } | ParsedNode::Newline { .. } | ParsedNode::Fragment { .. } => {
+                Vec::new()
+            }
         }
     }
 
@@ -322,10 +312,6 @@ impl ParsedNode {
                 call_doc("text", vec![BoxDoc::text(format!("{:?}", range.as_str()))])
             }
             ParsedNode::Newline { .. } => call_doc("newline", vec![]),
-            ParsedNode::Comment { range } => call_doc(
-                "comment",
-                vec![BoxDoc::text(format!("{:?}", range.as_str()))],
-            ),
             ParsedNode::Interpolation { expression, .. } => {
                 call_doc("interpolate", vec![expression.to_doc()])
             }

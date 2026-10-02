@@ -627,20 +627,12 @@ fn pattern(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<(
 fn markup(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()> {
     enum P {
         Void,
-        Comment,
         Element,
         Raw,
         Invocation,
         Fragment,
     }
-    let kinds = [
-        P::Void,
-        P::Comment,
-        P::Element,
-        P::Raw,
-        P::Invocation,
-        P::Fragment,
-    ];
+    let kinds = [P::Void, P::Element, P::Raw, P::Invocation, P::Fragment];
     let p = u.choose(&kinds)?;
     match p {
         P::Void => {
@@ -649,7 +641,6 @@ fn markup(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()
             attributes(u, depth, out)?;
             out.push_str(u.choose(&[">", "/>", " />"])?);
         }
-        P::Comment => out.push_str(u.choose(MARKUP_COMMENTS)?),
         P::Element | P::Invocation => {
             let tag = if matches!(p, P::Element) {
                 u.choose(ELEMENT_TAGS)?
@@ -733,6 +724,7 @@ fn children(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<
     enum P {
         Text,
         Newline,
+        Comment,
         Markup,
         Interpolation,
     }
@@ -740,9 +732,10 @@ fn children(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<
         return Ok(());
     }
     for _ in 0..u.int_in_range(0..=3)? {
-        match u.choose(&[P::Text, P::Newline, P::Markup, P::Interpolation])? {
+        match u.choose(&[P::Text, P::Newline, P::Comment, P::Markup, P::Interpolation])? {
             P::Text => out.push_str(u.choose(MARKUP_TEXT)?),
             P::Newline => out.push('\n'),
+            P::Comment => out.push_str(u.choose(MARKUP_COMMENTS)?),
             P::Markup => markup(u, depth - 1, out)?,
             P::Interpolation => {
                 out.push('{');

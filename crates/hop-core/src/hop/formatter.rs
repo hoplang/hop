@@ -13,6 +13,14 @@ use crate::html::HtmlElementKind;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;
 
+/// The comments not yet printed, in source order: `//` comments, and the
+/// `<!-- -->` comments of markup content, which are kept apart so that each
+/// is only printed where it can be written.
+struct Comments<'a> {
+    line: VecDeque<&'a DocumentRange>,
+    markup: VecDeque<&'a DocumentRange>,
+}
+
 pub fn format(ast: &ParsedAst) -> String {
     let arena = Arena::new();
     format_ast(ast, &arena).pretty(60).to_string()
@@ -35,13 +43,13 @@ fn soft_block<'a>(
 
 fn drain_comments_before<'a>(
     arena: &'a Arena<'a>,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
     position: usize,
 ) -> DocBuilder<'a, Arena<'a>> {
     let mut doc = arena.nil();
-    while let Some(comment) = comments.front() {
+    while let Some(comment) = comments.line.front() {
         if comment.start() < position {
-            let comment = comments.pop_front().unwrap();
+            let comment = comments.line.pop_front().unwrap();
             doc = doc
                 .append(arena.text(comment.as_str()))
                 .append(arena.hardline());
@@ -56,13 +64,16 @@ fn format_braced_list<'a, T, F>(
     arena: &'a Arena<'a>,
     items: &'a [T],
     mut format_item: F,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
     end_position: usize,
 ) -> DocBuilder<'a, Arena<'a>>
 where
-    F: FnMut(&'a Arena<'a>, &'a T, &mut VecDeque<&'a DocumentRange>) -> DocBuilder<'a, Arena<'a>>,
+    F: FnMut(&'a Arena<'a>, &'a T, &mut Comments<'a>) -> DocBuilder<'a, Arena<'a>>,
 {
-    let has_trailing_comments = comments.front().is_some_and(|c| c.start() < end_position);
+    let has_trailing_comments = comments
+        .line
+        .front()
+        .is_some_and(|c| c.start() < end_position);
     if items.is_empty() && !has_trailing_comments {
         return arena.nil();
     }
@@ -94,7 +105,11 @@ where
 
 fn format_ast<'a>(ast: &'a ParsedAst, arena: &'a Arena<'a>) -> DocBuilder<'a, Arena<'a>> {
     let declarations = ast.declarations();
-    let mut comments: VecDeque<_> = ast.comments().iter().collect();
+    let (markup, line) = ast
+        .comments()
+        .iter()
+        .partition(|comment| comment.as_str().starts_with("<!--"));
+    let mut comments = Comments { line, markup };
     let mut doc = arena.nil();
     let mut prev_was_import = false;
     for (i, decl) in declarations.iter().enumerate() {
@@ -111,7 +126,7 @@ fn format_ast<'a>(ast: &'a ParsedAst, arena: &'a Arena<'a>) -> DocBuilder<'a, Ar
     if !declarations.is_empty() {
         doc = doc.append(arena.line());
     }
-    if !comments.is_empty() {
+    if !comments.line.is_empty() {
         if !declarations.is_empty() {
             doc = doc.append(arena.line());
         }
@@ -123,7 +138,7 @@ fn format_ast<'a>(ast: &'a ParsedAst, arena: &'a Arena<'a>) -> DocBuilder<'a, Ar
 fn format_declaration<'a>(
     arena: &'a Arena<'a>,
     decl: &'a ParsedDeclaration,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match decl {
         ParsedDeclaration::Import(import) => format_import_declaration(arena, import, comments),
@@ -139,7 +154,7 @@ fn format_declaration<'a>(
 fn format_import_declaration<'a>(
     arena: &'a Arena<'a>,
     import: &'a ParsedImportDeclaration,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, import.import_range.start());
     leading_comments
@@ -153,7 +168,7 @@ fn format_import_declaration<'a>(
 fn format_record_declaration<'a>(
     arena: &'a Arena<'a>,
     record: &'a ParsedRecordDeclaration,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, record.name_range.start());
     let pub_prefix = if record.pub_range.is_some() {
@@ -181,7 +196,7 @@ fn format_record_declaration<'a>(
 fn format_record_declaration_field<'a>(
     arena: &'a Arena<'a>,
     field: &'a ParsedFieldDeclaration,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, field.name_range.start());
     let base = if let Some(examples) = &field.examples {
@@ -199,7 +214,7 @@ fn format_record_declaration_field<'a>(
 fn format_enum_declaration<'a>(
     arena: &'a Arena<'a>,
     e: &'a ParsedEnumDeclaration,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, e.name_range.start());
     let pub_prefix = if e.pub_range.is_some() {
@@ -227,7 +242,7 @@ fn format_enum_declaration<'a>(
 fn format_enum_declaration_variant<'a>(
     arena: &'a Arena<'a>,
     variant: &'a ParsedEnumDeclarationVariant,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, variant.name_range.start());
     if variant.fields.is_empty() {
@@ -265,7 +280,7 @@ fn format_enum_declaration_variant<'a>(
 fn format_page_declaration<'a>(
     arena: &'a Arena<'a>,
     page: &'a ParsedPageDeclaration,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, page.range.start());
 
@@ -322,6 +337,7 @@ fn format_page_declaration<'a>(
     }
 
     let has_trailing_comments = comments
+        .line
         .front()
         .is_some_and(|c| c.start() < page.range.end());
     let body_doc = if has_trailing_comments {
@@ -353,7 +369,7 @@ fn format_page_declaration<'a>(
 fn format_function_declaration<'a>(
     arena: &'a Arena<'a>,
     function: &'a ParsedFunctionDeclaration,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, function.name_range.start());
 
@@ -409,6 +425,7 @@ fn format_function_declaration<'a>(
     let body_content =
         body_leading_comments.append(format_block_body(arena, &function.body, comments));
     let has_trailing_comments = comments
+        .line
         .front()
         .is_some_and(|c| c.start() < function.range.end());
     let body_doc = if has_trailing_comments {
@@ -448,7 +465,7 @@ fn format_function_declaration<'a>(
 fn format_parameter<'a>(
     arena: &'a Arena<'a>,
     param: &'a ParsedParameter,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, param.var_name_range.start());
     let prefix = if let Some(examples) = &param.examples {
@@ -474,7 +491,7 @@ fn format_parameter<'a>(
 fn format_attribute<'a>(
     arena: &'a Arena<'a>,
     item: &'a ParsedAttribute,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match item {
         ParsedAttribute::KeyOnly { name } => arena.text(name.as_str()),
@@ -508,7 +525,7 @@ fn format_attribute<'a>(
 fn format_node<'a>(
     arena: &'a Arena<'a>,
     node: &'a ParsedNode,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match node {
         ParsedNode::Text { range } => arena.text(range.as_str()),
@@ -522,6 +539,7 @@ fn format_node<'a>(
             function_name,
             attributes,
             children,
+            range,
             ..
         } => {
             let function_name_str = function_name.as_str();
@@ -554,22 +572,30 @@ fn format_node<'a>(
                 None => opening_tag_doc.append(arena.text("/>")),
                 Some(children) => opening_tag_doc
                     .append(arena.text(">"))
-                    .append(format_children(arena, children, comments))
+                    .append(format_children(arena, children, range.end(), comments))
                     .append(arena.text("</"))
                     .append(arena.text(function_name_str))
                     .append(arena.text(">")),
             }
         }
-        ParsedNode::Fragment { children, .. } if children.is_empty() => arena.text("<></>"),
-        ParsedNode::Fragment { children, .. } => arena
+        ParsedNode::Fragment { children, range }
+            if children.is_empty()
+                && !comments
+                    .markup
+                    .front()
+                    .is_some_and(|c| c.start() < range.end()) =>
+        {
+            arena.text("<></>")
+        }
+        ParsedNode::Fragment { children, range } => arena
             .text("<>")
-            .append(format_children(arena, children, comments))
+            .append(format_children(arena, children, range.end(), comments))
             .append(arena.text("</>")),
-        ParsedNode::Comment { range } => arena.text(range.as_str()),
         ParsedNode::HtmlElement {
             kind: element,
             attributes,
             children,
+            range,
             ..
         } => {
             let element_str = element.as_str();
@@ -605,7 +631,12 @@ fn format_node<'a>(
 
             if element.is_void() {
                 opening_tag_doc
-            } else if children.is_empty() {
+            } else if children.is_empty()
+                && !comments
+                    .markup
+                    .front()
+                    .is_some_and(|c| c.start() < range.end())
+            {
                 // Empty element - put opening and closing tags on separate lines,
                 // except for script/style where whitespace would become content
                 let sep =
@@ -633,7 +664,7 @@ fn format_node<'a>(
                     .append(arena.text(">"))
             } else {
                 opening_tag_doc
-                    .append(format_children(arena, children, comments))
+                    .append(format_children(arena, children, range.end(), comments))
                     .append(arena.text("</"))
                     .append(arena.text(element_str))
                     .append(arena.text(">"))
@@ -642,12 +673,15 @@ fn format_node<'a>(
     }
 }
 
+/// Format the children of an element that ends at `end`, along with the
+/// comments written among them.
 fn format_children<'a>(
     arena: &'a Arena<'a>,
     children: &'a [ParsedNode],
-    comments: &mut VecDeque<&'a DocumentRange>,
+    end: usize,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    if children.is_empty() {
+    if children.is_empty() && !comments.markup.front().is_some_and(|c| c.start() < end) {
         return arena.hardline();
     }
 
@@ -666,10 +700,6 @@ fn format_children<'a>(
                 prev_was_newline = false;
             }
         }
-    }
-
-    if items.is_empty() {
-        return arena.nil();
     }
 
     let mut doc = arena.nil();
@@ -691,6 +721,18 @@ fn format_children<'a>(
 
         if need_break {
             doc = doc.append(arena.line_());
+        }
+
+        // A comment goes back where it was written, on a line of its own
+        // where the content may break there.
+        while let Some(comment) = comments
+            .markup
+            .pop_front_if(|c| c.start() < child.range().start())
+        {
+            doc = doc.append(arena.text(comment.as_str()));
+            if need_break || i == 0 {
+                doc = doc.append(arena.line_());
+            }
         }
 
         if let ParsedNode::Text { range } = child {
@@ -735,6 +777,15 @@ fn format_children<'a>(
         }
     }
 
+    let mut separate = !items.is_empty();
+    while let Some(comment) = comments.markup.pop_front_if(|c| c.start() < end) {
+        if separate {
+            doc = doc.append(arena.line_());
+        }
+        doc = doc.append(arena.text(comment.as_str()));
+        separate = true;
+    }
+
     arena.line_().append(doc).nest(2).append(arena.line_())
 }
 
@@ -747,7 +798,7 @@ fn escaped_whitespace<'a>(arena: &'a Arena<'a>, whitespace: &str) -> DocBuilder<
 fn format_let_binding<'a>(
     arena: &'a Arena<'a>,
     binding: &'a ParsedLetBinding,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, binding.var_name_range.start());
     let mut doc = leading_comments.append(arena.text(binding.var_name.as_str()));
@@ -763,7 +814,7 @@ fn format_let_binding<'a>(
 fn format_loop_source<'a>(
     arena: &'a Arena<'a>,
     source: &'a ParsedLoopSource,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match source {
         ParsedLoopSource::Array(expr) => format_expr_before_brace(arena, expr, comments),
@@ -782,7 +833,7 @@ fn format_loop_source<'a>(
 fn format_expr_before_brace<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     if contains_exterior_record_literal(expr) {
         arena
@@ -864,7 +915,7 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
 fn format_braced_expr<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     if let ParsedExpr::Let { .. } = expr {
         format_expr(arena, expr, comments)
@@ -881,7 +932,7 @@ fn format_braced_expr<'a>(
 fn format_block_body<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let mut doc = arena.nil();
     let mut expr = expr;
@@ -901,7 +952,7 @@ fn format_block_body<'a>(
 fn format_expr<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match expr {
         ParsedExpr::VariableReference { value, .. } => arena.text(value.as_str()),
@@ -1118,7 +1169,10 @@ fn format_expr<'a>(
         }
         ParsedExpr::Match { subject, arms, .. } => {
             let end_position = expr.range().end();
-            let has_trailing_comments = comments.front().is_some_and(|c| c.start() < end_position);
+            let has_trailing_comments = comments
+                .line
+                .front()
+                .is_some_and(|c| c.start() < end_position);
 
             if arms.is_empty() && !has_trailing_comments {
                 arena
@@ -1212,7 +1266,10 @@ fn format_expr<'a>(
             }
 
             let end_position = expr.range().end();
-            let has_trailing_comments = comments.front().is_some_and(|c| c.start() < end_position);
+            let has_trailing_comments = comments
+                .line
+                .front()
+                .is_some_and(|c| c.start() < end_position);
             let trailing_comments = drain_comments_before(arena, comments, end_position);
 
             if expanded_docs.is_empty() && !has_trailing_comments {
@@ -1307,7 +1364,7 @@ fn format_expr_in_slot<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
     slot_binding_power: u8,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     if expr.binding_power() < slot_binding_power {
         arena
@@ -1322,7 +1379,7 @@ fn format_expr_in_slot<'a>(
 fn format_match_arm<'a>(
     arena: &'a Arena<'a>,
     arm: &'a ParsedMatchArm,
-    comments: &mut VecDeque<&'a DocumentRange>,
+    comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, arm.pattern.range().start());
     let body = format_expr(arena, &arm.body, comments);
@@ -5193,19 +5250,141 @@ mod tests {
     }
 
     #[test]
-    fn html_comment_only() {
+    fn html_comment_between_text_stays_on_its_line() {
         check(
             indoc! {"
                 page Test() {
                   fn body() -> Html {
-                    <!-- just a comment -->
+                    <p>one<!-- c -->two <!-- d --> three</p>
                   }
                 }
             "},
             expect![[r#"
                 page Test {
                   fn body() -> Html {
-                    <!-- just a comment -->
+                    <p>
+                      one<!-- c -->two <!-- d --> three
+                    </p>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_comment_on_its_own_line_between_text() {
+        check(
+            indoc! {"
+                page Test() {
+                  fn body() -> Html {
+                    <p>
+                      one
+                      <!-- c -->
+                      three
+                    </p>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Test {
+                  fn body() -> Html {
+                    <p>
+                      one
+                      <!-- c -->
+                      three
+                    </p>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_comment_after_last_child() {
+        check(
+            indoc! {"
+                page Test() {
+                  fn body() -> Html {
+                    <div><span>x</span><!-- c --></div>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Test {
+                  fn body() -> Html {
+                    <div>
+                      <span>
+                        x
+                      </span>
+                      <!-- c -->
+                    </div>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_comment_in_empty_element() {
+        check(
+            indoc! {"
+                page Test() {
+                  fn body() -> Html {
+                    <div><!-- c --></div>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Test {
+                  fn body() -> Html {
+                    <div>
+                      <!-- c -->
+                    </div>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_comment_in_empty_fragment() {
+        check(
+            indoc! {"
+                page Test() {
+                  fn body() -> Html {
+                    <><!-- c --></>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Test {
+                  fn body() -> Html {
+                    <>
+                      <!-- c -->
+                    </>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_comment_in_function_invocation_content() {
+        check(
+            indoc! {"
+                page Test() {
+                  fn body() -> Html {
+                    <Card><!-- c --><!-- d --></Card>
+                  }
+                }
+            "},
+            expect![[r#"
+                page Test {
+                  fn body() -> Html {
+                    <Card>
+                      <!-- c -->
+                      <!-- d -->
+                    </Card>
                   }
                 }
             "#]],

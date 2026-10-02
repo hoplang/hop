@@ -2353,10 +2353,6 @@
         {
           "type": "SYMBOL",
           "name": "fragment"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "markup_comment"
         }
       ]
     },
@@ -2599,6 +2595,10 @@
         {
           "type": "SYMBOL",
           "name": "_markup"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "markup_comment"
         }
       ]
     },

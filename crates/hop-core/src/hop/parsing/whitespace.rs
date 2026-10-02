@@ -11,6 +11,8 @@ use crate::html::HtmlElementKind;
 /// - Trim the end of a Text that ends its sequence or precedes a Newline
 /// - Drop Text nodes that are empty after trimming
 ///
+/// Texts in a row, which a comment split, are trimmed as one text.
+///
 /// ## 2. Newline-to-Space Conversion
 ///
 /// - Keep a Newline only between two Text nodes. A newline beside anything
@@ -49,10 +51,8 @@ pub fn normalize_node(node: &mut ParsedNode) {
                 normalize(children);
             }
         }
-        ParsedNode::Text { .. }
-        | ParsedNode::Newline { .. }
-        | ParsedNode::Interpolation { .. }
-        | ParsedNode::Comment { .. } => {}
+        ParsedNode::Text { .. } | ParsedNode::Newline { .. } | ParsedNode::Interpolation { .. } => {
+        }
     }
 }
 
@@ -61,19 +61,27 @@ fn is_newline(node: &ParsedNode) -> bool {
 }
 
 fn trim_text(nodes: &mut Vec<ParsedNode>) {
-    for i in 0..nodes.len() {
-        let trim_start = i == 0 || is_newline(&nodes[i - 1]);
-        let trim_end = i + 1 == nodes.len() || is_newline(&nodes[i + 1]);
-        let ParsedNode::Text { range } = &nodes[i] else {
-            continue;
-        };
-        let range = match (trim_start, trim_end) {
-            (true, true) => range.trim(),
-            (true, false) => range.trim_start(),
-            (false, true) => range.trim_end(),
-            (false, false) => continue,
-        };
-        nodes[i] = ParsedNode::Text { range };
+    let mut trim = true;
+    for node in nodes.iter_mut() {
+        match node {
+            ParsedNode::Text { range } if trim => {
+                *range = range.trim_start();
+                trim = range.as_str().is_empty();
+            }
+            ParsedNode::Newline { .. } => trim = true,
+            _ => trim = false,
+        }
+    }
+    let mut trim = true;
+    for node in nodes.iter_mut().rev() {
+        match node {
+            ParsedNode::Text { range } if trim => {
+                *range = range.trim_end();
+                trim = range.as_str().is_empty();
+            }
+            ParsedNode::Newline { .. } => trim = true,
+            _ => trim = false,
+        }
     }
     nodes.retain(|node| match node {
         ParsedNode::Text { range } => !range.as_str().is_empty(),
@@ -161,6 +169,26 @@ mod tests {
             },
         );
         evaluator::evaluate_page(&module, &page_name, HashMap::new()).expect("evaluator failed")
+    }
+
+    #[test]
+    fn treats_a_comment_as_not_written() {
+        check(
+            indoc! {"
+                page Test() {
+                  fn body() -> Html {
+                    <p>
+                      one
+                      <!-- two -->
+                      three <!-- four -->\x20
+                      five<!-- six -->seven
+                      <!-- eight --> nine
+                    </p>
+                  }
+                }
+            "},
+            "<p>one three fiveseven nine</p>",
+        );
     }
 
     #[test]

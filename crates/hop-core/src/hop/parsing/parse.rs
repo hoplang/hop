@@ -6328,16 +6328,42 @@ mod tests {
     }
 
     #[test]
-    fn accepts_a_markup_comment_in_expression_position() {
-        accept(
+    fn rejects_a_markup_comment_in_expression_position() {
+        reject(
             indoc! {"
                 fn card() -> Html {
                   <!-- a note -->
+                  <div>hello</div>
                 }
             "},
             expect![[r#"
+                -- errors --
+                error: A markup comment can only appear in markup content: use // instead
+                1 | fn card() -> Html {
+                2 |   <!-- a note -->
+                  |   ^^^^^^^^^^^^^^^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_markup_comment_as_a_call_argument() {
+        reject(
+            indoc! {"
                 fn card() -> Html {
-                  comment("<!-- a note -->")
+                  wrap(<!-- a note -->)
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: A markup comment can only appear in markup content: use // instead
+                1 | fn card() -> Html {
+                2 |   wrap(<!-- a note -->)
+                  |        ^^^^^^^^^^^^^^^
+                -- ast --
+                fn card() -> Html {
+                  wrap()
                 }
             "#]],
         );

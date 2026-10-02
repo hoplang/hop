@@ -214,7 +214,18 @@ fn parse_node(
         let finished = match token {
             MarkupToken::Text { range } => builder.append_node(ParsedNode::Text { range }),
             MarkupToken::Newline { range } => builder.append_node(ParsedNode::Newline { range }),
-            MarkupToken::Comment { range } => builder.append_node(ParsedNode::Comment { range }),
+            // A comment in content is collected like a `//` comment. A comment
+            // that opens the markup stands where an expression is expected.
+            MarkupToken::Comment { range } => {
+                if builder.open.is_empty() {
+                    builder.drop_item(
+                        errors.emit(ParseErrorKind::MarkupCommentOutsideMarkup {}, range),
+                    )
+                } else {
+                    comments.push(range);
+                    None
+                }
+            }
 
             MarkupToken::ExpressionStart { left_brace } => {
                 match parse_expr::parse_block(iter, comments, errors, &left_brace) {

@@ -283,8 +283,6 @@ pub fn typecheck_node(
         ParsedNode::Newline { .. } => Some(TypedExpr::HtmlRaw {
             value: CheapString::new(" ".to_string()),
         }),
-
-        ParsedNode::Comment { .. } => None,
     }
 }
 

@@ -116,6 +116,9 @@ pub(crate) enum ParseErrorKind {
     #[error("Unterminated comment")]
     UnterminatedComment,
 
+    #[error("A markup comment can only appear in markup content: use // instead")]
+    MarkupCommentOutsideMarkup,
+
     #[error("Expected quoted attribute value or expression")]
     ExpectedQuotedAttributeValue,
 

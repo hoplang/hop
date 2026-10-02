@@ -358,8 +358,7 @@ module.exports = grammar({
         optional(seq(":", field("pattern", $._pattern))),
       ),
 
-    _markup: ($) =>
-      choice($.element, $.void_element, $.fragment, $.markup_comment),
+    _markup: ($) => choice($.element, $.void_element, $.fragment),
 
     // Permissive: the closing tag's name is not required to match the opening
     // tag's. Correlating them would need an external scanner to carry a tag
@@ -404,7 +403,12 @@ module.exports = grammar({
       choice($.tag_name, alias($.type_identifier, $.component_name)),
 
     _markup_child: ($) =>
-      choice($.text, alias($.block, $.interpolation), $._markup),
+      choice(
+        $.text,
+        alias($.block, $.interpolation),
+        $._markup,
+        $.markup_comment,
+      ),
 
     _attribute: ($) => choice($.attribute, $.spread_attribute),
 
