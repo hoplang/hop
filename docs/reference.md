@@ -21,7 +21,7 @@ The grammars use W3C-style EBNF:
 
 ## Lexical structure
 
-A module is a UTF-8 text file. Outside [markup text](#markup-content) and string
+A module is a UTF-8 text file. Outside [markup text](#markup-text) and string
 literals, whitespace is ignored except as it separates tokens.
 
 A comment starts with `//` and runs to the end of the line. It can appear
@@ -934,21 +934,29 @@ fn Badge(
 
 #### Markup content
 
-The content of a markup expression is a sequence of text,
-[markup interpolations](#markup-interpolations) and nested
+The content of a markup expression is a sequence of [markup text](#markup-text),
+[markup interpolations](#markup-interpolations) and
 [markup expressions](#markup-expressions), between which
 [comments](#lexical-structure) can appear.
 
 ```ebnf
 MarkupContent ::= ( MarkupText | MarkupInterpolation | MarkupExpr )*
-MarkupText    ::= [^<{}]+
 ```
 
-Text evaluates to its characters as written, after its
-[whitespace](#whitespace-normalization) is normalized. It is not
-[escaped](#escaping), so `&amp;` passes through unchanged. Text cannot contain
-`<`, `{` or `}`. To display them, write the character references `&lt;`,
-`&lbrace;` and `&rbrace;`, which pass through like any other text.
+<a id="markup-text"></a>
+
+#### Markup text
+
+Markup text evaluates to its characters as written, after its
+[whitespace](#whitespace-normalization) is normalized.
+
+```ebnf
+MarkupText ::= [^<{}]+
+```
+
+Text is not [escaped](#escaping), so `&amp;` passes through unchanged. Text
+cannot contain `<`, `{` or `}`. To display them, write the character references
+`&lt;`, `&lbrace;` and `&rbrace;`, which pass through like any other text.
 
 <a id="markup-interpolations"></a>
 
@@ -1085,14 +1093,11 @@ fn B(...rest) -> Html {
 
 #### Whitespace normalization
 
-Whitespace in markup is normalized at compile time. Normalization applies to
-the content of each markup expression as it is written in the source:
-
-- Text is trimmed at the start and end of the content, and next to line breaks.
-  Whitespace inside a line, and between text and a markup expression or markup
-  interpolation on the same line, is kept as written.
-- A line break between two pieces of text becomes a single space, and blank
-  lines count as one line break. Any other line break is removed.
+Whitespace in the content of a markup expression is normalized as it is written
+in the source. A run of whitespace that contains a line break becomes a single
+space if there is text on both sides of it, and is removed otherwise.
+Whitespace at the start and end of the content is also removed. Any other
+whitespace is kept as written.
 
 ```
 -- before

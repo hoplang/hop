@@ -15,8 +15,9 @@ use crate::html::HtmlElementKind;
 ///
 /// ## 2. Newline-to-Space Conversion
 ///
-/// - Keep a Newline only between two Text nodes. A newline beside anything
-///   else, a tag or an interpolation, emits nothing.
+/// - Keep a Newline only between two Text nodes, and of a run of Newlines
+///   only the last. A newline beside anything else, a tag or an
+///   interpolation, emits nothing.
 ///
 /// A raw text element (`<script>`, `<style>`) may only hold whitespace, which
 /// carries no meaning and is dropped. Content it is not allowed to hold is
@@ -56,10 +57,6 @@ pub fn normalize_node(node: &mut ParsedNode) {
     }
 }
 
-fn is_newline(node: &ParsedNode) -> bool {
-    matches!(node, ParsedNode::Newline { .. })
-}
-
 fn trim_text(nodes: &mut Vec<ParsedNode>) {
     let mut trim = true;
     for node in nodes.iter_mut() {
@@ -90,24 +87,27 @@ fn trim_text(nodes: &mut Vec<ParsedNode>) {
 }
 
 fn drop_newlines(nodes: &mut Vec<ParsedNode>) {
-    let keep: Vec<bool> = (0..nodes.len())
-        .map(|i| {
-            if !is_newline(&nodes[i]) {
-                return true;
+    let mut kept = Vec::with_capacity(nodes.len());
+    // The last Newline since the previous node that is not a Newline.
+    let mut newline = None;
+    for node in nodes.drain(..) {
+        match node {
+            ParsedNode::Newline { .. } => newline = Some(node),
+            ParsedNode::Text { .. } => {
+                if let Some(newline) = newline.take()
+                    && matches!(kept.last(), Some(ParsedNode::Text { .. }))
+                {
+                    kept.push(newline);
+                }
+                kept.push(node);
             }
-            let preceded_by_text = nodes[..i]
-                .iter()
-                .rev()
-                .find(|node| !is_newline(node))
-                .is_some_and(|node| matches!(node, ParsedNode::Text { .. }));
-            let followed_by_text = nodes
-                .get(i + 1)
-                .is_some_and(|node| matches!(node, ParsedNode::Text { .. }));
-            preceded_by_text && followed_by_text
-        })
-        .collect();
-    let mut keep = keep.into_iter();
-    nodes.retain(|_| keep.next().unwrap());
+            _ => {
+                newline = None;
+                kept.push(node);
+            }
+        }
+    }
+    *nodes = kept;
 }
 
 #[cfg(test)]
