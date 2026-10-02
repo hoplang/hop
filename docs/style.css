@@ -1,7 +1,6 @@
 :root {
   color-scheme: light dark;
   --page-width: 60rem;
-  --border: color-mix(in srgb, currentColor 20%, transparent);
   --shade: color-mix(in srgb, currentColor 7%, transparent);
 }
 
@@ -18,7 +17,6 @@ body {
 h1:not(.title) {
   font-size: 1.5em;
   margin-top: 2.5em;
-  border-bottom: 1px solid var(--border);
 }
 
 h2 {

@@ -1,5 +1,7 @@
 # hop language reference
 
+<a id="notation"></a>
+
 ## Notation
 
 The grammars use W3C-style EBNF:
@@ -7,6 +9,7 @@ The grammars use W3C-style EBNF:
 ```
 A ::= …       the rule A
 "x", 'x'      the text x
+#xN           the character with hexadecimal code point N
 A B           A followed by B
 A | B         A or B
 A?            A or nothing
@@ -24,13 +27,17 @@ A+            A repeated one or more times
 A module is a UTF-8 text file. Outside [markup text](#markup-text) and string
 literals, whitespace is ignored except as it separates tokens.
 
+<a id="comments"></a>
+
+### Comments
+
 A comment starts with `//` and runs to the end of the line. It can appear
 wherever whitespace can, except directly in a tag or in
 [markup content](#markup-content). In markup content, a comment is written
 `<!-- … -->`. A comment is removed from the source as if it were not written.
 
 ```ebnf
-Comment       ::= "//" [^\n]*
+Comment       ::= "//" [^#x0A]*              /* #x0A is a line feed */
 MarkupComment ::= "<!--" CommentText "-->"   /* CommentText is any text without "-->" */
 ```
 
@@ -119,7 +126,7 @@ Expr ::= LiteralExpr
        | RecordExpr
        | EnumExpr
        | VariableReferenceExpr
-       | ParenExpr
+       | ParenthesizedExpr
        | CallExpr
        | MacroExpr
        | FieldAccessExpr
@@ -164,7 +171,18 @@ exception is `2147483648` as the immediate operand of `-`, which lets
 ```
 
 A float literal is rounded to a `Float` as in IEEE 754, so a literal that is too
-large is ∞.
+large evaluates to ∞.
+
+A string literal denotes its characters as written, except that each escape
+sequence below stands for the character next to it:
+
+```
+\n   line feed
+\t   tab
+\r   carriage return
+\\   backslash
+\"   double quote
+```
 
 <a id="array-expressions"></a>
 
@@ -179,11 +197,12 @@ ArrayExpr ::= "[" ( Expr ( "," Expr )* ","? )? "]"
 ```
 
 An empty array `[]` does not determine `T`. It takes its type from its
-context, such as the annotation in `let tags: Array[String] = [];`. An empty
-array with no such context is a compile error:
+context, such as a type annotation. An empty array with no such context is a
+compile error:
 
 ```hop
-let tags = []; // error: Cannot infer type of []
+let names: Array[String] = []; // []
+let tags = [];                 // error: Cannot infer type of []
 ```
 
 <a id="tuple-expressions"></a>
@@ -191,8 +210,8 @@ let tags = []; // error: Cannot infer type of []
 ### Tuple expressions
 
 A tuple expression `(a, b, …)` evaluates to the tuple of its elements in order.
-Its type is the tuple type of the types of its elements, so `(1, "a")` has the
-type `(Int, String)`.
+Its type is formed from the types of its elements, so `(1, "a")` has the type
+`(Int, String)`.
 
 ```ebnf
 TupleExpr ::= "(" Expr ( "," Expr )+ ","? ")"
@@ -214,11 +233,12 @@ let name = "Alice";
 
 When the context of a tuple expression expects a tuple type with as many
 elements, each element takes its context from the element type at its position,
-as in `let pair: (Option[String], Array[Int]) = (None, []);`. Without such a
-context, an element that cannot determine its own type is a compile error:
+as with a type annotation. Without such a context, an element that cannot
+determine its own type is a compile error:
 
 ```hop
-let counts = (1, []); // error: Cannot infer type of []
+let pair: (Option[String], Array[Int]) = (None, []); // (None, [])
+let counts = (1, []);                                // error: Cannot infer type of []
 ```
 
 A tuple has no fields, methods or operators. Its elements are read with a
@@ -230,18 +250,19 @@ A tuple has no fields, methods or operators. Its elements are read with a
 
 An option expression is `None` or `Some(e)`. `None` evaluates to the option
 with no value, and `Some(e)` to the option holding the value of `e`. Both have
-the type `Option[T]`, where `T` is the type of `e`.
+a type `Option[T]`. For `Some(e)`, `T` is the type of `e`.
 
 ```ebnf
 OptionExpr ::= "None" | "Some" "(" Expr ")"
 ```
 
 Like an empty array, `None` does not determine `T` and takes its type from
-its context, such as the annotation in `let nickname: Option[String] = None;`.
-A `None` with no such context is a compile error:
+its context, such as a type annotation. A `None` with no such context is a
+compile error:
 
 ```hop
-let nickname = None; // error: Cannot infer type of None
+let alias: Option[String] = None; // None
+let nickname = None;              // error: Cannot infer type of None
 ```
 
 <a id="record-expressions"></a>
@@ -249,7 +270,7 @@ let nickname = None; // error: Cannot infer type of None
 ### Record expressions
 
 A record expression `R {f: e, …}` evaluates to a record of type `R`. Each
-entry `f: e` gives the field `f` the value of `e`.
+field value `f: e` gives the field `f` the value of `e`.
 
 ```ebnf
 RecordExpr ::= UppercaseIdentifier "{" ( ( FieldValue | Spread ) ( "," ( FieldValue | Spread ) )* ","? )? "}"
@@ -290,15 +311,24 @@ EnumExpr ::= UppercaseIdentifier "::" UppercaseIdentifier ( "{" ( FieldValue ( "
 The fields are written as in [record expressions](#record-expressions), except
 that a spread is a compile error.
 
-For example, with `enum Status {Active, Away {since: String}}`, both
-`Status::Active` and `Status::Away {since: "Monday"}` are `Status` values.
+For example:
+
+```hop
+enum Status {
+  Active,
+  Away {since: String},
+}
+
+Status::Active                  // of type Status
+Status::Away {since: "Monday"}  // of type Status
+```
 
 <a id="variable-reference-expressions"></a>
 
 ### Variable reference expressions
 
 A variable reference expression `x` evaluates to the value that `x` is bound
-to, by a parameter, a let binding, a `for` or a pattern.
+to, by a parameter, a let binding, a `for` expression or a pattern.
 
 ```ebnf
 VariableReferenceExpr ::= LowercaseIdentifier
@@ -327,7 +357,7 @@ A parenthesized expression evaluates to the value of the expression inside the
 parentheses, and has its type.
 
 ```ebnf
-ParenExpr ::= "(" Expr ")"
+ParenthesizedExpr ::= "(" Expr ")"
 ```
 
 Parentheses group an expression to override the
@@ -432,6 +462,8 @@ record `r`, and has the type of that field.
 FieldAccessExpr ::= Expr "." LowercaseIdentifier
 ```
 
+Accessing a field that the record type does not declare is a compile error:
+
 ```hop
 record User {
   name: String,
@@ -448,14 +480,15 @@ u.email  // error: Field 'email' not found in record 'User'
 
 ### Method call expressions
 
-A method call expression `v.m(…)` calls one of the built-in methods below on
-the value `v` with the given arguments, and evaluates to the result in the
-table. Any other method name, or a different number of arguments, is a compile
-error.
+A method call expression `v.m(…)` calls the built-in method `m` on the value
+`v` with the given arguments, and evaluates to its result.
 
 ```ebnf
 MethodCallExpr ::= Expr "." LowercaseIdentifier "(" ( Expr ( "," Expr )* ","? )? ")"
 ```
+
+The built-in methods are listed below. Any other method name, or a different
+number of arguments, is a compile error.
 
 ```
 Receiver    Method         Result   Semantics
@@ -474,14 +507,14 @@ Option[T]   unwrap_or(d)   T        x if the option is Some(x), otherwise d
 
 ### Operator expressions
 
-An operator expression combines values with the prefix operators `!` and `-`, or
+An operator expression combines values with the unary operators `!` and `-`, or
 with a binary operator for comparison, arithmetic or logic.
 
 ```ebnf
-OperatorExpr ::= PrefixExpr | BinaryExpr
-PrefixExpr   ::= PrefixOp Expr
+OperatorExpr ::= UnaryExpr | BinaryExpr
+UnaryExpr    ::= UnaryOp Expr
 BinaryExpr   ::= Expr BinaryOp Expr
-PrefixOp     ::= "!" | "-"
+UnaryOp      ::= "!" | "-"
 BinaryOp     ::= "==" | "!=" | "<" | ">" | "<=" | ">=" | "+" | "-" | "*" | "&&" | "||"
 ```
 
@@ -490,7 +523,7 @@ Operators group by precedence, listed here from highest to lowest:
 ```
 Precedence   Operators           Kind      Associativity
 1            .field, .method()   postfix   –
-2            !, -                prefix    –
+2            !, -                unary     –
 3            *                   binary    left
 4            +, -                binary    left
 5            <, >, <=, >=        binary    left
@@ -509,12 +542,18 @@ is a compile error. Whether an option is `None` is tested with `is_none()` or a
 `match`.
 
 ```
+Unary
+Operator       Operand    Result   Semantics
+!              Bool       Bool     logical not
+-              Int        Int      negation, wraps on overflow
+               Float      Float    negation
+
 Binary
 Operator       Operands   Result   Semantics
-==, !=         String     Bool     equality
-               Bool       Bool     equality
+==, !=         Bool       Bool     equality
                Int        Bool     equality
                Float      Bool     IEEE 754 equality
+               String     Bool     equality
 <, >, <=, >=   Int        Bool     numeric ordering
                Float      Bool     IEEE 754 ordering
 +              Int        Int      addition, wraps on overflow
@@ -526,12 +565,6 @@ Operator       Operands   Result   Semantics
                Float      Float    multiplication
 &&             Bool       Bool     logical and, short-circuiting
 ||             Bool       Bool     logical or, short-circuiting
-
-Unary
-Operator       Operand    Result   Semantics
-!              Bool       Bool     logical not
--              Int        Int      negation, wraps on overflow
-               Float      Float    negation
 ```
 
 <a id="block-expressions"></a>
@@ -552,13 +585,13 @@ annotation, as in `let x: T = e;`, it is a compile error if `e` does not have
 type `T`.
 
 ```hop
-let val = {
+let summary = {
   let name = "Alice";
   let tags: Array[String] = [];
   format!("{} has {} tags", name, tags.len())
 };
 
-val // "Alice has 0 tags"
+summary // "Alice has 0 tags"
 ```
 
 <a id="match-expressions"></a>
@@ -581,16 +614,18 @@ Pattern         ::= WildcardPattern
                   | "(" Pattern ")"
 ```
 
-A subject that is a [record](#record-expressions) or
-[enum expression](#enum-expressions) with fields is a compile error unless it is
-wrapped in parentheses, since its `{` would be read as the start of the arms.
+A pattern in parentheses, `(p)`, matches what `p` matches and binds what `p`
+binds.
 
 The subject has type `Bool`, `Option[T]`, a tuple type, or a record or enum
 type, and a subject of any other type is a compile error. So is a pattern that
-does not have the type of the subject. A pattern in parentheses, `(p)`, matches
-what `p` matches and binds what `p` binds. The expressions of all arms have the
+does not have the type of the subject. The expressions of all arms have the
 same type, which is the type of the `match` expression, and arms of different
 types are a compile error.
+
+A subject that is a [record](#record-expressions) or
+[enum expression](#enum-expressions) with fields is a compile error unless it is
+wrapped in parentheses, since its `{` would be read as the start of the arms.
 
 <a id="wildcard-and-variable-patterns"></a>
 
@@ -713,7 +748,7 @@ match pair {
 
 A record pattern `R {f: p, …}` matches a record whose fields match their
 patterns, and binds what its field patterns bind. A field pattern `f` without
-`: p` is shorthand for `f: f`: it binds the field to a variable of the same
+`: p` is shorthand for `f: f`, which binds the field to a variable of the same
 name.
 
 ```ebnf
@@ -805,18 +840,20 @@ match b {
 ### For expressions
 
 A `for` expression evaluates its body, which has type `Html`, once for each
-element of an array, and evaluates to the results concatenated in order.
-
-A `for` can also loop over a range `a..=b`: the `Int` values from `a` to `b`
-inclusive. The range is empty if `a` is greater than `b`. A range anywhere
-else, such as an expression on its own, is a compile error.
+element of an array, with the variable bound to that element, and evaluates to
+the results concatenated in order.
 
 ```ebnf
 ForExpr ::= "for" ( LowercaseIdentifier | "_" ) "in" Expr ( "..=" Expr )? BlockExpr
 ```
 
+A `for` can also loop over a range `a..=b`: the `Int` values from `a` to `b`
+inclusive. The range is empty if `a` is greater than `b`. A range anywhere
+else, such as an expression on its own, is a compile error.
+
 `_` in place of the variable binds nothing. Looping over anything other than an
-array or a range of `Int` values is a compile error. So is a body whose type is not `Html`.
+array or a range of `Int` values is a compile error. So is a body whose type is
+not `Html`.
 
 ```hop
 for name in ["Alice", "Bob"] { <li>{name}</li> } // <li>Alice</li><li>Bob</li>
@@ -861,8 +898,8 @@ compile error.
 
 Using `<html>`, `<head>` or `<body>` is a compile error, since a
 [page](#page-declarations) provides them, and so is using `<style>`: styles go
-in the project stylesheet. Further elements, and `<script>` with content, are
-compile errors for [XSS safety](#xss-safety).
+in the project stylesheet. Using `<base>`, `<embed>` or `<object>`, or a
+`<script>` with content, is a compile error for [XSS safety](#xss-safety).
 
 A void element is one of `area`, `br`, `col`, `hr`, `img`, `input`, `link`,
 `meta`, `source`, `track` and `wbr`, and a void element with content is a
@@ -901,19 +938,19 @@ A markup call expression `<F …></F>` evaluates to the value that the
 [function](#function-declarations) `F` returns for its arguments. Each
 [attribute](#attributes) is the argument for the parameter it names.
 
+```ebnf
+MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupContent "</" UppercaseIdentifier ">"
+                 | "<" UppercaseIdentifier Attribute* "/>"
+```
+
 Content between the tags is shorthand for a `children` attribute: `<F …>…</F>`
 is the same as `<F … children={<>…</>}></F>`. A markup call without content
 passes no `children` argument. Like an element, a markup call without content
 can be written with a single self-closing tag, `<F …/>`, which is shorthand for
 `<F …></F>`.
 
-```ebnf
-MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupContent "</" UppercaseIdentifier ">"
-                 | "<" UppercaseIdentifier Attribute* "/>"
-```
-
-The function `F` accepts its parameters and, if it has a
-[rest parameter](#rest-parameters), the attributes the rest parameter accepts.
+The function `F` accepts an attribute for each of its parameters and, if it has
+a [rest parameter](#rest-parameters), the attributes the rest parameter accepts.
 A markup call is a compile error if `F` does not return `Html`, if it leaves out
 a parameter that has no default value, if an argument does not have the type of
 its parameter, or if it has an attribute that `F` does not accept.
@@ -941,7 +978,7 @@ fn Badge(
 The content of a markup expression is a sequence of [markup text](#markup-text),
 [markup interpolations](#markup-interpolations) and
 [markup expressions](#markup-expressions), between which
-[comments](#lexical-structure) can appear.
+[comments](#comments) can appear.
 
 ```ebnf
 MarkupContent ::= ( MarkupText | MarkupInterpolation | MarkupExpr )*
@@ -1003,8 +1040,8 @@ AttributeName  ::= [A-Za-z] [A-Za-z0-9_:.-]*
 AttributeValue ::= BlockExpr | StringLiteral
 ```
 
-On an [element](#element-expressions), an attribute renders in the start tag. Its
-value must have type `String` and is [escaped](#escaping):
+On an [element](#element-expressions), an attribute renders in the start tag.
+Its value must have type `String` and is [escaped](#escaping):
 
 ```hop
 <div id={1}></div>               // error: Mismatched type for attribute: expected String got Int
@@ -1038,8 +1075,9 @@ An attribute written more than once in a start tag, as in
 A rest parameter `...rest` is the last parameter, and collects the attributes a
 caller passes that are not parameters of the function. The body spreads it, as
 `...rest`, in the start tag of an element or markup call, where the collected
-attributes are placed as if written there. A rest parameter that is not the last parameter, or
-that the body does not spread exactly once, is a compile error. For example:
+attributes are placed as if written there. A rest parameter that is not the
+last parameter, or that the body does not spread exactly once, is a compile
+error. For example:
 
 ```hop
 fn Button(
@@ -1063,10 +1101,10 @@ Exactly once means once in the source text, not once per evaluation: a spread
 in each arm of a `match` is a compile error, while a single spread inside a
 `for` body is allowed, and adds the attributes on every iteration.
 
-A rest parameter spread in `<x … ...rest>` accepts the attributes that the
-[element](#attributes) or [function](#markup-call-expressions) `x` accepts,
-except those written on `x`. For example, `class` is written on the `<button>`
-where `Button` spreads `rest`, so `Button` does not accept it:
+A rest parameter accepts the attributes that the [element](#attributes) or
+[function](#markup-call-expressions) it is spread into accepts, except those
+written in the same start tag. For example, `class` is written on the
+`<button>` where `Button` spreads `rest`, so `Button` does not accept it:
 
 ```hop
 fn Button(
@@ -1148,8 +1186,8 @@ whitespace is kept as written.
 A `String` value inserted into markup, as a
 [markup interpolation](#markup-interpolations) or as an
 [attribute value](#attributes), is escaped: each character below is replaced by
-the character reference next to it, and every other character is kept as
-written.
+the character reference next to it, and every other character is kept
+unchanged.
 
 ```
 &   &amp;
@@ -1157,6 +1195,8 @@ written.
 >   &gt;
 "   &quot;
 ```
+
+For example:
 
 ```hop
 let s = "<b> & \"c\"";
@@ -1201,8 +1241,8 @@ error. A module does not re-export what it imports.
 
 A record declaration `record R {…}` declares the record type `R`, with the
 fields listed between the braces. Two fields with the same name are a compile
-error, and a field can refer to the type it belongs to, as in `children: Array[Item]` in a
-record `Item`.
+error. A field can refer to the type it belongs to, as in
+`children: Array[Item]` in a record `Item`.
 
 ```ebnf
 RecordDecl ::= "pub"? "record" UppercaseIdentifier "{" ( FieldDecl ( "," FieldDecl )* ","? )? "}"
@@ -1234,13 +1274,24 @@ function returning `Html` is
 
 ```ebnf
 FunctionDecl ::= "pub"? "fn" ( LowercaseIdentifier | UppercaseIdentifier ) "(" ( Param ( "," Param )* ","? )? ")" "->" Type BlockExpr
-Param        ::= LowercaseIdentifier ":" Type ( "=" Expr )? | "..." LowercaseIdentifier
+Param        ::= LowercaseIdentifier ":" Type ( "=" Expr )?
+               | "..." LowercaseIdentifier
 ```
+
+A parameter has one of these forms:
 
 ```
 x: T       a parameter of type T
 x: T = v   a parameter with the default value v
 ...x       a rest parameter
+```
+
+A function body that does not have the declared return type is a compile error:
+
+```hop
+fn answer() -> Int {
+  "x" // error: Mismatched type for function body: expected Int got String
+}
 ```
 
 A default value that is not constant is a compile error. A constant is a
@@ -1275,14 +1326,6 @@ fn Tree(item: Item) -> Html {
 ```
 
 An implementation does not check that recursion terminates.
-
-A function body that does not have the declared return type is a compile error:
-
-```hop
-fn answer() -> Int {
-  "x" // error: Mismatched type for function body: expected Int got String
-}
-```
 
 Only an uppercase function that returns `Html` can be called by a markup call,
 and calling an uppercase function that returns another type is a compile error:
@@ -1332,7 +1375,7 @@ field or a variant field, is a compile error, for
 
 <a id="rendering"></a>
 
-### Rendering
+## Rendering
 
 A page is rendered by the host, which supplies its arguments and receives the
 resulting document as UTF-8 text.
@@ -1350,7 +1393,7 @@ If every argument represents a value of the type of its parameter, rendering is
 deterministic: the same page renders to the same bytes for arguments that
 represent the same values, whatever the host and the implementation.
 
-The document is, with nothing between the parts:
+The document is the concatenation of these parts:
 
 1. `<!doctype html>`
 2. `<html><head>`
@@ -1361,20 +1404,25 @@ The document is, with nothing between the parts:
 7. the rendering of the value of `body`
 8. `</body></html>`
 
-A host can add further elements to the end of
-the `<head>`, such as a stylesheet or a script. What it adds is not part of the
-language.
+A host can add further elements to the end of the `<head>`, such as a stylesheet
+or a script. What it adds is not part of the language.
 
 An `Html` value renders as the renderings of its elements and text in order.
 Text renders as its characters. An element renders as its start tag, its
-content and its end tag, except that a [void element](#element-expressions) has no
-end tag and no content. The start tag is `<`, the name, the attributes and `>`.
-Each attribute is a space followed by its name and, if it has a value, `="`,
-the value and `"`. The end tag is `</`, the name and `>`.
+content and its end tag, except that a [void element](#element-expressions) has
+no end tag and no content. The start tag is `<`, the name, the attributes and
+`>`. Each attribute is a space followed by its name and, if it has a value,
+`="`, the value and `"`. The end tag is `</`, the name and `>`.
 
-So `<br/>` renders as `<br>`, `<div/>` renders as `<div></div>`, and
-`<input disabled value={v}/>` renders as `<input disabled value="…">`, with the
-value of `v` [escaped](#escaping).
+For example, with the value of `v` [escaped](#escaping):
+
+```hop
+let v = "R&D";
+
+<br/>                        // <br>
+<div/>                       // <div></div>
+<input disabled value={v}/>  // <input disabled value="R&amp;D">
+```
 
 <a id="xss-safety"></a>
 
@@ -1383,9 +1431,13 @@ value of `v` [escaped](#escaping).
 The rendering of a page consists of markup written in the modules of the
 project and of `String` values, such as the arguments of the page. Markup text
 is not [escaped](#escaping) and renders as written. A `String` value is escaped
-wherever it is inserted, as a [markup interpolation](#markup-interpolations) or as an
-[attribute value](#attributes), so it renders as text or as the value of a
-single attribute, and cannot start or end an element or an attribute.
+wherever it is inserted, as a [markup interpolation](#markup-interpolations) or
+as an [attribute value](#attributes), so it renders as text or as the value of
+a single attribute, and cannot start or end an element or an attribute.
+
+In the [rendering](#rendering) of a page, `<meta charset="utf-8">` comes before
+the value of `head`, so a page cannot place anything before the character set
+declaration.
 
 The rules below are compile errors that keep the arguments of a page out of
 places where escaping is not enough.
@@ -1409,24 +1461,25 @@ page Show(post: Post) {
 ```
 
 Using `<base>`, `<embed>` or `<object>` is a compile error, and so is a
-`<script>` that has content. A script is written as a reference to a file, as
-in `<script src="/app.js"></script>`:
+`<script>` that has content. A script is written as a reference to a file
+instead:
 
 ```hop
+<script src="/app.js"></script> // <script src="/app.js"></script>
 // error: Inline <script> content is not allowed: move the code to a file and reference it with <script src="...">
 <script>alert(1)</script>
 ```
 
-No element accepts an attribute whose name starts with `on`, in any mix of upper
-and lower case, such as the event handler `onclick`. This includes SVG and
-custom elements, which otherwise accept any attribute. So
+No element accepts an attribute whose name starts with `on`, ignoring case,
+such as the event handler `onclick`. This includes SVG and custom elements,
+which otherwise accept any attribute. So
 `<button onclick="go()">` and `<svg onload="init()">` are compile errors.
 
 The attributes below load a script or a document, or set the value of another
 attribute. Their value is a string literal, written as `name="text"` or
 `name={"text"}`, and any other expression is a compile error, whether it is
 written on the element or passed through a [rest parameter](#rest-parameters).
-The names match in any mix of upper and lower case.
+The names are matched ignoring case.
 
 ```
 Element        Attributes
@@ -1435,15 +1488,13 @@ iframe         srcdoc
 script         src
 ```
 
+Even a variable bound to a string literal is a compile error:
+
 ```hop
 let url = "/app.js";
 // error: <script> requires a string literal for attribute 'src'
 <script src={url}></script>
 ```
-
-In the [rendering](#rendering) of a page, `<meta charset="utf-8">` comes before
-the value of `head`, so a page cannot place anything before the character set
-declaration.
 
 Other attributes accept any `String`, escaped but otherwise unchecked. In
 particular, the scheme of a URL is not checked, so an `href`, `src`, `action`
