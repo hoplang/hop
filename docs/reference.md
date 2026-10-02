@@ -1094,29 +1094,42 @@ the content of each markup expression as it is written in the source:
 - A line break between two pieces of text becomes a single space, and blank
   lines count as one line break. Any other line break is removed.
 
-In the table, ⏎ marks a line break and `name` is `"Alice"`.
+```
+-- before
+<p>   one   two   </p>
+-- after
+<p>one   two</p>
+--
 
-| Markup                                    | Renders as                        |
-| ----------------------------------------- | --------------------------------- |
-| `<p>   padded   </p>`                     | `<p>padded</p>`                   |
-| `<p>⏎  one⏎  two⏎</p>`                    | `<p>one two</p>`                  |
-| `<p>one⏎⏎  two</p>`                       | `<p>one two</p>`                  |
-| `<p>one⏎  <!-- two -->⏎  three</p>`       | `<p>one three</p>`                |
-| `<p>a    b</p>`                           | `<p>a    b</p>`                   |
-| `<p>Hello <b>world</b> again</p>`         | `<p>Hello <b>world</b> again</p>` |
-| `<p>⏎  Hello⏎  <b>world</b>⏎  again⏎</p>` | `<p>Hello<b>world</b>again</p>`   |
-| `<p>Hi {name}!</p>`                       | `<p>Hi Alice!</p>`                |
-| `<p>⏎  Hi⏎  {name}⏎</p>`                  | `<p>HiAlice</p>`                  |
-| `<p>⏎  <b>x</b> <i>y</i>⏎</p>`            | `<p><b>x</b> <i>y</i></p>`        |
+-- before
+<p>
+  one
+  two
 
-Normalization does not apply to values. The value of a markup interpolation is
-inserted with its whitespace unchanged, so a markup interpolation `{" "}`
-inserts a space that a line break would otherwise remove:
+  three
+</p>
+-- after
+<p>one two three</p>
+--
 
-```hop
-let padded = "  Alice  ";
+-- before
+<p>
+  Hello <b>world</b>
+  again
+</p>
+-- after
+<p>Hello <b>world</b>again</p>
+--
 
-<p>{padded}</p> // <p>  Alice  </p>
+-- before
+<p>
+  Hello
+  {" "}
+  <b>world</b>
+</p>
+-- after
+<p>Hello{" "}<b>world</b></p>
+--
 ```
 
 <a id="escaping"></a>
