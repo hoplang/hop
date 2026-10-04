@@ -58,6 +58,7 @@ pub fn typecheck_match(
         typed_patterns.push(typecheck_pattern(
             &arm.pattern,
             subject_type.clone(),
+            type_env,
             registry,
             &mut bindings,
             errors,

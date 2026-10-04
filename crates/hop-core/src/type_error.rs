@@ -255,9 +255,6 @@ pub(crate) enum TypeErrorKind {
     #[error("'{name}' is a page and cannot be used as a type")]
     PageUsedAsType { name: TypeName },
 
-    #[error("Record type '{record_name}' is not defined")]
-    UndefinedRecord { record_name: TypeName },
-
     #[error("Record '{record_name}' is missing fields: {}", missing_fields.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "))]
     RecordMissingFields {
         record_name: TypeName,
@@ -285,9 +282,6 @@ pub(crate) enum TypeErrorKind {
 
     #[error("Mismatched type for spread: expected {expected} got {found}")]
     RecordSpreadTypeMismatch { expected: Type, found: Type },
-
-    #[error("Enum type '{enum_name}' is not defined")]
-    UndefinedEnum { enum_name: TypeName },
 
     #[error("Variant '{variant_name}' is not defined in enum '{enum_name}'")]
     UndefinedEnumVariant {
@@ -327,20 +321,6 @@ pub(crate) enum TypeErrorKind {
 
     #[error("Match is not implemented for type {found}")]
     MatchNotImplementedForType { found: Type },
-
-    #[error("Match pattern enum '{pattern_enum}' does not match subject enum '{subject_enum}'")]
-    MatchPatternEnumMismatch {
-        pattern_enum: TypeName,
-        subject_enum: TypeName,
-    },
-
-    #[error(
-        "Match pattern record '{pattern_record}' does not match subject record '{subject_record}'"
-    )]
-    MatchPatternRecordMismatch {
-        pattern_record: TypeName,
-        subject_record: TypeName,
-    },
 
     #[error("Mismatched type: expected {expected} got {found}")]
     MatchArmTypeMismatch { expected: Type, found: Type },

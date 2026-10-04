@@ -4815,11 +4815,117 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern enum 'Size' does not match subject enum 'Color'
+                error: Pattern does not match type Color
                   --> main.hop (line 14, col 9)
                 13 |         Color::Red => "red",
                 14 |         Size::Small => "small",
                    |         ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_enum_pattern_naming_a_different_enum_with_the_same_name() {
+        reject(
+            indoc! {r#"
+                -- foo.hop --
+                pub enum Color {Red, Green}
+                -- bar.hop --
+                pub enum Color {Red, Blue}
+                pub record Holder {color: Color}
+                -- main.hop --
+                import foo::Color
+                import bar::Holder
+                fn Main(holder: Holder, color: Color) -> Html {
+                  <>
+                    {match color {Color::Red => "red", Color::Green => "green"}}
+                    {match holder.color {Color::Red => "red", Color::Blue => "blue"}}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: Pattern does not match type Color
+                  --> main.hop (line 6, col 26)
+                5 |     {match color {Color::Red => "red", Color::Green => "green"}}
+                6 |     {match holder.color {Color::Red => "red", Color::Blue => "blue"}}
+                  |                          ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_enum_pattern_naming_an_enum_that_is_not_imported() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub enum Color {Red, Blue}
+                pub record Holder {color: Color}
+                -- main.hop --
+                import other::Holder
+                fn Main(holder: Holder) -> Html {
+                  <>{match holder.color {Color::Red => "red", Color::Blue => "blue"}}</>
+                }
+            "#},
+            expect![[r#"
+                error: Type 'Color' is not defined
+                  --> main.hop (line 3, col 26)
+                2 | fn Main(holder: Holder) -> Html {
+                3 |   <>{match holder.color {Color::Red => "red", Color::Blue => "blue"}}</>
+                  |                          ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_pattern_naming_a_different_record_with_the_same_name() {
+        reject(
+            indoc! {r#"
+                -- foo.hop --
+                pub record User {name: String}
+                -- bar.hop --
+                pub record User {name: String}
+                pub record Account {user: User}
+                -- main.hop --
+                import foo::User
+                import bar::Account
+                fn Main(account: Account, user: User) -> Html {
+                  <>
+                    {match user {User {name: n} => n}}
+                    {match account.user {User {name: n} => n}}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: Pattern does not match type User
+                  --> main.hop (line 6, col 26)
+                5 |     {match user {User {name: n} => n}}
+                6 |     {match account.user {User {name: n} => n}}
+                  |                          ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_pattern_naming_a_record_that_is_not_imported() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub record User {name: String}
+                pub record Account {user: User}
+                -- main.hop --
+                import other::Account
+                fn Main(account: Account) -> Html {
+                  match account.user {
+                    User {name: n} => <>{n}</>,
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Type 'User' is not defined
+                  --> main.hop (line 4, col 5)
+                3 |   match account.user {
+                4 |     User {name: n} => <>{n}</>,
+                  |     ^^^^
             "#]],
         );
     }

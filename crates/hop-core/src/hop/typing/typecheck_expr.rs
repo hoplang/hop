@@ -568,8 +568,8 @@ pub fn typecheck_expr(
             }) = type_env.names.get(record_name.as_str())
             else {
                 errors.push(TypeError::new(
-                    TypeErrorKind::UndefinedRecord {
-                        record_name: record_name.clone(),
+                    TypeErrorKind::UndefinedType {
+                        type_name: record_name.clone(),
                     },
                     range.clone(),
                 ));
@@ -596,8 +596,8 @@ pub fn typecheck_expr(
             }) = registry.resolve(&record_type)
             else {
                 errors.push(TypeError::new(
-                    TypeErrorKind::UndefinedRecord {
-                        record_name: record_name.clone(),
+                    TypeErrorKind::UndefinedType {
+                        type_name: record_name.clone(),
                     },
                     range.clone(),
                 ));
@@ -770,8 +770,8 @@ pub fn typecheck_expr(
             }) = type_env.names.get(enum_name.as_str())
             else {
                 errors.push(TypeError::new(
-                    TypeErrorKind::UndefinedEnum {
-                        enum_name: enum_name.clone(),
+                    TypeErrorKind::UndefinedType {
+                        type_name: enum_name.clone(),
                     },
                     range.clone(),
                 ));
@@ -794,8 +794,8 @@ pub fn typecheck_expr(
             // Verify it's actually an enum type and get the variant's fields
             let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(&enum_type) else {
                 errors.push(TypeError::new(
-                    TypeErrorKind::UndefinedEnum {
-                        enum_name: enum_name.clone(),
+                    TypeErrorKind::UndefinedType {
+                        type_name: enum_name.clone(),
                     },
                     range.clone(),
                 ));
@@ -2766,7 +2766,7 @@ mod tests {
             &[],
             r#"User {name: "John"}"#,
             expect![[r#"
-                error: Record type 'User' is not defined
+                error: Type 'User' is not defined
                 User {name: "John"}
                 ^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -3276,7 +3276,7 @@ mod tests {
             &[],
             "Missing::Red",
             expect![[r#"
-                error: Enum type 'Missing' is not defined
+                error: Type 'Missing' is not defined
                 Missing::Red
                 ^^^^^^^^^^^^
             "#]],
@@ -3925,7 +3925,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern enum 'Size' does not match subject enum 'Color'
+                error: Pattern does not match type Color
                     Size::Small => 1,
                     ^^^^^^^^^^^
             "#]],
@@ -4725,7 +4725,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern record 'Admin' does not match subject record 'User'
+                error: Pattern does not match type User
                     Admin{name: n} => n,
                     ^^^^^^^^^^^^^^
             "#]],

@@ -792,6 +792,7 @@ mod tests {
                 typecheck_pattern(
                     p,
                     subject_type.clone(),
+                    &types.type_env(),
                     types.registry(),
                     &mut Vec::new(),
                     &mut type_errors,
