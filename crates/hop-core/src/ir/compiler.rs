@@ -3,15 +3,17 @@ use std::sync::Arc;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
 use crate::hop::assembly::AssembledPageDeclaration;
-use crate::hop::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
+use crate::hop::typing::compile_match::{CaseVar, Decision};
 use crate::hop::typing::typed_ast::TypedFunctionDeclaration;
+use crate::hop::typing::typed_match_pattern::TypedMatchPattern;
 use crate::hop::typing::{TypedAttribute, TypedLoopSource, TypedRecordUpdateField};
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::PureForSource;
 use crate::ir::var_id::VarId;
@@ -19,7 +21,7 @@ use crate::ir::var_id::VarIdCounter;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::pure_module::{
     PureArgument, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
@@ -177,6 +179,201 @@ impl<'a> Compiler<'a> {
         panic!("undefined variable: {name}");
     }
 
+    /// Compile the decision tree of a match. Only the case variables in
+    /// `used` are bound, and `case_vars` maps every case variable bound so far
+    /// to the IR variable that holds it.
+    fn compile_decision(
+        &mut self,
+        decision: &Decision,
+        arms: &[(TypedMatchPattern, TypedExpr)],
+        typ: &Type,
+        used: &HashSet<CaseVar>,
+        case_vars: &mut HashMap<CaseVar, IrVar>,
+    ) -> PureExpr {
+        match decision {
+            Decision::Success(body) => {
+                // The arm's pattern variables name the case variables they
+                // read from, so the body refers to those directly.
+                self.push_scope();
+                for binding in &body.bindings {
+                    self.scopes
+                        .last_mut()
+                        .expect("scope stack should not be empty")
+                        .push((binding.name.clone(), case_vars[&binding.source].id));
+                }
+                let result = self.compile_expr(&arms[body.value].1);
+                self.pop_scope();
+                result
+            }
+            Decision::SwitchBool {
+                variable,
+                true_case,
+                false_case,
+            } => {
+                let id = self.next_expr_id();
+                let subject = Box::new(PureExpr::VariableReference {
+                    value: case_vars[&variable.id],
+                    typ: variable.typ.clone(),
+                    id: self.next_expr_id(),
+                });
+                let true_body = self.compile_decision(&true_case.body, arms, typ, used, case_vars);
+                let false_body =
+                    self.compile_decision(&false_case.body, arms, typ, used, case_vars);
+                PureExpr::Match {
+                    match_: Match::Bool {
+                        subject,
+                        true_body: Box::new(true_body),
+                        false_body: Box::new(false_body),
+                    },
+                    typ: typ.clone(),
+                    id,
+                }
+            }
+            Decision::SwitchOption {
+                variable,
+                some_case,
+                none_case,
+            } => {
+                let id = self.next_expr_id();
+                let subject = Box::new(PureExpr::VariableReference {
+                    value: case_vars[&variable.id],
+                    typ: variable.typ.clone(),
+                    id: self.next_expr_id(),
+                });
+                let binding = if used.contains(&some_case.var.id) {
+                    let var = IrVar::new(self.next_var_id());
+                    case_vars.insert(some_case.var.id, var);
+                    Some(var)
+                } else {
+                    None
+                };
+                let some_body = self.compile_decision(&some_case.body, arms, typ, used, case_vars);
+                let none_body = self.compile_decision(&none_case.body, arms, typ, used, case_vars);
+                PureExpr::Match {
+                    match_: Match::Option {
+                        subject,
+                        some_arm_binding: binding,
+                        some_arm_body: Box::new(some_body),
+                        none_arm_body: Box::new(none_body),
+                    },
+                    typ: typ.clone(),
+                    id,
+                }
+            }
+            Decision::SwitchEnum { variable, cases } => {
+                let id = self.next_expr_id();
+                let subject = Box::new(PureExpr::VariableReference {
+                    value: case_vars[&variable.id],
+                    typ: variable.typ.clone(),
+                    id: self.next_expr_id(),
+                });
+                let enum_arms = cases
+                    .iter()
+                    .map(|case| {
+                        let bindings = case
+                            .bindings
+                            .iter()
+                            .filter_map(|binding| {
+                                if !used.contains(&binding.var.id) {
+                                    return None;
+                                }
+                                let var = IrVar::new(self.next_var_id());
+                                case_vars.insert(binding.var.id, var);
+                                Some((binding.field_name.clone(), var))
+                            })
+                            .collect();
+                        EnumMatchArm {
+                            pattern: EnumPattern::Variant {
+                                enum_name: case.enum_name.clone(),
+                                variant_name: case.variant_name.clone(),
+                            },
+                            bindings,
+                            body: self.compile_decision(&case.body, arms, typ, used, case_vars),
+                        }
+                    })
+                    .collect();
+                PureExpr::Match {
+                    match_: Match::Enum {
+                        subject,
+                        arms: enum_arms,
+                    },
+                    typ: typ.clone(),
+                    id,
+                }
+            }
+            Decision::SwitchRecord { variable, case } => {
+                // Bind each field a pattern reads to its case variable, the
+                // first field outermost.
+                let mut lets = Vec::new();
+                for binding in &case.bindings {
+                    if !used.contains(&binding.var.id) {
+                        continue;
+                    }
+                    let id = self.next_expr_id();
+                    let value = PureExpr::FieldAccess {
+                        id: self.next_expr_id(),
+                        record: Box::new(PureExpr::VariableReference {
+                            value: case_vars[&variable.id],
+                            typ: variable.typ.clone(),
+                            id: self.next_expr_id(),
+                        }),
+                        field: binding.field_name.clone(),
+                        typ: binding.var.typ.clone(),
+                    };
+                    let var = IrVar::new(self.next_var_id());
+                    case_vars.insert(binding.var.id, var);
+                    lets.push((id, var, value));
+                }
+                let mut result = self.compile_decision(&case.body, arms, typ, used, case_vars);
+                for (id, var, value) in lets.into_iter().rev() {
+                    result = PureExpr::Let {
+                        var,
+                        value: Box::new(value),
+                        body: Box::new(result),
+                        typ: typ.clone(),
+                        id,
+                    };
+                }
+                result
+            }
+            Decision::SwitchTuple { variable, case } => {
+                // Bind each element a pattern reads to its case variable, the
+                // first element outermost.
+                let mut lets = Vec::new();
+                for (index, element) in case.elements.iter().enumerate() {
+                    if !used.contains(&element.id) {
+                        continue;
+                    }
+                    let id = self.next_expr_id();
+                    let value = PureExpr::TupleIndex {
+                        id: self.next_expr_id(),
+                        tuple: Box::new(PureExpr::VariableReference {
+                            value: case_vars[&variable.id],
+                            typ: variable.typ.clone(),
+                            id: self.next_expr_id(),
+                        }),
+                        index,
+                        typ: element.typ.clone(),
+                    };
+                    let var = IrVar::new(self.next_var_id());
+                    case_vars.insert(element.id, var);
+                    lets.push((id, var, value));
+                }
+                let mut result = self.compile_decision(&case.body, arms, typ, used, case_vars);
+                for (id, var, value) in lets.into_iter().rev() {
+                    result = PureExpr::Let {
+                        var,
+                        value: Box::new(value),
+                        body: Box::new(result),
+                        typ: typ.clone(),
+                        id,
+                    };
+                }
+                result
+            }
+        }
+    }
+
     fn compile_attribute(&mut self, attr: &TypedAttribute, output: &mut Vec<PureExpr>) {
         match &attr.value {
             None => output.push(PureExpr::HtmlRaw {
@@ -223,12 +420,6 @@ impl<'a> Compiler<'a> {
             } => PureExpr::FieldAccess {
                 record: Box::new(self.compile_expr(object)),
                 field: field.clone(),
-                typ: typ.clone(),
-                id: expr_id,
-            },
-            TypedExpr::TupleIndex { tuple, index, typ } => PureExpr::TupleIndex {
-                tuple: Box::new(self.compile_expr(tuple)),
-                index: *index,
                 typ: typ.clone(),
                 id: expr_id,
             },
@@ -476,61 +667,22 @@ impl<'a> Compiler<'a> {
                 typ: typ.clone(),
                 id: expr_id,
             },
-            TypedExpr::Match { match_, typ } => {
-                let compiled_match = match match_ {
-                    Match::Enum { subject, arms } => {
-                        let subject = Box::new(self.compile_expr(subject));
-                        let arms = arms
-                            .iter()
-                            .map(|arm| {
-                                self.push_scope();
-                                let bindings = arm
-                                    .bindings
-                                    .iter()
-                                    .map(|(field, name)| (field.clone(), self.bind(name)))
-                                    .collect();
-                                let body = self.compile_expr(&arm.body);
-                                self.pop_scope();
-                                EnumMatchArm {
-                                    pattern: arm.pattern.clone(),
-                                    bindings,
-                                    body,
-                                }
-                            })
-                            .collect();
-                        Match::Enum { subject, arms }
-                    }
-                    Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    } => Match::Bool {
-                        subject: Box::new(self.compile_expr(subject)),
-                        true_body: Box::new(self.compile_expr(true_body)),
-                        false_body: Box::new(self.compile_expr(false_body)),
-                    },
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body,
-                    } => {
-                        let subject = Box::new(self.compile_expr(subject));
-                        self.push_scope();
-                        let binding = some_arm_binding.as_ref().map(|name| self.bind(name));
-                        let some_body = self.compile_expr(some_arm_body);
-                        self.pop_scope();
-                        let none_body = self.compile_expr(none_arm_body);
-                        Match::Option {
-                            subject,
-                            some_arm_binding: binding,
-                            some_arm_body: Box::new(some_body),
-                            none_arm_body: Box::new(none_body),
-                        }
-                    }
-                };
-                PureExpr::Match {
-                    match_: compiled_match,
+            TypedExpr::Match {
+                subject,
+                arms,
+                decision,
+                typ,
+            } => {
+                let mut used = HashSet::new();
+                decision.collect_used(&mut used);
+                let value = Box::new(self.compile_expr(subject));
+                let var = IrVar::new(self.next_var_id());
+                let mut case_vars = HashMap::from([(CaseVar(0), var)]);
+                let body = self.compile_decision(decision, arms, typ, &used, &mut case_vars);
+                PureExpr::Let {
+                    var,
+                    value,
+                    body: Box::new(body),
                     typ: typ.clone(),
                     id: expr_id,
                 }
@@ -885,18 +1037,20 @@ mod tests {
                 -- after --
                 page MainComp(show@v0: Bool) {
                   concat(
-                    match v0 {
-                      true => {
-                        concat(
+                    let v1 = v0 in {
+                      match v1 {
+                        true => {
                           concat(
-                            raw("<div"),
-                            raw(">"),
-                            concat(raw("Visible")),
-                            raw("</div>"),
-                          ),
-                        )
+                            concat(
+                              raw("<div"),
+                              raw(">"),
+                              concat(raw("Visible")),
+                              raw("</div>"),
+                            ),
+                          )
+                        }
+                        false => { concat() }
                       }
-                      false => { concat() }
                     },
                   )
                 }
@@ -1152,9 +1306,11 @@ mod tests {
                 -- after --
                 page TestComp(flag@v0: Bool) {
                   concat(
-                    match v0 {
-                      true => { concat(raw("yes")) }
-                      false => { concat(raw("no")) }
+                    let v1 = v0 in {
+                      match v1 {
+                        true => { concat(raw("yes")) }
+                        false => { concat(raw("no")) }
+                      }
                     },
                   )
                 }

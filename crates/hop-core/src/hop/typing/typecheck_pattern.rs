@@ -1,24 +1,27 @@
+use crate::document::DocumentRange;
 use crate::hop::parsing::parsed_expr::{Constructor, ParsedMatchPattern};
-use crate::hop::patterns::typed::{TypedField, TypedMatchPattern};
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::typed_match_pattern::{TypedField, TypedMatchPattern};
+use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 
+/// Typecheck a pattern against the type of the value it matches. Every
+/// variable the pattern binds is appended to `bindings` with its type and the
+/// range where it is bound.
 pub fn typecheck_pattern(
     parsed: &ParsedMatchPattern,
     subject_type: Type,
     registry: &TypeRegistry,
+    bindings: &mut Vec<(VarName, Type, DocumentRange)>,
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedMatchPattern> {
     match parsed {
-        ParsedMatchPattern::Wildcard { range } => Some(TypedMatchPattern::Wildcard {
-            range: range.clone(),
-        }),
-        ParsedMatchPattern::Binding { name, range } => Some(TypedMatchPattern::Binding {
-            name: name.clone(),
-            typ: subject_type,
-            range: range.clone(),
-        }),
+        ParsedMatchPattern::Wildcard { .. } => Some(TypedMatchPattern::Wildcard),
+        ParsedMatchPattern::Binding { name, range } => {
+            bindings.push((name.clone(), subject_type, range.clone()));
+            Some(TypedMatchPattern::Binding { name: name.clone() })
+        }
         ParsedMatchPattern::Constructor {
             constructor,
             args,
@@ -30,10 +33,8 @@ pub fn typecheck_pattern(
             (Constructor::BooleanTrue | Constructor::BooleanFalse, Some(ResolvedType::Bool)) => {
                 Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
-                    typ: subject_type.clone(),
                     args: Vec::new(),
                     fields: Vec::new(),
-                    range: range.clone(),
                 })
             }
 
@@ -44,25 +45,22 @@ pub fn typecheck_pattern(
                         inner_pattern,
                         inner_type.clone(),
                         registry,
+                        bindings,
                         errors,
                     )?);
                 }
                 Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
-                    typ: subject_type.clone(),
                     args: typed_args,
                     fields: Vec::new(),
-                    range: range.clone(),
                 })
             }
 
             (Constructor::OptionNone, Some(ResolvedType::Option(_))) => {
                 Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
-                    typ: subject_type.clone(),
                     args: Vec::new(),
                     fields: Vec::new(),
-                    range: range.clone(),
                 })
             }
 
@@ -131,6 +129,7 @@ pub fn typecheck_pattern(
                                     field_pattern,
                                     field.typ.clone(),
                                     registry,
+                                    bindings,
                                     errors,
                                 )?,
                             });
@@ -170,10 +169,8 @@ pub fn typecheck_pattern(
 
                 Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
-                    typ: subject_type.clone(),
                     args: Vec::new(),
                     fields: typed_fields,
-                    range: range.clone(),
                 })
             }
 
@@ -224,6 +221,7 @@ pub fn typecheck_pattern(
                                     field_pattern,
                                     field.typ.clone(),
                                     registry,
+                                    bindings,
                                     errors,
                                 )?,
                             });
@@ -261,10 +259,8 @@ pub fn typecheck_pattern(
 
                 Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
-                    typ: subject_type.clone(),
                     args: Vec::new(),
                     fields: typed_fields,
-                    range: range.clone(),
                 })
             }
 
@@ -274,14 +270,14 @@ pub fn typecheck_pattern(
                 let typed_args = args
                     .iter()
                     .zip(elements)
-                    .map(|(arg, element)| typecheck_pattern(arg, element.clone(), registry, errors))
+                    .map(|(arg, element)| {
+                        typecheck_pattern(arg, element.clone(), registry, bindings, errors)
+                    })
                     .collect::<Option<Vec<_>>>()?;
                 Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
-                    typ: subject_type.clone(),
                     args: typed_args,
                     fields: Vec::new(),
-                    range: range.clone(),
                 })
             }
 
@@ -289,7 +285,6 @@ pub fn typecheck_pattern(
                 errors.push(TypeError::new(
                     TypeErrorKind::MatchPatternTypeMismatch {
                         expected: subject_type.clone(),
-                        found: parsed.to_string(),
                     },
                     range.clone(),
                 ));
@@ -326,9 +321,13 @@ mod tests {
         }
 
         let mut type_errors = Vec::new();
-        if let Some(typed) =
-            typecheck_pattern(&parsed, subject_type, types.registry(), &mut type_errors)
-        {
+        if let Some(typed) = typecheck_pattern(
+            &parsed,
+            subject_type,
+            types.registry(),
+            &mut Vec::new(),
+            &mut type_errors,
+        ) {
             panic!("expected a typecheck error, but pattern typechecked to:\n{typed}");
         }
         let actual = DocumentAnnotator::new()
@@ -515,7 +514,7 @@ mod tests {
             "Color",
             "true",
             expect![[r#"
-                error: Mismatched pattern type: expected Color got true
+                error: Pattern does not match type Color
                 true
                 ^^^^
             "#]],
@@ -528,7 +527,7 @@ mod tests {
             "Color",
             "Some(v)",
             expect![[r#"
-                error: Mismatched pattern type: expected Color got Some(v)
+                error: Pattern does not match type Color
                 Some(v)
                 ^^^^^^^
             "#]],
@@ -541,7 +540,7 @@ mod tests {
             "Option[Bool]",
             "Some(Some(v))",
             expect![[r#"
-                error: Mismatched pattern type: expected Bool got Some(v)
+                error: Pattern does not match type Bool
                 Some(Some(v))
                      ^^^^^^^
             "#]],
@@ -555,7 +554,7 @@ mod tests {
             "(Bool, Bool)",
             "(a, b, c)",
             expect![[r#"
-                error: Mismatched pattern type: expected (Bool, Bool) got (a, b, c)
+                error: Pattern does not match type (Bool, Bool)
                 (a, b, c)
                 ^^^^^^^^^
             "#]],
@@ -569,7 +568,7 @@ mod tests {
             "(Bool, Bool)",
             "(a,)",
             expect![[r#"
-                error: Mismatched pattern type: expected (Bool, Bool) got (a,)
+                error: Pattern does not match type (Bool, Bool)
                 (a,)
                 ^^^^
             "#]],
@@ -583,7 +582,7 @@ mod tests {
             "(Bool, Int)",
             "(true, None)",
             expect![[r#"
-                error: Mismatched pattern type: expected Int got None
+                error: Pattern does not match type Int
                 (true, None)
                        ^^^^
             "#]],
@@ -597,7 +596,7 @@ mod tests {
             "User",
             "(name,)",
             expect![[r#"
-                error: Mismatched pattern type: expected User got (name,)
+                error: Pattern does not match type User
                 (name,)
                 ^^^^^^^
             "#]],
@@ -611,7 +610,7 @@ mod tests {
             "(String,)",
             "User{name}",
             expect![[r#"
-                error: Mismatched pattern type: expected (String,) got User{name}
+                error: Pattern does not match type (String,)
                 User{name}
                 ^^^^^^^^^^
             "#]],

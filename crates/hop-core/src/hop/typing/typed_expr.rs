@@ -1,7 +1,8 @@
 use std::fmt::{self, Display};
 
 use crate::document::CheapString;
-use crate::hop::patterns::{EnumPattern, Match};
+use crate::hop::typing::compile_match::Decision;
+use crate::hop::typing::typed_match_pattern::TypedMatchPattern;
 use crate::html::HtmlElementKind;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
@@ -22,13 +23,6 @@ pub enum TypedExpr {
     FieldAccess {
         record: Box<Self>,
         field: FieldName,
-        typ: Type,
-    },
-
-    /// A tuple index expression, e.g. foo.0
-    TupleIndex {
-        tuple: Box<Self>,
-        index: usize,
         typ: Type,
     },
 
@@ -83,9 +77,13 @@ pub enum TypedExpr {
         typ: Type,
     },
 
-    /// A match expression (enum, bool, or option)
+    /// A match expression, with the decision tree its arms compile to.
     Match {
-        match_: Match<Self, Self>,
+        subject: Box<Self>,
+        /// The arms in source order. `Body::value` in the decision indexes
+        /// into these.
+        arms: Vec<(TypedMatchPattern, Self)>,
+        decision: Decision,
         typ: Type,
     },
 
@@ -324,7 +322,6 @@ impl TypedExpr {
         match self {
             TypedExpr::Var { typ, .. }
             | TypedExpr::FieldAccess { typ, .. }
-            | TypedExpr::TupleIndex { typ, .. }
             | TypedExpr::ArrayLiteral { typ, .. }
             | TypedExpr::TupleLiteral { typ, .. }
             | TypedExpr::RecordLiteral { typ, .. }
@@ -411,10 +408,6 @@ impl TypedExpr {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
-            TypedExpr::TupleIndex { tuple, index, .. } => tuple
-                .to_doc()
-                .append(BoxDoc::text("."))
-                .append(BoxDoc::text(index.to_string())),
             TypedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             TypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
@@ -615,98 +608,26 @@ impl TypedExpr {
                     .append(BoxDoc::text(")")),
                 None => BoxDoc::text("None"),
             },
-            TypedExpr::Match { match_, .. } => match match_ {
-                Match::Enum { subject, arms } => BoxDoc::text("match ")
-                    .append(subject.to_doc())
-                    .append(BoxDoc::text(" {"))
-                    .append(
-                        BoxDoc::line_()
-                            .append(BoxDoc::intersperse(
-                                arms.iter().map(|arm| {
-                                    let pattern_doc = match &arm.pattern {
-                                        EnumPattern::Variant {
-                                            enum_name,
-                                            variant_name,
-                                        } => BoxDoc::text(enum_name.as_str())
-                                            .append(BoxDoc::text("::"))
-                                            .append(BoxDoc::text(variant_name.as_str())),
-                                    };
-                                    pattern_doc
-                                        .append(BoxDoc::text(" => "))
-                                        .append(arm.body.to_doc())
-                                }),
-                                BoxDoc::text(",").append(BoxDoc::line()),
-                            ))
-                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                            .append(BoxDoc::line_())
-                            .nest(2)
-                            .group(),
-                    )
-                    .append(BoxDoc::text("}")),
-                Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                } => {
-                    let true_arm_doc = BoxDoc::text("true")
-                        .append(BoxDoc::text(" => "))
-                        .append(true_body.to_doc());
-                    let false_arm_doc = BoxDoc::text("false")
-                        .append(BoxDoc::text(" => "))
-                        .append(false_body.to_doc());
-
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    [true_arm_doc, false_arm_doc],
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
-                Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body,
-                    none_arm_body,
-                } => {
-                    let some_pattern_doc = match some_arm_binding {
-                        Some(name) => BoxDoc::text("Some(")
-                            .append(BoxDoc::text(name.as_str()))
-                            .append(BoxDoc::text(")")),
-                        None => BoxDoc::text("Some(_)"),
-                    };
-                    let some_arm_doc = some_pattern_doc
-                        .append(BoxDoc::text(" => "))
-                        .append(some_arm_body.to_doc());
-                    let none_arm_doc = BoxDoc::text("None")
-                        .append(BoxDoc::text(" => "))
-                        .append(none_arm_body.to_doc());
-
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    [some_arm_doc, none_arm_doc],
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
-            },
+            TypedExpr::Match { subject, arms, .. } => BoxDoc::text("match ")
+                .append(subject.to_doc())
+                .append(BoxDoc::text(" {"))
+                .append(
+                    BoxDoc::line_()
+                        .append(BoxDoc::intersperse(
+                            arms.iter().map(|(pattern, body)| {
+                                pattern
+                                    .to_doc()
+                                    .append(BoxDoc::text(" => "))
+                                    .append(body.to_doc())
+                            }),
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(BoxDoc::text("}")),
             TypedExpr::Let {
                 var, value, body, ..
             } => BoxDoc::text("let ")

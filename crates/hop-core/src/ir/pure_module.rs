@@ -1,10 +1,10 @@
 use std::fmt;
 
 use crate::document::CheapString;
-use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;
@@ -84,7 +84,7 @@ pub enum PureExpr {
     ///
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
-        match_: Match<PureExpr, PureExpr, IrVar>,
+        match_: Match<PureExpr, PureExpr>,
         typ: Type,
         id: ExprId,
     },

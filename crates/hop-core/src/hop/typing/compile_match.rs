@@ -10,41 +10,36 @@
 //! necessary to not generate useless variable bindings (which is compile
 //! errors in some languages). Make sure that this invariant holds when
 //! introducing new match subjects.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use pretty::BoxDoc;
-
-use crate::document::DocumentRange;
 use crate::hop::parsing::parsed_expr::Constructor;
-use crate::hop::patterns::typed::TypedMatchPattern;
+use crate::hop::typing::typed_match_pattern::{TypedField, TypedMatchPattern};
 
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::hop::typing::variable_scope::FreshVarCounter;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::{TypeError, TypeErrorKind};
+use crate::type_error::TypeErrorKind;
 
-/// A binding introduced by a pattern match (i.e. `name = source_name`).
+/// A variable the decision tree introduces, numbered from 0 within one match.
+/// Case variable 0 is the subject.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CaseVar(pub usize);
+
+impl std::fmt::Display for CaseVar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "#{}", self.0)
+    }
+}
+
+/// A binding introduced by a pattern match (i.e. `name = source`).
 #[derive(Clone, Debug)]
 pub struct Binding {
     /// The name of the variable to bind.
     pub name: VarName,
-    /// The name of the source variable to bind from.
-    pub source_name: VarName,
-    /// The type of the binding.
-    pub typ: Type,
-}
-
-impl Binding {
-    pub fn new(name: VarName, source_name: VarName, typ: Type) -> Self {
-        Self {
-            name,
-            source_name,
-            typ,
-        }
-    }
+    /// The case variable to bind from.
+    pub source: CaseVar,
 }
 
 /// The body of code to evaluate in case of a match.
@@ -56,24 +51,11 @@ pub struct Body {
     pub value: usize,
 }
 
-impl Body {
-    pub fn new(value: usize) -> Self {
-        Self {
-            bindings: Vec::new(),
-            value,
-        }
-    }
-}
-
 /// A variable used in a match expression.
 #[derive(Clone, Debug)]
 pub struct Variable {
-    pub name: VarName,
+    pub id: CaseVar,
     pub typ: Type,
-    /// Whether every pattern tested against this variable is irrefutable and
-    /// introduces no bindings. When true, the variable should not generate a
-    /// binding in the output.
-    is_free_from_bindings: bool,
 }
 
 /// A single case (or row) in a match expression/table.
@@ -84,14 +66,10 @@ struct Row {
 }
 
 impl Row {
-    fn new(columns: Vec<Column>, body: Body) -> Self {
-        Self { columns, body }
-    }
-
     fn remove_column(&mut self, variable: &Variable) -> Option<Column> {
         self.columns
             .iter()
-            .position(|c| c.variable.name == variable.name)
+            .position(|c| c.variable.id == variable.id)
             .map(|idx| self.columns.remove(idx))
     }
 }
@@ -107,45 +85,28 @@ struct Column {
     pattern: TypedMatchPattern,
 }
 
-impl Column {
-    fn new(variable: Variable, pattern: TypedMatchPattern) -> Self {
-        Self { variable, pattern }
-    }
-}
-
 /// A case for boolean pattern matching - no bindings possible.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct BoolCase {
     pub body: Decision,
 }
 
 /// A case for the Some variant of Option - exactly one potential binding.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct OptionSomeCase {
-    /// The name to bind the inner value to, or None if wildcard pattern.
-    pub bound_name: Option<VarName>,
+    /// The case variable holding the inner value.
+    pub var: Variable,
     pub body: Decision,
 }
 
 /// A case for the None variant of Option - no bindings.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct OptionNoneCase {
     pub body: Decision,
 }
 
-/// A binding for a field in a record or enum variant.
-#[derive(Debug, Clone)]
-pub struct FieldBinding {
-    /// The field name this binding corresponds to.
-    pub field_name: FieldName,
-    /// The name to bind this field's value to, or None if wildcard pattern.
-    pub bound_name: Option<VarName>,
-    /// The type of the field.
-    pub typ: Type,
-}
-
 /// A case for an enum variant - may have multiple field bindings.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct EnumCase {
     pub enum_name: TypeName,
     pub variant_name: TypeName,
@@ -155,7 +116,7 @@ pub struct EnumCase {
 }
 
 /// A case for record destructuring - has bindings for each field.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RecordCase {
     /// Used for debug formatting in tests
     pub _type_name: TypeName,
@@ -164,27 +125,25 @@ pub struct RecordCase {
     pub body: Decision,
 }
 
-/// A binding for an element in a tuple.
-#[derive(Debug, Clone)]
-pub struct ElementBinding {
-    /// The index of the element this binding corresponds to.
-    pub index: usize,
-    /// The name to bind this element's value to, or None if wildcard pattern.
-    pub bound_name: Option<VarName>,
-    /// The type of the element.
-    pub typ: Type,
-}
-
-/// A case for tuple destructuring - has bindings for each element.
-#[derive(Debug)]
+/// A case for tuple destructuring - has a case variable for each element.
+#[derive(Clone, Debug)]
 pub struct TupleCase {
-    /// Bindings for each element in the tuple.
-    pub bindings: Vec<ElementBinding>,
+    /// The case variables holding the tuple's elements, in order.
+    pub elements: Vec<Variable>,
     pub body: Decision,
 }
 
+/// A binding for a field in a record or enum variant.
+#[derive(Debug, Clone)]
+pub struct FieldBinding {
+    /// The field name this binding corresponds to.
+    pub field_name: FieldName,
+    /// The case variable holding this field's value.
+    pub var: Variable,
+}
+
 /// A decision tree compiled from a list of match cases.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Decision {
     /// A pattern is matched and the right-hand value is to be returned.
     Success(Body),
@@ -222,113 +181,95 @@ pub enum Decision {
     },
 }
 
+impl Decision {
+    /// Collect every case variable the tree reads, as the subject of a
+    /// switch or as the source of a binding.
+    pub fn collect_used(&self, used: &mut HashSet<CaseVar>) {
+        match self {
+            Decision::Success(body) => {
+                used.extend(body.bindings.iter().map(|binding| binding.source));
+            }
+            Decision::SwitchBool {
+                variable,
+                true_case,
+                false_case,
+            } => {
+                used.insert(variable.id);
+                true_case.body.collect_used(used);
+                false_case.body.collect_used(used);
+            }
+            Decision::SwitchOption {
+                variable,
+                some_case,
+                none_case,
+            } => {
+                used.insert(variable.id);
+                some_case.body.collect_used(used);
+                none_case.body.collect_used(used);
+            }
+            Decision::SwitchEnum { variable, cases } => {
+                used.insert(variable.id);
+                for case in cases {
+                    case.body.collect_used(used);
+                }
+            }
+            Decision::SwitchRecord { variable, case } => {
+                used.insert(variable.id);
+                case.body.collect_used(used);
+            }
+            Decision::SwitchTuple { variable, case } => {
+                used.insert(variable.id);
+                case.body.collect_used(used);
+            }
+        }
+    }
+}
+
 /// Information about a matched constructor for a variable.
 struct VarInfo {
     /// The constructor (e.g., `Some`, `None`, `Color::Red`, `User`).
     constructor: Constructor,
-    /// Constructor arguments: (sub_var_name, optional_field_name).
-    /// - `Some(v0)` → `[("v0", None)]`
-    /// - `None` → `[]`
-    /// - `Foo{a: v0, b: v1}` → `[("v0", Some("a")), ("v1", Some("b"))]`
-    /// - `(v0, v1)` → `[("v0", None), ("v1", None)]`
-    args: Vec<(VarName, Option<FieldName>)>,
-}
-
-/// A pattern that no arm of a match covers, reported as a missing arm.
-#[derive(Debug)]
-enum Witness {
-    Wildcard,
-    Constructor {
-        constructor: Constructor,
-        /// Positional arguments, e.g. the inner witness of `Some(_)`.
-        args: Vec<Witness>,
-        /// Named fields of a record or enum variant.
-        fields: Vec<(FieldName, Witness)>,
-    },
-}
-
-impl Witness {
-    fn to_doc(&self) -> BoxDoc<'_> {
-        let Witness::Constructor {
-            constructor,
-            args,
-            fields,
-        } = self
-        else {
-            return BoxDoc::text("_");
-        };
-        let fields_doc = BoxDoc::text("{")
-            .append(BoxDoc::intersperse(
-                fields.iter().map(|(name, witness)| {
-                    BoxDoc::text(name.as_str())
-                        .append(BoxDoc::text(": "))
-                        .append(witness.to_doc())
-                }),
-                BoxDoc::text(", "),
-            ))
-            .append(BoxDoc::text("}"));
-        match constructor {
-            Constructor::BooleanTrue | Constructor::BooleanFalse | Constructor::OptionNone => {
-                constructor.to_doc()
-            }
-            Constructor::OptionSome => constructor
-                .to_doc()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::intersperse(
-                    args.iter().map(|arg| arg.to_doc()),
-                    BoxDoc::text(", "),
-                ))
-                .append(BoxDoc::text(")")),
-            Constructor::EnumVariant { .. } if fields.is_empty() => constructor.to_doc(),
-            Constructor::EnumVariant { .. } | Constructor::Record { .. } => {
-                constructor.to_doc().append(fields_doc)
-            }
-            Constructor::Tuple => BoxDoc::text("(")
-                .append(BoxDoc::intersperse(
-                    args.iter().map(|arg| arg.to_doc()),
-                    BoxDoc::text(", "),
-                ))
-                .append(if args.len() == 1 {
-                    BoxDoc::text(",")
-                } else {
-                    BoxDoc::nil()
-                })
-                .append(BoxDoc::text(")")),
-        }
-    }
+    /// Constructor arguments: (optional_field_name, sub_var).
+    /// ```text
+    /// Some(#1)             [(None, #1)]
+    /// None                 []
+    /// Foo{a: #1, b: #2}    [(Some("a"), #1), (Some("b"), #2)]
+    /// (#1, #2)             [(None, #1), (None, #2)]
+    /// ```
+    args: Vec<(Option<FieldName>, Variable)>,
 }
 
 /// Checks if a pattern introduces no bindings and requires no runtime discrimination.
 /// This is true for wildcards and for record and tuple patterns where all fields or
 /// elements are free from bindings (since records and tuples have only one constructor).
-fn is_free_from_bindings(registry: &TypeRegistry, pattern: &TypedMatchPattern) -> bool {
+fn is_free_from_bindings(pattern: &TypedMatchPattern) -> bool {
     match pattern {
-        TypedMatchPattern::Wildcard { .. } => true,
+        TypedMatchPattern::Wildcard => true,
         TypedMatchPattern::Binding { .. } => false,
         TypedMatchPattern::Constructor {
-            typ, args, fields, ..
+            constructor,
+            args,
+            fields,
         } => {
             // Only records and tuples can be free from bindings since they have one constructor
-            matches!(
-                registry.resolve(typ),
-                Some(ResolvedType::Record { .. } | ResolvedType::Tuple(_))
-            ) && args.iter().all(|arg| is_free_from_bindings(registry, arg))
+            matches!(constructor, Constructor::Record { .. } | Constructor::Tuple)
+                && args.iter().all(is_free_from_bindings)
                 && fields
                     .iter()
-                    .all(|field| is_free_from_bindings(registry, &field.pattern))
+                    .all(|field| is_free_from_bindings(&field.pattern))
         }
     }
 }
 
 /// Returns the index of a constructor within the given type.
-fn constructor_index(registry: &TypeRegistry, cons: &Constructor, typ: &Type) -> usize {
+fn constructor_index(cons: &Constructor, resolved: ResolvedType<'_>) -> usize {
     match cons {
         Constructor::BooleanFalse => 0,
         Constructor::BooleanTrue => 1,
         Constructor::OptionSome => 0,
         Constructor::OptionNone => 1,
         Constructor::EnumVariant { variant_name, .. } => {
-            let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(typ) else {
+            let ResolvedType::Enum { variants, .. } = resolved else {
                 panic!("type is not an enum")
             };
             variants
@@ -341,39 +282,53 @@ fn constructor_index(registry: &TypeRegistry, cons: &Constructor, typ: &Type) ->
     }
 }
 
+/// Why a match does not compile.
+#[derive(Debug)]
+pub struct MatchError {
+    pub kind: Box<TypeErrorKind>,
+    /// The part of the match the error is about.
+    pub site: MatchErrorSite,
+}
+
+#[derive(Debug)]
+pub enum MatchErrorSite {
+    /// The match as a whole, reported at its subject.
+    Subject,
+    /// The pattern at this index.
+    Pattern(usize),
+}
+
 /// Compile a collection of patterns into a decision tree.
 pub fn compile_match(
-    fresh_vars: &mut FreshVarCounter,
     registry: &TypeRegistry,
     patterns: &[TypedMatchPattern],
-    subject_name: VarName,
     subject_type: Type,
-    subject_range: &DocumentRange,
-    errors: &mut Vec<TypeError>,
-) -> Option<Decision> {
-    // Check for empty arms
+) -> Result<Decision, MatchError> {
     if patterns.is_empty() {
-        errors.push(TypeError::new(
-            TypeErrorKind::MatchNoArms {},
-            subject_range.clone(),
-        ));
-        return None;
+        return Err(MatchError {
+            kind: Box::new(TypeErrorKind::MatchNoArms {}),
+            site: MatchErrorSite::Subject,
+        });
     }
 
     let subject_var = Variable {
-        name: subject_name,
+        id: CaseVar(0),
         typ: subject_type,
-        is_free_from_bindings: false,
     };
+    let mut next_case = 1;
 
     let rows: Vec<Row> = patterns
         .iter()
         .enumerate()
-        .map(|(idx, pattern)| {
-            Row::new(
-                vec![Column::new(subject_var.clone(), pattern.clone())],
-                Body::new(idx),
-            )
+        .map(|(idx, pattern)| Row {
+            columns: vec![Column {
+                variable: subject_var.clone(),
+                pattern: pattern.clone(),
+            }],
+            body: Body {
+                bindings: Vec::new(),
+                value: idx,
+            },
         })
         .collect();
 
@@ -382,89 +337,75 @@ pub fn compile_match(
     let mut var_info = HashMap::new();
 
     let tree = compile_rows(
-        fresh_vars,
+        &mut next_case,
         registry,
         &mut reachable,
         &mut missing_patterns,
         &mut var_info,
-        &subject_var.name,
         rows,
     );
 
-    // Check for unreachable arms
-    let unreachable: Vec<usize> = (0..patterns.len())
-        .filter(|i| !reachable.contains(i))
-        .collect();
-    if let Some(&first_unreachable) = unreachable.first() {
-        let pattern = &patterns[first_unreachable];
-        errors.push(TypeError::new(
-            TypeErrorKind::MatchUnreachableArm {
-                pattern: Box::new(pattern.clone()),
-            },
-            pattern.range().clone(),
-        ));
-        return None;
+    if let Some(index) = (0..patterns.len()).find(|i| !reachable.contains(i)) {
+        return Err(MatchError {
+            kind: Box::new(TypeErrorKind::MatchUnreachablePattern {
+                pattern: Box::new(patterns[index].clone()),
+            }),
+            site: MatchErrorSite::Pattern(index),
+        });
     }
 
-    // Check for missing patterns
     if !missing_patterns.is_empty() {
         let mut missing: Vec<String> = missing_patterns
             .iter()
-            .map(|witness| witness.to_doc().pretty(80).to_string())
+            .map(|pattern| pattern.to_string())
             .collect();
         missing.sort();
         missing.dedup();
-        errors.push(TypeError::new(
-            TypeErrorKind::MatchMissingVariants { variants: missing },
-            subject_range.clone(),
-        ));
-        return None;
+        return Err(MatchError {
+            kind: Box::new(TypeErrorKind::MatchMissingPattern { patterns: missing }),
+            site: MatchErrorSite::Subject,
+        });
     }
 
-    // Tree is guaranteed to be Some if there are no missing patterns
     let tree = tree.expect("tree should be Some when there are no missing patterns");
 
-    // Check for useless match (Success with no bindings)
-    if let Decision::Success(body) = &tree {
-        if body.bindings.is_empty() {
-            errors.push(TypeError::new(
-                TypeErrorKind::MatchUseless {},
-                subject_range.clone(),
-            ));
-            return None;
-        }
+    if let Decision::Success(body) = &tree
+        && body.bindings.is_empty()
+    {
+        return Err(MatchError {
+            kind: Box::new(TypeErrorKind::MatchUseless {}),
+            site: MatchErrorSite::Subject,
+        });
     }
 
-    Some(tree)
+    Ok(tree)
 }
 
 fn compile_rows(
-    fresh_vars: &mut FreshVarCounter,
+    next_case: &mut usize,
     registry: &TypeRegistry,
     reachable: &mut Vec<usize>,
-    missing_patterns: &mut Vec<Witness>,
-    var_info: &mut HashMap<VarName, VarInfo>,
-    root_var: &VarName,
+    missing_patterns: &mut Vec<TypedMatchPattern>,
+    var_info: &mut HashMap<CaseVar, VarInfo>,
     mut rows: Vec<Row>,
 ) -> Option<Decision> {
     if rows.is_empty() {
-        missing_patterns.push(witness_for_var(var_info, root_var));
+        missing_patterns.push(witness_for_var(var_info, CaseVar(0)));
         return None;
     }
 
     for row in &mut rows {
         // Remove wildcards and move binding patterns into the body
         row.columns.retain(|col| match &col.pattern {
-            TypedMatchPattern::Wildcard { .. } => false,
-            TypedMatchPattern::Binding { name, .. } => {
-                row.body.bindings.push(Binding::new(
-                    name.clone(),
-                    col.variable.name.clone(),
-                    col.variable.typ.clone(),
-                ));
+            TypedMatchPattern::Wildcard => false,
+            TypedMatchPattern::Binding { name } => {
+                row.body.bindings.push(Binding {
+                    name: name.clone(),
+                    source: col.variable.id,
+                });
                 false
             }
-            TypedMatchPattern::Constructor { .. } => !is_free_from_bindings(registry, &col.pattern),
+            TypedMatchPattern::Constructor { .. } => !is_free_from_bindings(&col.pattern),
         });
     }
 
@@ -478,11 +419,13 @@ fn compile_rows(
     }
 
     let branch_var = find_branch_variable(&rows);
+    // Resolve a clone of the type, since branch_var moves into the decision.
+    let branch_typ = branch_var.typ.clone();
+    let resolved = registry
+        .resolve(&branch_typ)
+        .expect("named type must be registered");
 
-    let mut cases = match registry
-        .resolve(&branch_var.typ)
-        .expect("named type must be registered")
-    {
+    let mut cases = match resolved {
         ResolvedType::Bool => {
             vec![
                 (Constructor::BooleanFalse, Vec::new(), Vec::new()),
@@ -493,7 +436,7 @@ fn compile_rows(
             vec![
                 (
                     Constructor::OptionSome,
-                    vec![fresh_var(fresh_vars, inner.clone())],
+                    vec![(None, fresh_var(next_case, inner.clone()))],
                     Vec::new(),
                 ),
                 (Constructor::OptionNone, Vec::new(), Vec::new()),
@@ -503,10 +446,15 @@ fn compile_rows(
             .iter()
             .map(|variant| {
                 // Create fresh variables for each field in the variant
-                let field_vars: Vec<Variable> = variant
+                let field_vars = variant
                     .fields
                     .iter()
-                    .map(|field| fresh_var(fresh_vars, field.typ.clone()))
+                    .map(|field| {
+                        (
+                            Some(field.name.clone()),
+                            fresh_var(next_case, field.typ.clone()),
+                        )
+                    })
                     .collect();
                 (
                     Constructor::EnumVariant {
@@ -520,9 +468,14 @@ fn compile_rows(
             .collect(),
         ResolvedType::Record { name, fields, .. } => {
             // Records have a single constructor with fresh variables for each field
-            let field_vars: Vec<Variable> = fields
+            let field_vars = fields
                 .iter()
-                .map(|field| fresh_var(fresh_vars, field.typ.clone()))
+                .map(|field| {
+                    (
+                        Some(field.name.clone()),
+                        fresh_var(next_case, field.typ.clone()),
+                    )
+                })
                 .collect();
             vec![(
                 Constructor::Record {
@@ -534,9 +487,9 @@ fn compile_rows(
         }
         ResolvedType::Tuple(elements) => {
             // Tuples have a single constructor with fresh variables for each element
-            let element_vars: Vec<Variable> = elements
+            let element_vars = elements
                 .iter()
-                .map(|element| fresh_var(fresh_vars, element.clone()))
+                .map(|element| (None, fresh_var(next_case, element.clone())))
                 .collect();
             vec![(Constructor::Tuple, element_vars, Vec::new())]
         }
@@ -571,32 +524,33 @@ fn compile_rows(
                 constructor: cons,
                 args,
                 fields,
-                ..
             } = col.pattern
             {
-                let idx = constructor_index(registry, &cons, &branch_var.typ);
+                let idx = constructor_index(&cons, resolved);
                 let mut cols = row.columns;
 
                 if !fields.is_empty() {
                     // Field patterns: index is resolved on the typed field.
                     for field in fields {
-                        let var = &mut cases[idx].1[field.index];
-                        if !is_free_from_bindings(registry, &field.pattern) {
-                            var.is_free_from_bindings = false;
-                        }
-                        cols.push(Column::new(var.clone(), field.pattern));
+                        cols.push(Column {
+                            variable: cases[idx].1[field.index].1.clone(),
+                            pattern: field.pattern,
+                        });
                     }
                 } else {
                     // Positional args (Option Some, etc.)
-                    for (var, pat) in cases[idx].1.iter_mut().zip(args) {
-                        if !is_free_from_bindings(registry, &pat) {
-                            var.is_free_from_bindings = false;
-                        }
-                        cols.push(Column::new(var.clone(), pat));
+                    for ((_, var), pat) in cases[idx].1.iter().zip(args) {
+                        cols.push(Column {
+                            variable: var.clone(),
+                            pattern: pat,
+                        });
                     }
                 }
 
-                cases[idx].2.push(Row::new(cols, row.body));
+                cases[idx].2.push(Row {
+                    columns: cols,
+                    body: row.body,
+                });
             }
         } else {
             for (_, _, rows) in &mut cases {
@@ -609,54 +563,23 @@ fn compile_rows(
     let mut compiled_cases = Vec::with_capacity(cases.len());
 
     for (cons, vars, rows) in cases {
-        let args: Vec<(VarName, Option<FieldName>)> = if let Constructor::Record { .. } = &cons {
-            if let Some(ResolvedType::Record { fields, .. }) = registry.resolve(&branch_var.typ) {
-                vars.iter()
-                    .zip(fields.iter())
-                    .map(|(v, field)| (v.name.clone(), Some(field.name.clone())))
-                    .collect()
-            } else {
-                Vec::new()
-            }
-        } else if let Constructor::EnumVariant { variant_name, .. } = &cons {
-            // For enum variants with fields, include field names
-            if let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(&branch_var.typ) {
-                let variant_fields = variants
-                    .iter()
-                    .find(|v| v.name.as_str() == variant_name.as_str())
-                    .map(|v| v.fields.as_slice());
-                if let Some(fields) = variant_fields {
-                    vars.iter()
-                        .zip(fields.iter())
-                        .map(|(v, field)| (v.name.clone(), Some(field.name.clone())))
-                        .collect()
-                } else {
-                    vars.iter().map(|v| (v.name.clone(), None)).collect()
-                }
-            } else {
-                vars.iter().map(|v| (v.name.clone(), None)).collect()
-            }
-        } else {
-            vars.iter().map(|v| (v.name.clone(), None)).collect()
-        };
         var_info.insert(
-            branch_var.name.clone(),
+            branch_var.id,
             VarInfo {
                 constructor: cons.clone(),
-                args,
+                args: vars.clone(),
             },
         );
 
         let body = compile_rows(
-            fresh_vars,
+            next_case,
             registry,
             reachable,
             missing_patterns,
             var_info,
-            root_var,
             rows,
         );
-        var_info.remove(&branch_var.name);
+        var_info.remove(&branch_var.id);
 
         compiled_cases.push((cons, vars, body));
     }
@@ -667,12 +590,7 @@ fn compile_rows(
     }
 
     // All case bodies are Some, build the appropriate typed Decision variant
-    // Clone the type to avoid borrow issues when moving branch_var
-    let branch_typ = branch_var.typ.clone();
-    match registry
-        .resolve(&branch_typ)
-        .expect("named type must be registered")
-    {
+    match resolved {
         ResolvedType::Bool => {
             // compiled_cases is ordered: [false, true]
             let mut iter = compiled_cases.into_iter();
@@ -693,15 +611,11 @@ fn compile_rows(
             let mut iter = compiled_cases.into_iter();
             let (_, some_vars, some_body) = iter.next().unwrap();
             let (_, _, none_body) = iter.next().unwrap();
-            let some_var = some_vars.into_iter().next().unwrap();
+            let (_, some_var) = some_vars.into_iter().next().unwrap();
             Some(Decision::SwitchOption {
                 variable: branch_var,
                 some_case: Box::new(OptionSomeCase {
-                    bound_name: if some_var.is_free_from_bindings {
-                        None
-                    } else {
-                        Some(some_var.name)
-                    },
+                    var: some_var,
                     body: some_body.unwrap(),
                 }),
                 none_case: Box::new(OptionNoneCase {
@@ -709,36 +623,18 @@ fn compile_rows(
                 }),
             })
         }
-        ResolvedType::Enum {
-            name,
-            variants: type_variants,
-            ..
-        } => {
+        ResolvedType::Enum { name, .. } => {
             let cases = compiled_cases
                 .into_iter()
                 .map(|(cons, vars, body)| {
                     let Constructor::EnumVariant { variant_name, .. } = cons else {
                         unreachable!("Expected EnumVariant constructor")
                     };
-                    // Get the field names from the type definition
-                    let empty_fields = vec![];
-                    let variant_fields = type_variants
-                        .iter()
-                        .find(|variant| variant.name.as_str() == variant_name.as_str())
-                        .map(|variant| &variant.fields)
-                        .unwrap_or(&empty_fields);
-                    // Create FieldBindings with field names
-                    let bindings = variant_fields
-                        .iter()
-                        .zip(vars)
-                        .map(|(field, var)| FieldBinding {
-                            field_name: field.name.clone(),
-                            bound_name: if var.is_free_from_bindings {
-                                None
-                            } else {
-                                Some(var.name)
-                            },
-                            typ: var.typ,
+                    let bindings = vars
+                        .into_iter()
+                        .map(|(field_name, var)| FieldBinding {
+                            field_name: field_name.expect("enum variant fields are named"),
+                            var,
                         })
                         .collect();
                     EnumCase {
@@ -754,26 +650,15 @@ fn compile_rows(
                 cases,
             })
         }
-        ResolvedType::Record {
-            name,
-            fields: type_fields,
-            ..
-        } => {
+        ResolvedType::Record { name, .. } => {
             // Records have exactly one case
             let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
 
-            // Create FieldBindings with field names
-            let bindings = type_fields
-                .iter()
-                .zip(vars)
-                .map(|(field, var)| FieldBinding {
-                    field_name: field.name.clone(),
-                    bound_name: if var.is_free_from_bindings {
-                        None
-                    } else {
-                        Some(var.name)
-                    },
-                    typ: var.typ,
+            let bindings = vars
+                .into_iter()
+                .map(|(field_name, var)| FieldBinding {
+                    field_name: field_name.expect("record fields are named"),
+                    var,
                 })
                 .collect();
             Some(Decision::SwitchRecord {
@@ -789,23 +674,10 @@ fn compile_rows(
             // Tuples have exactly one case
             let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
 
-            let bindings = vars
-                .into_iter()
-                .enumerate()
-                .map(|(index, var)| ElementBinding {
-                    index,
-                    bound_name: if var.is_free_from_bindings {
-                        None
-                    } else {
-                        Some(var.name)
-                    },
-                    typ: var.typ,
-                })
-                .collect();
             Some(Decision::SwitchTuple {
                 variable: branch_var,
                 case: Box::new(TupleCase {
-                    bindings,
+                    elements: vars.into_iter().map(|(_, var)| var).collect(),
                     body: body.unwrap(),
                 }),
             })
@@ -817,28 +689,25 @@ fn compile_rows(
 /// Given a row, returns the variable in that row that's referred to the
 /// most across all rows.
 fn find_branch_variable(rows: &[Row]) -> Variable {
-    let mut counts: HashMap<&VarName, usize> = HashMap::new();
+    let mut counts: HashMap<CaseVar, usize> = HashMap::new();
     for row in rows {
         for col in &row.columns {
-            *counts.entry(&col.variable.name).or_insert(0_usize) += 1;
+            *counts.entry(col.variable.id).or_insert(0_usize) += 1;
         }
     }
     rows[0]
         .columns
         .iter()
         .map(|col| col.variable.clone())
-        .max_by_key(|var| counts[&var.name])
+        .max_by_key(|var| counts[&var.id])
         .unwrap()
 }
 
-/// Returns a new case variable to use in the decision tree. It starts out
-/// free from bindings until a row tests a pattern against it that is not.
-fn fresh_var(fresh_vars: &mut FreshVarCounter, typ: Type) -> Variable {
-    Variable {
-        name: fresh_vars.fresh_var(),
-        typ,
-        is_free_from_bindings: true,
-    }
+/// Returns a new case variable to use in the decision tree.
+fn fresh_var(next_case: &mut usize, typ: Type) -> Variable {
+    let id = CaseVar(*next_case);
+    *next_case += 1;
+    Variable { id, typ }
 }
 
 /// Builds the witness for a variable by recursively looking up constructor info.
@@ -846,20 +715,24 @@ fn fresh_var(fresh_vars: &mut FreshVarCounter, typ: Type) -> Variable {
 /// Starting from the root variable, it traverses `var_info` to reconstruct the
 /// pattern that would be needed to make the match exhaustive. A variable that
 /// no switch has tested is a wildcard.
-fn witness_for_var(var_info: &HashMap<VarName, VarInfo>, var_name: &VarName) -> Witness {
-    let Some(info) = var_info.get(var_name) else {
-        return Witness::Wildcard;
+fn witness_for_var(var_info: &HashMap<CaseVar, VarInfo>, var: CaseVar) -> TypedMatchPattern {
+    let Some(info) = var_info.get(&var) else {
+        return TypedMatchPattern::Wildcard;
     };
     let mut args = Vec::new();
     let mut fields = Vec::new();
-    for (sub_var, field_name) in &info.args {
-        let witness = witness_for_var(var_info, sub_var);
+    for (index, (field_name, sub_var)) in info.args.iter().enumerate() {
+        let pattern = witness_for_var(var_info, sub_var.id);
         match field_name {
-            Some(name) => fields.push((name.clone(), witness)),
-            None => args.push(witness),
+            Some(name) => fields.push(TypedField {
+                name: name.clone(),
+                index,
+                pattern,
+            }),
+            None => args.push(pattern),
         }
     }
-    Witness::Constructor {
+    TypedMatchPattern::Constructor {
         constructor: info.constructor.clone(),
         args,
         fields,
@@ -875,6 +748,7 @@ mod tests {
     use crate::hop::parsing::parsed_expr::ParsedExpr;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use crate::hop::typing::typecheck_pattern::typecheck_pattern;
+    use crate::type_error::TypeError;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -908,39 +782,42 @@ mod tests {
             subject_type.is_matchable(),
             "match is not implemented for subject type {subject_type:?}"
         );
-        // Pattern typechecking is covered by the `typed` module tests. Any error
+        // Pattern typechecking is covered by the `typecheck_pattern` tests. Any error
         // here means the test uses a pattern that does not typecheck, so panic
         // rather than exercise the compiler with invalid input.
         let mut type_errors = Vec::new();
         let typed_patterns = patterns
             .iter()
-            .map(|p| typecheck_pattern(p, subject_type.clone(), types.registry(), &mut type_errors))
+            .map(|p| {
+                typecheck_pattern(
+                    p,
+                    subject_type.clone(),
+                    types.registry(),
+                    &mut Vec::new(),
+                    &mut type_errors,
+                )
+            })
             .collect::<Option<Vec<_>>>()
             .unwrap_or_else(|| panic!("pattern failed to typecheck: {type_errors:?}"));
 
-        let mut fresh_vars = FreshVarCounter::new();
-        let subject_name = fresh_vars.fresh_var();
-        let result = compile_match(
-            &mut fresh_vars,
-            types.registry(),
-            &typed_patterns,
-            subject_name,
-            subject_type,
-            &subject_range,
-            &mut type_errors,
-        );
-
-        match result {
-            Some(decision) => (format_decision(&decision, 0), true),
-            None => (
-                DocumentAnnotator::new()
-                    .with_severity_label()
-                    .without_location()
-                    .without_line_numbers()
-                    .annotate(type_errors.iter().map(|e| e.to_diagnostic()))
-                    .render(),
-                false,
-            ),
+        match compile_match(types.registry(), &typed_patterns, subject_type) {
+            Ok(decision) => (format_decision(&decision, 0), true),
+            Err(error) => {
+                let range = match error.site {
+                    MatchErrorSite::Subject => &subject_range,
+                    MatchErrorSite::Pattern(index) => patterns[index].range(),
+                };
+                let type_error = TypeError::new(*error.kind, range.clone());
+                (
+                    DocumentAnnotator::new()
+                        .with_severity_label()
+                        .without_location()
+                        .without_line_numbers()
+                        .annotate([type_error.to_diagnostic()])
+                        .render(),
+                    false,
+                )
+            }
         }
     }
 
@@ -968,7 +845,7 @@ mod tests {
                 for binding in &body.bindings {
                     out.push_str(&format!(
                         "{}let {} = {}\n",
-                        pad, binding.name, binding.source_name
+                        pad, binding.name, binding.source
                     ));
                 }
                 out.push_str(&format!("{}branch {}\n", pad, body.value));
@@ -980,9 +857,9 @@ mod tests {
                 false_case,
             } => {
                 let mut out = String::new();
-                out.push_str(&format!("{}{} is false\n", pad, variable.name));
+                out.push_str(&format!("{}{} is false\n", pad, variable.id));
                 out.push_str(&format_decision(&false_case.body, indent + 1));
-                out.push_str(&format!("{}{} is true\n", pad, variable.name));
+                out.push_str(&format!("{}{} is true\n", pad, variable.id));
                 out.push_str(&format_decision(&true_case.body, indent + 1));
                 out
             }
@@ -992,17 +869,12 @@ mod tests {
                 none_case,
             } => {
                 let mut out = String::new();
-                let binding_str = some_case
-                    .bound_name
-                    .as_ref()
-                    .map(|v| v.as_str())
-                    .unwrap_or("_");
                 out.push_str(&format!(
                     "{}{} is Some({})\n",
-                    pad, variable.name, binding_str
+                    pad, variable.id, some_case.var.id
                 ));
                 out.push_str(&format_decision(&some_case.body, indent + 1));
-                out.push_str(&format!("{}{} is None\n", pad, variable.name));
+                out.push_str(&format!("{}{} is None\n", pad, variable.id));
                 out.push_str(&format_decision(&none_case.body, indent + 1));
                 out
             }
@@ -1015,16 +887,13 @@ mod tests {
                         let named: Vec<_> = case
                             .bindings
                             .iter()
-                            .map(|b| {
-                                let name = b.bound_name.as_ref().map(|v| v.as_str()).unwrap_or("_");
-                                format!("{}: {}", b.field_name, name)
-                            })
+                            .map(|b| format!("{}: {}", b.field_name, b.var.id))
                             .collect();
                         format!("{{{}}}", named.join(", "))
                     };
                     out.push_str(&format!(
                         "{}{} is {}::{}{}\n",
-                        pad, variable.name, case.enum_name, case.variant_name, args
+                        pad, variable.id, case.enum_name, case.variant_name, args
                     ));
                     out.push_str(&format_decision(&case.body, indent + 1));
                 }
@@ -1038,32 +907,25 @@ mod tests {
                     let named: Vec<_> = case
                         .bindings
                         .iter()
-                        .map(|b| {
-                            let name = b.bound_name.as_ref().map(|v| v.as_str()).unwrap_or("_");
-                            format!("{}: {}", b.field_name, name)
-                        })
+                        .map(|b| format!("{}: {}", b.field_name, b.var.id))
                         .collect();
                     format!("{{{}}}", named.join(", "))
                 };
                 out.push_str(&format!(
                     "{}{} is {}{}\n",
-                    pad, variable.name, case._type_name, args
+                    pad, variable.id, case._type_name, args
                 ));
                 out.push_str(&format_decision(&case.body, indent + 1));
                 out
             }
             Decision::SwitchTuple { variable, case } => {
                 let mut out = String::new();
-                let elements: Vec<_> = case
-                    .bindings
-                    .iter()
-                    .map(|b| b.bound_name.as_ref().map(|v| v.as_str()).unwrap_or("_"))
-                    .collect();
+                let elements: Vec<_> = case.elements.iter().map(|e| e.id.to_string()).collect();
                 let trailing_comma = if elements.len() == 1 { "," } else { "" };
                 out.push_str(&format!(
                     "{}{} is ({}{})\n",
                     pad,
-                    variable.name,
+                    variable.id,
                     elements.join(", "),
                     trailing_comma
                 ));
@@ -1085,9 +947,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is false
+                #0 is false
                   branch 1
-                v__0 is true
+                #0 is true
                   branch 0
             "#]],
         );
@@ -1104,7 +966,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: false
+                error: Missing pattern(s) false
                 match x {
                       ^
             "#]],
@@ -1122,7 +984,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: true
+                error: Missing pattern(s) true
                 match x {
                       ^
             "#]],
@@ -1142,7 +1004,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'true'
+                error: Unreachable pattern true
                     true => 2,
                     ^^^^
             "#]],
@@ -1178,7 +1040,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                let b = v__0
+                let b = #0
                 branch 0
             "#]],
         );
@@ -1196,10 +1058,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Some(v__1)
-                  let item = v__1
+                #0 is Some(#1)
+                  let item = #1
                   branch 0
-                v__0 is None
+                #0 is None
                   branch 1
             "#]],
         );
@@ -1216,7 +1078,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: None
+                error: Missing pattern(s) None
                 match x {
                       ^
             "#]],
@@ -1234,7 +1096,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Some(_)
+                error: Missing pattern(s) Some(_)
                 match x {
                       ^
             "#]],
@@ -1254,13 +1116,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Some(v__1)
-                  v__1 is Some(v__2)
-                    let item = v__2
+                #0 is Some(#1)
+                  #1 is Some(#2)
+                    let item = #2
                     branch 0
-                  v__1 is None
+                  #1 is None
                     branch 1
-                v__0 is None
+                #0 is None
                   branch 2
             "#]],
         );
@@ -1279,11 +1141,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Color::Red
+                #0 is Color::Red
                   branch 0
-                v__0 is Color::Green
+                #0 is Color::Green
                   branch 1
-                v__0 is Color::Blue
+                #0 is Color::Blue
                   branch 2
             "#]],
         );
@@ -1301,7 +1163,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Color::Blue
+                error: Missing pattern(s) Color::Blue
                 match x {
                       ^
             "#]],
@@ -1320,11 +1182,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Color::Red
+                #0 is Color::Red
                   branch 0
-                v__0 is Color::Green
+                #0 is Color::Green
                   branch 1
-                v__0 is Color::Blue
+                #0 is Color::Blue
                   branch 1
             "#]],
         );
@@ -1342,7 +1204,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'Color::Red'
+                error: Unreachable pattern Color::Red
                     Color::Red => 1,
                     ^^^^^^^^^^
             "#]],
@@ -1367,11 +1229,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Outcome::Success{value: v__1}
-                  let v = v__1
+                #0 is Outcome::Success{value: #1}
+                  let v = #1
                   branch 0
-                v__0 is Outcome::Failure{message: v__2}
-                  let m = v__2
+                #0 is Outcome::Failure{message: #2}
+                  let m = #2
                   branch 1
             "#]],
         );
@@ -1392,10 +1254,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Maybe::Just{value: v__1}
-                  let v = v__1
+                #0 is Maybe::Just{value: #1}
+                  let v = #1
                   branch 0
-                v__0 is Maybe::Nothing
+                #0 is Maybe::Nothing
                   branch 1
             "#]],
         );
@@ -1419,9 +1281,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Outcome::Success{value: _}
+                #0 is Outcome::Success{value: #1}
                   branch 0
-                v__0 is Outcome::Failure{message: _}
+                #0 is Outcome::Failure{message: #2}
                   branch 1
             "#]],
         );
@@ -1447,14 +1309,14 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Status::Pending{since: v__1}
-                  let s = v__1
+                #0 is Status::Pending{since: #1}
+                  let s = #1
                   branch 0
-                v__0 is Status::Active{id: v__2, name: v__3}
-                  let i = v__2
-                  let n = v__3
+                #0 is Status::Active{id: #2, name: #3}
+                  let i = #2
+                  let n = #3
                   branch 1
-                v__0 is Status::Inactive
+                #0 is Status::Inactive
                   branch 2
             "#]],
         );
@@ -1474,10 +1336,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Point3D::Coords{x: v__1, y: v__2, z: v__3}
-                  let a = v__1
-                  let b = v__2
-                  let c = v__3
+                #0 is Point3D::Coords{x: #1, y: #2, z: #3}
+                  let a = #1
+                  let b = #2
+                  let c = #3
                   branch 0
             "#]],
         );
@@ -1497,7 +1359,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Point3D::Coords{x: _, y: _, z: _}
+                #0 is Point3D::Coords{x: #1, y: #2, z: #3}
                   branch 0
             "#]],
         );
@@ -1517,9 +1379,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Point3D::Coords{x: v__1, y: _, z: v__3}
-                  let a = v__1
-                  let c = v__3
+                #0 is Point3D::Coords{x: #1, y: #2, z: #3}
+                  let a = #1
+                  let c = #3
                   branch 0
             "#]],
         );
@@ -1566,7 +1428,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                let r = v__0
+                let r = #0
                 branch 0
             "#]],
         );
@@ -1591,12 +1453,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Status::Pending{since: v__1}
-                  let s = v__1
+                #0 is Status::Pending{since: #1}
+                  let s = #1
                   branch 0
-                v__0 is Status::Active{id: _}
+                #0 is Status::Active{id: #2}
                   branch 1
-                v__0 is Status::Inactive
+                #0 is Status::Inactive
                   branch 1
             "#]],
         );
@@ -1619,7 +1481,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Outcome::Failure{message: _}
+                error: Missing pattern(s) Outcome::Failure{message: _}
                 match x {
                       ^
             "#]],
@@ -1644,7 +1506,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Status::Active{id: _}, Status::Inactive
+                error: Missing pattern(s) Status::Active{id: _}, Status::Inactive
                 match x {
                       ^
             "#]],
@@ -1670,7 +1532,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'Outcome::Success{value: w}'
+                error: Unreachable pattern Outcome::Success{value: w}
                     Outcome::Success{value: w} => 1,
                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1695,7 +1557,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'Outcome::Success{value: v}'
+                error: Unreachable pattern Outcome::Success{value: v}
                     Outcome::Success{value: v} => 1,
                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1715,11 +1577,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Container::Wrapped{inner: v__1}
-                  v__1 is Some(v__2)
-                    let v = v__2
+                #0 is Container::Wrapped{inner: #1}
+                  #1 is Some(#2)
+                    let v = #2
                     branch 0
-                  v__1 is None
+                  #1 is None
                     branch 1
             "#]],
         );
@@ -1737,7 +1599,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Container::Wrapped{inner: None}
+                error: Missing pattern(s) Container::Wrapped{inner: None}
                 match x {
                       ^
             "#]],
@@ -1756,10 +1618,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Flag::Active{enabled: v__1}
-                  v__1 is false
+                #0 is Flag::Active{enabled: #1}
+                  #1 is false
                     branch 1
-                  v__1 is true
+                  #1 is true
                     branch 0
             "#]],
         );
@@ -1776,7 +1638,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Flag::Active{enabled: false}
+                error: Missing pattern(s) Flag::Active{enabled: false}
                 match x {
                       ^
             "#]],
@@ -1805,11 +1667,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Rectangle::Bounds{x: v__1, y: v__2, width: v__3, height: v__4}
-                  let a = v__1
-                  let b = v__2
-                  let w = v__3
-                  let h = v__4
+                #0 is Rectangle::Bounds{x: #1, y: #2, width: #3, height: #4}
+                  let a = #1
+                  let b = #2
+                  let w = #3
+                  let h = #4
                   branch 0
             "#]],
         );
@@ -1837,16 +1699,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Event::Click{x: v__1, y: v__2}
-                  let a = v__1
-                  let b = v__2
+                #0 is Event::Click{x: #1, y: #2}
+                  let a = #1
+                  let b = #2
                   branch 0
-                v__0 is Event::KeyPress{key: v__3}
-                  let k = v__3
+                #0 is Event::KeyPress{key: #3}
+                  let k = #3
                   branch 1
-                v__0 is Event::Focus
+                #0 is Event::Focus
                   branch 2
-                v__0 is Event::Blur
+                #0 is Event::Blur
                   branch 3
             "#]],
         );
@@ -1863,9 +1725,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is User{name: v__1, age: v__2}
-                  let n = v__1
-                  let a = v__2
+                #0 is User{name: #1, age: #2}
+                  let n = #1
+                  let a = #2
                   branch 0
             "#]],
         );
@@ -1885,16 +1747,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Foo{a: v__1, b: v__2}
-                  v__2 is false
-                    v__1 is false
+                #0 is Foo{a: #1, b: #2}
+                  #2 is false
+                    #1 is false
                       branch 3
-                    v__1 is true
+                    #1 is true
                       branch 1
-                  v__2 is true
-                    v__1 is false
+                  #2 is true
+                    #1 is false
                       branch 2
-                    v__1 is true
+                    #1 is true
                       branch 0
             "#]],
         );
@@ -1912,9 +1774,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is false
+                #0 is false
                   branch 1
-                v__0 is true
+                #0 is true
                   branch 0
             "#]],
         );
@@ -1933,7 +1795,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'false'
+                error: Unreachable pattern false
                     false => 2,
                     ^^^^^
             "#]],
@@ -1952,7 +1814,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'true'
+                error: Unreachable pattern true
                     true => 1,
                     ^^^^
             "#]],
@@ -1971,7 +1833,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'true'
+                error: Unreachable pattern true
                     true => 1,
                     ^^^^
             "#]],
@@ -2008,10 +1870,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Some(v__1)
-                  let v = v__1
+                #0 is Some(#1)
+                  let v = #1
                   branch 0
-                v__0 is None
+                #0 is None
                   branch 1
             "#]],
         );
@@ -2030,7 +1892,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'Some(_)'
+                error: Unreachable pattern Some(_)
                     Some(_) => 1,
                     ^^^^^^^
             "#]],
@@ -2050,7 +1912,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'None'
+                error: Unreachable pattern None
                     None => 2,
                     ^^^^
             "#]],
@@ -2069,7 +1931,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Some(None)
+                error: Missing pattern(s) Some(None)
                 match x {
                       ^
             "#]],
@@ -2089,7 +1951,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Some(Some(true))
+                error: Missing pattern(s) Some(Some(true))
                 match x {
                       ^
             "#]],
@@ -2110,15 +1972,15 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Some(v__1)
-                  v__1 is Some(v__2)
-                    v__2 is false
+                #0 is Some(#1)
+                  #1 is Some(#2)
+                    #2 is false
                       branch 1
-                    v__2 is true
+                    #2 is true
                       branch 0
-                  v__1 is None
+                  #1 is None
                     branch 2
-                v__0 is None
+                #0 is None
                   branch 3
             "#]],
         );
@@ -2136,7 +1998,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Some(Some(_))
+                error: Missing pattern(s) Some(Some(_))
                 match x {
                       ^
             "#]],
@@ -2154,7 +2016,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                let c = v__0
+                let c = #0
                 branch 0
             "#]],
         );
@@ -2173,7 +2035,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern 'Color::Red'
+                error: Unreachable pattern Color::Red
                     Color::Red => 1,
                     ^^^^^^^^^^
             "#]],
@@ -2192,7 +2054,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern '_'
+                error: Unreachable pattern _
                     _ => 1,
                     ^
             "#]],
@@ -2210,7 +2072,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Color::Blue, Color::Green
+                error: Missing pattern(s) Color::Blue, Color::Green
                 match x {
                       ^
             "#]],
@@ -2248,13 +2110,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is User{name: v__1, email: v__2}
-                  v__2 is Some(v__3)
-                    let n = v__1
-                    let e = v__3
+                #0 is User{name: #1, email: #2}
+                  #2 is Some(#3)
+                    let n = #1
+                    let e = #3
                     branch 0
-                  v__2 is None
-                    let n = v__1
+                  #2 is None
+                    let n = #1
                     branch 1
             "#]],
         );
@@ -2272,7 +2134,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: User{name: _, email: None}
+                error: Missing pattern(s) User{name: _, email: None}
                 match x {
                       ^
             "#]],
@@ -2292,7 +2154,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Foo{a: false, b: false}
+                error: Missing pattern(s) Foo{a: false, b: false}
                 match x {
                       ^
             "#]],
@@ -2311,7 +2173,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Foo{a: false, b: true}, Foo{a: true, b: false}
+                error: Missing pattern(s) Foo{a: false, b: true}, Foo{a: true, b: false}
                 match x {
                       ^
             "#]],
@@ -2330,12 +2192,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Some(v__1)
-                  v__1 is User{name: v__2, age: v__3}
-                    let n = v__2
-                    let a = v__3
+                #0 is Some(#1)
+                  #1 is User{name: #2, age: #3}
+                    let n = #2
+                    let a = #3
                     branch 0
-                v__0 is None
+                #0 is None
                   branch 1
             "#]],
         );
@@ -2353,9 +2215,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Some(_)
+                #0 is Some(#1)
                   branch 0
-                v__0 is None
+                #0 is None
                   branch 1
             "#]],
         );
@@ -2376,9 +2238,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Some(_)
+                #0 is Some(#1)
                   branch 0
-                v__0 is None
+                #0 is None
                   branch 1
             "#]],
         );
@@ -2420,7 +2282,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern '_'
+                error: Unreachable pattern _
                     _ => 1,
                     ^
             "#]],
@@ -2441,8 +2303,8 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is User{name: v__1, address: _}
-                  let n = v__1
+                #0 is User{name: #1, address: #2}
+                  let n = #1
                   branch 0
             "#]],
         );
@@ -2472,10 +2334,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Outcome::Success{value: v__1, metadata: _}
-                  let v = v__1
+                #0 is Outcome::Success{value: #1, metadata: #2}
+                  let v = #1
                   branch 0
-                v__0 is Outcome::Failure{message: _}
+                #0 is Outcome::Failure{message: #3}
                   branch 1
             "#]],
         );
@@ -2496,9 +2358,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Outer{middle: v__1}
-                  v__1 is Middle{name: v__2, inner: _}
-                    let n = v__2
+                #0 is Outer{middle: #1}
+                  #1 is Middle{name: #2, inner: #3}
+                    let n = #2
                     branch 0
             "#]],
         );
@@ -2536,11 +2398,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is IntList::Cons{head: v__1, tail: v__2}
-                  let h = v__1
-                  let t = v__2
+                #0 is IntList::Cons{head: #1, tail: #2}
+                  let h = #1
+                  let t = #2
                   branch 0
-                v__0 is IntList::Nil
+                #0 is IntList::Nil
                   branch 1
             "#]],
         );
@@ -2565,16 +2427,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is IntList::Cons{head: v__1, tail: v__2}
-                  v__2 is IntList::Cons{head: v__3, tail: v__4}
-                    let h = v__1
-                    let h2 = v__3
-                    let rest = v__4
+                #0 is IntList::Cons{head: #1, tail: #2}
+                  #2 is IntList::Cons{head: #3, tail: #4}
+                    let h = #1
+                    let h2 = #3
+                    let rest = #4
                     branch 1
-                  v__2 is IntList::Nil
-                    let h = v__1
+                  #2 is IntList::Nil
+                    let h = #1
                     branch 0
-                v__0 is IntList::Nil
+                #0 is IntList::Nil
                   branch 2
             "#]],
         );
@@ -2598,7 +2460,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: IntList::Cons{head: _, tail: IntList::Cons{head: _, tail: _}}
+                error: Missing pattern(s) IntList::Cons{head: _, tail: IntList::Cons{head: _, tail: _}}
                 match x {
                       ^
             "#]],
@@ -2617,13 +2479,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Node{value: v__1, next: v__2}
-                  v__2 is Some(v__3)
-                    let v = v__1
-                    let n = v__3
+                #0 is Node{value: #1, next: #2}
+                  #2 is Some(#3)
+                    let v = #1
+                    let n = #3
                     branch 0
-                  v__2 is None
-                    let v = v__1
+                  #2 is None
+                    let v = #1
                     branch 1
             "#]],
         );
@@ -2641,7 +2503,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Node{value: _, next: Some(Node{value: _, next: Some(_)})}
+                error: Missing pattern(s) Node{value: _, next: Some(Node{value: _, next: Some(_)})}
                 match x {
                       ^
             "#]],
@@ -2661,12 +2523,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Some(v__1)
-                  v__1 is false
+                #0 is Some(#1)
+                  #1 is false
                     branch 1
-                  v__1 is true
+                  #1 is true
                     branch 0
-                v__0 is None
+                #0 is None
                   branch 2
             "#]],
         );
@@ -2685,14 +2547,14 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Foo{a: v__1, b: v__2}
-                  v__1 is false
+                #0 is Foo{a: #1, b: #2}
+                  #1 is false
                     branch 2
-                  v__1 is true
-                    v__2 is Some(v__3)
-                      let n = v__3
+                  #1 is true
+                    #2 is Some(#3)
+                      let n = #3
                       branch 0
-                    v__2 is None
+                    #2 is None
                       branch 1
             "#]],
         );
@@ -2710,11 +2572,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Foo{a: v__1, b: v__2}
-                  v__1 is false
-                    let n = v__2
+                #0 is Foo{a: #1, b: #2}
+                  #1 is false
+                    let n = #2
                     branch 1
-                  v__1 is true
+                  #1 is true
                     branch 0
             "#]],
         );
@@ -2736,12 +2598,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Status::Active{admin: v__1}
-                  v__1 is false
+                #0 is Status::Active{admin: #1}
+                  #1 is false
                     branch 1
-                  v__1 is true
+                  #1 is true
                     branch 0
-                v__0 is Status::Inactive
+                #0 is Status::Inactive
                   branch 2
             "#]],
         );
@@ -2760,13 +2622,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is (v__1, v__2)
-                  v__1 is false
+                #0 is (#1, #2)
+                  #1 is false
                     branch 2
-                  v__1 is true
-                    v__2 is false
+                  #1 is true
+                    #2 is false
                       branch 1
-                    v__2 is true
+                    #2 is true
                       branch 0
             "#]],
         );
@@ -2784,7 +2646,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: (false, false)
+                error: Missing pattern(s) (false, false)
                 match x {
                       ^
             "#]],
@@ -2803,12 +2665,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is (v__1, v__2, v__3)
-                  v__1 is false
-                    let n = v__3
+                #0 is (#1, #2, #3)
+                  #1 is false
+                    let n = #3
                     branch 1
-                  v__1 is true
-                    let s = v__2
+                  #1 is true
+                    let s = #2
                     branch 0
             "#]],
         );
@@ -2825,9 +2687,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is (v__1, v__2)
-                  let s = v__1
-                  let n = v__2
+                #0 is (#1, #2)
+                  let s = #1
+                  let n = #2
                   branch 0
             "#]],
         );
@@ -2881,7 +2743,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern '(true, _)'
+                error: Unreachable pattern (true, _)
                     (true, _) => 1,
                     ^^^^^^^^^
             "#]],
@@ -2900,10 +2762,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is (v__1,)
-                  v__1 is false
+                #0 is (#1,)
+                  #1 is false
                     branch 1
-                  v__1 is true
+                  #1 is true
                     branch 0
             "#]],
         );
@@ -2920,7 +2782,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: (false,)
+                error: Missing pattern(s) (false,)
                 match x {
                       ^
             "#]],
@@ -2940,16 +2802,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is (v__1, v__2)
-                  v__2 is Some(v__3)
-                    v__1 is (v__4, v__5)
-                      v__4 is false
+                #0 is (#1, #2)
+                  #2 is Some(#3)
+                    #1 is (#4, #5)
+                      #4 is false
                         branch 1
-                      v__4 is true
-                        let s = v__3
-                        let n = v__5
+                      #4 is true
+                        let s = #3
+                        let n = #5
                         branch 0
-                  v__2 is None
+                  #2 is None
                     branch 2
             "#]],
         );
@@ -2967,7 +2829,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: ((false, false), _), ((false, true), false)
+                error: Missing pattern(s) ((false, false), _), ((false, true), false)
                 match x {
                       ^
             "#]],
@@ -2986,7 +2848,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for pattern '_'
+                error: Unreachable pattern _
                     _ => 1,
                     ^
             "#]],
@@ -3004,8 +2866,8 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is (_, v__2)
-                  let s = v__2
+                #0 is (#1, #2)
+                  let s = #2
                   branch 0
             "#]],
         );
@@ -3024,14 +2886,14 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Some(v__1)
-                  v__1 is (v__2, v__3)
-                    v__2 is false
+                #0 is Some(#1)
+                  #1 is (#2, #3)
+                    #2 is false
                       branch 1
-                    v__2 is true
-                      let n = v__3
+                    #2 is true
+                      let n = #3
                       branch 0
-                v__0 is None
+                #0 is None
                   branch 2
             "#]],
         );
@@ -3049,7 +2911,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Some((false, _))
+                error: Missing pattern(s) Some((false, _))
                 match x {
                       ^
             "#]],
@@ -3068,12 +2930,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is Point{xy: v__1}
-                  v__1 is (v__2, v__3)
-                    v__3 is false
+                #0 is Point{xy: #1}
+                  #1 is (#2, #3)
+                    #3 is false
                       branch 1
-                    v__3 is true
-                      let n = v__2
+                    #3 is true
+                      let n = #2
                       branch 0
             "#]],
         );
@@ -3092,16 +2954,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v__0 is (v__1, v__2)
-                  v__2 is Color::Red
-                    v__1 is Color::Red
+                #0 is (#1, #2)
+                  #2 is Color::Red
+                    #1 is Color::Red
                       branch 0
-                    v__1 is Color::Green
+                    #1 is Color::Green
                       branch 2
-                  v__2 is Color::Green
-                    v__1 is Color::Red
+                  #2 is Color::Green
+                    #1 is Color::Red
                       branch 2
-                    v__1 is Color::Green
+                    #1 is Color::Green
                       branch 1
             "#]],
         );
@@ -3119,7 +2981,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: (Color::Green, Color::Green)
+                error: Missing pattern(s) (Color::Green, Color::Green)
                 match x {
                       ^
             "#]],

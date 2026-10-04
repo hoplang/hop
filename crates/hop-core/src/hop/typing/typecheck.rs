@@ -1758,8 +1758,8 @@ mod tests {
                 -- main.hop --
                 fn Main(title: Option[String]) -> String {
                   let prefix = let p = "foo" in Some(p) in match title {
-                    Some(v__0) => let t = v__0 in let suffix = (t + " ") in suffix,
-                    None => match prefix {Some(v__1) => let p = v__1 in p, None => ""},
+                    Some(t) => let suffix = (t + " ") in suffix,
+                    None => match prefix {Some(p) => p, None => ""},
                   }
                 }
             "#]],
@@ -2565,9 +2565,7 @@ mod tests {
 
                 -- main.hop --
                 fn Main(account: Account) -> Html {
-                  let v__0 = account.user in let v__1 = v__0.name in let n = v__1 in concat(
-                    escape(n),
-                  )
+                  match account.user {User{name: n} => concat(escape(n))}
                 }
 
                 -- type registry --
@@ -2597,9 +2595,9 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(pair: (Bool, String)) -> Html {
-                  let v__0 = pair.0 in let v__1 = pair.1 in match v__0 {
-                    true => let name = v__1 in concat(escape(name)),
-                    false => concat(raw("none")),
+                  match pair {
+                    (true, name) => concat(escape(name)),
+                    (false, _) => concat(raw("none")),
                   }
                 }
             "#]],
@@ -2622,15 +2620,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(admin: Bool, name: Option[String]) -> Html {
-                  let v__0 = (
-                    admin,
-                    name,
-                  ) in let v__1 = v__0.0 in let v__2 = v__0.1 in match v__1 {
-                    true => match v__2 {
-                      Some(v__3) => let n = v__3 in concat(raw("admin "), escape(n)),
-                      None => concat(raw("admin")),
-                    },
-                    false => concat(raw("guest")),
+                  match (admin, name) {
+                    (true, Some(n)) => concat(raw("admin "), escape(n)),
+                    (true, None) => concat(raw("admin")),
+                    (false, _) => concat(raw("guest")),
                   }
                 }
             "#]],
@@ -2654,7 +2647,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Cell(pair: (String, Int)) -> Html {
-                  let v__0 = pair.0 in let label = v__0 in concat(escape(label))
+                  match pair {(label, _) => concat(escape(label))}
                 }
 
                 fn Main() -> Html {
@@ -2684,9 +2677,8 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Cell(pair: (Option[String], Array[Int])) -> Html {
-                  let v__0 = pair.0 in let label = v__0 in match label {
-                    Some(v__2) => let l = v__2 in concat(escape(l)),
-                    None => concat(),
+                  match pair {
+                    (label, _) => match label {Some(l) => concat(escape(l)), None => concat()},
                   }
                 }
 
@@ -2714,7 +2706,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Cell(pair: (String, Int)) -> Html {
-                  let v__0 = pair.0 in let label = v__0 in concat(escape(label))
+                  match pair {(label, _) => concat(escape(label))}
                 }
 
                 fn Main() -> Html {
@@ -3351,7 +3343,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn CounterComp(count: Float) -> Html {
-                  let v__0 = (count == 0) in match v__0 {
+                  match (count == 0) {
                     true => html(tag: "div", attrs: [], children: concat(raw("Zero"))),
                     false => concat(),
                   }
@@ -3393,11 +3385,8 @@ mod tests {
                 fn Main(params: Params) -> Html {
                   for item in params.items {
                     concat(
-                      let v__0 = item.active in match v__0 {
-                        true => concat(),
-                        false => concat(),
-                      },
-                      let v__1 = item.name in match v__1 {true => concat(), false => concat()},
+                      match item.active {true => concat(), false => concat()},
+                      match item.name {true => concat(), false => concat()},
                     )
                   }
                 }
@@ -3457,7 +3446,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(params: Params) -> Html {
-                  let v__0 = (params.x == params.y) in match v__0 {
+                  match (params.x == params.y) {
                     true => html(
                       tag: "div",
                       attrs: [],
@@ -3508,10 +3497,10 @@ mod tests {
                 fn Main(params: Array[Item]) -> Html {
                   concat(
                     for j in params {
-                      let v__0 = j.a in match v__0 {true => concat(), false => concat()}
+                      match j.a {true => concat(), false => concat()}
                     },
                     for j in params {
-                      let v__1 = j.b in match v__1 {true => concat(), false => concat()}
+                      match j.b {true => concat(), false => concat()}
                     },
                   )
                 }
@@ -3628,7 +3617,7 @@ mod tests {
             expect![[r#"
                 -- a/bar.hop --
                 fn WidgetComp(config: Config) -> Html {
-                  let v__0 = config.enabled in match v__0 {
+                  match config.enabled {
                     true => html(tag: "div", attrs: [], children: concat(escape(config.title))),
                     false => concat(),
                   }
@@ -4349,15 +4338,15 @@ mod tests {
                 -- main.hop --
                 fn Main(params: Params) -> Html {
                   concat(
-                    let v__0 = params.app.ui.theme.dark in match v__0 {
+                    match params.app.ui.theme.dark {
                       true => concat(raw("ok!")),
                       false => concat(),
                     },
-                    let v__1 = params.app.api.endpoints.users.enabled in match v__1 {
+                    match params.app.api.endpoints.users.enabled {
                       true => concat(raw("ok!")),
                       false => concat(),
                     },
-                    let v__2 = params.app.database.connection.ssl in match v__2 {
+                    match params.app.database.connection.ssl {
                       true => concat(raw("ok!")),
                       false => concat(),
                     },
@@ -4794,7 +4783,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arms for: Color::Blue
+                error: Missing pattern(s) Color::Blue
                   --> main.hop (line 8, col 17)
                  7 | fn Main(color: Color) -> Html {
                  8 |     <div>{match color {
@@ -4896,7 +4885,7 @@ mod tests {
                     tag: "div",
                     attrs: [],
                     children: concat(
-                      escape(let v__0 = user.status in match v__0 {
+                      escape(match user.status {
                         Status::Active => "active",
                         Status::Inactive => "inactive",
                       }),
@@ -5020,9 +5009,9 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(t: Tree) -> Html {
-                  let v__0 = t.root in match v__0 {
-                    Node::Leaf => let label = v__1 in concat(escape(label)),
-                    Node::Branch => let children = v__2 in for _ in children {
+                  match t.root {
+                    Node::Leaf{label} => concat(escape(label)),
+                    Node::Branch{children} => for _ in children {
                       concat(raw("..."))
                     },
                   }
@@ -5612,9 +5601,8 @@ mod tests {
                 fn Badge(status: Status) -> Html {
                   concat(
                     escape(match status {
-                      Status::Active => "active",
-                      Status::Inactive => "not active",
-                      Status::Pending => "not active",
+                      Status::Active{since: _} => "active",
+                      _ => "not active",
                     }),
                   )
                 }
@@ -5648,7 +5636,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  let v__0 = name.is_none() in match v__0 {true => concat(), false => concat()}
+                  match name.is_none() {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Html {
@@ -5673,7 +5661,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  let v__0 = name.is_none() in match v__0 {true => concat(), false => concat()}
+                  match name.is_none() {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Html {
@@ -5698,7 +5686,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  let v__0 = name.is_none() in match v__0 {true => concat(), false => concat()}
+                  match name.is_none() {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Html {
@@ -5723,7 +5711,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Html {
-                  let v__0 = name.is_none() in match v__0 {true => concat(), false => concat()}
+                  match name.is_none() {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Html {
@@ -5771,7 +5759,7 @@ mod tests {
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
                   match x {
-                    Some(v__0) => let y = v__0 in concat(raw("found "), escape(y)),
+                    Some(y) => concat(raw("found "), escape(y)),
                     None => concat(raw("nothing")),
                   }
                 }
@@ -5829,8 +5817,8 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let v__0 = Status::Active {name: "test"} in match v__0 {
-                    Status::Active => let n = v__1 in concat(escape(n)),
+                  match Status::Active {name: "test"} {
+                    Status::Active{name: n} => concat(escape(n)),
                     Status::Inactive => concat(raw("none")),
                   }
                 }
@@ -5877,7 +5865,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected Bool got Some(x)
+                error: Pattern does not match type Bool
                   --> main.hop (line 3, col 9)
                 2 |     match flag {
                 3 |         Some(x) => <>yes</>,
@@ -5902,7 +5890,7 @@ mod tests {
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
                   match x {
-                    Some(v__0) => let name = v__0 in html(
+                    Some(name) => html(
                       tag: "div",
                       attrs: [class: escape(name)],
                       children: concat(),
@@ -5926,7 +5914,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arms for: None
+                error: Missing pattern(s) None
                   --> main.hop (line 2, col 11)
                 1 | fn Main(x: Option[String]) -> Html {
                 2 |     match x {
@@ -5947,7 +5935,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arms for: false
+                error: Missing pattern(s) false
                   --> main.hop (line 2, col 11)
                 1 | fn Main(flag: Bool) -> Html {
                 2 |     match flag {
@@ -6065,7 +6053,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unreachable match arm for pattern '_'
+                error: Unreachable pattern _
                   --> main.hop (line 6, col 9)
                 5 |         User{role: Role{title: _, salary: _}, created_at: _} => <>matched</>,
                 6 |         _ => <>fallback</>,
@@ -6118,8 +6106,8 @@ mod tests {
                 -- main.hop --
                 fn Main(x: Option[Option[String]]) -> Html {
                   match x {
-                    Some(v__0) => let inner = v__0 in match inner {
-                      Some(v__1) => let s = v__1 in concat(escape(s)),
+                    Some(inner) => match inner {
+                      Some(s) => concat(escape(s)),
                       None => concat(raw("inner none")),
                     },
                     None => concat(raw("outer none")),
@@ -6147,10 +6135,7 @@ mod tests {
                 -- main.hop --
                 fn Main(items: Array[Option[String]]) -> Html {
                   for item in items {
-                    match item {
-                      Some(v__0) => let s = v__0 in concat(escape(s)),
-                      None => concat(raw("-")),
-                    }
+                    match item {Some(s) => concat(escape(s)), None => concat(raw("-"))}
                   }
                 }
             "#]],
@@ -6439,9 +6424,9 @@ mod tests {
                 -- main.hop --
                 fn Main(r1: Option[String], r2: Option[Bool]) -> Html {
                   match r1 {
-                    Some(v__0) => let bound = v__0 in concat(escape(bound)),
+                    Some(bound) => concat(escape(bound)),
                     None => match r2 {
-                      Some(v__1) => let bound = v__1 in match bound {
+                      Some(bound) => match bound {
                         true => concat(raw("yes")),
                         false => concat(),
                       },
@@ -6469,8 +6454,8 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(user: User) -> Html {
-                  let v__0 = user.name in match v__0 {
-                    Some(v__1) => let n = v__1 in concat(escape(n)),
+                  match user.name {
+                    Some(n) => concat(escape(n)),
                     None => concat(raw("anonymous")),
                   }
                 }
@@ -6523,10 +6508,7 @@ mod tests {
                 -- main.hop --
                 fn Main(show: Bool, x: Option[String]) -> Html {
                   match show {
-                    true => match x {
-                      Some(v__0) => let v = v__0 in concat(escape(v)),
-                      None => concat(raw("none")),
-                    },
+                    true => match x {Some(v) => concat(escape(v)), None => concat(raw("none"))},
                     false => concat(),
                   }
                 }
@@ -6556,11 +6538,7 @@ mod tests {
                     attrs: [],
                     children: concat(
                       match x {
-                        Some(v__0) => let v = v__0 in html(
-                          tag: "span",
-                          attrs: [],
-                          children: concat(escape(v)),
-                        ),
+                        Some(v) => html(tag: "span", attrs: [], children: concat(escape(v))),
                         None => html(tag: "span", attrs: [], children: concat(raw("none"))),
                       },
                     ),
@@ -7766,7 +7744,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let x = 0 in let y = (x + 1) in let z = (y + 2) in let v__0 = (z == 3) in match v__0 {
+                  let x = 0 in let y = (x + 1) in let z = (y + 2) in match (z == 3) {
                     true => html(tag: "div", attrs: [], children: concat(raw("correct"))),
                     false => concat(),
                   }
@@ -9043,7 +9021,7 @@ mod tests {
                 }
 
                 fn Card(count: Int) -> Html {
-                  let v__0 = (count > 0) in match v__0 {
+                  match (count > 0) {
                     true => html(tag: "div", attrs: [], children: concat(raw("positive"))),
                     false => concat(),
                   }
@@ -9091,10 +9069,7 @@ mod tests {
                     tag: "div",
                     attrs: [...rest],
                     children: concat(
-                      let v__0 = (count > 0) in match v__0 {
-                        true => concat(raw("positive")),
-                        false => concat(),
-                      },
+                      match (count > 0) {true => concat(raw("positive")), false => concat()},
                     ),
                   )
                 }
@@ -9760,7 +9735,7 @@ mod tests {
                     tag: "div",
                     attrs: [...rest],
                     children: concat(
-                      let v__0 = (tabindex > 0) in match v__0 {
+                      match (tabindex > 0) {
                         true => concat(raw("focusable")),
                         false => concat(),
                       },
@@ -9797,11 +9772,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Ping(n: Int) -> Html {
-                  let v__0 = (n > 0) in match v__0 {true => Pong(n: (n - 1)), false => concat()}
+                  match (n > 0) {true => Pong(n: (n - 1)), false => concat()}
                 }
 
                 fn Pong(n: Int) -> Html {
-                  let v__0 = (n > 0) in match v__0 {true => Ping(n: (n - 1)), false => concat()}
+                  match (n > 0) {true => Ping(n: (n - 1)), false => concat()}
                 }
             "#]],
         );
@@ -9827,15 +9802,15 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn A(n: Int) -> Html {
-                  let v__0 = (n > 0) in match v__0 {true => B(n: (n - 1)), false => concat()}
+                  match (n > 0) {true => B(n: (n - 1)), false => concat()}
                 }
 
                 fn B(n: Int) -> Html {
-                  let v__0 = (n > 0) in match v__0 {true => C(n: (n - 1)), false => concat()}
+                  match (n > 0) {true => C(n: (n - 1)), false => concat()}
                 }
 
                 fn C(n: Int) -> Html {
-                  let v__0 = (n > 0) in match v__0 {true => A(n: (n - 1)), false => concat()}
+                  match (n > 0) {true => A(n: (n - 1)), false => concat()}
                 }
             "#]],
         );
@@ -9916,10 +9891,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Render(item: Option[Int]) -> Html {
-                  match item {
-                    Some(v__0) => let n = v__0 in Wrap(n: n),
-                    None => concat(raw("done")),
-                  }
+                  match item {Some(n) => Wrap(n: n), None => concat(raw("done"))}
                 }
 
                 fn Wrap(n: Int) -> Html {

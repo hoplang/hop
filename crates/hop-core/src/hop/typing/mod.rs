@@ -1,10 +1,10 @@
+pub mod compile_match;
 pub mod export;
 pub mod resolve_type;
 pub mod rest_spread;
 pub mod r#type;
 pub mod type_env;
 pub mod type_registry;
-#[cfg(test)]
 #[cfg(test)]
 pub mod type_registry_builder;
 pub mod typecheck;
@@ -17,6 +17,7 @@ pub mod typed_ast;
 #[cfg(test)]
 pub mod typed_ast_builder;
 pub mod typed_expr;
+pub mod typed_match_pattern;
 pub mod variable_scope;
 
 pub use r#type::Type;

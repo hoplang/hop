@@ -737,7 +737,7 @@ is a compile error:
 ```hop
 let pair = ("Alice", 36);
 match pair {
-  // error: Mismatched pattern type: expected (String, Int) got (name, _, _)
+  // error: Pattern does not match type (String, Int)
   (name, _, _) => name,
 }
 ```
@@ -812,7 +812,7 @@ Coverage is checked recursively:
 
 ```hop
 let flag = Some(true);
-// error: Match expression is missing arms for: Some(false)
+// error: Missing pattern(s) Some(false)
 match flag {
   Some(true) => "yes",
   None => "unknown",
@@ -830,7 +830,7 @@ every value it matches is matched by an arm before it:
 let b = true;
 match b {
   _ => "a",
-  // error: Unreachable match arm for pattern 'true'
+  // error: Unreachable pattern true
   true => "b",
 }
 ```

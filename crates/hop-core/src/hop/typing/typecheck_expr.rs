@@ -4113,7 +4113,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected Bool got Color::Red
+                error: Pattern does not match type Bool
                     Color::Red => "red",
                     ^^^^^^^^^^
             "#]],
@@ -4132,7 +4132,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected Color got true
+                error: Pattern does not match type Color
                     true => 0,
                     ^^^^
             "#]],
@@ -4284,7 +4284,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected Option[Int] got Color::Red
+                error: Pattern does not match type Option[Int]
                     Color::Red => 0,
                     ^^^^^^^^^^
             "#]],
@@ -4303,7 +4303,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected Option[Int] got true
+                error: Pattern does not match type Option[Int]
                     true => 0,
                     ^^^^
             "#]],
@@ -4322,7 +4322,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected Color got Some(_)
+                error: Pattern does not match type Color
                     Some(_)      => 0,
                     ^^^^^^^
             "#]],
@@ -4341,7 +4341,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected Bool got Some(_)
+                error: Pattern does not match type Bool
                     Some(_) => 0,
                     ^^^^^^^
             "#]],
@@ -4360,7 +4360,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected Bool got None
+                error: Pattern does not match type Bool
                     Some(None) => 0,
                          ^^^^
             "#]],
@@ -4396,7 +4396,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched pattern type: expected Bool got Some(_)
+                error: Pattern does not match type Bool
                     Some(Some(_)) => 0,
                          ^^^^^^^
             "#]],
@@ -4652,7 +4652,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unreachable match arm for pattern '_'
+                error: Unreachable pattern _
                     _ => 1,
                     ^
             "#]],

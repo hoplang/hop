@@ -1,8 +1,8 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::patterns::typed::TypedMatchPattern;
 use crate::hop::typing::r#type::Type;
+use crate::hop::typing::typed_match_pattern::TypedMatchPattern;
 use crate::root_relative_path::RootRelativePathError;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
@@ -345,18 +345,14 @@ pub(crate) enum TypeErrorKind {
     #[error("Mismatched type: expected {expected} got {found}")]
     MatchArmTypeMismatch { expected: Type, found: Type },
 
-    #[error("Match expression is missing arms for: {}", variants.join(", "))]
-    MatchMissingVariants { variants: Vec<String> },
+    #[error("Missing pattern(s) {}", patterns.join(", "))]
+    MatchMissingPattern { patterns: Vec<String> },
 
-    #[error("Unreachable match arm for pattern '{pattern}'")]
-    MatchUnreachableArm { pattern: Box<TypedMatchPattern> },
+    #[error("Unreachable pattern {pattern}")]
+    MatchUnreachablePattern { pattern: Box<TypedMatchPattern> },
 
-    #[error("Mismatched pattern type: expected {expected} got {found}")]
-    MatchPatternTypeMismatch {
-        expected: Type,
-        // TODO: Make into Type
-        found: String,
-    },
+    #[error("Pattern does not match type {expected}")]
+    MatchPatternTypeMismatch { expected: Type },
 
     #[error("Match expression must have at least one arm")]
     MatchNoArms,

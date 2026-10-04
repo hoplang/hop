@@ -1,6 +1,5 @@
-use crate::hop::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::r#type::Type;
-use crate::ir::ir_var::IrVar;
+use crate::ir::ir_match::{EnumMatchArm, Match};
 
 use super::pure_module::{
     PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
@@ -174,8 +173,8 @@ fn lower_for_source(source: PureForSource) -> WriterForSource {
 }
 
 fn lower_match_output(
-    match_: Match<PureExpr, PureExpr, IrVar>,
-) -> Match<WriterExpr, Vec<WriterStatement>, IrVar> {
+    match_: Match<PureExpr, PureExpr>,
+) -> Match<WriterExpr, Vec<WriterStatement>> {
     match match_ {
         Match::Bool {
             subject,
@@ -230,9 +229,7 @@ fn lower_match_output(
     }
 }
 
-fn lower_match_value(
-    match_: Match<PureExpr, PureExpr, IrVar>,
-) -> Match<WriterExpr, WriterExpr, IrVar> {
+fn lower_match_value(match_: Match<PureExpr, PureExpr>) -> Match<WriterExpr, WriterExpr> {
     match match_ {
         Match::Bool {
             subject,

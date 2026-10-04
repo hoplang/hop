@@ -4,10 +4,10 @@ use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
 use crate::dependency_graph::DependencyGraph;
-use crate::hop::patterns::{EnumPattern, Match};
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_match::{EnumPattern, Match};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarId;
 use crate::ir::writer_module::{
@@ -981,7 +981,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterExpr, Vec<WriterStatement>, IrVar>,
+        match_: &'a Match<WriterExpr, Vec<WriterStatement>>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1793,7 +1793,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterExpr, WriterExpr, IrVar>,
+        match_: &'a Match<WriterExpr, WriterExpr>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {

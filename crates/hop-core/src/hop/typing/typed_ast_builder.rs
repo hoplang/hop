@@ -4,11 +4,14 @@ use std::rc::Rc;
 
 use crate::document::CheapString;
 use crate::hop::assembly::AssembledPageDeclaration;
+use crate::hop::parsing::parsed_expr::Constructor;
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
+use crate::hop::typing::compile_match::compile_match;
 use crate::hop::typing::type_registry::ResolvedType;
 use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::hop::typing::typed_ast::TypedParameter;
+use crate::hop::typing::typed_match_pattern::TypedMatchPattern;
 use crate::hop::typing::{TypedAttribute, TypedAttrs, TypedLoopSource, TypedRecordUpdateField};
 use crate::html::HtmlElementKind;
 use crate::symbols::field_name::FieldName;
@@ -326,23 +329,35 @@ impl TypedAstBuilder {
         FTrue: FnOnce(&mut Self),
         FFalse: FnOnce(&mut Self),
     {
-        use crate::hop::patterns::Match;
-
         let mut true_builder = self.new_scoped();
         true_children_fn(&mut true_builder);
         let mut false_builder = self.new_scoped();
         false_children_fn(&mut false_builder);
 
-        self.children.push(TypedExpr::Match {
-            match_: Match::Bool {
-                subject: Box::new(subject),
-                true_body: Box::new(TypedExpr::HtmlConcat {
-                    nodes: true_builder.children,
-                }),
-                false_body: Box::new(TypedExpr::HtmlConcat {
-                    nodes: false_builder.children,
-                }),
+        let patterns: Vec<TypedMatchPattern> =
+            [Constructor::BooleanTrue, Constructor::BooleanFalse]
+                .into_iter()
+                .map(|constructor| TypedMatchPattern::Constructor {
+                    constructor,
+                    args: Vec::new(),
+                    fields: Vec::new(),
+                })
+                .collect();
+        let decision = compile_match(self.types.registry(), &patterns, Type::Bool)
+            .expect("a match on true and false is exhaustive");
+        let bodies = [
+            TypedExpr::HtmlConcat {
+                nodes: true_builder.children,
             },
+            TypedExpr::HtmlConcat {
+                nodes: false_builder.children,
+            },
+        ];
+
+        self.children.push(TypedExpr::Match {
+            subject: Box::new(subject),
+            arms: patterns.into_iter().zip(bodies).collect(),
+            decision,
             typ: Type::Html,
         });
     }

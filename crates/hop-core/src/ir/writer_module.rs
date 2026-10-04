@@ -1,9 +1,9 @@
 use std::fmt;
 
 use crate::document::CheapString;
-use crate::hop::patterns::{EnumPattern, Match};
 use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_match::{EnumPattern, Match};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;
@@ -140,7 +140,7 @@ pub enum WriterStatement {
     ///
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
-        match_: Match<WriterExpr, Vec<WriterStatement>, IrVar>,
+        match_: Match<WriterExpr, Vec<WriterStatement>>,
     },
 }
 
@@ -167,7 +167,7 @@ pub enum WriterExpr {
     ///
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
-        match_: Match<WriterExpr, WriterExpr, IrVar>,
+        match_: Match<WriterExpr, WriterExpr>,
         typ: Type,
     },
 

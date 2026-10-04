@@ -1,9 +1,9 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
-use crate::hop::patterns::Match;
 use crate::ir::expr_id::ExprIdCounter;
 use crate::ir::function_id::FunctionId;
+use crate::ir::ir_match::Match;
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::{
     PureArgument, PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,

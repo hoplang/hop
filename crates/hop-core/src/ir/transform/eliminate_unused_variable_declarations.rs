@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::hop::patterns::{EnumMatchArm, Match};
+use crate::ir::ir_match::{EnumMatchArm, Match};
 use crate::ir::pure_module::{PureExpr, PureForSource};
 use crate::ir::var_id::VarId;
 

@@ -10,7 +10,7 @@ use crate::{
 use std::collections::HashMap;
 use thiserror::Error;
 
-use crate::hop::patterns::{EnumPattern, Match};
+use crate::ir::ir_match::{EnumPattern, Match};
 use crate::ir::pure_module::{PureForSource, PureFunctionDeclaration, PureModule};
 
 pub fn evaluate_page(

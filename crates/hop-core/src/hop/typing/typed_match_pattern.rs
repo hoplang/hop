@@ -1,67 +1,29 @@
 use pretty::BoxDoc;
 
-use crate::document::DocumentRange;
 use crate::hop::parsing::parsed_expr::Constructor;
-use crate::hop::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
 
 #[derive(Debug, Clone)]
 pub enum TypedMatchPattern {
-    Wildcard {
-        range: DocumentRange,
-    },
+    Wildcard,
     Binding {
         name: VarName,
-        typ: Type,
-        range: DocumentRange,
     },
     Constructor {
         constructor: Constructor,
-        typ: Type,
         args: Vec<TypedMatchPattern>,
         fields: Vec<TypedField>,
-        range: DocumentRange,
     },
 }
 
 impl TypedMatchPattern {
-    pub fn range(&self) -> &DocumentRange {
-        match self {
-            TypedMatchPattern::Wildcard { range, .. }
-            | TypedMatchPattern::Binding { range, .. }
-            | TypedMatchPattern::Constructor { range, .. } => range,
-        }
-    }
-
-    /// Extract the binding variables introduced by this pattern with their types
-    /// and ranges.
-    pub fn bindings(&self) -> Vec<(VarName, Type, DocumentRange)> {
-        match self {
-            TypedMatchPattern::Binding { name, typ, range } => {
-                vec![(name.clone(), typ.clone(), range.clone())]
-            }
-            TypedMatchPattern::Wildcard { .. } => vec![],
-            TypedMatchPattern::Constructor { args, fields, .. } => {
-                let mut bindings = Vec::new();
-                for arg in args {
-                    bindings.extend(arg.bindings());
-                }
-                for field in fields {
-                    bindings.extend(field.pattern.bindings());
-                }
-                bindings
-            }
-        }
-    }
-
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             TypedMatchPattern::Constructor {
                 constructor,
                 args,
                 fields,
-                ..
             } => {
                 let base = constructor.to_doc();
                 if matches!(constructor, Constructor::Tuple) {
@@ -81,9 +43,7 @@ impl TypedMatchPattern {
                     // Record pattern: User {name: x, age: y}
                     let fields_doc = BoxDoc::intersperse(
                         fields.iter().map(|field| {
-                            if let TypedMatchPattern::Binding { name: var_name, .. } =
-                                &field.pattern
-                            {
+                            if let TypedMatchPattern::Binding { name: var_name } = &field.pattern {
                                 if var_name.as_str() == field.name.as_str() {
                                     return BoxDoc::text(field.name.as_str());
                                 }
@@ -108,8 +68,8 @@ impl TypedMatchPattern {
                         .append(BoxDoc::text(")"))
                 }
             }
-            TypedMatchPattern::Wildcard { .. } => BoxDoc::text("_"),
-            TypedMatchPattern::Binding { name, .. } => BoxDoc::text(name.as_str()),
+            TypedMatchPattern::Wildcard => BoxDoc::text("_"),
+            TypedMatchPattern::Binding { name } => BoxDoc::text(name.as_str()),
         }
     }
 }

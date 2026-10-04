@@ -1,7 +1,7 @@
 //! A scoped variable tracker for tracking variable bindings during compilation.
 //!
-//! [`VariableScope`] provides push/pop semantics for nested scopes, tracks whether
-//! variables are accessed, and generates fresh variable names.
+//! [`VariableScope`] provides push/pop semantics for nested scopes and tracks whether
+//! variables are accessed.
 
 use std::collections::HashMap;
 
@@ -9,38 +9,11 @@ use super::r#type::Type;
 use crate::document::DocumentRange;
 use crate::symbols::var_name::VarName;
 
-/// Counter for generating fresh variable names like "v__0", "v__1", etc.
-#[derive(Debug, Clone)]
-pub struct FreshVarCounter {
-    counter: usize,
-}
-
-impl FreshVarCounter {
-    pub fn new() -> Self {
-        Self { counter: 0 }
-    }
-
-    /// Generate a fresh variable name.
-    /// Returns names like "v__0", "v__1", "v__2", etc.
-    pub fn fresh_var(&mut self) -> VarName {
-        let name = VarName::internal("v", self.counter);
-        self.counter += 1;
-        name
-    }
-}
-
-impl Default for FreshVarCounter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// The VariableScope tracks variables in scope.
 #[derive(Debug, Clone)]
 pub struct VariableScope {
     entries: HashMap<VarName, VariableScopeEntry>,
     operations: Vec<VarName>,
-    fresh_vars: FreshVarCounter,
 }
 
 /// A variable in scope: its type, the range where it was bound, and
@@ -57,13 +30,7 @@ impl VariableScope {
         VariableScope {
             entries: HashMap::new(),
             operations: Vec::new(),
-            fresh_vars: FreshVarCounter::new(),
         }
-    }
-
-    /// Returns a mutable reference to the fresh variable counter.
-    pub fn fresh_var_counter(&mut self) -> &mut FreshVarCounter {
-        &mut self.fresh_vars
     }
 
     /// Bind the name to the given type in the environment.

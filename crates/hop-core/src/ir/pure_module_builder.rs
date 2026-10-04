@@ -1,5 +1,4 @@
 use crate::document::CheapString;
-use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::Type;
 use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType};
 use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
@@ -7,6 +6,7 @@ use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::{
     PureArgument, PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
@@ -1167,7 +1167,7 @@ pub struct EnumMatchExprArms<'a> {
     builder: &'a PureBuilder,
     enum_name: TypeName,
     variants: Vec<EnumVariant>,
-    arms: Vec<EnumMatchArm<PureExpr, IrVar>>,
+    arms: Vec<EnumMatchArm<PureExpr>>,
     result_type: Option<Type>,
 }
 
@@ -1257,11 +1257,7 @@ fn resolve_arm_bindings<'s>(
     (bindings, scoped_vars)
 }
 
-fn assert_exhaustive<B, V>(
-    enum_name: &TypeName,
-    variants: &[EnumVariant],
-    arms: &[EnumMatchArm<B, V>],
-) {
+fn assert_exhaustive<B>(enum_name: &TypeName, variants: &[EnumVariant], arms: &[EnumMatchArm<B>]) {
     for variant in variants {
         let count = arms
             .iter()

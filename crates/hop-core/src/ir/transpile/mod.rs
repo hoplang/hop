@@ -5,10 +5,10 @@ use pretty::{Arena, DocBuilder};
 pub use rust::RustTranspiler;
 pub use ts::TsTranspiler;
 
-use crate::hop::patterns::Match;
 use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_match::Match;
 use crate::ir::ir_var::IrVar;
 use crate::ir::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionDeclaration, WriterModule,
@@ -61,7 +61,7 @@ pub trait Transpiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterExpr, Vec<WriterStatement>, IrVar>,
+        match_: &'a Match<WriterExpr, Vec<WriterStatement>>,
     ) -> Doc<'a>;
     fn transpile_write_function_statement<'a>(
         &mut self,
@@ -316,7 +316,7 @@ pub trait Transpiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterExpr, WriterExpr, IrVar>,
+        match_: &'a Match<WriterExpr, WriterExpr>,
     ) -> Doc<'a>;
     fn transpile_let_expr<'a>(
         &mut self,
