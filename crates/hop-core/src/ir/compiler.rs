@@ -7,7 +7,7 @@ use crate::hop::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::typed_ast::TypedFunctionDeclaration;
-use crate::hop::typing::{TypedAttribute, TypedLoopSource};
+use crate::hop::typing::{TypedAttribute, TypedLoopSource, TypedRecordUpdateField};
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
 use crate::ir::function_id::FunctionIdCounter;
@@ -268,6 +268,49 @@ impl<'a> Compiler<'a> {
                 typ: typ.clone(),
                 id: expr_id,
             },
+            TypedExpr::RecordUpdate {
+                record_name,
+                base,
+                fields,
+                typ,
+            } => {
+                let value = Box::new(self.compile_expr(base));
+                let base_var = IrVar::new(self.next_var_id());
+                let literal_id = self.next_expr_id();
+                let literal = PureExpr::RecordLiteral {
+                    record_name: record_name.clone(),
+                    fields: fields
+                        .iter()
+                        .map(|(name, field)| {
+                            let value = match field {
+                                TypedRecordUpdateField::Explicit(value) => self.compile_expr(value),
+                                TypedRecordUpdateField::FromBase(field_typ) => {
+                                    PureExpr::FieldAccess {
+                                        id: self.next_expr_id(),
+                                        record: Box::new(PureExpr::VariableReference {
+                                            value: base_var,
+                                            typ: typ.clone(),
+                                            id: self.next_expr_id(),
+                                        }),
+                                        field: name.clone(),
+                                        typ: field_typ.clone(),
+                                    }
+                                }
+                            };
+                            (name.clone(), value)
+                        })
+                        .collect(),
+                    typ: typ.clone(),
+                    id: literal_id,
+                };
+                PureExpr::Let {
+                    var: base_var,
+                    value,
+                    body: Box::new(literal),
+                    typ: typ.clone(),
+                    id: expr_id,
+                }
+            }
             TypedExpr::StringLiteral { value, .. } => PureExpr::StringLiteral {
                 value: value.clone(),
                 id: expr_id,
@@ -710,7 +753,10 @@ impl<'a> Compiler<'a> {
 mod tests {
 
     use super::*;
-    use crate::hop::typing::typed_ast_builder::{build_page, build_page_no_params};
+    use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::hop::typing::typed_ast_builder::{
+        build_page, build_page_no_params, build_page_with_types,
+    };
     use expect_test::{Expect, expect};
 
     fn check(page: AssembledPageDeclaration, expected: Expect) {
@@ -1170,6 +1216,78 @@ mod tests {
                 -- after --
                 page MainComp() {
                   concat(concat(raw("<br"), raw(">")))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_record_update_of_variable() {
+        check(
+            build_page_with_types(
+                TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+                "MainComp",
+                [("user", "User")],
+                |t| {
+                    let updated = t.record_update(
+                        t.var_expr("user"),
+                        vec![("name", t.string_literal("Jane"))],
+                    );
+                    t.text_expr(t.field_access(updated, "name"));
+                },
+            ),
+            expect![[r#"
+                -- before --
+                page MainComp(user: User) {
+                  fn body() -> Html {
+                    concat(escape(User {...user, name: "Jane"}.name))
+                  }
+                }
+
+                -- after --
+                page MainComp(user@v0: User) {
+                  concat(
+                    escape(let v1 = v0 in {
+                      User {name: "Jane", age: v1.age}
+                    }.name),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_record_update_of_expression() {
+        check(
+            build_page_with_types(
+                TypeRegistryBuilder::new()
+                    .record("State", [("query", "String"), ("num", "Int")])
+                    .record("App", [("state", "State")]),
+                "MainComp",
+                [("app", "App")],
+                |t| {
+                    let next = t.record_update(
+                        t.field_access(t.var_expr("app"), "state"),
+                        vec![("num", t.int_literal(1))],
+                    );
+                    t.text_expr(t.field_access(next, "query"));
+                },
+            ),
+            expect![[r#"
+                -- before --
+                page MainComp(app: App) {
+                  fn body() -> Html {
+                    concat(escape(State {...app.state, num: 1}.query))
+                  }
+                }
+
+                -- after --
+                page MainComp(app@v0: App) {
+                  concat(
+                    escape(let v1 = v0.state in {
+                      State {query: v1.query, num: 1}
+                    }.query),
+                  )
                 }
             "#]],
         );

@@ -15,7 +15,7 @@ use crate::hop::parsing::parsed_expr::{
     ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource,
 };
 use crate::hop::typing::type_env::TypeEnv;
-use crate::hop::typing::{TypedExpr, TypedLoopSource};
+use crate::hop::typing::{TypedExpr, TypedLoopSource, TypedRecordUpdateField};
 use crate::hover_annotation::HoverAnnotation;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::field_name::FieldName;
@@ -703,7 +703,7 @@ pub fn typecheck_expr(
                 typed_fields.push((field.name.clone(), typed_value));
             }
 
-            // The desugaring below assumes every explicit field was typechecked.
+            // The literals below assume every explicit field was typechecked.
             if typed_fields.len() != fields.len() {
                 return None;
             }
@@ -733,63 +733,25 @@ pub fn typecheck_expr(
                 });
             };
 
-            // Desugar the spread: complete the literal with a field access on
-            // the subject for every field not supplied explicitly, so that
-            // downstream passes see only a plain record literal.
-
-            // Every field is explicit: the spread fills nothing, and since
-            // expressions are pure, dropping the subject is unobservable.
-            if record_fields
-                .iter()
-                .all(|field| provided_fields.contains(&field.name))
-            {
-                return Some(TypedExpr::RecordLiteral {
-                    record_name: record_name.clone(),
-                    fields: typed_fields,
-                    typ: record_type,
-                });
-            }
-
-            // The variable the filled-in fields are read from: the subject
-            // itself when it is already a variable, otherwise a fresh
-            // variable which is bound to the subject expression below.
-            let (subject_var, subject_to_bind) = match typed_spread {
-                TypedExpr::Var { value, .. } => (value, None),
-                subject => (var_env.fresh_var_counter().fresh_var(), Some(subject)),
-            };
-
-            // Lay out the fields in declaration order.
+            // Lay out the fields in declaration order, marking those the
+            // spread fills in.
             let mut explicit: HashMap<FieldName, TypedExpr> = typed_fields.into_iter().collect();
             let all_fields = record_fields
                 .iter()
                 .map(|record_field| {
-                    let value = explicit.remove(&record_field.name).unwrap_or_else(|| {
-                        TypedExpr::FieldAccess {
-                            record: Box::new(TypedExpr::Var {
-                                value: subject_var.clone(),
-                                typ: record_type.clone(),
-                            }),
-                            field: record_field.name.clone(),
-                            typ: record_field.typ.clone(),
-                        }
-                    });
-                    (record_field.name.clone(), value)
+                    let field = match explicit.remove(&record_field.name) {
+                        Some(value) => TypedRecordUpdateField::Explicit(value),
+                        None => TypedRecordUpdateField::FromBase(record_field.typ.clone()),
+                    };
+                    (record_field.name.clone(), field)
                 })
                 .collect();
 
-            let literal = TypedExpr::RecordLiteral {
+            Some(TypedExpr::RecordUpdate {
                 record_name: record_name.clone(),
+                base: Box::new(typed_spread),
                 fields: all_fields,
-                typ: record_type.clone(),
-            };
-            Some(match subject_to_bind {
-                Some(subject) => TypedExpr::Let {
-                    var: subject_var,
-                    value: Box::new(subject),
-                    body: Box::new(literal),
-                    typ: record_type,
-                },
-                None => literal,
+                typ: record_type,
             })
         }
         ParsedExpr::EnumLiteral {

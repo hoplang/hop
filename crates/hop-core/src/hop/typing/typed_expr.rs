@@ -57,6 +57,16 @@ pub enum TypedExpr {
         typ: Type,
     },
 
+    /// A record literal that reads the fields it does not supply from
+    /// `base`, e.g. User { ...user, name: "John" }. The fields are in
+    /// declaration order.
+    RecordUpdate {
+        record_name: TypeName,
+        base: Box<Self>,
+        fields: Vec<(FieldName, TypedRecordUpdateField)>,
+        typ: Type,
+    },
+
     /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
     EnumLiteral {
         enum_name: TypeName,
@@ -243,6 +253,14 @@ pub enum TypedExpr {
 }
 
 #[derive(Debug, Clone)]
+pub enum TypedRecordUpdateField {
+    /// A field supplied in the literal.
+    Explicit(TypedExpr),
+    /// A field read from the base record, which has the given type.
+    FromBase(Type),
+}
+
+#[derive(Debug, Clone)]
 pub enum TypedLoopSource {
     Array(TypedExpr),
     RangeInclusive { start: TypedExpr, end: TypedExpr },
@@ -310,6 +328,7 @@ impl TypedExpr {
             | TypedExpr::ArrayLiteral { typ, .. }
             | TypedExpr::TupleLiteral { typ, .. }
             | TypedExpr::RecordLiteral { typ, .. }
+            | TypedExpr::RecordUpdate { typ, .. }
             | TypedExpr::EnumLiteral { typ, .. }
             | TypedExpr::OptionLiteral { typ, .. }
             | TypedExpr::Match { typ, .. }
@@ -452,6 +471,37 @@ impl TypedExpr {
                         .group(),
                 )
                 .append(BoxDoc::text("}")),
+            TypedExpr::RecordUpdate {
+                record_name,
+                base,
+                fields,
+                ..
+            } => {
+                let entries = std::iter::once(BoxDoc::text("...").append(base.to_doc())).chain(
+                    fields.iter().filter_map(|(key, field)| match field {
+                        TypedRecordUpdateField::Explicit(value) => Some(
+                            BoxDoc::text(key.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(value.to_doc()),
+                        ),
+                        TypedRecordUpdateField::FromBase(_) => None,
+                    }),
+                );
+                BoxDoc::text(record_name.as_str())
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                entries,
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text("}"))
+            }
             TypedExpr::StringConcat { parts } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::intersperse(
@@ -676,7 +726,9 @@ impl TypedExpr {
             TypedExpr::OptionIsNone { option } => {
                 option.to_doc().append(BoxDoc::text(".is_none()"))
             }
-            TypedExpr::OptionUnwrapOr { option, default, .. } => option
+            TypedExpr::OptionUnwrapOr {
+                option, default, ..
+            } => option
                 .to_doc()
                 .append(BoxDoc::text(".unwrap_or("))
                 .append(default.to_doc())

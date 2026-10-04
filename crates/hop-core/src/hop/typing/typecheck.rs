@@ -7335,7 +7335,7 @@ mod tests {
     }
 
     #[test]
-    fn desugars_record_spread_of_variable_into_field_accesses() {
+    fn accepts_record_spread_of_variable() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -7348,7 +7348,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(user: User) -> Html {
-                  let updated = User {name: "Jane", age: user.age} in html(
+                  let updated = User {...user, name: "Jane"} in html(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(updated.name)),
@@ -7365,7 +7365,7 @@ mod tests {
     }
 
     #[test]
-    fn desugars_record_spread_of_expression_into_let_binding() {
+    fn accepts_record_spread_of_expression() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -7379,7 +7379,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(app: App) -> Html {
-                  let next = let v__0 = app.state in State {query: v__0.query, num: 1} in html(
+                  let next = State {...app.state, num: 1} in html(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(next.query)),
@@ -7400,7 +7400,7 @@ mod tests {
     }
 
     #[test]
-    fn desugars_record_spread_with_all_fields_overridden_into_plain_literal() {
+    fn accepts_record_spread_with_all_fields_overridden() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -7413,7 +7413,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(user: User) -> Html {
-                  let updated = User {name: "Jane", age: 30} in html(
+                  let updated = User {...user, name: "Jane", age: 30} in html(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(updated.name)),

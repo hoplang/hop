@@ -15990,9 +15990,11 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = State {query: "a", num: 1} in {
-                    let v1 = State {query: v0.query, num: 2} in {
-                      write_string(v1.query)
-                      write_string(v1.num.to_string())
+                    let v2 = let v1 = v0 in {
+                      State {query: v1.query, num: 2}
+                    } in {
+                      write_string(v2.query)
+                      write_string(v2.num.to_string())
                     }
                   }
                 }
@@ -16045,9 +16047,11 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = State {query: "a", num: 1} in {
-                    let v1 = State {query: "b", num: 2} in {
-                      write_string(v1.query)
-                      write_string(v1.num.to_string())
+                    let v2 = let v1 = v0 in {
+                      State {query: "b", num: 2}
+                    } in {
+                      write_string(v2.query)
+                      write_string(v2.num.to_string())
                     }
                   }
                 }
@@ -16100,18 +16104,22 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   for v0 in [State {query: "a", num: 7}] {
-                    write_string(State {query: "x", num: v0.num}.query)
-                    write_string(State {
-                      query: "x",
-                      num: v0.num,
+                    write_string(let v1 = v0 in {
+                      State {query: "x", num: v1.num}
+                    }.query)
+                    write_string(let v2 = v0 in {
+                      State {query: "x", num: v2.num}
                     }.num.to_string())
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
                   for v0 in [State {query: "a", num: 7}] {
-                    write("x")
-                    write_string(v0.num.to_string())
+                    write_string(State {query: "x", num: v0.num}.query)
+                    write_string(State {
+                      query: "x",
+                      num: v0.num,
+                    }.num.to_string())
                   }
                 }
                 -- expected output --
@@ -16167,10 +16175,10 @@ mod tests {
             r#"<div>off</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Row@f0(item@v2: Item) -> Html {
+                fn Row@f0(item@v4: Item) -> Html {
                   write("<div")
                   write(">")
-                  write_string(v2.label)
+                  write_string(v4.label)
                   write("</div>")
                 }
                 page Test() {
@@ -16178,15 +16186,13 @@ mod tests {
                     let v1 = v0.selected in {
                       match v1 {
                         true => {
-                          call Row@f0(item = Item {
-                            label: "on",
-                            selected: v0.selected,
+                          call Row@f0(item = let v2 = v0 in {
+                            Item {label: "on", selected: v2.selected}
                           })
                         }
                         false => {
-                          call Row@f0(item = Item {
-                            label: "off",
-                            selected: v0.selected,
+                          call Row@f0(item = let v3 = v0 in {
+                            Item {label: "off", selected: v3.selected}
                           })
                         }
                       }
@@ -16199,10 +16205,20 @@ mod tests {
                     let v1 = v0.selected in {
                       match v1 {
                         true => {
-                          write("<div>on</div>")
+                          write("<div>")
+                          write_string(Item {
+                            label: "on",
+                            selected: v0.selected,
+                          }.label)
+                          write("</div>")
                         }
                         false => {
-                          write("<div>off</div>")
+                          write("<div>")
+                          write_string(Item {
+                            label: "off",
+                            selected: v0.selected,
+                          }.label)
+                          write("</div>")
                         }
                       }
                     }
@@ -16265,9 +16281,11 @@ mod tests {
                   let v3 = let v2 = v1.settings in {
                     Settings {theme: "dark", compact: v2.compact}
                   } in {
-                    let v4 = State {query: v1.query, settings: v3} in {
-                      write_string(v4.query)
-                      write_string(v4.settings.theme)
+                    let v5 = let v4 = v1 in {
+                      State {query: v4.query, settings: v3}
+                    } in {
+                      write_string(v5.query)
+                      write_string(v5.settings.theme)
                     }
                   }
                 }

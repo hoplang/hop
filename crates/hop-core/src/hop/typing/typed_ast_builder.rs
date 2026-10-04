@@ -1,12 +1,17 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::document::CheapString;
 use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
+use crate::hop::typing::type_registry::ResolvedType;
+use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::hop::typing::typed_ast::TypedParameter;
-use crate::hop::typing::{TypedAttribute, TypedAttrs, TypedLoopSource};
+use crate::hop::typing::{TypedAttribute, TypedAttrs, TypedLoopSource, TypedRecordUpdateField};
 use crate::html::HtmlElementKind;
+use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -14,7 +19,7 @@ pub fn build_page_no_params<F>(page_name: &str, children_fn: F) -> AssembledPage
 where
     F: FnOnce(&mut TypedAstBuilder),
 {
-    let mut builder = TypedAstBuilder::new(vec![]);
+    let mut builder = TypedAstBuilder::new(TypeRegistryBuilder::new().build(), vec![]);
     children_fn(&mut builder);
     builder.build(page_name)
 }
@@ -29,22 +34,43 @@ where
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.into()))
         .collect();
-    let mut builder = TypedAstBuilder::new(params_owned);
+    let mut builder = TypedAstBuilder::new(TypeRegistryBuilder::new().build(), params_owned);
+    children_fn(&mut builder);
+    builder.build(page_name)
+}
+
+pub fn build_page_with_types<'a, F>(
+    types: TypeRegistryBuilder,
+    page_name: &str,
+    params: impl IntoIterator<Item = (&'a str, &'a str)>,
+    children_fn: F,
+) -> AssembledPageDeclaration
+where
+    F: FnOnce(&mut TypedAstBuilder),
+{
+    let types = types.build();
+    let params_owned: Vec<(String, Type)> = params
+        .into_iter()
+        .map(|(name, typ)| (name.to_string(), types.resolve(typ)))
+        .collect();
+    let mut builder = TypedAstBuilder::new(types, params_owned);
     children_fn(&mut builder);
     builder.build(page_name)
 }
 
 pub struct TypedAstBuilder {
+    types: Rc<TestTypes>,
     var_stack: RefCell<Vec<(String, Type)>>,
     params: Vec<TypedParameter>,
     children: Vec<TypedExpr>,
 }
 
 impl TypedAstBuilder {
-    fn new(params: Vec<(String, Type)>) -> Self {
+    fn new(types: TestTypes, params: Vec<(String, Type)>) -> Self {
         let initial_vars = params.clone();
 
         Self {
+            types: Rc::new(types),
             var_stack: RefCell::new(initial_vars),
             params: params
                 .into_iter()
@@ -60,6 +86,7 @@ impl TypedAstBuilder {
 
     fn new_scoped(&self) -> Self {
         Self {
+            types: self.types.clone(),
             var_stack: self.var_stack.clone(),
             params: self.params.clone(),
             children: Vec::new(),
@@ -98,6 +125,82 @@ impl TypedAstBuilder {
 
         TypedExpr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
+            typ,
+        }
+    }
+
+    pub fn string_literal(&self, value: &str) -> TypedExpr {
+        TypedExpr::StringLiteral {
+            value: CheapString::new(value.to_string()),
+        }
+    }
+
+    pub fn int_literal(&self, value: i32) -> TypedExpr {
+        TypedExpr::IntLiteral { value }
+    }
+
+    pub fn field_access(&self, record: TypedExpr, field: &str) -> TypedExpr {
+        let record_type = record.typ();
+        let Some(ResolvedType::Record {
+            name: record_name,
+            fields,
+            ..
+        }) = self.types.registry().resolve(&record_type)
+        else {
+            panic!("Cannot access field '{field}' on non-record type {record_type}");
+        };
+        let typ = fields
+            .iter()
+            .find(|f| f.name.as_str() == field)
+            .map(|f| f.typ.clone())
+            .unwrap_or_else(|| panic!("Field '{field}' not found in record '{record_name}'"));
+        TypedExpr::FieldAccess {
+            record: Box::new(record),
+            field: FieldName::parse(field).unwrap(),
+            typ,
+        }
+    }
+
+    /// Build a record literal that supplies `fields` and reads the others
+    /// from `base`, e.g. User { ...user, name: "Jane" }.
+    pub fn record_update(&self, base: TypedExpr, fields: Vec<(&str, TypedExpr)>) -> TypedExpr {
+        let typ = base.typ();
+        let Some(ResolvedType::Record {
+            name: record_name,
+            fields: record_fields,
+            ..
+        }) = self.types.registry().resolve(&typ)
+        else {
+            panic!("Cannot update non-record type {typ}");
+        };
+        let mut explicit: HashMap<&str, TypedExpr> = fields.into_iter().collect();
+        let all_fields = record_fields
+            .iter()
+            .map(|record_field| {
+                let field = match explicit.remove(record_field.name.as_str()) {
+                    Some(value) => {
+                        assert_eq!(
+                            value.typ(),
+                            record_field.typ,
+                            "Field '{}' of record '{record_name}' has mismatched type, got: {value}",
+                            record_field.name
+                        );
+                        TypedRecordUpdateField::Explicit(value)
+                    }
+                    None => TypedRecordUpdateField::FromBase(record_field.typ.clone()),
+                };
+                (record_field.name.clone(), field)
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            explicit.is_empty(),
+            "Fields {:?} not found in record '{record_name}'",
+            explicit.keys().collect::<Vec<_>>()
+        );
+        TypedExpr::RecordUpdate {
+            record_name: record_name.clone(),
+            base: Box::new(base),
+            fields: all_fields,
             typ,
         }
     }
@@ -204,12 +307,7 @@ impl TypedAstBuilder {
     }
 
     pub fn attr_str(&self, value: &str) -> TypedAttribute {
-        TypedAttribute {
-            name: CheapString::new(String::new()),
-            value: Some(TypedExpr::StringLiteral {
-                value: CheapString::new(value.to_string()),
-            }),
-        }
+        self.attr_expr(self.string_literal(value))
     }
 
     pub fn attr_expr(&self, expr: TypedExpr) -> TypedAttribute {
