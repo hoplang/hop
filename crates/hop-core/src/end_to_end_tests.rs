@@ -3998,31 +3998,697 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn float_to_int_negative() {
+    fn nan_comparisons() {
         check(
             indoc! {r#"
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    let temp: Float = -2.9;
-                    <>{temp.to_int().to_string()}</>
+                    let e10 = 10000000000.0;
+                    let e100 = e10 * e10 * e10 * e10 * e10 * e10 * e10 * e10 * e10 * e10;
+                    let inf = e100 * e100 * e100 * e100;
+                    let nan = inf * 0.0;
+                    match (
+                      nan == nan,
+                      nan != nan,
+                      nan < nan,
+                      nan <= nan,
+                      nan > nan,
+                      nan >= nan,
+                      nan < inf,
+                      -inf < nan,
+                      nan.to_int() == 0,
+                    ) {
+                      (false, true, false, false, false, false, false, false, true) => <>ok</>,
+                      _ => <>wrong</>,
+                    }
                   }
                 }
             "#},
-            "-2",
+            "ok",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = -2.9 in {
-                    write_string(v0.to_int().to_string())
+                  let v0 = 10000000000 in {
+                    let v1 = (((((((((v0 * v0) * v0) * v0) * v0) * v0) * v0) * v0) * v0) * v0) in {
+                      let v2 = (((v1 * v1) * v1) * v1) in {
+                        let v3 = (v2 * 0) in {
+                          let v4 = (
+                            (v3 == v3),
+                            (!(v3 == v3)),
+                            (v3 < v3),
+                            (v3 <= v3),
+                            (v3 < v3),
+                            (v3 <= v3),
+                            (v3 < v2),
+                            ((-v2) < v3),
+                            (v3.to_int() == 0),
+                          ) in {
+                            let v5 = v4.0 in {
+                              let v6 = v4.1 in {
+                                let v7 = v4.2 in {
+                                  let v8 = v4.3 in {
+                                    let v9 = v4.4 in {
+                                      let v10 = v4.5 in {
+                                        let v11 = v4.6 in {
+                                          let v12 = v4.7 in {
+                                            let v13 = v4.8 in {
+                                              match v13 {
+                                                true => {
+                                                  match v12 {
+                                                    true => {
+                                                      write("wrong")
+                                                    }
+                                                    false => {
+                                                      match v11 {
+                                                        true => {
+                                                          write("wrong")
+                                                        }
+                                                        false => {
+                                                          match v10 {
+                                                            true => {
+                                                              write("wrong")
+                                                            }
+                                                            false => {
+                                                              match v9 {
+                                                                true => {
+                                                                  write("wrong")
+                                                                }
+                                                                false => {
+                                                                  match v8 {
+                                                                    true => {
+                                                                      write("wrong")
+                                                                    }
+                                                                    false => {
+                                                                      match v7 {
+                                                                        true => {
+                                                                          write("wrong")
+                                                                        }
+                                                                        false => {
+                                                                          match v6 {
+                                                                            true => {
+                                                                              match v5 {
+                                                                                true => {
+                                                                                  write("wrong")
+                                                                                }
+                                                                                false => {
+                                                                                  write("ok")
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                            false => {
+                                                                              write("wrong")
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                                false => {
+                                                  write("wrong")
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("-2")
+                  write("ok")
                 }
                 -- expected output --
-                -2
+                ok
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn int_arithmetic_wraps_at_bounds() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let max = 2147483647;
+                    let min = -2147483648;
+                    match (
+                      max + 1 == min,
+                      min - 1 == max,
+                      -min == min,
+                      max * 2 == -2,
+                      max * max == 1,
+                      min * -1 == min,
+                    ) {
+                      (true, true, true, true, true, true) => <>ok</>,
+                      _ => <>wrong</>,
+                    }
+                  }
+                }
+            "#},
+            "ok",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = 2147483647 in {
+                    let v1 = -2147483648 in {
+                      let v2 = (
+                        ((v0 + 1) == v1),
+                        ((v1 - 1) == v0),
+                        ((-v1) == v1),
+                        ((v0 * 2) == -2),
+                        ((v0 * v0) == 1),
+                        ((v1 * -1) == v1),
+                      ) in {
+                        let v3 = v2.0 in {
+                          let v4 = v2.1 in {
+                            let v5 = v2.2 in {
+                              let v6 = v2.3 in {
+                                let v7 = v2.4 in {
+                                  let v8 = v2.5 in {
+                                    match v8 {
+                                      true => {
+                                        match v7 {
+                                          true => {
+                                            match v6 {
+                                              true => {
+                                                match v5 {
+                                                  true => {
+                                                    match v4 {
+                                                      true => {
+                                                        match v3 {
+                                                          true => {
+                                                            write("ok")
+                                                          }
+                                                          false => {
+                                                            write("wrong")
+                                                          }
+                                                        }
+                                                      }
+                                                      false => {
+                                                        write("wrong")
+                                                      }
+                                                    }
+                                                  }
+                                                  false => {
+                                                    write("wrong")
+                                                  }
+                                                }
+                                              }
+                                              false => {
+                                                write("wrong")
+                                              }
+                                            }
+                                          }
+                                          false => {
+                                            write("wrong")
+                                          }
+                                        }
+                                      }
+                                      false => {
+                                        write("wrong")
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("ok")
+                }
+                -- expected output --
+                ok
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn float_to_int() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let e10 = 10000000000.0;
+                    let e100 = e10 * e10 * e10 * e10 * e10 * e10 * e10 * e10 * e10 * e10;
+                    let inf = e100 * e100 * e100 * e100;
+                    let whole = 5.0;
+                    let positive = 3.7;
+                    let negative = -2.9;
+                    let above = 2147483648.0;
+                    let top = 2147483647.9;
+                    let bottom = -2147483648.9;
+                    let below = -2147483649.0;
+                    let half = -0.5;
+                    match (
+                      whole.to_int() == 5,
+                      positive.to_int() == 3,
+                      negative.to_int() == -2,
+                      inf.to_int() == 2147483647,
+                      (-inf).to_int() == -2147483648,
+                      above.to_int() == 2147483647,
+                      top.to_int() == 2147483647,
+                      bottom.to_int() == -2147483648,
+                      below.to_int() == -2147483648,
+                      half.to_int().to_string() == "0",
+                    ) {
+                      (true, true, true, true, true, true, true, true, true, true) => <>ok</>,
+                      _ => <>wrong</>,
+                    }
+                  }
+                }
+            "#},
+            "ok",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = 10000000000 in {
+                    let v1 = (((((((((v0 * v0) * v0) * v0) * v0) * v0) * v0) * v0) * v0) * v0) in {
+                      let v2 = (((v1 * v1) * v1) * v1) in {
+                        let v3 = 5 in {
+                          let v4 = 3.7 in {
+                            let v5 = -2.9 in {
+                              let v6 = 2147483648 in {
+                                let v7 = 2147483647.9 in {
+                                  let v8 = -2147483648.9 in {
+                                    let v9 = -2147483649 in {
+                                      let v10 = -0.5 in {
+                                        let v11 = (
+                                          (v3.to_int() == 5),
+                                          (v4.to_int() == 3),
+                                          (v5.to_int() == -2),
+                                          (v2.to_int() == 2147483647),
+                                          ((-v2).to_int() == -2147483648),
+                                          (v6.to_int() == 2147483647),
+                                          (v7.to_int() == 2147483647),
+                                          (v8.to_int() == -2147483648),
+                                          (v9.to_int() == -2147483648),
+                                          (v10.to_int().to_string() == "0"),
+                                        ) in {
+                                          let v12 = v11.0 in {
+                                            let v13 = v11.1 in {
+                                              let v14 = v11.2 in {
+                                                let v15 = v11.3 in {
+                                                  let v16 = v11.4 in {
+                                                    let v17 = v11.5 in {
+                                                      let v18 = v11.6 in {
+                                                        let v19 = v11.7 in {
+                                                          let v20 = v11.8 in {
+                                                            let v21 = v11.9 in {
+                                                              match v21 {
+                                                                true => {
+                                                                  match v20 {
+                                                                    true => {
+                                                                      match v19 {
+                                                                        true => {
+                                                                          match v18 {
+                                                                            true => {
+                                                                              match v17 {
+                                                                                true => {
+                                                                                  match v16 {
+                                                                                    true => {
+                                                                                      match v15 {
+                                                                                        true => {
+                                                                                          match v14 {
+                                                                                            true => {
+                                                                                              match v13 {
+                                                                                                true => {
+                                                                                                  match v12 {
+                                                                                                    true => {
+                                                                                                      write("ok")
+                                                                                                    }
+                                                                                                    false => {
+                                                                                                      write("wrong")
+                                                                                                    }
+                                                                                                  }
+                                                                                                }
+                                                                                                false => {
+                                                                                                  write("wrong")
+                                                                                                }
+                                                                                              }
+                                                                                            }
+                                                                                            false => {
+                                                                                              write("wrong")
+                                                                                            }
+                                                                                          }
+                                                                                        }
+                                                                                        false => {
+                                                                                          write("wrong")
+                                                                                        }
+                                                                                      }
+                                                                                    }
+                                                                                    false => {
+                                                                                      write("wrong")
+                                                                                    }
+                                                                                  }
+                                                                                }
+                                                                                false => {
+                                                                                  write("wrong")
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                            false => {
+                                                                              write("wrong")
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                        false => {
+                                                                          write("wrong")
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                    false => {
+                                                                      write("wrong")
+                                                                    }
+                                                                  }
+                                                                }
+                                                                false => {
+                                                                  write("wrong")
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("ok")
+                }
+                -- expected output --
+                ok
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn special_numeric_literals() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let inf = 200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0;
+                    let neg_inf = -200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0;
+                    let min = -2147483648;
+                    let nan = inf * 0.0;
+                    <>
+                      {match (
+                        0.0 < inf,
+                        inf * 2.0 == inf,
+                        neg_inf < 0.0,
+                        neg_inf * 2.0 == neg_inf,
+                        min - 1 == 2147483647,
+                      ) {
+                        (true, true, true, true, true) => <>ok</>,
+                        _ => <>wrong</>,
+                      }}
+                      {for i in 0..=1 {
+                        let x = i.to_float();
+                        match nan + x != nan + x {
+                          true => <>ok</>,
+                          false => <>wrong</>,
+                        }
+                      }}
+                    </>
+                  }
+                }
+            "#},
+            "okokok",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = inf in {
+                    let v1 = -inf in {
+                      let v2 = -2147483648 in {
+                        let v3 = (v0 * 0) in {
+                          let v4 = (
+                            (0 < v0),
+                            ((v0 * 2) == v0),
+                            (v1 < 0),
+                            ((v1 * 2) == v1),
+                            ((v2 - 1) == 2147483647),
+                          ) in {
+                            let v5 = v4.0 in {
+                              let v6 = v4.1 in {
+                                let v7 = v4.2 in {
+                                  let v8 = v4.3 in {
+                                    let v9 = v4.4 in {
+                                      match v9 {
+                                        true => {
+                                          match v8 {
+                                            true => {
+                                              match v7 {
+                                                true => {
+                                                  match v6 {
+                                                    true => {
+                                                      match v5 {
+                                                        true => {
+                                                          write("ok")
+                                                        }
+                                                        false => {
+                                                          write("wrong")
+                                                        }
+                                                      }
+                                                    }
+                                                    false => {
+                                                      write("wrong")
+                                                    }
+                                                  }
+                                                }
+                                                false => {
+                                                  write("wrong")
+                                                }
+                                              }
+                                            }
+                                            false => {
+                                              write("wrong")
+                                            }
+                                          }
+                                        }
+                                        false => {
+                                          write("wrong")
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          for v10 in 0..=1 {
+                            let v11 = v10.to_float() in {
+                              let v12 = (!((v3 + v11) == (v3 + v11))) in {
+                                match v12 {
+                                  true => {
+                                    write("ok")
+                                  }
+                                  false => {
+                                    write("wrong")
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("ok")
+                  for v10 in 0..=1 {
+                    let v11 = v10.to_float() in {
+                      let v12 = (!((NaN + v11) == (NaN + v11))) in {
+                        match v12 {
+                          true => {
+                            write("ok")
+                          }
+                          false => {
+                            write("wrong")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                okokok
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn range_loops_at_bounds() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let max = 2147483647;
+                    let min = -2147483648;
+                    <>
+                      {for i in max - 1..=max {
+                        <>
+                          {i.to_string()}
+                          ,
+                        </>
+                      }}
+                      {for i in min..=min + 1 {
+                        <>
+                          {i.to_string()}
+                          ,
+                        </>
+                      }}
+                      {for _ in 3..=1 {
+                        <>wrong</>
+                      }}
+                      {for _ in max..=min {
+                        <>wrong</>
+                      }}
+                    </>
+                  }
+                }
+            "#},
+            "2147483646,2147483647,-2147483648,-2147483647,",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0 = 2147483647 in {
+                    let v1 = -2147483648 in {
+                      for v2 in (v0 - 1)..=v0 {
+                        write_string(v2.to_string())
+                        write(",")
+                      }
+                      for v3 in v1..=(v1 + 1) {
+                        write_string(v3.to_string())
+                        write(",")
+                      }
+                      for _ in 3..=1 {
+                        write("wrong")
+                      }
+                      for _ in v0..=v1 {
+                        write("wrong")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v2 in 2147483646..=2147483647 {
+                    write_string(v2.to_string())
+                    write(",")
+                  }
+                  for v3 in -2147483648..=-2147483647 {
+                    write_string(v3.to_string())
+                    write(",")
+                  }
+                  for _ in 3..=1 {
+                    write("wrong")
+                  }
+                  for _ in 2147483647..=-2147483648 {
+                    write("wrong")
+                  }
+                }
+                -- expected output --
+                2147483646,2147483647,-2147483648,-2147483647,
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -7342,49 +8008,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn float_to_int_simple() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    let price: Float = 3.7;
-                    <>{price.to_int().to_string()}</>
-                  }
-                }
-            "#},
-            "3",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  let v0 = 3.7 in {
-                    write_string(v0.to_int().to_string())
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  write("3")
-                }
-                -- expected output --
-                3
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
     fn int_to_float_on_a_loop_binding() {
         check(
             indoc! {r#"
@@ -7413,49 +8036,6 @@ mod tests {
                 }
                 -- expected output --
                 3
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn float_to_int_whole_number() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    let num: Float = 5.0;
-                    <>{num.to_int().to_string()}</>
-                  }
-                }
-            "#},
-            "5",
-            expect![[r#"
-                -- ir (unoptimized) --
-                page Test() {
-                  let v0 = 5 in {
-                    write_string(v0.to_int().to_string())
-                  }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  write("5")
-                }
-                -- expected output --
-                5
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
