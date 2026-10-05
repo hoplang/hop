@@ -4,8 +4,7 @@ use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
 use crate::dependency_graph::DependencyGraph;
-use crate::hop::typing::r#type::Type;
-use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
+use crate::hop::typing::{EnumVariant, ResolvedType, Type, TypeRegistry};
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumPattern, Match};
 use crate::ir::ir_var::IrVar;

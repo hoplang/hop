@@ -1,8 +1,8 @@
 use crate::document::CheapString;
-use crate::hop::typing::Type;
-use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType};
-use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
-use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
+use crate::hop::typing::{
+    ComparableType, EnumVariant, EquatableType, NumericType, ResolvedType, TestTypes, Type,
+    TypeRegistry, TypeRegistryBuilder,
+};
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_function::IrFunction;

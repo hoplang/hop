@@ -3,14 +3,11 @@ use std::sync::Arc;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
 use crate::hop::assembly::AssembledPageDeclaration;
-use crate::hop::typing::Type;
-use crate::hop::typing::TypedExpr;
-use crate::hop::typing::compile_match::{CaseVar, Decision};
-use crate::hop::typing::typed_ast::TypedFunctionDeclaration;
-use crate::hop::typing::typed_match_pattern::TypedMatchPattern;
-use crate::hop::typing::{TypedAttribute, TypedLoopSource, TypedRecordUpdateField};
-use crate::ir::expr_id::ExprId;
-use crate::ir::expr_id::ExprIdCounter;
+use crate::hop::typing::{
+    CaseVar, Decision, Type, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
+    TypedMatchPattern, TypedRecordUpdateField,
+};
+use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
@@ -905,9 +902,8 @@ impl<'a> Compiler<'a> {
 mod tests {
 
     use super::*;
-    use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
-    use crate::hop::typing::typed_ast_builder::{
-        build_page, build_page_no_params, build_page_with_types,
+    use crate::hop::typing::{
+        TypeRegistryBuilder, build_page, build_page_no_params, build_page_with_types,
     };
     use expect_test::{Expect, expect};
 

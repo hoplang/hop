@@ -1,4 +1,4 @@
-use crate::hop::typing::r#type::Type;
+use crate::hop::typing::Type;
 use crate::ir::ir_match::{EnumMatchArm, Match};
 
 use super::pure_module::{

@@ -1,7 +1,6 @@
 use super::value::Value;
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::hop::typing::Type;
-use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
+use crate::hop::typing::{EnumVariant, ResolvedType, Type, TypeRegistry};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
@@ -232,7 +231,7 @@ fn generate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::hop::typing::TypeRegistryBuilder;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 

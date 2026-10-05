@@ -1,8 +1,7 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::typing::r#type::Type;
-use crate::hop::typing::typed_match_pattern::TypedMatchPattern;
+use crate::hop::typing::{Type, TypedMatchPattern};
 use crate::root_relative_path::RootRelativePathError;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;

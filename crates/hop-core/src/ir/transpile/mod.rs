@@ -1,12 +1,9 @@
 pub mod rust;
 pub mod ts;
 
-use pretty::{Arena, DocBuilder};
-pub use rust::RustTranspiler;
-pub use ts::TsTranspiler;
-
-use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
-use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::{
+    ComparableType, EquatableType, NumericType, ResolvedType, Type, TypeRegistry,
+};
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
 use crate::ir::ir_var::IrVar;
@@ -16,6 +13,10 @@ use crate::ir::writer_module::{
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
+use pretty::{Arena, DocBuilder};
+
+pub use rust::RustTranspiler;
+pub use ts::TsTranspiler;
 
 pub type Doc<'a> = DocBuilder<'a, Arena<'a>>;
 

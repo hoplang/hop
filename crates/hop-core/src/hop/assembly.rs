@@ -1,7 +1,7 @@
 use crate::document::CheapString;
-use crate::hop::typing::TypedExpr;
-use crate::hop::typing::typed_ast::{TypedPageDeclaration, TypedParameter};
-use crate::hop::typing::{TypedAttribute, TypedAttrs};
+use crate::hop::typing::{
+    TypedAttribute, TypedAttrs, TypedExpr, TypedPageDeclaration, TypedParameter,
+};
 use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use pretty::BoxDoc;

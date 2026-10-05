@@ -1,6 +1,6 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::hop::assembly::{self, AssembledPageDeclaration, TailwindInjection};
-use crate::hop::typing::typed_ast::TypedAst;
+use crate::hop::typing::TypedAst;
 use crate::ir::pure_module::PureModule;
 use crate::ir::{WriterModule, compile, lower_pure, optimize, retain_reachable};
 use crate::root_contained_file_path::RootContainedFilePath;

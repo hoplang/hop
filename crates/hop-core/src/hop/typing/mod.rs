@@ -1,27 +1,38 @@
-pub mod compile_match;
-pub mod export;
-pub mod resolve_type;
-pub mod rest_spread;
-pub mod r#type;
-pub mod type_env;
-pub mod type_registry;
+mod compile_match;
+mod export;
+mod resolve_type;
+mod rest_spread;
+mod r#type;
+mod type_env;
+mod type_registry;
 #[cfg(test)]
-pub mod type_registry_builder;
-pub mod typecheck;
-pub mod typecheck_call;
-pub mod typecheck_expr;
-pub mod typecheck_match;
-pub mod typecheck_node;
-pub mod typecheck_pattern;
-pub mod typed_ast;
+mod type_registry_builder;
+mod typecheck;
+mod typecheck_call;
+mod typecheck_expr;
+mod typecheck_match;
+mod typecheck_node;
+mod typecheck_pattern;
+mod typed_ast;
 #[cfg(test)]
-pub mod typed_ast_builder;
-pub mod typed_expr;
-pub mod typed_match_pattern;
-pub mod variable_scope;
+mod typed_ast_builder;
+mod typed_expr;
+mod typed_match_pattern;
+mod variable_scope;
 
-pub use r#type::Type;
+pub use compile_match::CaseVar;
+pub use compile_match::Decision;
+pub use export::Export;
+pub use r#type::{ComparableType, EquatableType, NumericType, Type};
 pub use type_env::{FunctionSignature, ParamEntry, Tail};
+pub use type_registry::{EnumVariant, ResolvedType, TypeRegistry};
+#[cfg(test)]
+pub use type_registry_builder::{TestTypes, TypeRegistryBuilder};
+pub use typecheck::typecheck;
+pub use typed_ast::{TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter};
+#[cfg(test)]
+pub use typed_ast_builder::{build_page, build_page_no_params, build_page_with_types};
 pub use typed_expr::{
     TypedAttribute, TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField,
 };
+pub use typed_match_pattern::TypedMatchPattern;

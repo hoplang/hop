@@ -338,6 +338,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::hop::typing::Type;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
     use crate::ir::runtime::evaluator::evaluate_page;
@@ -347,8 +348,6 @@ mod tests {
     use crate::symbols::var_name::VarName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::StdRng};
-
-    use crate::hop::typing::r#type::Type;
 
     fn assert_every_read_is_bound(module: &PureModule) {
         fn check(expr: &PureExpr, bound: &mut HashSet<VarId>, module: &PureModule) {

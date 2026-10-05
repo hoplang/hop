@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::document::CheapString;
-use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumPattern, Match};
 use crate::ir::ir_var::IrVar;

@@ -1,12 +1,10 @@
+use crate::hop::typing::{ComparableType, EquatableType, NumericType};
+use crate::html::write_escaped_html;
 use crate::ir::pure_module::PureExpr;
 use crate::ir::runtime::value::Value;
 use crate::ir::var_id::VarId;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use crate::{
-    hop::typing::r#type::{ComparableType, EquatableType, NumericType},
-    html::write_escaped_html,
-};
 use std::collections::HashMap;
 use thiserror::Error;
 
