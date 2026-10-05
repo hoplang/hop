@@ -1,5 +1,6 @@
 mod find_node;
 mod parse;
+mod parse_error;
 mod parse_expr;
 mod parse_helpers;
 mod parse_nodes;
@@ -15,6 +16,7 @@ mod whitespace;
 
 pub use find_node::find_node_at_position;
 pub use parse::parse;
+pub use parse_error::ParseError;
 pub use parsed_ast::{
     ParsedAst, ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
     ParsedFieldDeclaration, ParsedFunctionDeclaration, ParsedImportDeclaration,
@@ -26,7 +28,6 @@ pub use parsed_expr::{
 };
 pub use parsed_node::{ParsedAttribute, ParsedLetBinding, ParsedNode};
 pub use parsed_type::ParsedType;
-pub use token::LangToken;
 
 #[cfg(test)]
 mod source_generator;

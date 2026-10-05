@@ -20,7 +20,6 @@ mod html;
 mod ir;
 mod itertools;
 mod orchestrator;
-mod parse_error;
 mod program;
 mod project_root;
 mod root_contained_file_path;

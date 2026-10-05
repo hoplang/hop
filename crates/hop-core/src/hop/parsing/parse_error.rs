@@ -1,7 +1,7 @@
+use super::token::LangToken;
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::parsing::LangToken;
 use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::function_name::InvalidFunctionNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
@@ -12,9 +12,9 @@ use thiserror::Error;
 /// Proof that a parse error has been recorded.
 #[derive(Clone, Copy, Debug)]
 #[must_use]
-pub(crate) struct ErrorEmitted(());
+pub struct ErrorEmitted(());
 
-pub(crate) trait Emit {
+pub trait Emit {
     /// Record a parse error, and return the proof that it was recorded.
     ///
     /// Calling this is the only way to obtain an [`ErrorEmitted`].
@@ -28,7 +28,7 @@ impl Emit for Vec<ParseError> {
     }
 }
 
-pub(crate) trait OrEmit<T> {
+pub trait OrEmit<T> {
     fn or_emit(
         self,
         errors: &mut Vec<ParseError>,
@@ -47,13 +47,13 @@ impl<T, E: Into<ParseErrorKind>> OrEmit<T> for Result<T, E> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParseError {
+pub struct ParseError {
     kind: ParseErrorKind,
     range: DocumentRange,
 }
 
 impl ParseError {
-    pub(crate) fn to_diagnostic(&self) -> Diagnostic {
+    pub fn to_diagnostic(&self) -> Diagnostic {
         Diagnostic {
             message: self.kind.to_string(),
             range: self.range.clone(),
@@ -63,7 +63,7 @@ impl ParseError {
 }
 
 #[derive(Debug, Clone, Error)]
-pub(crate) enum ParseErrorKind {
+pub enum ParseErrorKind {
     #[error("Unmatched </{tag}>")]
     UnmatchedClosingTag { tag: CheapString },
 

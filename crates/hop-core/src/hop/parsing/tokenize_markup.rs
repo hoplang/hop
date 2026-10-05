@@ -1,8 +1,8 @@
 use crate::hop::parsing::token::{AttributeString, MarkupToken, RawTextToken, TagToken};
 
 use crate::document::{DocumentCursor, DocumentRange};
+use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
 use crate::hop::uncooked_string::UncookedString;
-use crate::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
 
 /// Lex the next token in text position.
 ///

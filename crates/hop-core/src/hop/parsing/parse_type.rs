@@ -4,8 +4,8 @@ use super::tokenize_expr::{next, peek, peek2};
 use super::parsed_type::ParsedType;
 use super::token::LangToken;
 use crate::document::{DocumentCursor, DocumentRange};
+use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use crate::hop::parsing::token::LangTokenPair;
-use crate::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use crate::symbols::type_name::TypeName;
 
 pub fn parse_type(

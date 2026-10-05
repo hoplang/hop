@@ -4,6 +4,7 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
+use super::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use super::parse_helpers::{
     expect_identifier, expect_token, int_literal_value, next_if_eq, next_if_map, parse_delimited,
     parse_delimited_list,
@@ -17,7 +18,6 @@ use super::parsed_expr::{
 use super::parsed_node::ParsedLetBinding;
 use super::token::LangToken;
 use super::tokenize_expr::{peek, peek2, peek3};
-use crate::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 
 /// Restrictions on an expression that follow from where it sits. Compare
 /// `Restrictions` in rustc and rust-analyzer.

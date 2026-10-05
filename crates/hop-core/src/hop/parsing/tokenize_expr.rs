@@ -1,8 +1,8 @@
 use crate::document::{DocumentCursor, DocumentRange};
 
 use super::token::LangToken;
+use crate::hop::parsing::parse_error::{Emit, ParseError, ParseErrorKind};
 use crate::hop::uncooked_string::UncookedString;
-use crate::parse_error::{Emit, ParseError, ParseErrorKind};
 
 /// A single outcome of advancing the tokenizer.
 pub enum LexStep {

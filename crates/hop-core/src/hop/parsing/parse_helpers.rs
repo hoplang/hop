@@ -3,7 +3,7 @@ use crate::hop::parsing::token::LangTokenPair;
 
 use super::token::LangToken;
 use super::tokenize_expr::{next, peek};
-use crate::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
+use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
 
 /// The tokens that start a declaration, at which skipping over unexpected
 /// tokens at the top level stops.

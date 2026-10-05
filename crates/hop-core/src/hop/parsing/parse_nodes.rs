@@ -1,14 +1,15 @@
+use super::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use super::parse_expr;
 use super::parsed_expr::ParsedExpr;
 use super::parsed_node::{ParsedAttribute, ParsedNode};
+use super::token::MarkupToken;
+use super::token::RawTextToken;
+use super::token::TagToken;
 use super::tokenize_markup;
 use super::whitespace;
+
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::hop::parsing::token::MarkupToken;
-use crate::hop::parsing::token::RawTextToken;
-use crate::hop::parsing::token::TagToken;
 use crate::html::{HtmlElementKind, is_raw_content_tag};
-use crate::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
