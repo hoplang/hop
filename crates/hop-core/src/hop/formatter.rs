@@ -1494,11 +1494,8 @@ mod tests {
     fn check(source: &str, expected: Expect) {
         let mut errors = Vec::new();
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
-        let ast = parse(
-            document_id.clone(),
-            Document::new(document_id, source.to_string()),
-            &mut errors,
-        );
+        let document = Document::new(document_id, source.to_string());
+        let ast = parse(document, &mut errors);
         if !errors.is_empty() {
             panic!("Parse errors: {:?}", errors);
         }
@@ -1507,7 +1504,6 @@ mod tests {
 
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let formatted_twice = format(&parse(
-            document_id.clone(),
             Document::new(document_id, formatted.clone()),
             &mut errors,
         ));
@@ -1524,7 +1520,6 @@ mod tests {
             let document_id = RootContainedFilePath::new("test.hop").unwrap();
             let mut errors = Vec::new();
             let ast = parse(
-                document_id.clone(),
                 Document::new(document_id.clone(), source.clone()),
                 &mut errors,
             );
@@ -1533,11 +1528,8 @@ mod tests {
                 "parse errors: {errors:?}\n\nsource:\n{source}"
             );
             let formatted = format(&ast);
-            let formatted_ast = parse(
-                document_id.clone(),
-                Document::new(document_id, formatted.clone()),
-                &mut errors,
-            );
+            let document = Document::new(document_id, formatted.clone());
+            let formatted_ast = parse(document, &mut errors);
             assert!(
                 errors.is_empty(),
                 "formatted output does not parse: {errors:?}\n\nsource:\n{source}\n\nformatted:\n{formatted}"

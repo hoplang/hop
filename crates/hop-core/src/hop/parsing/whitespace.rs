@@ -138,11 +138,8 @@ mod tests {
     fn reformat(source: &str) -> String {
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let mut errors = Vec::new();
-        let ast = parse::parse(
-            document_id.clone(),
-            Document::new(document_id, source.to_string()),
-            &mut errors,
-        );
+        let document = Document::new(document_id, source.to_string());
+        let ast = parse::parse(document, &mut errors);
         assert!(errors.is_empty(), "parse errors: {errors:?}");
         format(&ast)
     }

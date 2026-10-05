@@ -99,7 +99,7 @@ impl Program {
         // Parse the document
         let parse_errors = self.parse_errors.entry(document_id.clone()).or_default();
         parse_errors.clear();
-        let parsed_ast = parse(document_id.clone(), document, parse_errors);
+        let parsed_ast = parse(document, parse_errors);
 
         // Get all modules that this module depends on
         let module_dependencies = parsed_ast
@@ -118,7 +118,7 @@ impl Program {
         for names in &grouped_modules {
             let modules = names
                 .iter()
-                .filter_map(|name| self.parsed_asts.get(name))
+                .filter_map(|name| self.parsed_asts.get_key_value(name))
                 .collect::<Vec<_>>();
             typecheck(
                 &modules,
@@ -162,7 +162,7 @@ impl Program {
         for names in grouped_modules {
             let modules = names
                 .iter()
-                .filter_map(|name| self.parsed_asts.get(name))
+                .filter_map(|name| self.parsed_asts.get_key_value(name))
                 .collect::<Vec<_>>();
             if !modules.is_empty() {
                 typecheck(

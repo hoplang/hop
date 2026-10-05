@@ -8,7 +8,6 @@ use super::parsed_ast::{
 use super::tokenize_expr;
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::root_contained_file_path::RootContainedFilePath;
 
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
@@ -23,11 +22,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::HashSet;
 
-pub fn parse(
-    document_id: RootContainedFilePath,
-    document: Document,
-    errors: &mut Vec<ParseError>,
-) -> ParsedAst {
+pub fn parse(document: Document, errors: &mut Vec<ParseError>) -> ParsedAst {
     let mut iter = document.cursor();
     let mut declarations = Vec::new();
     let mut comments = Vec::new();
@@ -77,7 +72,7 @@ pub fn parse(
 
     debug_assert!(iter.peek().is_none(), "parser stopped before end of input");
 
-    ParsedAst::new(document_id, declarations, comments)
+    ParsedAst::new(declarations, comments)
 }
 
 fn parse_import_declaration(
@@ -698,17 +693,15 @@ mod tests {
     use super::*;
     use crate::document_annotator::DocumentAnnotator;
     use crate::hop::parsing::source_generator;
+    use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn accept(input: &str, expected: Expect) {
         let mut errors = Vec::new();
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
-        let module = parse(
-            document_id.clone(),
-            Document::new(document_id, input.to_string()),
-            &mut errors,
-        );
+        let document = Document::new(document_id, input.to_string());
+        let module = parse(document, &mut errors);
         if !errors.is_empty() {
             let rendered = DocumentAnnotator::new()
                 .with_severity_label()
@@ -723,11 +716,8 @@ mod tests {
     fn reject(input: &str, expected: Expect) {
         let mut errors = Vec::new();
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
-        let module = parse(
-            document_id.clone(),
-            Document::new(document_id, input.to_string()),
-            &mut errors,
-        );
+        let document = Document::new(document_id, input.to_string());
+        let module = parse(document, &mut errors);
         if errors.is_empty() {
             panic!("expected parse errors but got none");
         }
@@ -7036,11 +7026,8 @@ mod tests {
             let source = source_generator::random_source(u)?;
             let mut errors = Vec::new();
             let document_id = RootContainedFilePath::new("test.hop").unwrap();
-            parse(
-                document_id.clone(),
-                Document::new(document_id, source.clone()),
-                &mut errors,
-            );
+            let document = Document::new(document_id, source.clone());
+            parse(document, &mut errors);
             if !errors.is_empty() {
                 let rendered = DocumentAnnotator::new()
                     .with_severity_label()

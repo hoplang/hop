@@ -34,7 +34,7 @@ use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
 pub fn typecheck(
-    modules: &[&ParsedAst],
+    modules: &[(&RootContainedFilePath, &ParsedAst)],
     exports: &mut HashMap<RootContainedFilePath, HashMap<CheapString, Export>>,
     registry: &mut TypeRegistry,
     typed_asts: &mut HashMap<RootContainedFilePath, TypedAst>,
@@ -43,23 +43,20 @@ pub fn typecheck(
     definition_links: &mut HashMap<RootContainedFilePath, Vec<DefinitionLink>>,
     asset_references: &mut HashMap<RootContainedFilePath, Vec<AssetReference>>,
 ) {
-    for module in modules {
-        let module_errors = errors.entry(module.document_id.clone()).or_default();
-        let module_annotations = annotations.entry(module.document_id.clone()).or_default();
-        let module_definition_links = definition_links
-            .entry(module.document_id.clone())
-            .or_default();
-        let module_asset_references = asset_references
-            .entry(module.document_id.clone())
-            .or_default();
+    for &(document_id, module) in modules {
+        let module_errors = errors.entry(document_id.clone()).or_default();
+        let module_annotations = annotations.entry(document_id.clone()).or_default();
+        let module_definition_links = definition_links.entry(document_id.clone()).or_default();
+        let module_asset_references = asset_references.entry(document_id.clone()).or_default();
 
         module_errors.clear();
         module_annotations.clear();
         module_definition_links.clear();
         module_asset_references.clear();
-        registry.remove_module(&module.document_id);
+        registry.remove_module(document_id);
 
         let typed_ast = typecheck_module(
+            document_id,
             module,
             exports,
             registry,
@@ -68,17 +65,17 @@ pub fn typecheck(
             module_definition_links,
             module_asset_references,
         );
-        typed_asts.insert(module.document_id.clone(), typed_ast);
+        typed_asts.insert(document_id.clone(), typed_ast);
 
         if modules.len() > 1 {
             module_errors.clear();
             for import_node in module.import_declarations() {
                 module_errors.push(TypeError::import_cycle(
-                    module.document_id.as_str(),
+                    document_id.as_str(),
                     &import_node.module_name.to_string(),
                     &modules
                         .iter()
-                        .map(|m| m.document_id.as_str().to_string())
+                        .map(|(id, _)| id.as_str().to_string())
                         .collect::<Vec<_>>(),
                     import_node.path_range.clone(),
                 ));
@@ -88,6 +85,7 @@ pub fn typecheck(
 }
 
 fn typecheck_module(
+    document_id: &RootContainedFilePath,
     parsed_ast: &ParsedAst,
     exports: &mut HashMap<RootContainedFilePath, HashMap<CheapString, Export>>,
     registry: &mut TypeRegistry,
@@ -197,7 +195,7 @@ fn typecheck_module(
                 name.to_cheap_string(),
                 name_range,
                 NameKind::Type(Type::Named {
-                    module: parsed_ast.document_id.clone(),
+                    module: document_id.clone(),
                     name: name.clone(),
                 }),
                 Some(Export::Type {
@@ -245,7 +243,7 @@ fn typecheck_module(
     for record in parsed_ast.record_declarations() {
         typecheck_record_declaration(
             record,
-            &parsed_ast.document_id,
+            document_id,
             &names,
             registry,
             errors,
@@ -255,7 +253,7 @@ fn typecheck_module(
     for enum_decl in parsed_ast.enum_declarations() {
         typecheck_enum_declaration(
             enum_decl,
-            &parsed_ast.document_id,
+            document_id,
             &names,
             registry,
             errors,
@@ -387,7 +385,7 @@ fn typecheck_module(
         ));
     }
 
-    exports.insert(parsed_ast.document_id.clone(), module_exports);
+    exports.insert(document_id.clone(), module_exports);
 
     TypedAst::new(typed_pages, typed_function_declarations)
 }
@@ -1159,11 +1157,8 @@ mod tests {
             let mut parse_errors = Vec::new();
             let document_id = RootContainedFilePath::new(&file.name).unwrap();
             document_ids.push(document_id.clone());
-            let ast = parse(
-                document_id.clone(),
-                Document::new(document_id.clone(), source_code.to_string()),
-                &mut parse_errors,
-            );
+            let document = Document::new(document_id.clone(), source_code.to_string());
+            let ast = parse(document, &mut parse_errors);
 
             if !parse_errors.is_empty() {
                 panic!(
@@ -1174,7 +1169,7 @@ mod tests {
             }
 
             typecheck(
-                &[&ast],
+                &[(&document_id, &ast)],
                 &mut state,
                 &mut registry,
                 &mut typed_asts,
@@ -1184,7 +1179,7 @@ mod tests {
                 &mut asset_references,
             );
 
-            if let Some(module_errors) = type_errors.get(&ast.document_id) {
+            if let Some(module_errors) = type_errors.get(&document_id) {
                 if !module_errors.is_empty() {
                     let (real_errors, real_warnings): (Vec<_>, Vec<_>) = module_errors
                         .iter()
@@ -11583,8 +11578,7 @@ mod tests {
             let document_id = RootContainedFilePath::new("test.hop").unwrap();
             let mut parse_errors = Vec::new();
             let ast = parse(
-                document_id.clone(),
-                Document::new(document_id, source.clone()),
+                Document::new(document_id.clone(), source.clone()),
                 &mut parse_errors,
             );
             assert!(
@@ -11592,7 +11586,7 @@ mod tests {
                 "parse errors: {parse_errors:?}\n\nsource:\n{source}"
             );
             typecheck(
-                &[&ast],
+                &[(&document_id, &ast)],
                 &mut HashMap::new(),
                 &mut TypeRegistry::default(),
                 &mut HashMap::new(),

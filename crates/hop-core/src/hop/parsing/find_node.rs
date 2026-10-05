@@ -94,9 +94,9 @@ mod tests {
     fn check_find_node_at_position(input: &str, expected: Expect) {
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let (document, position) =
-            extract_position(document_id.clone(), input).expect("Position marker not found");
+            extract_position(document_id, input).expect("Position marker not found");
         let mut errors = Vec::new();
-        let ast = parse(document_id, document, &mut errors);
+        let ast = parse(document, &mut errors);
 
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
 
