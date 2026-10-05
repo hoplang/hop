@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::document::DocumentCursor;
 use crate::document_annotator::DocumentAnnotator;
-use crate::hop::parsing::parse_type::parse_type;
+use crate::hop::parsing::parse_type;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_env::{FunctionSignature, Name, NameKind, ParamEntry, Tail, TypeEnv};

@@ -11,9 +11,7 @@ use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
-use crate::hop::parsing::parsed_expr::{
-    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource,
-};
+use crate::hop::parsing::{ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource};
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::{TypedExpr, TypedLoopSource, TypedRecordUpdateField};
 use crate::hover_annotation::HoverAnnotation;
@@ -1764,8 +1762,8 @@ mod tests {
         let mut iter = DocumentCursor::new(types.module().clone(), expr_str.to_string());
         let mut comments = Vec::new();
         let mut errors = Vec::new();
-        let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors)
-            .expect("Failed to parse expression");
+        let expr =
+            parse_expr(&mut iter, &mut comments, &mut errors).expect("Failed to parse expression");
 
         let mut annotations = Vec::new();
         let mut definition_links = Vec::new();

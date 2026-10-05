@@ -6,9 +6,7 @@ use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
-use crate::hop::parsing::parsed_expr::{
-    Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
-};
+use crate::hop::parsing::{Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern};
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::{MatchErrorSite, compile_match};
 use crate::hop::typing::type_env::TypeEnv;

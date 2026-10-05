@@ -1,7 +1,7 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::parsing::token::LangToken;
+use crate::hop::parsing::LangToken;
 use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::function_name::InvalidFunctionNameError;
 use crate::symbols::module_name::InvalidModuleNameError;

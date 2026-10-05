@@ -1,5 +1,5 @@
 use crate::document::DocumentRange;
-use crate::hop::parsing::parsed_expr::{Constructor, ParsedMatchPattern};
+use crate::hop::parsing::{Constructor, ParsedMatchPattern};
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
@@ -322,7 +322,7 @@ mod tests {
     use super::*;
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::hop::parsing::parse_expr::parse_match_pattern;
+    use crate::hop::parsing::parse_match_pattern;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use expect_test::{Expect, expect};
 

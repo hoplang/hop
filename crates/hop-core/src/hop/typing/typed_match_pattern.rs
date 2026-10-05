@@ -1,6 +1,6 @@
 use pretty::BoxDoc;
 
-use crate::hop::parsing::parsed_expr::Constructor;
+use crate::hop::parsing::Constructor;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
 

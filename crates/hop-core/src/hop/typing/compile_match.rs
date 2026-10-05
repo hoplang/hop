@@ -12,11 +12,10 @@
 //! introducing new match subjects.
 use std::collections::{HashMap, HashSet};
 
-use crate::hop::parsing::parsed_expr::Constructor;
-use crate::hop::typing::typed_match_pattern::{TypedField, TypedMatchPattern};
-
+use crate::hop::parsing::Constructor;
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::typed_match_pattern::{TypedField, TypedMatchPattern};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -744,8 +743,8 @@ mod tests {
     use super::*;
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
+    use crate::hop::parsing::ParsedExpr;
     use crate::hop::parsing::parse_expr;
-    use crate::hop::parsing::parsed_expr::ParsedExpr;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use crate::hop::typing::typecheck_pattern::typecheck_pattern;
     use crate::type_error::TypeError;
@@ -758,8 +757,8 @@ mod tests {
         let mut iter = DocumentCursor::new(types.module().clone(), expr_str.to_string());
         let mut comments = Vec::new();
         let mut errors = Vec::new();
-        let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors)
-            .expect("Failed to parse expression");
+        let expr =
+            parse_expr(&mut iter, &mut comments, &mut errors).expect("Failed to parse expression");
 
         let (subject_range, patterns) = match expr {
             ParsedExpr::Match { subject, arms, .. } => {

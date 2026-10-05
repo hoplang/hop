@@ -1,14 +1,11 @@
 use crate::document::DocumentRange;
-use crate::hop::parsing::ParsedType;
-use crate::hop::parsing::parsed_ast::{
-    ParsedAst, ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
-    ParsedFieldDeclaration, ParsedFunctionDeclaration, ParsedImportDeclaration,
-    ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
+use crate::hop::parsing::{
+    Constructor, ParsedArguments, ParsedAst, ParsedAttribute, ParsedDeclaration,
+    ParsedEnumDeclaration, ParsedEnumDeclarationVariant, ParsedExpr, ParsedFieldDeclaration,
+    ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource,
+    ParsedMatchArm, ParsedMatchPattern, ParsedNode, ParsedPageDeclaration, ParsedParameter,
+    ParsedRecordDeclaration, ParsedType,
 };
-use crate::hop::parsing::parsed_expr::{
-    Constructor, ParsedArguments, ParsedExpr, ParsedLoopSource, ParsedMatchArm, ParsedMatchPattern,
-};
-use crate::hop::parsing::parsed_node::{ParsedAttribute, ParsedLetBinding, ParsedNode};
 use crate::html::HtmlElementKind;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;
@@ -1491,14 +1488,13 @@ mod tests {
     use indoc::indoc;
 
     use crate::document::Document;
-    use crate::hop::parsing::parse;
-    use crate::hop::parsing::source_generator;
+    use crate::hop::parsing::{parse, random_source};
     use crate::root_contained_file_path::RootContainedFilePath;
 
     fn check(source: &str, expected: Expect) {
         let mut errors = Vec::new();
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
-        let ast = parse::parse(
+        let ast = parse(
             document_id.clone(),
             Document::new(document_id, source.to_string()),
             &mut errors,
@@ -1510,7 +1506,7 @@ mod tests {
         expected.assert_eq(&formatted);
 
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
-        let formatted_twice = format(&parse::parse(
+        let formatted_twice = format(&parse(
             document_id.clone(),
             Document::new(document_id, formatted.clone()),
             &mut errors,
@@ -1524,10 +1520,10 @@ mod tests {
     #[test]
     fn fuzz_generated_sources_parse_after_formatting_and_format_is_idempotent() {
         arbtest::arbtest(|u| {
-            let source = source_generator::random_source(u)?;
+            let source = random_source(u)?;
             let document_id = RootContainedFilePath::new("test.hop").unwrap();
             let mut errors = Vec::new();
-            let ast = parse::parse(
+            let ast = parse(
                 document_id.clone(),
                 Document::new(document_id.clone(), source.clone()),
                 &mut errors,
@@ -1537,7 +1533,7 @@ mod tests {
                 "parse errors: {errors:?}\n\nsource:\n{source}"
             );
             let formatted = format(&ast);
-            let formatted_ast = parse::parse(
+            let formatted_ast = parse(
                 document_id.clone(),
                 Document::new(document_id, formatted.clone()),
                 &mut errors,

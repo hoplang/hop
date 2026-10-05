@@ -3,15 +3,15 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::examples_annotation::ExamplesAnnotation;
+use crate::hop::parsing::ParsedAst;
+use crate::hop::parsing::ParsedDeclaration;
+use crate::hop::parsing::ParsedNode;
 use crate::hop::parsing::ParsedType;
-use crate::hop::parsing::parsed_ast::ParsedAst;
-use crate::hop::parsing::parsed_ast::ParsedDeclaration;
-use crate::hop::parsing::parsed_ast::{
+use crate::hop::parsing::{Constructor, ParsedExpr, ParsedMatchPattern};
+use crate::hop::parsing::{
     ParsedEnumDeclaration, ParsedFunctionDeclaration, ParsedImportDeclaration,
     ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
-use crate::hop::parsing::parsed_expr::{Constructor, ParsedExpr, ParsedMatchPattern};
-use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::typing::export::Export;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::rest_spread::{
@@ -1124,8 +1124,8 @@ mod tests {
     use crate::Document;
     use crate::DocumentAnnotator;
     use crate::RootContainedFilePath;
-    use crate::hop::parsing::parse::parse;
-    use crate::hop::parsing::source_generator;
+    use crate::hop::parsing::parse;
+    use crate::hop::parsing::random_source;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use txtar::Archive;
@@ -11579,7 +11579,7 @@ mod tests {
     #[test]
     fn fuzz_typechecking_generated_sources_does_not_panic() {
         arbtest::arbtest(|u| {
-            let source = source_generator::random_source(u)?;
+            let source = random_source(u)?;
             let document_id = RootContainedFilePath::new("test.hop").unwrap();
             let mut parse_errors = Vec::new();
             let ast = parse(

@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::document::CheapString;
 use crate::hop::assembly::AssembledPageDeclaration;
-use crate::hop::parsing::parsed_expr::Constructor;
+use crate::hop::parsing::Constructor;
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::compile_match;
