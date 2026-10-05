@@ -1060,6 +1060,7 @@ pub fn typecheck_expr(
         ParsedExpr::Match { subject, arms, .. } => typecheck_match(
             subject,
             arms,
+            inferred_type,
             forwarded_params,
             var_env,
             type_env,

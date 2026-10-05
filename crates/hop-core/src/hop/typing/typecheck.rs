@@ -5955,6 +5955,42 @@ mod tests {
     }
 
     #[test]
+    fn accepts_match_with_none_in_first_arm_given_return_type() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn f(b: Bool) -> Option[Int] {
+                  match b { true => None, false => Some(1) }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn f(b: Bool) -> Option[Int] {
+                  match b {true => None, false => Some(1)}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_match_with_none_in_every_arm_given_return_type() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn f(b: Bool) -> Option[Int] {
+                  match b { true => None, false => None }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn f(b: Bool) -> Option[Int] {
+                  match b {true => None, false => None}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_match_with_pattern_type_mismatch() {
         reject(
             indoc! {r#"
