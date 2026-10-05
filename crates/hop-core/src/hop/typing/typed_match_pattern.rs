@@ -1,8 +1,49 @@
 use pretty::BoxDoc;
 
-use crate::hop::parsing::Constructor;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
+
+/// A constructor pattern (non-wildcard pattern that matches a specific value)
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Constructor {
+    /// A boolean true pattern
+    BooleanTrue,
+    /// A boolean false pattern
+    BooleanFalse,
+    /// An Option Some pattern, e.g. `Some(_)`
+    OptionSome,
+    /// An Option None pattern, e.g. `None`
+    OptionNone,
+    /// An enum variant pattern, e.g. `Color::Red`
+    EnumVariant {
+        enum_name: TypeName,
+        variant_name: TypeName,
+    },
+    /// A record pattern, e.g. `User {name: x, age: y}`
+    Record { type_name: TypeName },
+    /// A tuple pattern, e.g. `(x, _)`
+    Tuple,
+}
+
+impl Constructor {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            Constructor::EnumVariant {
+                enum_name,
+                variant_name,
+            } => BoxDoc::text(enum_name.as_str().to_string())
+                .append(BoxDoc::text("::"))
+                .append(BoxDoc::text(variant_name.as_str())),
+            Constructor::BooleanTrue => BoxDoc::text("true"),
+            Constructor::BooleanFalse => BoxDoc::text("false"),
+            Constructor::OptionSome => BoxDoc::text("Some"),
+            Constructor::OptionNone => BoxDoc::text("None"),
+            Constructor::Record { type_name } => BoxDoc::text(type_name.as_str().to_string()),
+            Constructor::Tuple => BoxDoc::nil(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum TypedMatchPattern {

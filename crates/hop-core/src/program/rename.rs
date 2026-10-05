@@ -531,6 +531,41 @@ mod tests {
     }
 
     #[test]
+    fn should_find_rename_locations_for_record_type_in_match_pattern() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                record User {
+                       ^
+                  name: String,
+                }
+
+                fn Greeting(user: User) -> Html {
+                  match user {
+                    User {name} => <span>{name}</span>,
+                  }
+                }
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 1, col 8)
+                1 | record User {
+                  |        ^^^^
+
+                Rename
+                  --> main.hop (line 5, col 19)
+                5 | fn Greeting(user: User) -> Html {
+                  |                   ^^^^
+
+                Rename
+                  --> main.hop (line 7, col 5)
+                7 |     User {name} => <span>{name}</span>,
+                  |     ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_find_rename_locations_for_enum_type() {
         check_rename_locations(
             indoc! {r#"

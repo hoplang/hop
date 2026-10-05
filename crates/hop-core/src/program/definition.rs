@@ -186,6 +186,29 @@ mod tests {
     }
 
     #[test]
+    fn should_find_definition_from_record_pattern() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+
+                fn Main(user: User) -> Html {
+                  match user {
+                    User {name} => <span>{name}</span>,
+                    ^
+                  }
+                }
+            "#},
+            expect![[r#"
+                Definition
+                  --> main.hop (line 1, col 8)
+                1 | record User {name: String}
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_find_definition_from_component_definition_opening_tag() {
         check(
             indoc! {r#"

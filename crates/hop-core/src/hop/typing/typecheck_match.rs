@@ -6,7 +6,7 @@ use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
-use crate::hop::parsing::{Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern};
+use crate::hop::parsing::{ParsedExpr, ParsedMatchArm, ParsedPattern};
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::{MatchErrorSite, compile_match};
 use crate::hop::typing::type_env::TypeEnv;
@@ -201,41 +201,47 @@ fn typecheck_arm_bodies(
     Some((typed_bodies, result_type?))
 }
 
-/// Collect definition links for enum variant references in match patterns.
+/// Collect definition links for enum and record type names in match patterns.
 fn collect_pattern_definition_links(
-    pattern: &ParsedMatchPattern,
+    pattern: &ParsedPattern,
     type_env: &TypeEnv,
     definition_links: &mut Vec<DefinitionLink>,
 ) {
     match pattern {
-        ParsedMatchPattern::Constructor {
-            constructor: Constructor::EnumVariant { enum_name, .. },
-            enum_name_range: Some(enum_name_range),
+        ParsedPattern::EnumVariant {
+            type_name,
+            type_name_range,
             fields,
-            args,
+            ..
+        }
+        | ParsedPattern::Record {
+            type_name,
+            type_name_range,
+            fields,
             ..
         } => {
-            if let Some(name) = type_env.names.get(enum_name.as_str()) {
+            if let Some(name) = type_env.names.get(type_name.as_str()) {
                 definition_links.push(DefinitionLink {
-                    use_range: enum_name_range.clone(),
+                    use_range: type_name_range.clone(),
                     definition_range: name.definition_range.clone(),
                 });
             }
             for (_, _, field_pattern) in fields {
                 collect_pattern_definition_links(field_pattern, type_env, definition_links);
             }
+        }
+        ParsedPattern::OptionSome { inner, .. } => {
+            collect_pattern_definition_links(inner, type_env, definition_links);
+        }
+        ParsedPattern::Tuple { args, .. } => {
             for arg in args {
                 collect_pattern_definition_links(arg, type_env, definition_links);
             }
         }
-        ParsedMatchPattern::Constructor { fields, args, .. } => {
-            for (_, _, field_pattern) in fields {
-                collect_pattern_definition_links(field_pattern, type_env, definition_links);
-            }
-            for arg in args {
-                collect_pattern_definition_links(arg, type_env, definition_links);
-            }
-        }
-        ParsedMatchPattern::Wildcard { .. } | ParsedMatchPattern::Binding { .. } => {}
+        ParsedPattern::Wildcard { .. }
+        | ParsedPattern::Binding { .. }
+        | ParsedPattern::BooleanTrue { .. }
+        | ParsedPattern::BooleanFalse { .. }
+        | ParsedPattern::OptionNone { .. } => {}
     }
 }

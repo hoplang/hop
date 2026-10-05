@@ -1,10 +1,9 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::{
-    Constructor, ParsedArguments, ParsedAst, ParsedAttribute, ParsedDeclaration,
-    ParsedEnumDeclaration, ParsedEnumDeclarationVariant, ParsedExpr, ParsedFieldDeclaration,
-    ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource,
-    ParsedMatchArm, ParsedMatchPattern, ParsedNode, ParsedPageDeclaration, ParsedParameter,
-    ParsedRecordDeclaration, ParsedType,
+    ParsedArguments, ParsedAst, ParsedAttribute, ParsedDeclaration, ParsedEnumDeclaration,
+    ParsedEnumDeclarationVariant, ParsedExpr, ParsedFieldDeclaration, ParsedFunctionDeclaration,
+    ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource, ParsedMatchArm, ParsedNode,
+    ParsedPageDeclaration, ParsedParameter, ParsedPattern, ParsedRecordDeclaration, ParsedType,
 };
 use crate::html::HtmlElementKind;
 use pretty::{Arena, DocAllocator, DocBuilder};
@@ -1387,98 +1386,87 @@ fn format_match_arm<'a>(
         _ => body,
     };
     leading_comments
-        .append(format_match_pattern(arena, &arm.pattern))
+        .append(format_pattern(arena, &arm.pattern))
         .append(arena.text(" => "))
         .append(body)
 }
 
-fn format_match_pattern<'a>(
+fn format_pattern<'a>(
     arena: &'a Arena<'a>,
-    pattern: &'a ParsedMatchPattern,
+    pattern: &'a ParsedPattern,
 ) -> DocBuilder<'a, Arena<'a>> {
-    match pattern {
-        ParsedMatchPattern::Constructor {
-            constructor,
-            args,
+    let (base, fields) = match pattern {
+        ParsedPattern::Wildcard { .. } => return arena.text("_"),
+        ParsedPattern::Binding { name, .. } => return arena.text(name.as_str()),
+        ParsedPattern::BooleanTrue { .. } => return arena.text("true"),
+        ParsedPattern::BooleanFalse { .. } => return arena.text("false"),
+        ParsedPattern::OptionNone { .. } => return arena.text("None"),
+        ParsedPattern::OptionSome { inner, .. } => {
+            return arena
+                .text("Some(")
+                .append(format_pattern(arena, inner))
+                .append(arena.text(")"));
+        }
+        ParsedPattern::Tuple { args, .. } => {
+            return arena
+                .text("(")
+                .append(arena.intersperse(
+                    args.iter().map(|p| format_pattern(arena, p)),
+                    arena.text(", "),
+                ))
+                .append(if args.len() == 1 {
+                    arena.text(",")
+                } else {
+                    arena.nil()
+                })
+                .append(arena.text(")"));
+        }
+        ParsedPattern::EnumVariant {
+            type_name,
+            variant_name,
             fields,
             ..
         } => {
-            let base = format_constructor(arena, constructor);
-            if matches!(constructor, Constructor::Tuple) {
-                arena
-                    .text("(")
-                    .append(arena.intersperse(
-                        args.iter().map(|p| format_match_pattern(arena, p)),
-                        arena.text(", "),
-                    ))
-                    .append(if args.len() == 1 {
-                        arena.text(",")
-                    } else {
-                        arena.nil()
-                    })
-                    .append(arena.text(")"))
-            } else if !fields.is_empty() {
-                let mut fields_doc = arena.nil();
-                for (i, (name, _, pat)) in fields.iter().enumerate() {
-                    if i > 0 {
-                        fields_doc = fields_doc.append(arena.text(",")).append(arena.line());
-                    }
-                    if let ParsedMatchPattern::Binding { name: var_name, .. } = pat {
-                        if var_name.as_str() == name.as_str() {
-                            fields_doc = fields_doc.append(arena.text(name.as_str()));
-                            continue;
-                        }
-                    }
-                    fields_doc = fields_doc.append(
-                        arena
-                            .text(name.as_str())
-                            .append(arena.text(": "))
-                            .append(format_match_pattern(arena, pat)),
-                    );
-                }
-                base.append(arena.text(" {"))
-                    .append(soft_block(arena, fields_doc))
-                    .append(arena.text("}"))
-            } else if args.is_empty() {
-                if matches!(constructor, Constructor::Record { .. }) {
-                    base.append(arena.text(" {}"))
-                } else {
-                    base
-                }
-            } else {
-                let args_doc = arena.intersperse(
-                    args.iter().map(|p| format_match_pattern(arena, p)),
-                    arena.text(", "),
-                );
-                base.append(arena.text("("))
-                    .append(args_doc)
-                    .append(arena.text(")"))
+            let base = arena
+                .text(type_name.as_str())
+                .append(arena.text("::"))
+                .append(arena.text(variant_name.as_str()));
+            if fields.is_empty() {
+                return base;
+            }
+            (base, fields)
+        }
+        ParsedPattern::Record {
+            type_name, fields, ..
+        } => {
+            let base = arena.text(type_name.as_str());
+            if fields.is_empty() {
+                return base.append(arena.text(" {}"));
+            }
+            (base, fields)
+        }
+    };
+    let mut fields_doc = arena.nil();
+    for (i, (name, _, pat)) in fields.iter().enumerate() {
+        if i > 0 {
+            fields_doc = fields_doc.append(arena.text(",")).append(arena.line());
+        }
+        if let ParsedPattern::Binding { name: var_name, .. } = pat {
+            if var_name.as_str() == name.as_str() {
+                fields_doc = fields_doc.append(arena.text(name.as_str()));
+                continue;
             }
         }
-        ParsedMatchPattern::Wildcard { .. } => arena.text("_"),
-        ParsedMatchPattern::Binding { name, .. } => arena.text(name.as_str()),
+        fields_doc = fields_doc.append(
+            arena
+                .text(name.as_str())
+                .append(arena.text(": "))
+                .append(format_pattern(arena, pat)),
+        );
     }
-}
-
-fn format_constructor<'a>(
-    arena: &'a Arena<'a>,
-    constructor: &'a Constructor,
-) -> DocBuilder<'a, Arena<'a>> {
-    match constructor {
-        Constructor::EnumVariant {
-            enum_name,
-            variant_name,
-        } => arena
-            .text(enum_name.as_str())
-            .append(arena.text("::"))
-            .append(arena.text(variant_name.as_str())),
-        Constructor::BooleanTrue => arena.text("true"),
-        Constructor::BooleanFalse => arena.text("false"),
-        Constructor::OptionSome => arena.text("Some"),
-        Constructor::OptionNone => arena.text("None"),
-        Constructor::Record { type_name } => arena.text(type_name.as_str()),
-        Constructor::Tuple => arena.nil(),
-    }
+    base.append(arena.text(" {"))
+        .append(soft_block(arena, fields_doc))
+        .append(arena.text("}"))
 }
 
 #[cfg(test)]

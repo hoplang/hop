@@ -12,7 +12,7 @@
 //! introducing new match subjects.
 use std::collections::{HashMap, HashSet};
 
-use crate::hop::parsing::Constructor;
+use crate::hop::typing::Constructor;
 use crate::hop::typing::TypeErrorKind;
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};

@@ -7,11 +7,11 @@ use crate::hop::parsing::ParsedAst;
 use crate::hop::parsing::ParsedDeclaration;
 use crate::hop::parsing::ParsedNode;
 use crate::hop::parsing::ParsedType;
-use crate::hop::parsing::{Constructor, ParsedExpr, ParsedMatchPattern};
 use crate::hop::parsing::{
     ParsedEnumDeclaration, ParsedFunctionDeclaration, ParsedImportDeclaration,
     ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
+use crate::hop::parsing::{ParsedExpr, ParsedPattern};
 use crate::hop::typing::export::Export;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::rest_spread::{
@@ -1089,34 +1089,32 @@ fn collect_names_in_node(node: &ParsedNode, out: &mut HashSet<CheapString>) {
     }
 }
 
-fn collect_names_in_pattern(pattern: &ParsedMatchPattern, out: &mut HashSet<CheapString>) {
-    let ParsedMatchPattern::Constructor {
-        constructor,
-        args,
-        fields,
-        ..
-    } = pattern
-    else {
-        return;
-    };
-    match constructor {
-        Constructor::EnumVariant {
-            enum_name: name, ..
+fn collect_names_in_pattern(pattern: &ParsedPattern, out: &mut HashSet<CheapString>) {
+    match pattern {
+        ParsedPattern::EnumVariant {
+            type_name, fields, ..
         }
-        | Constructor::Record { type_name: name } => {
-            out.insert(name.to_cheap_string());
+        | ParsedPattern::Record {
+            type_name, fields, ..
+        } => {
+            out.insert(type_name.to_cheap_string());
+            for (_, _, field_pattern) in fields {
+                collect_names_in_pattern(field_pattern, out);
+            }
         }
-        Constructor::BooleanTrue
-        | Constructor::BooleanFalse
-        | Constructor::OptionSome
-        | Constructor::OptionNone
-        | Constructor::Tuple => {}
-    }
-    for arg in args {
-        collect_names_in_pattern(arg, out);
-    }
-    for (_, _, field_pattern) in fields {
-        collect_names_in_pattern(field_pattern, out);
+        ParsedPattern::OptionSome { inner, .. } => {
+            collect_names_in_pattern(inner, out);
+        }
+        ParsedPattern::Tuple { args, .. } => {
+            for arg in args {
+                collect_names_in_pattern(arg, out);
+            }
+        }
+        ParsedPattern::Wildcard { .. }
+        | ParsedPattern::Binding { .. }
+        | ParsedPattern::BooleanTrue { .. }
+        | ParsedPattern::BooleanFalse { .. }
+        | ParsedPattern::OptionNone { .. } => {}
     }
 }
 
@@ -4871,7 +4869,7 @@ mod tests {
                   --> main.hop (line 3, col 26)
                 2 | fn Main(holder: Holder) -> Html {
                 3 |   <>{match holder.color {Color::Red => "red", Color::Blue => "blue"}}</>
-                  |                          ^^^^^^^^^^
+                  |                          ^^^^^
             "#]],
         );
     }

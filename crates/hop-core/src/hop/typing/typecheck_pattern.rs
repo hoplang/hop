@@ -1,9 +1,9 @@
 use crate::document::DocumentRange;
-use crate::hop::parsing::{Constructor, ParsedMatchPattern};
+use crate::hop::parsing::ParsedPattern;
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::hop::typing::typed_match_pattern::{TypedField, TypedMatchPattern};
+use crate::hop::typing::typed_match_pattern::{Constructor, TypedField, TypedMatchPattern};
 use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::symbols::var_name::VarName;
 
@@ -11,308 +11,301 @@ use crate::symbols::var_name::VarName;
 /// variable the pattern binds is appended to `bindings` with its type and the
 /// range where it is bound.
 pub fn typecheck_pattern(
-    parsed: &ParsedMatchPattern,
+    parsed: &ParsedPattern,
     subject_type: Type,
     type_env: &TypeEnv,
     registry: &TypeRegistry,
     bindings: &mut Vec<(VarName, Type, DocumentRange)>,
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedMatchPattern> {
-    match parsed {
-        ParsedMatchPattern::Wildcard { .. } => Some(TypedMatchPattern::Wildcard),
-        ParsedMatchPattern::Binding { name, range } => {
+    let pattern_type = match parsed {
+        ParsedPattern::Wildcard { .. } => return Some(TypedMatchPattern::Wildcard),
+        ParsedPattern::Binding { name, range } => {
             bindings.push((name.clone(), subject_type, range.clone()));
-            Some(TypedMatchPattern::Binding { name: name.clone() })
+            return Some(TypedMatchPattern::Binding { name: name.clone() });
         }
-        ParsedMatchPattern::Constructor {
-            constructor,
-            args,
-            fields,
-            constructor_range,
-            range,
+        ParsedPattern::EnumVariant {
+            type_name,
+            type_name_range,
             ..
-        } => {
-            let pattern_type = match constructor {
-                Constructor::EnumVariant { enum_name, .. } => {
-                    match type_env.names.get(enum_name.as_str()) {
-                        Some(Name {
-                            kind: NameKind::Type(typ),
-                            ..
-                        }) => Some(typ),
-                        _ => {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::UndefinedType {
-                                    type_name: enum_name.clone(),
-                                },
-                                constructor_range.clone(),
-                            ));
-                            return None;
-                        }
-                    }
-                }
-                Constructor::Record { type_name } => match type_env.names.get(type_name.as_str()) {
-                    Some(Name {
-                        kind: NameKind::Type(typ),
-                        ..
-                    }) => Some(typ),
-                    _ => {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::UndefinedType {
-                                type_name: type_name.clone(),
-                            },
-                            constructor_range.clone(),
-                        ));
-                        return None;
-                    }
-                },
-                _ => None,
+        }
+        | ParsedPattern::Record {
+            type_name,
+            type_name_range,
+            ..
+        } => match type_env.names.get(type_name.as_str()) {
+            Some(Name {
+                kind: NameKind::Type(typ),
+                ..
+            }) => Some(typ),
+            _ => {
+                errors.push(TypeError::new(
+                    TypeErrorKind::UndefinedType {
+                        type_name: type_name.clone(),
+                    },
+                    type_name_range.clone(),
+                ));
+                return None;
+            }
+        },
+        ParsedPattern::BooleanTrue { .. }
+        | ParsedPattern::BooleanFalse { .. }
+        | ParsedPattern::OptionSome { .. }
+        | ParsedPattern::OptionNone { .. }
+        | ParsedPattern::Tuple { .. } => None,
+    };
+    match (parsed, registry.resolve(&subject_type)) {
+        (ParsedPattern::BooleanTrue { .. }, Some(ResolvedType::Bool)) => {
+            Some(TypedMatchPattern::Constructor {
+                constructor: Constructor::BooleanTrue,
+                args: Vec::new(),
+                fields: Vec::new(),
+            })
+        }
+
+        (ParsedPattern::BooleanFalse { .. }, Some(ResolvedType::Bool)) => {
+            Some(TypedMatchPattern::Constructor {
+                constructor: Constructor::BooleanFalse,
+                args: Vec::new(),
+                fields: Vec::new(),
+            })
+        }
+
+        (ParsedPattern::OptionSome { inner, .. }, Some(ResolvedType::Option(inner_type))) => {
+            let typed_inner = typecheck_pattern(
+                inner,
+                inner_type.clone(),
+                type_env,
+                registry,
+                bindings,
+                errors,
+            )?;
+            Some(TypedMatchPattern::Constructor {
+                constructor: Constructor::OptionSome,
+                args: vec![typed_inner],
+                fields: Vec::new(),
+            })
+        }
+
+        (ParsedPattern::OptionNone { .. }, Some(ResolvedType::Option(_))) => {
+            Some(TypedMatchPattern::Constructor {
+                constructor: Constructor::OptionNone,
+                args: Vec::new(),
+                fields: Vec::new(),
+            })
+        }
+
+        (
+            ParsedPattern::EnumVariant {
+                type_name: pattern_type_name,
+                variant_name: pattern_variant_name,
+                fields,
+                constructor_range,
+                range,
+                ..
+            },
+            Some(ResolvedType::Enum { variants, .. }),
+        ) if pattern_type == Some(&subject_type) => {
+            let variant_fields = variants
+                .iter()
+                .find(|variant| variant.name.as_str() == pattern_variant_name.as_str())
+                .map(|variant| variant.fields.as_slice());
+
+            let Some(variant_fields) = variant_fields else {
+                errors.push(TypeError::new(
+                    TypeErrorKind::UndefinedEnumVariant {
+                        enum_name: pattern_type_name.clone(),
+                        variant_name: pattern_variant_name.clone(),
+                    },
+                    range.clone(),
+                ));
+                return None;
             };
-            match (constructor, registry.resolve(&subject_type)) {
-                (
-                    Constructor::BooleanTrue | Constructor::BooleanFalse,
-                    Some(ResolvedType::Bool),
-                ) => Some(TypedMatchPattern::Constructor {
-                    constructor: constructor.clone(),
-                    args: Vec::new(),
-                    fields: Vec::new(),
-                }),
 
-                (Constructor::OptionSome, Some(ResolvedType::Option(inner_type))) => {
-                    let mut typed_args = Vec::new();
-                    if let Some(inner_pattern) = args.first() {
-                        typed_args.push(typecheck_pattern(
-                            inner_pattern,
-                            inner_type.clone(),
-                            type_env,
-                            registry,
-                            bindings,
-                            errors,
-                        )?);
-                    }
-                    Some(TypedMatchPattern::Constructor {
-                        constructor: constructor.clone(),
-                        args: typed_args,
-                        fields: Vec::new(),
-                    })
-                }
+            let mut typed_fields: Vec<TypedField> = Vec::new();
+            for (field_name, field_name_range, field_pattern) in fields {
+                let found = variant_fields
+                    .iter()
+                    .enumerate()
+                    .find(|(_, f)| &f.name == field_name);
 
-                (Constructor::OptionNone, Some(ResolvedType::Option(_))) => {
-                    Some(TypedMatchPattern::Constructor {
-                        constructor: constructor.clone(),
-                        args: Vec::new(),
-                        fields: Vec::new(),
-                    })
-                }
-
-                (
-                    Constructor::EnumVariant {
-                        enum_name: pattern_enum_name,
-                        variant_name: pattern_variant_name,
-                    },
-                    Some(ResolvedType::Enum { variants, .. }),
-                ) if pattern_type == Some(&subject_type) => {
-                    let variant_fields = variants
-                        .iter()
-                        .find(|variant| variant.name.as_str() == pattern_variant_name.as_str())
-                        .map(|variant| variant.fields.as_slice());
-
-                    let Some(variant_fields) = variant_fields else {
+                match found {
+                    Some(_) if typed_fields.iter().any(|f| &f.name == field_name) => {
                         errors.push(TypeError::new(
-                            TypeErrorKind::UndefinedEnumVariant {
-                                enum_name: pattern_enum_name.clone(),
+                            TypeErrorKind::EnumVariantDuplicateField {
+                                enum_name: pattern_type_name.clone(),
                                 variant_name: pattern_variant_name.clone(),
+                                field_name: field_name.clone(),
                             },
-                            range.clone(),
-                        ));
-                        return None;
-                    };
-
-                    let mut typed_fields: Vec<TypedField> = Vec::new();
-                    for (field_name, field_name_range, field_pattern) in fields {
-                        let found = variant_fields
-                            .iter()
-                            .enumerate()
-                            .find(|(_, f)| &f.name == field_name);
-
-                        match found {
-                            Some(_) if typed_fields.iter().any(|f| &f.name == field_name) => {
-                                errors.push(TypeError::new(
-                                    TypeErrorKind::EnumVariantDuplicateField {
-                                        enum_name: pattern_enum_name.clone(),
-                                        variant_name: pattern_variant_name.clone(),
-                                        field_name: field_name.clone(),
-                                    },
-                                    field_name_range.clone(),
-                                ));
-                                return None;
-                            }
-                            Some((index, field)) => {
-                                typed_fields.push(TypedField {
-                                    name: field_name.clone(),
-                                    index,
-                                    pattern: typecheck_pattern(
-                                        field_pattern,
-                                        field.typ.clone(),
-                                        type_env,
-                                        registry,
-                                        bindings,
-                                        errors,
-                                    )?,
-                                });
-                            }
-                            None => {
-                                errors.push(TypeError::new(
-                                    TypeErrorKind::EnumVariantUnknownField {
-                                        enum_name: pattern_enum_name.clone(),
-                                        variant_name: pattern_variant_name.clone(),
-                                        field_name: field_name.clone(),
-                                    },
-                                    field_name_range.clone(),
-                                ));
-                                return None;
-                            }
-                        }
-                    }
-
-                    if fields.len() < variant_fields.len() {
-                        let pattern_field_names: Vec<_> =
-                            fields.iter().map(|(name, _, _)| name).collect();
-                        let missing_fields = variant_fields
-                            .iter()
-                            .filter(|f| !pattern_field_names.contains(&&f.name))
-                            .map(|f| f.name.clone())
-                            .collect::<Vec<_>>();
-                        errors.push(TypeError::new(
-                            TypeErrorKind::EnumVariantMissingFields {
-                                enum_name: pattern_enum_name.clone(),
-                                variant_name: pattern_variant_name.clone(),
-                                missing_fields,
-                            },
-                            constructor_range.clone(),
+                            field_name_range.clone(),
                         ));
                         return None;
                     }
-
-                    Some(TypedMatchPattern::Constructor {
-                        constructor: constructor.clone(),
-                        args: Vec::new(),
-                        fields: typed_fields,
-                    })
-                }
-
-                (
-                    Constructor::Record {
-                        type_name: pattern_type_name,
-                    },
-                    Some(ResolvedType::Record {
-                        fields: subject_fields,
-                        ..
-                    }),
-                ) if pattern_type == Some(&subject_type) => {
-                    let mut typed_fields: Vec<TypedField> = Vec::new();
-                    for (field_name, field_name_range, field_pattern) in fields {
-                        let found = subject_fields
-                            .iter()
-                            .enumerate()
-                            .find(|(_, f)| &f.name == field_name);
-
-                        match found {
-                            Some(_) if typed_fields.iter().any(|f| &f.name == field_name) => {
-                                errors.push(TypeError::new(
-                                    TypeErrorKind::RecordDuplicateField {
-                                        field_name: field_name.clone(),
-                                        record_name: pattern_type_name.clone(),
-                                    },
-                                    field_name_range.clone(),
-                                ));
-                                return None;
-                            }
-                            Some((index, field)) => {
-                                typed_fields.push(TypedField {
-                                    name: field_name.clone(),
-                                    index,
-                                    pattern: typecheck_pattern(
-                                        field_pattern,
-                                        field.typ.clone(),
-                                        type_env,
-                                        registry,
-                                        bindings,
-                                        errors,
-                                    )?,
-                                });
-                            }
-                            None => {
-                                errors.push(TypeError::new(
-                                    TypeErrorKind::RecordUnknownField {
-                                        field_name: field_name.clone(),
-                                        record_name: pattern_type_name.clone(),
-                                    },
-                                    field_name_range.clone(),
-                                ));
-                                return None;
-                            }
-                        }
-                    }
-
-                    if fields.len() < subject_fields.len() {
-                        let pattern_field_names =
-                            fields.iter().map(|(name, _, _)| name).collect::<Vec<_>>();
-                        let missing_fields = subject_fields
-                            .iter()
-                            .filter(|f| !pattern_field_names.contains(&&f.name))
-                            .map(|f| f.name.clone())
-                            .collect::<Vec<_>>();
-                        errors.push(TypeError::new(
-                            TypeErrorKind::RecordMissingFields {
-                                record_name: pattern_type_name.clone(),
-                                missing_fields,
-                            },
-                            constructor_range.clone(),
-                        ));
-                        return None;
-                    }
-
-                    Some(TypedMatchPattern::Constructor {
-                        constructor: constructor.clone(),
-                        args: Vec::new(),
-                        fields: typed_fields,
-                    })
-                }
-
-                (Constructor::Tuple, Some(ResolvedType::Tuple(elements)))
-                    if args.len() == elements.len() =>
-                {
-                    let typed_args = args
-                        .iter()
-                        .zip(elements)
-                        .map(|(arg, element)| {
-                            typecheck_pattern(
-                                arg,
-                                element.clone(),
+                    Some((index, field)) => {
+                        typed_fields.push(TypedField {
+                            name: field_name.clone(),
+                            index,
+                            pattern: typecheck_pattern(
+                                field_pattern,
+                                field.typ.clone(),
                                 type_env,
                                 registry,
                                 bindings,
                                 errors,
-                            )
-                        })
-                        .collect::<Option<Vec<_>>>()?;
-                    Some(TypedMatchPattern::Constructor {
-                        constructor: constructor.clone(),
-                        args: typed_args,
-                        fields: Vec::new(),
-                    })
-                }
-
-                _ => {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::MatchPatternTypeMismatch {
-                            expected: subject_type.clone(),
-                        },
-                        range.clone(),
-                    ));
-                    None
+                            )?,
+                        });
+                    }
+                    None => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::EnumVariantUnknownField {
+                                enum_name: pattern_type_name.clone(),
+                                variant_name: pattern_variant_name.clone(),
+                                field_name: field_name.clone(),
+                            },
+                            field_name_range.clone(),
+                        ));
+                        return None;
+                    }
                 }
             }
+
+            if fields.len() < variant_fields.len() {
+                let pattern_field_names: Vec<_> = fields.iter().map(|(name, _, _)| name).collect();
+                let missing_fields = variant_fields
+                    .iter()
+                    .filter(|f| !pattern_field_names.contains(&&f.name))
+                    .map(|f| f.name.clone())
+                    .collect::<Vec<_>>();
+                errors.push(TypeError::new(
+                    TypeErrorKind::EnumVariantMissingFields {
+                        enum_name: pattern_type_name.clone(),
+                        variant_name: pattern_variant_name.clone(),
+                        missing_fields,
+                    },
+                    constructor_range.clone(),
+                ));
+                return None;
+            }
+
+            Some(TypedMatchPattern::Constructor {
+                constructor: Constructor::EnumVariant {
+                    enum_name: pattern_type_name.clone(),
+                    variant_name: pattern_variant_name.clone(),
+                },
+                args: Vec::new(),
+                fields: typed_fields,
+            })
+        }
+
+        (
+            ParsedPattern::Record {
+                type_name: pattern_type_name,
+                type_name_range,
+                fields,
+                ..
+            },
+            Some(ResolvedType::Record {
+                fields: subject_fields,
+                ..
+            }),
+        ) if pattern_type == Some(&subject_type) => {
+            let mut typed_fields: Vec<TypedField> = Vec::new();
+            for (field_name, field_name_range, field_pattern) in fields {
+                let found = subject_fields
+                    .iter()
+                    .enumerate()
+                    .find(|(_, f)| &f.name == field_name);
+
+                match found {
+                    Some(_) if typed_fields.iter().any(|f| &f.name == field_name) => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::RecordDuplicateField {
+                                field_name: field_name.clone(),
+                                record_name: pattern_type_name.clone(),
+                            },
+                            field_name_range.clone(),
+                        ));
+                        return None;
+                    }
+                    Some((index, field)) => {
+                        typed_fields.push(TypedField {
+                            name: field_name.clone(),
+                            index,
+                            pattern: typecheck_pattern(
+                                field_pattern,
+                                field.typ.clone(),
+                                type_env,
+                                registry,
+                                bindings,
+                                errors,
+                            )?,
+                        });
+                    }
+                    None => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::RecordUnknownField {
+                                field_name: field_name.clone(),
+                                record_name: pattern_type_name.clone(),
+                            },
+                            field_name_range.clone(),
+                        ));
+                        return None;
+                    }
+                }
+            }
+
+            if fields.len() < subject_fields.len() {
+                let pattern_field_names =
+                    fields.iter().map(|(name, _, _)| name).collect::<Vec<_>>();
+                let missing_fields = subject_fields
+                    .iter()
+                    .filter(|f| !pattern_field_names.contains(&&f.name))
+                    .map(|f| f.name.clone())
+                    .collect::<Vec<_>>();
+                errors.push(TypeError::new(
+                    TypeErrorKind::RecordMissingFields {
+                        record_name: pattern_type_name.clone(),
+                        missing_fields,
+                    },
+                    type_name_range.clone(),
+                ));
+                return None;
+            }
+
+            Some(TypedMatchPattern::Constructor {
+                constructor: Constructor::Record {
+                    type_name: pattern_type_name.clone(),
+                },
+                args: Vec::new(),
+                fields: typed_fields,
+            })
+        }
+
+        (ParsedPattern::Tuple { args, .. }, Some(ResolvedType::Tuple(elements)))
+            if args.len() == elements.len() =>
+        {
+            let typed_args = args
+                .iter()
+                .zip(elements)
+                .map(|(arg, element)| {
+                    typecheck_pattern(arg, element.clone(), type_env, registry, bindings, errors)
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(TypedMatchPattern::Constructor {
+                constructor: Constructor::Tuple,
+                args: typed_args,
+                fields: Vec::new(),
+            })
+        }
+
+        _ => {
+            errors.push(TypeError::new(
+                TypeErrorKind::MatchPatternTypeMismatch {
+                    expected: subject_type.clone(),
+                },
+                parsed.range().clone(),
+            ));
+            None
         }
     }
 }
@@ -322,7 +315,7 @@ mod tests {
     use super::*;
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::hop::parsing::parse_match_pattern;
+    use crate::hop::parsing::parse_pattern;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use expect_test::{Expect, expect};
 
@@ -332,7 +325,7 @@ mod tests {
         let mut iter = DocumentCursor::new(types.module().clone(), pattern_str.to_string());
         let mut comments = Vec::new();
         let mut errors = Vec::new();
-        let parsed = parse_match_pattern(&mut iter, &mut comments, &mut errors);
+        let parsed = parse_pattern(&mut iter, &mut comments, &mut errors);
         let Ok(parsed) = parsed else {
             panic!("failed to parse pattern `{pattern_str}`: {errors:?}");
         };
@@ -372,7 +365,7 @@ mod tests {
             expect![[r#"
                 error: Type 'Colour' is not defined
                 Colour::Red
-                ^^^^^^^^^^^
+                ^^^^^^
             "#]],
         );
     }

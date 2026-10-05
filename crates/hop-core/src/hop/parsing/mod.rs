@@ -23,8 +23,7 @@ pub use parsed_ast::{
     ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
 pub use parsed_expr::{
-    Constructor, ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource, ParsedMatchArm,
-    ParsedMatchPattern,
+    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource, ParsedMatchArm, ParsedPattern,
 };
 pub use parsed_node::{ParsedAttribute, ParsedLetBinding, ParsedNode};
 pub use parsed_type::ParsedType;
@@ -33,7 +32,7 @@ pub use parsed_type::ParsedType;
 mod source_generator;
 
 #[cfg(test)]
-pub use parse_expr::{parse_expr, parse_match_pattern};
+pub use parse_expr::{parse_expr, parse_pattern};
 #[cfg(test)]
 pub use parse_type::parse_type;
 #[cfg(test)]

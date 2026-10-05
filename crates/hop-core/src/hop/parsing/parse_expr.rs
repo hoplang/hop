@@ -12,8 +12,8 @@ use super::parse_helpers::{
 use super::parse_nodes;
 use super::parse_type::parse_type;
 use super::parsed_expr::{
-    Constructor, ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer,
-    ParsedLoopSource, ParsedMatchArm, ParsedMatchPattern, ParsedNamedArgument,
+    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer, ParsedLoopSource,
+    ParsedMatchArm, ParsedNamedArgument, ParsedPattern,
 };
 use super::parsed_node::ParsedLetBinding;
 use super::token::LangToken;
@@ -783,7 +783,7 @@ fn parse_match(
         &left_brace,
         &[],
         |iter, comments, errors| {
-            let pattern = parse_match_pattern(iter, comments, errors)?;
+            let pattern = parse_pattern(iter, comments, errors)?;
             expect_token(iter, comments, errors, &LangToken::FatArrow)?;
             let body = parse_expr(iter, comments, errors)?;
             Ok(ParsedMatchArm { pattern, body })
@@ -796,32 +796,24 @@ fn parse_match(
     })
 }
 
-pub fn parse_match_pattern(
+pub fn parse_pattern(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
-) -> Result<ParsedMatchPattern, ErrorEmitted> {
+) -> Result<ParsedPattern, ErrorEmitted> {
     if let Some(pattern_range) = next_if_eq(iter, comments, errors, LangToken::Underscore) {
-        return Ok(ParsedMatchPattern::Wildcard {
+        return Ok(ParsedPattern::Wildcard {
             range: pattern_range,
         });
     }
-    if let Some((constructor, pattern_range)) =
-        next_if_map(iter, comments, errors, |token| match token {
-            LangToken::True => Some(Constructor::BooleanTrue),
-            LangToken::False => Some(Constructor::BooleanFalse),
-            LangToken::None => Some(Constructor::OptionNone),
-            _ => None,
-        })
-    {
-        return Ok(ParsedMatchPattern::Constructor {
-            constructor,
-            args: Vec::new(),
-            fields: Vec::new(),
-            constructor_range: pattern_range.clone(),
-            enum_name_range: None,
-            range: pattern_range,
-        });
+    if let Some(range) = next_if_eq(iter, comments, errors, LangToken::True) {
+        return Ok(ParsedPattern::BooleanTrue { range });
+    }
+    if let Some(range) = next_if_eq(iter, comments, errors, LangToken::False) {
+        return Ok(ParsedPattern::BooleanFalse { range });
+    }
+    if let Some(range) = next_if_eq(iter, comments, errors, LangToken::None) {
+        return Ok(ParsedPattern::OptionNone { range });
     }
     if let Some(some_range) = next_if_eq(iter, comments, errors, LangToken::Some) {
         let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
@@ -831,14 +823,10 @@ pub fn parse_match_pattern(
             errors,
             LangTokenPair::Parens,
             &left_paren,
-            parse_match_pattern,
+            parse_pattern,
         )?;
-        return Ok(ParsedMatchPattern::Constructor {
-            constructor: Constructor::OptionSome,
-            args: vec![inner_pattern],
-            fields: Vec::new(),
-            constructor_range: some_range.clone(),
-            enum_name_range: None,
+        return Ok(ParsedPattern::OptionSome {
+            inner: Box::new(inner_pattern),
             range: some_range.to(parens),
         });
     }
@@ -852,7 +840,7 @@ pub fn parse_match_pattern(
             &left_paren,
             &[],
             |iter, comments, errors| {
-                let pattern = parse_match_pattern(iter, comments, errors)?;
+                let pattern = parse_pattern(iter, comments, errors)?;
                 trailing_comma = matches!(peek(iter), Some((LangToken::Comma, _)))
                     && matches!(peek2(iter), Some((LangToken::RightParen, _)));
                 Ok(pattern)
@@ -861,14 +849,9 @@ pub fn parse_match_pattern(
         if args.len() == 1 && !trailing_comma {
             return Ok(args.remove(0));
         }
-        let tuple_range = left_paren.to(parens);
-        return Ok(ParsedMatchPattern::Constructor {
-            constructor: Constructor::Tuple,
+        return Ok(ParsedPattern::Tuple {
             args,
-            fields: Vec::new(),
-            constructor_range: tuple_range.clone(),
-            enum_name_range: None,
-            range: tuple_range,
+            range: left_paren.to(parens),
         });
     }
     if let Some((type_name_str, type_name_range)) =
@@ -894,9 +877,9 @@ pub fn parse_match_pattern(
                             FieldName::new(name.clone()).or_emit(errors, &field_range)?;
                         let pattern =
                             if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
-                                parse_match_pattern(iter, comments, errors)?
+                                parse_pattern(iter, comments, errors)?
                             } else {
-                                ParsedMatchPattern::Binding {
+                                ParsedPattern::Binding {
                                     name: VarName::new(name).or_emit(errors, &field_range)?,
                                     range: field_range.clone(),
                                 }
@@ -908,16 +891,12 @@ pub fn parse_match_pattern(
                 (Vec::new(), variant_range.clone())
             };
 
-            let constructor_range = type_name_range.clone().to(variant_range);
-            return Ok(ParsedMatchPattern::Constructor {
-                constructor: Constructor::EnumVariant {
-                    enum_name: TypeName::new(type_name_str).or_emit(errors, &type_name_range)?,
-                    variant_name,
-                },
-                args: Vec::new(),
+            return Ok(ParsedPattern::EnumVariant {
+                type_name: TypeName::new(type_name_str).or_emit(errors, &type_name_range)?,
+                type_name_range: type_name_range.clone(),
+                variant_name,
                 fields,
-                constructor_range,
-                enum_name_range: Some(type_name_range.clone()),
+                constructor_range: type_name_range.clone().to(variant_range),
                 range: type_name_range.to(end_range),
             });
         }
@@ -932,9 +911,9 @@ pub fn parse_match_pattern(
             |iter, comments, errors| {
                 let (name, field_range) = expect_identifier(iter, comments, errors)?;
                 let pattern = if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
-                    parse_match_pattern(iter, comments, errors)?
+                    parse_pattern(iter, comments, errors)?
                 } else {
-                    ParsedMatchPattern::Binding {
+                    ParsedPattern::Binding {
                         name: VarName::new(name.clone()).or_emit(errors, &field_range)?,
                         range: field_range.clone(),
                     }
@@ -943,19 +922,15 @@ pub fn parse_match_pattern(
                 Ok((field_name, field_range, pattern))
             },
         )?;
-        return Ok(ParsedMatchPattern::Constructor {
-            constructor: Constructor::Record {
-                type_name: TypeName::new(type_name_str).or_emit(errors, &type_name_range)?,
-            },
-            args: Vec::new(),
+        return Ok(ParsedPattern::Record {
+            type_name: TypeName::new(type_name_str).or_emit(errors, &type_name_range)?,
+            type_name_range: type_name_range.clone(),
             fields,
-            constructor_range: type_name_range.clone(),
-            enum_name_range: None,
             range: type_name_range.to(braces),
         });
     }
     let (var_name, var_range) = expect_identifier(iter, comments, errors)?;
-    Ok(ParsedMatchPattern::Binding {
+    Ok(ParsedPattern::Binding {
         name: VarName::new(var_name).or_emit(errors, &var_range)?,
         range: var_range,
     })

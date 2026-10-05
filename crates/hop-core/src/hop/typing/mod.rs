@@ -29,7 +29,7 @@ pub use typed_ast::{TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, Ty
 pub use typed_expr::{
     TypedAttribute, TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField,
 };
-pub use typed_match_pattern::TypedMatchPattern;
+pub use typed_match_pattern::{Constructor, TypedMatchPattern};
 
 #[cfg(test)]
 mod type_registry_builder;

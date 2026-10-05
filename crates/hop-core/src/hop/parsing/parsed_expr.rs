@@ -243,143 +243,140 @@ impl ParsedBinaryOp {
 #[derive(Debug, Clone)]
 pub struct ParsedMatchArm {
     /// The pattern being matched
-    pub pattern: ParsedMatchPattern,
+    pub pattern: ParsedPattern,
     /// The expression to evaluate if this arm matches
     pub body: ParsedExpr,
 }
 
 /// A pattern in a match arm
 #[derive(Debug, Clone)]
-pub enum ParsedMatchPattern {
-    /// A constructor pattern that matches a specific value
-    Constructor {
-        constructor: Constructor,
-        /// Positional arguments (e.g., the inner pattern in `Some(x)`)
-        args: Vec<ParsedMatchPattern>,
-        /// Named field patterns for record matching (e.g., `User {name: x, age: y}`)
-        /// The tuple is (field_name, field_name_range, field_pattern)
-        fields: Vec<(FieldName, DocumentRange, ParsedMatchPattern)>,
-        /// Range of just the constructor (e.g., `Point::XY` without the field patterns)
-        constructor_range: DocumentRange,
-        /// Range of just the enum name for enum variant patterns (e.g., `Device` in `Device::Mobile`)
-        enum_name_range: Option<DocumentRange>,
-        /// Range of the entire pattern including fields
-        range: DocumentRange,
-    },
+pub enum ParsedPattern {
     /// A wildcard pattern that matches anything, written as `_`
     Wildcard { range: DocumentRange },
     /// A binding pattern that matches anything and binds it to a name
     Binding { name: VarName, range: DocumentRange },
-}
-
-/// A constructor pattern (non-wildcard pattern that matches a specific value)
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Constructor {
     /// A boolean true pattern
-    BooleanTrue,
+    BooleanTrue { range: DocumentRange },
     /// A boolean false pattern
-    BooleanFalse,
+    BooleanFalse { range: DocumentRange },
     /// An Option Some pattern, e.g. `Some(_)`
-    OptionSome,
+    OptionSome {
+        inner: Box<ParsedPattern>,
+        range: DocumentRange,
+    },
     /// An Option None pattern, e.g. `None`
-    OptionNone,
+    OptionNone { range: DocumentRange },
     /// An enum variant pattern, e.g. `Color::Red`
     EnumVariant {
-        enum_name: TypeName,
+        type_name: TypeName,
+        /// Range of just the type name (e.g., `Color` in `Color::Red`)
+        type_name_range: DocumentRange,
         variant_name: TypeName,
+        /// Named field patterns (e.g., `{x: a, y: b}` in `Point::XY {x: a, y: b}`)
+        /// The tuple is (field_name, field_name_range, field_pattern)
+        fields: Vec<(FieldName, DocumentRange, ParsedPattern)>,
+        /// Range of just the constructor (e.g., `Point::XY` without the field patterns)
+        constructor_range: DocumentRange,
+        /// Range of the entire pattern including fields
+        range: DocumentRange,
     },
     /// A record pattern, e.g. `User {name: x, age: y}`
-    Record { type_name: TypeName },
+    Record {
+        type_name: TypeName,
+        type_name_range: DocumentRange,
+        /// Named field patterns
+        /// The tuple is (field_name, field_name_range, field_pattern)
+        fields: Vec<(FieldName, DocumentRange, ParsedPattern)>,
+        /// Range of the entire pattern including fields
+        range: DocumentRange,
+    },
     /// A tuple pattern, e.g. `(x, _)`
-    Tuple,
+    Tuple {
+        args: Vec<ParsedPattern>,
+        range: DocumentRange,
+    },
 }
 
-impl Constructor {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            Constructor::EnumVariant {
-                enum_name,
-                variant_name,
-            } => BoxDoc::text(enum_name.as_str().to_string())
-                .append(BoxDoc::text("::"))
-                .append(BoxDoc::text(variant_name.as_str())),
-            Constructor::BooleanTrue => BoxDoc::text("true"),
-            Constructor::BooleanFalse => BoxDoc::text("false"),
-            Constructor::OptionSome => BoxDoc::text("Some"),
-            Constructor::OptionNone => BoxDoc::text("None"),
-            Constructor::Record { type_name } => BoxDoc::text(type_name.as_str().to_string()),
-            Constructor::Tuple => BoxDoc::nil(),
-        }
-    }
-}
-
-impl ParsedMatchPattern {
+impl ParsedPattern {
     pub fn range(&self) -> &DocumentRange {
         match self {
-            ParsedMatchPattern::Constructor { range, .. }
-            | ParsedMatchPattern::Wildcard { range }
-            | ParsedMatchPattern::Binding { range, .. } => range,
+            ParsedPattern::Wildcard { range }
+            | ParsedPattern::Binding { range, .. }
+            | ParsedPattern::BooleanTrue { range }
+            | ParsedPattern::BooleanFalse { range }
+            | ParsedPattern::OptionSome { range, .. }
+            | ParsedPattern::OptionNone { range }
+            | ParsedPattern::EnumVariant { range, .. }
+            | ParsedPattern::Record { range, .. }
+            | ParsedPattern::Tuple { range, .. } => range,
         }
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedMatchPattern::Constructor {
-                constructor,
-                args,
+        let (base, fields) = match self {
+            ParsedPattern::Wildcard { .. } => return BoxDoc::text("_"),
+            ParsedPattern::Binding { name, .. } => return BoxDoc::text(name.as_str()),
+            ParsedPattern::BooleanTrue { .. } => return BoxDoc::text("true"),
+            ParsedPattern::BooleanFalse { .. } => return BoxDoc::text("false"),
+            ParsedPattern::OptionNone { .. } => return BoxDoc::text("None"),
+            ParsedPattern::OptionSome { inner, .. } => {
+                return BoxDoc::text("Some(")
+                    .append(inner.to_doc())
+                    .append(BoxDoc::text(")"));
+            }
+            // Tuple pattern: (x, _)
+            ParsedPattern::Tuple { args, .. } => {
+                return BoxDoc::text("(")
+                    .append(BoxDoc::intersperse(
+                        args.iter().map(|a| a.to_doc()),
+                        BoxDoc::text(", "),
+                    ))
+                    .append(if args.len() == 1 {
+                        BoxDoc::text(",")
+                    } else {
+                        BoxDoc::nil()
+                    })
+                    .append(BoxDoc::text(")"));
+            }
+            ParsedPattern::EnumVariant {
+                type_name,
+                variant_name,
                 fields,
                 ..
-            } => {
-                let base = constructor.to_doc();
-                if matches!(constructor, Constructor::Tuple) {
-                    // Tuple pattern: (x, _)
-                    BoxDoc::text("(")
-                        .append(BoxDoc::intersperse(
-                            args.iter().map(|a| a.to_doc()),
-                            BoxDoc::text(", "),
-                        ))
-                        .append(if args.len() == 1 {
-                            BoxDoc::text(",")
-                        } else {
-                            BoxDoc::nil()
-                        })
-                        .append(BoxDoc::text(")"))
-                } else if !fields.is_empty() {
-                    // Record pattern: User {name: x, age: y}
-                    let fields_doc = BoxDoc::intersperse(
-                        fields.iter().map(|(name, _, pat)| {
-                            if let ParsedMatchPattern::Binding { name: var_name, .. } = pat {
-                                if var_name.as_str() == name.as_str() {
-                                    return BoxDoc::text(name.as_str());
-                                }
-                            }
-                            BoxDoc::text(name.as_str())
-                                .append(BoxDoc::text(": "))
-                                .append(pat.to_doc())
-                        }),
-                        BoxDoc::text(", "),
-                    );
-                    base.append(BoxDoc::text("{"))
-                        .append(fields_doc)
-                        .append(BoxDoc::text("}"))
-                } else if args.is_empty() {
-                    base
-                } else {
-                    // Positional args (Option Some, etc.)
-                    let args_doc =
-                        BoxDoc::intersperse(args.iter().map(|a| a.to_doc()), BoxDoc::text(", "));
-                    base.append(BoxDoc::text("("))
-                        .append(args_doc)
-                        .append(BoxDoc::text(")"))
-                }
-            }
-            ParsedMatchPattern::Wildcard { .. } => BoxDoc::text("_"),
-            ParsedMatchPattern::Binding { name, .. } => BoxDoc::text(name.as_str()),
+            } => (
+                BoxDoc::text(type_name.as_str().to_string())
+                    .append(BoxDoc::text("::"))
+                    .append(BoxDoc::text(variant_name.as_str())),
+                fields,
+            ),
+            ParsedPattern::Record {
+                type_name, fields, ..
+            } => (BoxDoc::text(type_name.as_str().to_string()), fields),
+        };
+        if fields.is_empty() {
+            return base;
         }
+        // Field patterns: User {name: x, age: y}
+        let fields_doc = BoxDoc::intersperse(
+            fields.iter().map(|(name, _, pat)| {
+                if let ParsedPattern::Binding { name: var_name, .. } = pat {
+                    if var_name.as_str() == name.as_str() {
+                        return BoxDoc::text(name.as_str());
+                    }
+                }
+                BoxDoc::text(name.as_str())
+                    .append(BoxDoc::text(": "))
+                    .append(pat.to_doc())
+            }),
+            BoxDoc::text(", "),
+        );
+        base.append(BoxDoc::text("{"))
+            .append(fields_doc)
+            .append(BoxDoc::text("}"))
     }
 }
 
-impl std::fmt::Display for ParsedMatchPattern {
+impl std::fmt::Display for ParsedPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.to_doc().pretty(80))
     }
