@@ -10,9 +10,9 @@ use crate::hop::parsing::{Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPa
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::{MatchErrorSite, compile_match};
 use crate::hop::typing::type_env::TypeEnv;
+use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::var_name::VarName;
-use crate::type_error::{TypeError, TypeErrorKind};
 
 pub fn typecheck_match(
     subject: &ParsedExpr,

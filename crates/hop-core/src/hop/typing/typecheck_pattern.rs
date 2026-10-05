@@ -4,8 +4,8 @@ use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::hop::typing::typed_match_pattern::{TypedField, TypedMatchPattern};
+use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::symbols::var_name::VarName;
-use crate::type_error::{TypeError, TypeErrorKind};
 
 /// Typecheck a pattern against the type of the value it matches. Every
 /// variable the pattern binds is appended to `bindings` with its type and the

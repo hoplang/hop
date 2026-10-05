@@ -8,12 +8,12 @@ use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::variable_scope::VariableScope;
+use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::hop::typing::{TypedAttribute, TypedAttrs};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::{TypeError, TypeErrorKind};
 
 pub fn typecheck_node(
     node: &ParsedNode,

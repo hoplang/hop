@@ -27,7 +27,6 @@ mod root_contained_file_path;
 mod root_relative_file_path;
 mod root_relative_path;
 mod symbols;
-mod type_error;
 
 // Public API
 pub use asset_path_rewriter::AssetPathRewriter;

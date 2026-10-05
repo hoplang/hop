@@ -26,11 +26,11 @@ use crate::hop::typing::typed_ast::{
     TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
 };
 use crate::hop::typing::variable_scope::VariableScope;
+use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::hover_annotation::HoverAnnotation;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::{TypeError, TypeErrorKind};
 use std::collections::{HashMap, HashSet};
 
 pub fn typecheck(

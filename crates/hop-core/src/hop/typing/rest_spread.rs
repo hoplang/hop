@@ -12,10 +12,10 @@ use super::type_env::{FunctionSignature, ParamEntry, Tail};
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedNode};
+use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::{TypeError, TypeErrorKind};
 
 /// Where a function's rest lands, and enough of the site it lands on to
 /// decide the tail.

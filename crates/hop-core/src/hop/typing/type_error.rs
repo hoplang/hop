@@ -11,17 +11,17 @@ use crate::symbols::var_name::VarName;
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypeError {
+pub struct TypeError {
     kind: TypeErrorKind,
     range: DocumentRange,
 }
 
 impl TypeError {
-    pub(crate) fn new(kind: TypeErrorKind, range: DocumentRange) -> Self {
+    pub fn new(kind: TypeErrorKind, range: DocumentRange) -> Self {
         TypeError { kind, range }
     }
 
-    pub(crate) fn import_cycle(
+    pub fn import_cycle(
         importer_module: &str,
         imported_component: &str,
         cycle: &[String],
@@ -43,11 +43,11 @@ impl TypeError {
         )
     }
 
-    pub(crate) fn severity(&self) -> DiagnosticSeverity {
+    pub fn severity(&self) -> DiagnosticSeverity {
         self.kind.severity()
     }
 
-    pub(crate) fn to_diagnostic(&self) -> Diagnostic {
+    pub fn to_diagnostic(&self) -> Diagnostic {
         let types = match &self.kind {
             TypeErrorKind::DefaultValueTypeMismatch {
                 expected, found, ..
@@ -93,7 +93,7 @@ impl TypeError {
 }
 
 #[derive(Debug, Clone, Error)]
-pub(crate) enum TypeErrorKind {
+pub enum TypeErrorKind {
     #[error("Module {module} does not declare {name}")]
     UndeclaredName {
         module: ModuleName,

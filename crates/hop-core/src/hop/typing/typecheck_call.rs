@@ -7,10 +7,10 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
+use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::{TypeError, TypeErrorKind};
 
 /// An argument supplied for a parameter at a call site.
 pub enum Argument<'a> {

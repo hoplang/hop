@@ -5,7 +5,7 @@ use super::type_env::{Name, NameKind};
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::ParsedType;
-use crate::type_error::{TypeError, TypeErrorKind};
+use crate::hop::typing::{TypeError, TypeErrorKind};
 
 /// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(

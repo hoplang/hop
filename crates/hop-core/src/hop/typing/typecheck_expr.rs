@@ -13,13 +13,13 @@ use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::{ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource};
 use crate::hop::typing::type_env::TypeEnv;
+use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::hop::typing::{TypedExpr, TypedLoopSource, TypedRecordUpdateField};
 use crate::hover_annotation::HoverAnnotation;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::{TypeError, TypeErrorKind};
 
 /// Resolve a parsed Expr to a typed Expr.
 ///

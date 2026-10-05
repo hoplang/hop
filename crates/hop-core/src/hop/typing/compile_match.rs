@@ -13,13 +13,13 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::hop::parsing::Constructor;
+use crate::hop::typing::TypeErrorKind;
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::hop::typing::typed_match_pattern::{TypedField, TypedMatchPattern};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::TypeErrorKind;
 
 /// A variable the decision tree introduces, numbered from 0 within one match.
 /// Case variable 0 is the subject.
@@ -745,9 +745,9 @@ mod tests {
     use crate::document_annotator::DocumentAnnotator;
     use crate::hop::parsing::ParsedExpr;
     use crate::hop::parsing::parse_expr;
+    use crate::hop::typing::TypeError;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use crate::hop::typing::typecheck_pattern::typecheck_pattern;
-    use crate::type_error::TypeError;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
