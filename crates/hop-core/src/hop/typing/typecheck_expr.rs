@@ -4519,7 +4519,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                warning: Unused binding 'x' in match arm
+                warning: Unused variable x
                     x => 42,
                     ^
             "#]],
@@ -4538,7 +4538,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                warning: Unused binding 'x' in match arm
+                warning: Unused variable x
                     Some(x) => 0,
                          ^
             "#]],
@@ -4574,7 +4574,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                warning: Unused binding 'x' in match arm
+                warning: Unused variable x
                     Some(Some(x)) => 0,
                               ^
             "#]],
@@ -4742,11 +4742,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                warning: Unused binding 'n' in match arm
+                warning: Unused variable n
                     User{name: n, age: a} => "hello",
                                ^
 
-                warning: Unused binding 'a' in match arm
+                warning: Unused variable a
                     User{name: n, age: a} => "hello",
                                        ^
             "#]],

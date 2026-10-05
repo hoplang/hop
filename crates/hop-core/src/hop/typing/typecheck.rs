@@ -6094,7 +6094,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                warning: Unused binding 'unused' in match arm
+                warning: Unused variable unused
                   --> main.hop (line 3, col 14)
                 2 |     match x {
                 3 |         Some(unused) => <>found something</>,

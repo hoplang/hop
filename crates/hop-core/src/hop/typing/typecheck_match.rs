@@ -159,7 +159,7 @@ fn typecheck_arm_bodies(
             let (name, entry) = var_env.pop();
             if !entry.accessed {
                 errors.push(TypeError::new(
-                    TypeErrorKind::MatchUnusedBinding { name },
+                    TypeErrorKind::UnusedVariable { var_name: name },
                     entry.range,
                 ));
             }

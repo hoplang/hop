@@ -339,9 +339,6 @@ pub enum TypeErrorKind {
     #[error("Useless match expression: does not branch or bind any variables")]
     MatchUseless,
 
-    #[error("Unused binding '{name}' in match arm")]
-    MatchUnusedBinding { name: VarName },
-
     #[error("Variable {name} is already defined")]
     VariableAlreadyDefined { name: VarName },
 
@@ -464,9 +461,9 @@ pub enum TypeErrorKind {
 impl TypeErrorKind {
     pub fn severity(&self) -> DiagnosticSeverity {
         match self {
-            TypeErrorKind::UnusedVariable { .. }
-            | TypeErrorKind::UnusedImport { .. }
-            | TypeErrorKind::MatchUnusedBinding { .. } => DiagnosticSeverity::Warning,
+            TypeErrorKind::UnusedVariable { .. } | TypeErrorKind::UnusedImport { .. } => {
+                DiagnosticSeverity::Warning
+            }
             _ => DiagnosticSeverity::Error,
         }
     }
