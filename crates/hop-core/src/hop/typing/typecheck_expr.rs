@@ -13,7 +13,7 @@ use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::{ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource};
 use crate::hop::typing::type_env::TypeEnv;
-use crate::hop::typing::{TypeError, TypeErrorKind};
+use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{TypedExpr, TypedLoopSource, TypedRecordUpdateField};
 use crate::hover_annotation::HoverAnnotation;
 use crate::root_relative_file_path::RootRelativeFilePath;
@@ -288,18 +288,21 @@ pub fn typecheck_expr(
                 }
                 ParsedBinaryOp::LogicalAnd | ParsedBinaryOp::LogicalOr => {
                     if left_type != Type::Bool || right_type != Type::Bool {
+                        let (found, range) = if left_type != Type::Bool {
+                            (left_type, left.range().clone())
+                        } else {
+                            (right_type, right.range().clone())
+                        };
                         errors.push(TypeError::new(
-                            match operator {
-                                ParsedBinaryOp::LogicalAnd => {
-                                    TypeErrorKind::LogicalAndTypeMismatch {}
-                                }
-                                _ => TypeErrorKind::LogicalOrTypeMismatch {},
+                            TypeErrorKind::TypeMismatch {
+                                context: match operator {
+                                    ParsedBinaryOp::LogicalAnd => TypeMismatchContext::LogicalAnd,
+                                    _ => TypeMismatchContext::LogicalOr,
+                                },
+                                expected: Type::Bool,
+                                found,
                             },
-                            if left_type != Type::Bool {
-                                left.range().clone()
-                            } else {
-                                right.range().clone()
-                            },
+                            range,
                         ));
                         return None;
                     }
@@ -381,7 +384,9 @@ pub fn typecheck_expr(
 
             if operand_type != Type::Bool {
                 errors.push(TypeError::new(
-                    TypeErrorKind::BooleanNegationTypeMismatch {
+                    TypeErrorKind::TypeMismatch {
+                        context: TypeMismatchContext::BooleanNegation,
+                        expected: Type::Bool,
                         found: typed_operand.typ(),
                     },
                     operand.range().clone(),
@@ -491,7 +496,8 @@ pub fn typecheck_expr(
                     if let Some(first_type) = &first_type {
                         if element_type != *first_type {
                             errors.push(TypeError::new(
-                                TypeErrorKind::ArrayElementTypeMismatch {
+                                TypeErrorKind::TypeMismatch {
+                                    context: TypeMismatchContext::ArrayElement,
                                     expected: first_type.clone(),
                                     found: element_type,
                                 },
@@ -628,7 +634,8 @@ pub fn typecheck_expr(
                     let subject_type = typed_subject.typ();
                     if subject_type != record_type {
                         errors.push(TypeError::new(
-                            TypeErrorKind::RecordSpreadTypeMismatch {
+                            TypeErrorKind::TypeMismatch {
+                                context: TypeMismatchContext::RecordSpread,
                                 expected: record_type.clone(),
                                 found: subject_type,
                             },
@@ -688,8 +695,8 @@ pub fn typecheck_expr(
                 // Check that the types match
                 if actual_type != *expected_type {
                     errors.push(TypeError::new(
-                        TypeErrorKind::RecordLiteralFieldTypeMismatch {
-                            field_name: field.name.clone(),
+                        TypeErrorKind::TypeMismatch {
+                            context: TypeMismatchContext::RecordLiteralField,
                             expected: expected_type.clone(),
                             found: actual_type,
                         },
@@ -858,10 +865,8 @@ pub fn typecheck_expr(
                             let actual_type = typed_field_expr.typ();
                             if actual_type != expected_field.typ {
                                 errors.push(TypeError::new(
-                                    TypeErrorKind::EnumVariantFieldTypeMismatch {
-                                        enum_name: enum_name.clone(),
-                                        variant_name: variant_name.clone(),
-                                        field_name: field.name.clone(),
+                                    TypeErrorKind::TypeMismatch {
+                                        context: TypeMismatchContext::EnumVariantField,
                                         expected: expected_field.typ.clone(),
                                         found: actual_type,
                                     },
@@ -1018,7 +1023,8 @@ pub fn typecheck_expr(
                 let value_type = typed_value.typ();
                 if value_type != *declared {
                     errors.push(TypeError::new(
-                        TypeErrorKind::LetBindingTypeMismatch {
+                        TypeErrorKind::TypeMismatch {
+                            context: TypeMismatchContext::LetBinding,
                             expected: declared.clone(),
                             found: value_type,
                         },
@@ -1132,14 +1138,22 @@ pub fn typecheck_expr(
                     let start_type = typed_start.typ();
                     if start_type != Type::Int {
                         errors.push(TypeError::new(
-                            TypeErrorKind::RangeBoundTypeMismatch { found: start_type },
+                            TypeErrorKind::TypeMismatch {
+                                context: TypeMismatchContext::RangeBound,
+                                expected: Type::Int,
+                                found: start_type,
+                            },
                             start.range().clone(),
                         ));
                     }
                     let end_type = typed_end.typ();
                     if end_type != Type::Int {
                         errors.push(TypeError::new(
-                            TypeErrorKind::RangeBoundTypeMismatch { found: end_type },
+                            TypeErrorKind::TypeMismatch {
+                                context: TypeMismatchContext::RangeBound,
+                                expected: Type::Int,
+                                found: end_type,
+                            },
                             end.range().clone(),
                         ));
                     }
@@ -1210,7 +1224,11 @@ pub fn typecheck_expr(
             let body_type = typed_body.typ();
             if body_type != Type::Html {
                 errors.push(TypeError::new(
-                    TypeErrorKind::ForBodyTypeMismatch { found: body_type },
+                    TypeErrorKind::TypeMismatch {
+                        context: TypeMismatchContext::ForBody,
+                        expected: Type::Html,
+                        found: body_type,
+                    },
                     body.range().clone(),
                 ));
                 return None;
@@ -1251,8 +1269,8 @@ pub fn typecheck_expr(
                     };
                     if typed.typ() != Type::String {
                         errors.push(TypeError::new(
-                            TypeErrorKind::MacroArgumentTypeMismatch {
-                                macro_name: "join".to_string(),
+                            TypeErrorKind::TypeMismatch {
+                                context: TypeMismatchContext::MacroArgument,
                                 expected: Type::String,
                                 found: typed.typ(),
                             },
@@ -1572,8 +1590,8 @@ pub fn typecheck_expr(
                         ([default], Some(typed_default)) => {
                             if typed_default.typ() != **inner {
                                 errors.push(TypeError::new(
-                                    TypeErrorKind::MethodArgumentTypeMismatch {
-                                        method: method.clone(),
+                                    TypeErrorKind::TypeMismatch {
+                                        context: TypeMismatchContext::MethodArgument,
                                         expected: inner.as_ref().clone(),
                                         found: typed_default.typ(),
                                     },
@@ -1846,11 +1864,11 @@ mod tests {
             &[("count", "Int")],
             "join!(count, count)",
             expect![[r#"
-                error: Mismatched type for 'join': expected String got Int
+                error: Expected String got Int
                 join!(count, count)
                       ^^^^^
 
-                error: Mismatched type for 'join': expected String got Int
+                error: Expected String got Int
                 join!(count, count)
                              ^^^^^
             "#]],
@@ -1920,7 +1938,7 @@ mod tests {
             &[("name", "String")],
             "!name",
             expect![[r#"
-                error: Mismatched type for negation: expected Bool got String
+                error: Expected Bool got String
                 !name
                  ^^^^
             "#]],
@@ -1934,7 +1952,7 @@ mod tests {
             &[("count", "Float")],
             "!count",
             expect![[r#"
-                error: Mismatched type for negation: expected Bool got Float
+                error: Expected Bool got Float
                 !count
                  ^^^^^
             "#]],
@@ -1978,7 +1996,7 @@ mod tests {
             &[("name", "String")],
             "-name",
             expect![[r#"
-                error: Mismatched type for negation: expected Int or Float got String
+                error: Expected Int or Float got String
                 -name
                  ^^^^
             "#]],
@@ -1992,7 +2010,7 @@ mod tests {
             &[("flag", "Bool")],
             "-flag",
             expect![[r#"
-                error: Mismatched type for negation: expected Int or Float got Bool
+                error: Expected Int or Float got Bool
                 -flag
                  ^^^^
             "#]],
@@ -2363,7 +2381,7 @@ mod tests {
             &[("name", "String"), ("enabled", "Bool")],
             "name && enabled",
             expect![[r#"
-                error: && operator can only be applied to Bool values
+                error: Expected Bool got String
                 name && enabled
                 ^^^^
             "#]],
@@ -2377,7 +2395,7 @@ mod tests {
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled && count",
             expect![[r#"
-                error: && operator can only be applied to Bool values
+                error: Expected Bool got Int
                 enabled && count
                            ^^^^^
             "#]],
@@ -2391,7 +2409,7 @@ mod tests {
             &[("a", "String"), ("b", "String")],
             "a && b",
             expect![[r#"
-                error: && operator can only be applied to Bool values
+                error: Expected Bool got String
                 a && b
                 ^
             "#]],
@@ -2455,7 +2473,7 @@ mod tests {
             &[("name", "String"), ("enabled", "Bool")],
             "name || enabled",
             expect![[r#"
-                error: || operator can only be applied to Bool values
+                error: Expected Bool got String
                 name || enabled
                 ^^^^
             "#]],
@@ -2469,7 +2487,7 @@ mod tests {
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled || count",
             expect![[r#"
-                error: || operator can only be applied to Bool values
+                error: Expected Bool got Int
                 enabled || count
                            ^^^^^
             "#]],
@@ -2483,7 +2501,7 @@ mod tests {
             &[("a", "String"), ("b", "String")],
             "a || b",
             expect![[r#"
-                error: || operator can only be applied to Bool values
+                error: Expected Bool got String
                 a || b
                 ^
             "#]],
@@ -2638,7 +2656,7 @@ mod tests {
             &[],
             "[1, true]",
             expect![[r#"
-                error: Mismatched type for array element: expected Int got Bool
+                error: Expected Int got Bool
                 [1, true]
                     ^^^^
             "#]],
@@ -2727,7 +2745,7 @@ mod tests {
             &[],
             r#"[Some(1), Some("1")]"#,
             expect![[r#"
-                error: Mismatched type for array element: expected Option[Int] got Option[String]
+                error: Expected Option[Int] got Option[String]
                 [Some(1), Some("1")]
                           ^^^^^^^^^
             "#]],
@@ -2916,7 +2934,7 @@ mod tests {
             &[],
             r#"User {name: "John", age: "thirty"}"#,
             expect![[r#"
-                error: Mismatched type for 'age': expected Int got String
+                error: Expected Int got String
                 User {name: "John", age: "thirty"}
                                          ^^^^^^^^
             "#]],
@@ -3028,7 +3046,7 @@ mod tests {
             &[("admin", "Admin")],
             r#"User {...admin, name: "Jane"}"#,
             expect![[r#"
-                error: Mismatched type for spread: expected User got Admin
+                error: Expected User got Admin
                 User {...admin, name: "Jane"}
                          ^^^^^
             "#]],
@@ -3042,7 +3060,7 @@ mod tests {
             &[("name", "String")],
             "User {...name}",
             expect![[r#"
-                error: Mismatched type for spread: expected User got String
+                error: Expected User got String
                 User {...name}
                          ^^^^
             "#]],
@@ -3395,7 +3413,7 @@ mod tests {
             &[],
             r#"Outcome::Success {value: "hello"}"#,
             expect![[r#"
-                error: Mismatched type for 'value': expected Int got String
+                error: Expected Int got String
                 Outcome::Success {value: "hello"}
                                          ^^^^^^^
             "#]],
@@ -3682,7 +3700,7 @@ mod tests {
             &[],
             r#"User {name: "Alice", age: Some("thirty")}"#,
             expect![[r#"
-                error: Mismatched type for 'age': expected Option[Int] got Option[String]
+                error: Expected Option[Int] got Option[String]
                 User {name: "Alice", age: Some("thirty")}
                                           ^^^^^^^^^^^^^^
             "#]],
@@ -3696,7 +3714,7 @@ mod tests {
             &[],
             r#"User {name: "Alice", age: 30}"#,
             expect![[r#"
-                error: Mismatched type for 'age': expected Option[Int] got Int
+                error: Expected Option[Int] got Int
                 User {name: "Alice", age: 30}
                                           ^^
             "#]],
@@ -3903,7 +3921,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected String got Int
+                error: Expected String got Int
                     Color::Green => 42,
                                     ^^
             "#]],
@@ -4264,7 +4282,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched type: expected Int got Bool
+                error: Expected Int got Bool
                     None    => true,
                                ^^^^
             "#]],
@@ -4840,7 +4858,7 @@ mod tests {
             &[("count", "Int")],
             "join!(count)",
             expect![[r#"
-                error: Mismatched type for 'join': expected String got Int
+                error: Expected String got Int
                 join!(count)
                       ^^^^^
             "#]],
@@ -5272,7 +5290,7 @@ mod tests {
             &[("count", "Option[Int]")],
             r#"count.unwrap_or("zero")"#,
             expect![[r#"
-                error: Mismatched type for 'unwrap_or': expected Int got String
+                error: Expected Int got String
                 count.unwrap_or("zero")
                                 ^^^^^^
             "#]],
@@ -5616,7 +5634,7 @@ mod tests {
             &[],
             "add_ten(\"hello\")",
             expect![[r#"
-                error: Mismatched type for argument 'x' of function 'add_ten': expected Int got String
+                error: Expected Int got String
                 add_ten("hello")
                         ^^^^^^^
             "#]],

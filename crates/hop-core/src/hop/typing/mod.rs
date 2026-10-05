@@ -22,7 +22,7 @@ pub use compile_match::Decision;
 pub use export::Export;
 pub use r#type::{ComparableType, EquatableType, NumericType, Type};
 pub use type_env::{FunctionSignature, ParamEntry, Tail};
-pub use type_error::{TypeError, TypeErrorKind};
+pub use type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 pub use type_registry::{EnumVariant, ResolvedType, TypeRegistry};
 pub use typecheck::typecheck;
 pub use typed_ast::{TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter};

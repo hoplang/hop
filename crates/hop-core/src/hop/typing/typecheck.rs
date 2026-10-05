@@ -26,7 +26,7 @@ use crate::hop::typing::typed_ast::{
     TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
 };
 use crate::hop::typing::variable_scope::VariableScope;
-use crate::hop::typing::{TypeError, TypeErrorKind};
+use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hover_annotation::HoverAnnotation;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
@@ -526,8 +526,8 @@ fn typecheck_default_value(
     let default_type = typed_default.typ();
     if default_type != *param_type {
         errors.push(TypeError::new(
-            TypeErrorKind::DefaultValueTypeMismatch {
-                param_name: param.var_name.clone(),
+            TypeErrorKind::TypeMismatch {
+                context: TypeMismatchContext::DefaultValue,
                 expected: param_type.clone(),
                 found: default_type,
             },
@@ -551,7 +551,11 @@ fn check_declaration_body(
     let found = typed_body.typ();
     if found != Type::Html {
         errors.push(TypeError::new(
-            TypeErrorKind::DeclarationBodyTypeMismatch { found },
+            TypeErrorKind::TypeMismatch {
+                context: TypeMismatchContext::FunctionBody,
+                expected: Type::Html,
+                found,
+            },
             range.clone(),
         ));
         return TypedExpr::HtmlConcat { nodes: Vec::new() };
@@ -887,7 +891,8 @@ fn typecheck_function_body(
     let body_type = typed_body.typ();
     if body_type != return_type {
         errors.push(TypeError::new(
-            TypeErrorKind::FunctionBodyTypeMismatch {
+            TypeErrorKind::TypeMismatch {
+                context: TypeMismatchContext::FunctionBody,
                 expected: return_type.clone(),
                 found: body_type,
             },
@@ -1772,7 +1777,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected Int got String
+                error: Expected Int got String
                   --> main.hop (line 2, col 16)
                 1 | fn Main() -> Int {
                 2 |   let a: Int = "one";
@@ -2121,7 +2126,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected String got Html
+                error: Expected String got Html
                   --> main.hop (line 2, col 17)
                 1 | fn Card(children: Html) -> Html {
                 2 |     <div class={children}></div>
@@ -2726,7 +2731,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'pair' of function 'Cell': expected (String, Int) got (String, String)
+                error: Expected (String, Int) got (String, String)
                   --> main.hop (line 7, col 15)
                 6 | fn Main() -> Html {
                 7 |   <Cell pair={("a", "b")}/>
@@ -2750,7 +2755,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'pair' of function 'Cell': expected (String, Int) got (String, Int, Bool)
+                error: Expected (String, Int) got (String, Int, Bool)
                   --> main.hop (line 7, col 15)
                 6 | fn Main() -> Html {
                 7 |   <Cell pair={("a", 1, true)}/>
@@ -2791,7 +2796,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for interpolation: expected String or Html got (String, String)
+                error: Expected String or Html got (String, String)
                   --> main.hop (line 2, col 9)
                 1 | fn Main() -> Html {
                 2 |   <div>{("a", "b")}</div>
@@ -3272,7 +3277,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected Array[...] got Bool
+                error: Expected Array[...] got Bool
                   --> main.hop (line 13, col 18)
                 12 |       {for item in params {
                 13 |           for inner in item.k {
@@ -3686,7 +3691,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'user' of function 'BarComp': expected User got User (these are different types with the same name)
+                error: Expected User got User (these are different types with the same name)
                   --> main.hop (line 8, col 22)
                  7 |       <FooComp user={user}/>
                  8 |       <BarComp user={user}/>
@@ -3732,7 +3737,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'user' of function 'BarComp': expected User got User (these are different types with the same name)
+                error: Expected User got User (these are different types with the same name)
                   --> main.hop (line 8, col 22)
                  7 |       <FooComp user={user}/>
                  8 |       <BarComp user={user}/>
@@ -3768,7 +3773,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'users' of function 'BarComp': expected Array[User] got Array[User] (these are different types with the same name)
+                error: Expected Array[User] got Array[User] (these are different types with the same name)
                   --> main.hop (line 5, col 19)
                 4 | fn Main(users: Array[User]) -> Html {
                 5 |   <BarComp users={users}/>
@@ -3807,7 +3812,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'user' of function 'BarComp': expected Option[User] got Array[User]
+                error: Expected Option[User] got Array[User]
                   --> main.hop (line 5, col 18)
                 4 | fn Main(users: Array[User]) -> Html {
                 5 |   <BarComp user={users}/>
@@ -3989,7 +3994,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'message' of function 'StringComp': expected String got Int
+                error: Expected String got Int
                   --> main.hop (line 5, col 23)
                 4 | fn Main() -> Html {
                 5 |     <StringComp message={42}/>
@@ -4014,7 +4019,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected Bool got String
+                error: Expected Bool got String
                   --> main.hop (line 8, col 22)
                 7 | fn Main() -> Html {
                 8 |     <ToggleComp enabled=""/>
@@ -4039,7 +4044,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'enabled' of function 'ToggleComp': expected Bool got String
+                error: Expected Bool got String
                   --> main.hop (line 8, col 22)
                 7 | fn Main() -> Html {
                 8 |     <ToggleComp enabled="not a boolean"/>
@@ -4140,7 +4145,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for interpolation: expected String or Html got Bool
+                error: Expected String or Html got Bool
                   --> main.hop (line 3, col 8)
                 2 |   <>
                 3 |       {false}
@@ -4750,7 +4755,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected String got Int
+                error: Expected String got Int
                   --> main.hop (line 9, col 25)
                  8 |         Color::Red => "red",
                  9 |         Color::Green => 42,
@@ -5311,7 +5316,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected String got Int
+                error: Expected String got Int
                   --> main.hop (line 1, col 28)
                 1 | fn Greeting(name: String = 42) -> Html {
                   |                            ^^
@@ -5835,7 +5840,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'name' of function 'Greeting': expected Option[String] got String
+                error: Expected Option[String] got String
                   --> main.hop (line 5, col 18)
                 4 | fn Main() -> Html {
                 5 |   <Greeting name="World" />
@@ -6122,7 +6127,7 @@ mod tests {
                 3 |         Some(x) => <>{x}</>,
                   |              ^
 
-                error: Mismatched type for interpolation: expected String or Html got Option[String]
+                error: Expected String or Html got Option[String]
                   --> main.hop (line 3, col 23)
                 2 |     match x {
                 3 |         Some(x) => <>{x}</>,
@@ -6422,7 +6427,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected Array[...] got Bool
+                error: Expected Array[...] got Bool
                   --> main.hop (line 2, col 15)
                 1 | fn Main(flag: Bool) -> Html {
                 2 |   for item in flag {
@@ -6443,7 +6448,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for range bound: expected Int got String
+                error: Expected Int got String
                   --> main.hop (line 2, col 16)
                 1 | fn Main(limit: String) -> Html {
                 2 |   for i in 1..=limit {
@@ -6462,7 +6467,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for for body: expected Html got String
+                error: Expected Html got String
                   --> main.hop (line 2, col 29)
                 1 | fn Main(items: Array[String]) -> Html {
                 2 |   <div>{for item in items { item }}</div>
@@ -6724,7 +6729,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected String got Bool
+                error: Expected String got Bool
                   --> main.hop (line 2, col 20)
                 1 | fn Main(is_required: Bool) -> Html {
                 2 |   <input required={is_required}/>
@@ -6743,7 +6748,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected String got Bool
+                error: Expected String got Bool
                   --> main.hop (line 2, col 20)
                 1 | fn Main() -> Html {
                 2 |   <input required={true}/>
@@ -6762,7 +6767,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected String got Option[String]
+                error: Expected String got Option[String]
                   --> main.hop (line 2, col 16)
                 1 | fn Main(maybe: Option[String]) -> Html {
                 2 |   <div data-x={maybe}></div>
@@ -6781,7 +6786,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected String got Option[String]
+                error: Expected String got Option[String]
                   --> main.hop (line 2, col 16)
                 1 | fn Main() -> Html {
                 2 |   <div data-x={Some("hello")}></div>
@@ -6800,7 +6805,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected String got Option[Int]
+                error: Expected String got Option[Int]
                   --> main.hop (line 2, col 16)
                 1 | fn Main(maybe: Option[Int]) -> Html {
                 2 |   <div data-x={maybe}></div>
@@ -6819,7 +6824,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected String got Option[Bool]
+                error: Expected String got Option[Bool]
                   --> main.hop (line 2, col 16)
                 1 | fn Main(maybe: Option[Bool]) -> Html {
                 2 |   <div data-x={maybe}></div>
@@ -6838,7 +6843,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected String got Option[Option[String]]
+                error: Expected String got Option[Option[String]]
                   --> main.hop (line 2, col 16)
                 1 | fn Main(maybe: Option[Option[String]]) -> Html {
                 2 |   <div data-x={maybe}></div>
@@ -6857,7 +6862,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for attribute: expected String got Int
+                error: Expected String got Int
                   --> main.hop (line 2, col 20)
                 1 | fn Main(count: Int) -> Html {
                 2 |   <div data-count={count}></div>
@@ -7557,7 +7562,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for spread: expected User got Admin
+                error: Expected User got Admin
                   --> main.hop (line 4, col 23)
                 3 | fn Main(admin: Admin) -> Html {
                 4 |   let user = User {...admin};
@@ -7764,7 +7769,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected String got Int
+                error: Expected String got Int
                   --> main.hop (line 2, col 22)
                 1 | fn Main() -> Html {
                 2 |   let name: String = 42;
@@ -8903,7 +8908,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'count' of function 'Wrapper': expected Int got String
+                error: Expected Int got String
                   --> main.hop (line 12, col 22)
                 11 |   fn body() -> Html {
                 12 |       <Wrapper count="hi"/>
@@ -9828,7 +9833,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'tabindex' of function 'B': expected Int got String
+                error: Expected Int got String
                   --> main.hop (line 14, col 19)
                 13 |   fn body() -> Html {
                 14 |       <B tabindex="nope"/>
@@ -10943,7 +10948,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type: expected Int got String
+                error: Expected Int got String
                   --> main.hop (line 1, col 23)
                 1 | fn label(count: Int = "one") -> String {
                   |                       ^^^^^
@@ -11107,7 +11112,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for argument 'x' of function 'add_ten': expected Int got String
+                error: Expected Int got String
                   --> main.hop (line 7, col 19)
                 6 |   fn body() -> Html {
                 7 |     <div>{add_ten("one").to_string()}</div>
@@ -11175,7 +11180,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for function body: expected String got Int
+                error: Expected String got Int
                   --> main.hop (line 2, col 3)
                 1 | fn label() -> String {
                 2 |   42
@@ -11234,7 +11239,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Mismatched type for function body: expected String got Html
+                error: Expected String got Html
                   --> main.hop (line 2, col 3)
                  1 | fn card() -> String {
                  2 |   <div></div>
@@ -11493,7 +11498,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for function body: expected Html got String
+                error: Expected Html got String
                   --> main.hop (line 2, col 3)
                 1 | pub fn Outer() -> Html {
                 2 |   "hello"
@@ -11514,7 +11519,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for declaration: expected Html got String
+                error: Expected Html got String
                   --> main.hop (line 3, col 5)
                 2 |   fn body() -> Html {
                 3 |     "hello"
@@ -11538,7 +11543,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for declaration: expected Html got String
+                error: Expected Html got String
                   --> main.hop (line 3, col 5)
                 2 |   fn head() -> Html {
                 3 |     "hello"

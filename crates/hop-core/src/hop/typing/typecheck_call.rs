@@ -7,7 +7,7 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
-use crate::hop::typing::{TypeError, TypeErrorKind};
+use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
@@ -97,9 +97,8 @@ pub fn typecheck_call_arguments(
         let found = value.typ();
         if found != param.typ {
             errors.push(TypeError::new(
-                TypeErrorKind::FunctionArgumentTypeMismatch {
-                    name: callee.clone(),
-                    param_name: param.name.clone(),
+                TypeErrorKind::TypeMismatch {
+                    context: TypeMismatchContext::FunctionArgument,
                     expected: param.typ.clone(),
                     found,
                 },

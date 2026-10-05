@@ -10,7 +10,7 @@ use crate::hop::parsing::{Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPa
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::{MatchErrorSite, compile_match};
 use crate::hop::typing::type_env::TypeEnv;
-use crate::hop::typing::{TypeError, TypeErrorKind};
+use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::var_name::VarName;
 
@@ -177,7 +177,8 @@ fn typecheck_arm_bodies(
             Some(expected) => {
                 if body_type != *expected {
                     errors.push(TypeError::new(
-                        TypeErrorKind::MatchArmTypeMismatch {
+                        TypeErrorKind::TypeMismatch {
+                            context: TypeMismatchContext::MatchArm,
                             expected: expected.clone(),
                             found: body_type,
                         },

@@ -48,44 +48,8 @@ impl TypeError {
     }
 
     pub fn to_diagnostic(&self) -> Diagnostic {
-        let types = match &self.kind {
-            TypeErrorKind::DefaultValueTypeMismatch {
-                expected, found, ..
-            }
-            | TypeErrorKind::LetBindingTypeMismatch { expected, found }
-            | TypeErrorKind::ArrayElementTypeMismatch { expected, found }
-            | TypeErrorKind::RecordLiteralFieldTypeMismatch {
-                expected, found, ..
-            }
-            | TypeErrorKind::RecordSpreadTypeMismatch { expected, found }
-            | TypeErrorKind::EnumVariantFieldTypeMismatch {
-                expected, found, ..
-            }
-            | TypeErrorKind::MatchArmTypeMismatch { expected, found }
-            | TypeErrorKind::MacroArgumentTypeMismatch {
-                expected, found, ..
-            }
-            | TypeErrorKind::MethodArgumentTypeMismatch {
-                expected, found, ..
-            }
-            | TypeErrorKind::FunctionArgumentTypeMismatch {
-                expected, found, ..
-            }
-            | TypeErrorKind::FunctionBodyTypeMismatch { expected, found } => {
-                Some((expected, found))
-            }
-            _ => None,
-        };
-        let mut message = self.kind.to_string();
-        // Named types print without their module, so two different types
-        // can print the same.
-        if types.is_some_and(|(expected, found)| {
-            expected != found && expected.to_string() == found.to_string()
-        }) {
-            message.push_str(" (these are different types with the same name)");
-        }
         Diagnostic {
-            message,
+            message: self.kind.to_string(),
             range: self.range.clone(),
             severity: self.kind.severity(),
         }
@@ -124,9 +88,6 @@ pub enum TypeErrorKind {
     #[error("Function {name} does not accept content (missing 'children: Html' parameter)")]
     FunctionDoesNotAcceptChildren { name: FunctionName },
 
-    #[error("Only a function returning Html can be called by a markup call")]
-    FunctionTagReturnTypeMismatch { name: FunctionName, found: Type },
-
     #[error("Content provided both as a 'children' attribute and between the tags")]
     ChildContentAmbiguous,
 
@@ -144,9 +105,6 @@ pub enum TypeErrorKind {
 
     #[error("Function {name} does not accept attribute '{attr}'")]
     FunctionDoesNotAcceptAttribute { name: FunctionName, attr: String },
-
-    #[error("Mismatched type for attribute: expected String got {found}")]
-    AttributeTypeMismatch { found: Type },
 
     #[error("Rest spread of {name} forms a cycle and never reaches an element")]
     RestSpreadCycle { name: FunctionName },
@@ -169,33 +127,42 @@ pub enum TypeErrorKind {
     #[error("Html is not allowed in page parameters")]
     HtmlInPageParameter,
 
-    #[error("Mismatched type: expected {expected} got {found}")]
-    DefaultValueTypeMismatch {
-        param_name: VarName,
+    // Named types print without their module, so two different types can
+    // print the same.
+    #[error(
+        "Expected {expected} got {found}{}",
+        if expected != found && expected.to_string() == found.to_string() {
+            " (these are different types with the same name)"
+        } else {
+            ""
+        }
+    )]
+    TypeMismatch {
+        context: TypeMismatchContext,
         expected: Type,
         found: Type,
     },
+
+    #[error("Only a function returning Html can be called by a markup call")]
+    FunctionTagReturnTypeMismatch { name: FunctionName, found: Type },
+
+    #[error("Expected Array[...] got {found}")]
+    IterateeTypeMismatch { found: Type },
+
+    #[error("Expected String or Html got {found}")]
+    InterpolationTypeMismatch { found: Type },
+
+    #[error("Expected Int or Float got {found}")]
+    NumericNegationTypeMismatch { found: Type },
+
+    #[error("Pattern does not match type {expected}")]
+    MatchPatternTypeMismatch { expected: Type },
 
     #[error("<{element}> does not accept attribute '{attr}'")]
     ElementDoesNotAcceptAttribute { element: String, attr: String },
 
     #[error("<{element}> requires a string literal for attribute '{attr}'")]
     AttributeRequiresStringLiteral { element: String, attr: String },
-
-    #[error("Mismatched type: expected Array[...] got {found}")]
-    IterateeTypeMismatch { found: Type },
-
-    #[error("Mismatched type for range bound: expected Int got {found}")]
-    RangeBoundTypeMismatch { found: Type },
-
-    #[error("Mismatched type for for body: expected Html got {found}")]
-    ForBodyTypeMismatch { found: Type },
-
-    #[error("Mismatched type: expected {expected} got {found}")]
-    LetBindingTypeMismatch { expected: Type, found: Type },
-
-    #[error("Mismatched type for interpolation: expected String or Html got {found}")]
-    InterpolationTypeMismatch { found: Type },
 
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: VarName },
@@ -212,15 +179,6 @@ pub enum TypeErrorKind {
     #[error("Cannot compare {left} to {right}")]
     CannotCompareTypes { left: Type, right: Type },
 
-    #[error("Mismatched type for negation: expected Bool got {found}")]
-    BooleanNegationTypeMismatch { found: Type },
-
-    #[error("Mismatched type for negation: expected Int or Float got {found}")]
-    NumericNegationTypeMismatch { found: Type },
-
-    #[error("Mismatched type for array element: expected {expected} got {found}")]
-    ArrayElementTypeMismatch { expected: Type, found: Type },
-
     #[error("Cannot infer type of []")]
     CannotInferEmptyArrayType,
 
@@ -229,12 +187,6 @@ pub enum TypeErrorKind {
 
     #[error("Type {t} is not comparable")]
     TypeIsNotComparable { t: Type },
-
-    #[error("&& operator can only be applied to Bool values")]
-    LogicalAndTypeMismatch,
-
-    #[error("|| operator can only be applied to Bool values")]
-    LogicalOrTypeMismatch,
 
     #[error("Cannot add values of incompatible types: {left_type} + {right_type}")]
     IncompatibleTypesForAddition { left_type: Type, right_type: Type },
@@ -266,21 +218,11 @@ pub enum TypeErrorKind {
         record_name: TypeName,
     },
 
-    #[error("Mismatched type for '{field_name}': expected {expected} got {found}")]
-    RecordLiteralFieldTypeMismatch {
-        field_name: FieldName,
-        expected: Type,
-        found: Type,
-    },
-
     #[error("Duplicate field '{field_name}' in record '{record_name}'")]
     RecordDuplicateField {
         field_name: FieldName,
         record_name: TypeName,
     },
-
-    #[error("Mismatched type for spread: expected {expected} got {found}")]
-    RecordSpreadTypeMismatch { expected: Type, found: Type },
 
     #[error("Variant '{variant_name}' is not defined in enum '{enum_name}'")]
     UndefinedEnumVariant {
@@ -302,15 +244,6 @@ pub enum TypeErrorKind {
         field_name: FieldName,
     },
 
-    #[error("Mismatched type for '{field_name}': expected {expected} got {found}")]
-    EnumVariantFieldTypeMismatch {
-        enum_name: TypeName,
-        variant_name: TypeName,
-        field_name: FieldName,
-        expected: Type,
-        found: Type,
-    },
-
     #[error("Duplicate field '{field_name}' in enum variant '{enum_name}::{variant_name}'")]
     EnumVariantDuplicateField {
         enum_name: TypeName,
@@ -321,17 +254,11 @@ pub enum TypeErrorKind {
     #[error("Match is not implemented for type {found}")]
     MatchNotImplementedForType { found: Type },
 
-    #[error("Mismatched type: expected {expected} got {found}")]
-    MatchArmTypeMismatch { expected: Type, found: Type },
-
     #[error("Missing pattern(s) {}", patterns.join(", "))]
     MatchMissingPattern { patterns: Vec<String> },
 
     #[error("Unreachable pattern {pattern}")]
     MatchUnreachablePattern { pattern: Box<TypedMatchPattern> },
-
-    #[error("Pattern does not match type {expected}")]
-    MatchPatternTypeMismatch { expected: Type },
 
     #[error("Match expression must have at least one arm")]
     MatchNoArms,
@@ -348,13 +275,6 @@ pub enum TypeErrorKind {
     #[error("{name} is already defined")]
     NameIsAlreadyDefined { name: CheapString },
 
-    #[error("Mismatched type for '{macro_name}': expected {expected} got {found}")]
-    MacroArgumentTypeMismatch {
-        macro_name: String,
-        expected: Type,
-        found: Type,
-    },
-
     #[error("Method '{method}' is not available on type {typ}")]
     MethodNotAvailable { method: FieldName, typ: Type },
 
@@ -363,13 +283,6 @@ pub enum TypeErrorKind {
         method: FieldName,
         expected: usize,
         found: usize,
-    },
-
-    #[error("Mismatched type for '{method}': expected {expected} got {found}")]
-    MethodArgumentTypeMismatch {
-        method: FieldName,
-        expected: Type,
-        found: Type,
     },
 
     #[error("#[examples(pattern = ...)] is only valid on String fields, found {found}")]
@@ -432,16 +345,6 @@ pub enum TypeErrorKind {
         found: usize,
     },
 
-    #[error(
-        "Mismatched type for argument '{param_name}' of function '{name}': expected {expected} got {found}"
-    )]
-    FunctionArgumentTypeMismatch {
-        name: FunctionName,
-        param_name: VarName,
-        expected: Type,
-        found: Type,
-    },
-
     #[error("Function {name} does not accept argument '{argument}'")]
     FunctionDoesNotAcceptArgument {
         name: FunctionName,
@@ -450,12 +353,45 @@ pub enum TypeErrorKind {
 
     #[error("Argument '{argument}' is supplied more than once")]
     DuplicateArgument { argument: VarName },
+}
 
-    #[error("Mismatched type for function body: expected {expected} got {found}")]
-    FunctionBodyTypeMismatch { expected: Type, found: Type },
-
-    #[error("Mismatched type for declaration: expected Html got {found}")]
-    DeclarationBodyTypeMismatch { found: Type },
+/// Where a [`TypeErrorKind::TypeMismatch`] was found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeMismatchContext {
+    /// The default value of a parameter.
+    DefaultValue,
+    /// The value of a let binding with a declared type.
+    LetBinding,
+    /// The body of a match arm, compared to the earlier arms.
+    MatchArm,
+    /// The start or end of a range.
+    RangeBound,
+    /// The body of a for loop.
+    ForBody,
+    /// The value of an element attribute.
+    Attribute,
+    /// An element of an array literal, compared to the first element.
+    ArrayElement,
+    /// The operand of a boolean negation.
+    BooleanNegation,
+    /// An operand of a logical and.
+    LogicalAnd,
+    /// An operand of a logical or.
+    LogicalOr,
+    /// The value of a field in a record literal.
+    RecordLiteralField,
+    /// The value of a field in an enum variant literal.
+    EnumVariantField,
+    /// The subject of a record spread.
+    RecordSpread,
+    /// The body of a function, compared to its return type.
+    FunctionBody,
+    /// An argument of a macro.
+    MacroArgument,
+    /// An argument of a method call.
+    MethodArgument,
+    /// An argument of a function call.
+    FunctionArgument,
 }
 
 impl TypeErrorKind {

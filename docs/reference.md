@@ -407,7 +407,7 @@ with no arguments it evaluates to `""`.
 join!("btn", "primary")  // "btn primary"
 join!("a", "", "b")      // "a  b"
 join!()                  // ""
-join!("btn", 1)          // error: Mismatched type for 'join': expected String got Int
+join!("btn", 1)          // error: Expected String got Int
 ```
 
 <a id="format"></a>
@@ -858,8 +858,8 @@ not `Html`.
 ```hop
 for name in ["Alice", "Bob"] { <li>{name}</li> } // <li>Alice</li><li>Bob</li>
 for i in 1..=3 { <b>{i.to_string()}</b> }        // <b>1</b><b>2</b><b>3</b>
-for tag in "a, b" { <br/> }                      // error: Mismatched type: expected Array[...] got String
-for _ in 1..=3 { "*" }                           // error: Mismatched type for for body: expected Html got String
+for tag in "a, b" { <br/> }                      // error: Expected Array[...] got String
+for _ in 1..=3 { "*" }                           // error: Expected Html got String
 ```
 
 <a id="markup-expressions"></a>
@@ -1044,7 +1044,7 @@ On an [element](#element-expressions), an attribute renders in the start tag.
 Its value must have type `String` and is [escaped](#escaping):
 
 ```hop
-<div id={1}></div>               // error: Mismatched type for attribute: expected String got Int
+<div id={1}></div>               // error: Expected String got Int
 <input disabled/>                // <input disabled>
 <input pattern="\\d+"/>          // <input pattern="\d+">
 <span title="say \"hi\""></span> // <span title="say &quot;hi&quot;"></span>
@@ -1290,7 +1290,7 @@ A function body that does not have the declared return type is a compile error:
 
 ```hop
 fn answer() -> Int {
-  "x" // error: Mismatched type for function body: expected Int got String
+  "x" // error: Expected Int got String
 }
 ```
 

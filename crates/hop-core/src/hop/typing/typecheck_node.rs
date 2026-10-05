@@ -8,7 +8,7 @@ use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::variable_scope::VariableScope;
-use crate::hop::typing::{TypeError, TypeErrorKind};
+use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{TypedAttribute, TypedAttrs};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
@@ -350,7 +350,9 @@ fn typecheck_attribute_value(
             )?;
             if typed_expr.typ() != Type::String {
                 errors.push(TypeError::new(
-                    TypeErrorKind::AttributeTypeMismatch {
+                    TypeErrorKind::TypeMismatch {
+                        context: TypeMismatchContext::Attribute,
+                        expected: Type::String,
                         found: typed_expr.typ(),
                     },
                     value.range().clone(),
