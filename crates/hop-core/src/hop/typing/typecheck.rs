@@ -2335,11 +2335,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Content provided both as a 'children' attribute and between the tags
-                  --> main.hop (line 6, col 6)
+                error: Argument 'children' is supplied more than once
+                  --> main.hop (line 6, col 31)
                 5 | fn Main(children: Html) -> Html {
                 6 |     <Card children={children}>children</Card>
-                  |      ^^^^
+                  |                               ^^^^^^^^
             "#]],
         );
     }
@@ -3032,11 +3032,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Main does not accept content (missing 'children: Html' parameter)
-                  --> main.hop (line 6, col 6)
-                5 | fn Bar() -> Html {
+                error: Function Main does not accept argument 'children'
+                  --> main.hop (line 7, col 9)
                 6 |     <Main>
-                  |      ^^^^
+                7 |         This function has no children parameter
+                  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3076,6 +3076,31 @@ mod tests {
     }
 
     #[test]
+    fn rejects_content_when_children_parameter_is_not_html() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(children: String) -> Html {
+                    <strong>{children}</strong>
+                }
+
+                fn Bar() -> Html {
+                    <Main>
+                        text
+                    </Main>
+                }
+            "#},
+            expect![[r#"
+                error: Expected String got Html
+                  --> main.hop (line 7, col 9)
+                6 |     <Main>
+                7 |         text
+                  |         ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_when_children_are_passed_to_an_imported_function_that_does_not_accept_them() {
         reject(
             indoc! {r#"
@@ -3093,11 +3118,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Foo does not accept content (missing 'children: Html' parameter)
-                  --> main.hop (line 4, col 6)
-                3 | fn Bar() -> Html {
+                error: Function Foo does not accept argument 'children'
+                  --> main.hop (line 5, col 9)
                 4 |     <Foo>
-                  |      ^^^
+                5 |         This function has no children parameter
+                  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3360,7 +3385,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Main does not accept attribute 'b'
+                error: Function Main does not accept argument 'b'
                   --> main.hop (line 7, col 16)
                 6 | fn Foo() -> Html {
                 7 |     <Main a="" b={1}/>
@@ -3409,7 +3434,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Main does not accept attribute 'a'
+                error: Function Main does not accept argument 'a'
                   --> main.hop (line 7, col 9)
                 6 | fn Foo() -> Html {
                 7 |   <Main a="foo" />
@@ -7210,7 +7235,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Icon does not accept attribute 'onclick'
+                error: Function Icon does not accept argument 'onclick'
                   --> main.hop (line 6, col 9)
                 5 | fn Main() -> Html {
                 6 |   <Icon onclick="alert(1)"/>
@@ -7420,7 +7445,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Btn does not accept attribute 'href'
+                error: Function Btn does not accept argument 'href'
                   --> main.hop (line 6, col 8)
                 5 | fn Main() -> Html {
                 6 |   <Btn href="/">click</Btn>
@@ -8724,7 +8749,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Foo does not accept attribute 'data-x'
+                error: Function Foo does not accept argument 'data-x'
                   --> main.hop (line 6, col 22)
                 5 |   fn body() -> Html {
                 6 |       <Foo class="a" data-x="y"/>
@@ -8939,7 +8964,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Button does not accept attribute 'class'
+                error: Function Button does not accept argument 'class'
                   --> main.hop (line 6, col 15)
                 5 |   fn body() -> Html {
                 6 |       <Button class="forwarded">Hi</Button>
@@ -8963,7 +8988,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Button does not accept attribute 'qwerty'
+                error: Function Button does not accept argument 'qwerty'
                   --> main.hop (line 6, col 27)
                 5 |   fn body() -> Html {
                 6 |       <Button class="p-2" qwerty="z"/>
@@ -9457,7 +9482,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Baz does not accept attribute 'data-x'
+                error: Function Baz does not accept argument 'data-x'
                   --> main.hop (line 12, col 22)
                 11 |   fn body() -> Html {
                 12 |       <Baz class="a" data-x="y"/>
@@ -9484,7 +9509,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Bar does not accept attribute 'data-x'
+                error: Function Bar does not accept argument 'data-x'
                   --> main.hop (line 9, col 22)
                  8 |   fn body() -> Html {
                  9 |       <Bar class="a" data-x="y"/>
@@ -9621,11 +9646,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Card does not accept content (missing 'children: Html' parameter)
-                  --> main.hop (line 9, col 8)
+                error: Function Card does not accept argument 'children'
+                  --> main.hop (line 9, col 23)
                  8 |   fn body() -> Html {
                  9 |       <Card class="a">hi</Card>
-                   |        ^^^^
+                   |                       ^^
             "#]],
         );
     }
@@ -9921,7 +9946,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Wrapper does not accept attribute 'title'
+                error: Function Wrapper does not accept argument 'title'
                   --> main.hop (line 9, col 16)
                  8 |   fn body() -> Html {
                  9 |       <Wrapper title="b"/>
@@ -9948,7 +9973,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Wrapper does not accept attribute 'data-foo'
+                error: Function Wrapper does not accept argument 'data-foo'
                   --> main.hop (line 9, col 16)
                  8 |   fn body() -> Html {
                  9 |       <Wrapper data-foo="b"/>
@@ -10014,7 +10039,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Outer does not accept attribute 'title'
+                error: Function Outer does not accept argument 'title'
                   --> main.hop (line 12, col 14)
                 11 |   fn body() -> Html {
                 12 |       <Outer title="b"/>

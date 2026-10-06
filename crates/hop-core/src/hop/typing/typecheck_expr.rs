@@ -1493,7 +1493,7 @@ pub fn typecheck_expr(
                             errors.push(TypeError::new(
                                 TypeErrorKind::FunctionDoesNotAcceptArgument {
                                     name: callee.clone(),
-                                    argument: arg.name.clone(),
+                                    argument: arg.name.as_str().to_string(),
                                 },
                                 arg.name_range.clone(),
                             ));

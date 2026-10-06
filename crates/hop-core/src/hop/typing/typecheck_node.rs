@@ -110,10 +110,14 @@ pub fn typecheck_node(
             }
 
             // Empty content is no content, so `<F></F>` is the same as `<F/>`.
-            let content = if children.as_ref().is_some_and(|c| !c.is_empty()) {
-                Some(typed_children)
-            } else {
-                None
+            let content = match children.as_deref().map(|c| (c.first(), c.last())) {
+                Some((Some(first), Some(last))) => Some((
+                    TypedExpr::HtmlConcat {
+                        nodes: typed_children,
+                    },
+                    first.range().clone().to(last.range().clone()),
+                )),
+                _ => None,
             };
             let (resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
                 attributes,
@@ -386,7 +390,7 @@ fn typecheck_arguments(
     attributes: &[ParsedAttribute],
     callee_params: &[ParamEntry],
     callee_tail: &Tail,
-    children: Option<Vec<TypedExpr>>,
+    content: Option<(TypedExpr, DocumentRange)>,
     function_name: &FunctionName,
     function_name_opening_range: &DocumentRange,
     forwarded_params: &[VarName],
@@ -402,25 +406,12 @@ fn typecheck_arguments(
     Vec<TypedAttribute>,
     Option<VarName>,
 )> {
-    let has_body = children.is_some();
-    let children_param = callee_params
-        .iter()
-        .find(|p| p.name.as_str() == "children" && p.typ == Type::Html);
+    let children_name = VarName::new(CheapString::new("children".to_string())).unwrap();
+    let has_children_param = callee_params.iter().any(|p| p.name == children_name);
     let has_explicit_children_arg = attributes.iter().any(|a| {
         a.name_range()
             .is_some_and(|name| name.as_str() == "children")
     });
-    let synthesize_children_arg =
-        has_body && children_param.is_some() && !has_explicit_children_arg;
-
-    if has_body && children_param.is_none() {
-        errors.push(TypeError::new(
-            TypeErrorKind::FunctionDoesNotAcceptChildren {
-                name: function_name.clone(),
-            },
-            function_name_opening_range.clone(),
-        ));
-    }
 
     let rest_spread = attributes.iter().find_map(|a| match a {
         ParsedAttribute::Spread { name, .. } => Some(name.clone()),
@@ -466,9 +457,9 @@ fn typecheck_arguments(
                 });
             } else {
                 errors.push(TypeError::new(
-                    TypeErrorKind::FunctionDoesNotAcceptAttribute {
+                    TypeErrorKind::FunctionDoesNotAcceptArgument {
                         name: function_name.clone(),
-                        attr: arg_name.to_string(),
+                        argument: arg_name.to_string(),
                     },
                     arg_name_range.clone(),
                 ));
@@ -506,20 +497,28 @@ fn typecheck_arguments(
         supplied.push((param.name.clone(), argument));
     }
 
-    if has_body && has_explicit_children_arg {
-        errors.push(TypeError::new(
-            TypeErrorKind::ChildContentAmbiguous {},
-            function_name_opening_range.clone(),
-        ));
-    }
-
-    if synthesize_children_arg {
-        supplied.push((
-            VarName::new(CheapString::new("children".to_string())).unwrap(),
-            Argument::Implied(TypedExpr::HtmlConcat {
-                nodes: children.unwrap_or_default(),
-            }),
-        ));
+    // Content between the tags is the `children` argument, so it is checked
+    // against the parameter as any other argument, and like one it cannot
+    // be supplied twice or name a parameter the function does not have.
+    if let Some((value, range)) = content {
+        if has_explicit_children_arg {
+            errors.push(TypeError::new(
+                TypeErrorKind::DuplicateArgument {
+                    argument: children_name,
+                },
+                range,
+            ));
+        } else if !has_children_param {
+            errors.push(TypeError::new(
+                TypeErrorKind::FunctionDoesNotAcceptArgument {
+                    name: function_name.clone(),
+                    argument: children_name.as_str().to_string(),
+                },
+                range,
+            ));
+        } else {
+            supplied.push((children_name, Argument::Desugared(value, range)));
+        }
     }
 
     // A parameter the rest carries is read from the enclosing function, whose

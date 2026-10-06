@@ -85,12 +85,6 @@ pub enum TypeErrorKind {
     #[error("Unused import '{import_name}'")]
     UnusedImport { import_name: CheapString },
 
-    #[error("Function {name} does not accept content (missing 'children: Html' parameter)")]
-    FunctionDoesNotAcceptChildren { name: FunctionName },
-
-    #[error("Content provided both as a 'children' attribute and between the tags")]
-    ChildContentAmbiguous,
-
     #[error(
         "Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}"
     )]
@@ -102,9 +96,6 @@ pub enum TypeErrorKind {
 
     #[error("Function {name} requires arguments: {args}")]
     MissingArguments { name: FunctionName, args: String },
-
-    #[error("Function {name} does not accept attribute '{attr}'")]
-    FunctionDoesNotAcceptAttribute { name: FunctionName, attr: String },
 
     #[error("Rest spread of {name} forms a cycle and never reaches an element")]
     RestSpreadCycle { name: FunctionName },
@@ -348,7 +339,7 @@ pub enum TypeErrorKind {
     #[error("Function {name} does not accept argument '{argument}'")]
     FunctionDoesNotAcceptArgument {
         name: FunctionName,
-        argument: VarName,
+        argument: String,
     },
 
     #[error("Argument '{argument}' is supplied more than once")]

@@ -1120,7 +1120,7 @@ fn Button(
   </button>
 }
 
-<Button kind="k" class="c"/> // error: Function Button does not accept attribute 'class'
+<Button kind="k" class="c"/> // error: Function Button does not accept argument 'class'
 ```
 
 Spreading rest parameters in a cycle is a compile error:
