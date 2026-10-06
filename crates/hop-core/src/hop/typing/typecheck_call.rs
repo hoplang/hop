@@ -93,7 +93,9 @@ pub fn typecheck_call(
                 .iter()
                 .rposition(|param| param.default.is_none())
                 .map_or(0, |index| index + 1);
-            if values.len() < required || values.len() > params.len() {
+            // Too few arguments leave out parameters, which is reported below
+            // as for a call by name, so `F()` fails like `<F/>`.
+            if values.len() > params.len() {
                 errors.push(TypeError::new(
                     TypeErrorKind::FunctionArgumentCountMismatch {
                         name: callee.clone(),

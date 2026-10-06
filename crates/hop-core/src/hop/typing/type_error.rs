@@ -332,7 +332,7 @@ pub enum TypeErrorKind {
     #[error("Function {name} is not defined")]
     UndefinedFunction { name: FunctionName },
 
-    #[error("Function '{name}' expects {expected} argument(s), got {found}")]
+    #[error("Function {name} expects {expected} argument(s), got {found}")]
     FunctionArgumentCountMismatch {
         name: FunctionName,
         expected: String,

@@ -5339,7 +5339,7 @@ mod tests {
             &[],
             "add_ten()",
             expect![[r#"
-                error: Function 'add_ten' expects 1 argument(s), got 0
+                error: Function add_ten requires arguments: x
                 add_ten()
                 ^^^^^^^^^
             "#]],
@@ -5353,7 +5353,7 @@ mod tests {
             &[],
             "add_ten(10, 20)",
             expect![[r#"
-                error: Function 'add_ten' expects 1 argument(s), got 2
+                error: Function add_ten expects 1 argument(s), got 2
                 add_ten(10, 20)
                 ^^^^^^^^^^^^^^^
             "#]],

@@ -2247,6 +2247,8 @@ mod tests {
                   <div>
                     <Badge label="new"/>
                     {Badge(label: "new")}
+                    <Badge/>
+                    {Badge()}
                     <Dot></Dot>
                     {Dot(children: <></>)}
                     <Badge label={1}><b>!</b></Badge>
@@ -2271,52 +2273,64 @@ mod tests {
                 22 |     {Badge(label: "new")}
                    |      ^^^^^^^^^^^^^^^^^^^
 
-                error: Function Dot does not accept argument 'children'
-                  --> main.hop (line 23, col 12)
+                error: Function Badge requires arguments: label, children
+                  --> main.hop (line 23, col 6)
                 22 |     {Badge(label: "new")}
-                23 |     <Dot></Dot>
+                23 |     <Badge/>
+                   |      ^^^^^
+
+                error: Function Badge requires arguments: label, children
+                  --> main.hop (line 24, col 6)
+                23 |     <Badge/>
+                24 |     {Badge()}
+                   |      ^^^^^^^
+
+                error: Function Dot does not accept argument 'children'
+                  --> main.hop (line 25, col 12)
+                24 |     {Badge()}
+                25 |     <Dot></Dot>
                    |            ^^^
 
                 error: Function Dot does not accept argument 'children'
-                  --> main.hop (line 24, col 10)
-                23 |     <Dot></Dot>
-                24 |     {Dot(children: <></>)}
+                  --> main.hop (line 26, col 10)
+                25 |     <Dot></Dot>
+                26 |     {Dot(children: <></>)}
                    |          ^^^^^^^^
 
                 error: Expected String got Int
-                  --> main.hop (line 25, col 19)
-                24 |     {Dot(children: <></>)}
-                25 |     <Badge label={1}><b>!</b></Badge>
+                  --> main.hop (line 27, col 19)
+                26 |     {Dot(children: <></>)}
+                27 |     <Badge label={1}><b>!</b></Badge>
                    |                   ^
 
                 error: Expected String got Int
-                  --> main.hop (line 26, col 19)
-                25 |     <Badge label={1}><b>!</b></Badge>
-                26 |     {Badge(label: 1, children: <><b>!</b></>)}
+                  --> main.hop (line 28, col 19)
+                27 |     <Badge label={1}><b>!</b></Badge>
+                28 |     {Badge(label: 1, children: <><b>!</b></>)}
                    |                   ^
 
                 error: Function Badge does not accept argument 'size'
-                  --> main.hop (line 27, col 24)
-                26 |     {Badge(label: 1, children: <><b>!</b></>)}
-                27 |     <Badge label="new" size="s"><b>!</b></Badge>
+                  --> main.hop (line 29, col 24)
+                28 |     {Badge(label: 1, children: <><b>!</b></>)}
+                29 |     <Badge label="new" size="s"><b>!</b></Badge>
                    |                        ^^^^
 
                 error: Function Badge does not accept argument 'size'
-                  --> main.hop (line 28, col 26)
-                27 |     <Badge label="new" size="s"><b>!</b></Badge>
-                28 |     {Badge(label: "new", size: "s", children: <><b>!</b></>)}
+                  --> main.hop (line 30, col 26)
+                29 |     <Badge label="new" size="s"><b>!</b></Badge>
+                30 |     {Badge(label: "new", size: "s", children: <><b>!</b></>)}
                    |                          ^^^^
 
                 error: Expected String or Html got Int
-                  --> main.hop (line 29, col 6)
-                28 |     {Badge(label: "new", size: "s", children: <><b>!</b></>)}
-                29 |     <Count/>
+                  --> main.hop (line 31, col 6)
+                30 |     {Badge(label: "new", size: "s", children: <><b>!</b></>)}
+                31 |     <Count/>
                    |      ^^^^^
 
                 error: Expected String or Html got Int
-                  --> main.hop (line 30, col 6)
-                29 |     <Count/>
-                30 |     {Count()}
+                  --> main.hop (line 32, col 6)
+                31 |     <Count/>
+                32 |     {Count()}
                    |      ^^^^^^^
             "#]],
         );
@@ -11627,7 +11641,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function 'label' expects 0 to 2 argument(s), got 3
+                error: Function label expects 0 to 2 argument(s), got 3
                   --> main.hop (line 7, col 11)
                 6 |   fn body() -> Html {
                 7 |     <div>{label("n", 2, 3)}</div>
@@ -11652,11 +11666,17 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function 'label' expects 2 argument(s), got 1
+                error: Function label requires arguments: prefix
                   --> main.hop (line 7, col 11)
                 6 |   fn body() -> Html {
                 7 |     <div>{label("n")}</div>
                   |           ^^^^^^^^^^
+
+                error: Expected Int got String
+                  --> main.hop (line 7, col 17)
+                6 |   fn body() -> Html {
+                7 |     <div>{label("n")}</div>
+                  |                 ^^^
             "#]],
         );
     }
@@ -11816,7 +11836,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function 'add_ten' expects 1 argument(s), got 2
+                error: Function add_ten expects 1 argument(s), got 2
                   --> main.hop (line 7, col 11)
                 6 |   fn body() -> Html {
                 7 |     <div>{add_ten(1, 2).to_string()}</div>
