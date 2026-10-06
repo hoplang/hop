@@ -790,9 +790,10 @@ mod tests {
             .map(|p| {
                 typecheck_pattern(
                     p,
-                    subject_type.clone(),
+                    &subject_type,
                     &types.type_env(),
                     types.registry(),
+                    &mut Vec::new(),
                     &mut Vec::new(),
                     &mut type_errors,
                 )
@@ -889,7 +890,7 @@ mod tests {
                             .iter()
                             .map(|b| format!("{}: {}", b.field_name, b.var.id))
                             .collect();
-                        format!("{{{}}}", named.join(", "))
+                        format!(" {{{}}}", named.join(", "))
                     };
                     out.push_str(&format!(
                         "{}{} is {}::{}{}\n",
@@ -909,7 +910,7 @@ mod tests {
                         .iter()
                         .map(|b| format!("{}: {}", b.field_name, b.var.id))
                         .collect();
-                    format!("{{{}}}", named.join(", "))
+                    format!(" {{{}}}", named.join(", "))
                 };
                 out.push_str(&format!(
                     "{}{} is {}{}\n",
@@ -1224,15 +1225,15 @@ mod tests {
             "Outcome",
             indoc! {"
                 match x {
-                    Outcome::Success{value: v} => 0,
-                    Outcome::Failure{message: m} => 1,
+                    Outcome::Success {value: v} => 0,
+                    Outcome::Failure {message: m} => 1,
                 }
             "},
             expect![[r#"
-                #0 is Outcome::Success{value: #1}
+                #0 is Outcome::Success {value: #1}
                   let v = #1
                   branch 0
-                #0 is Outcome::Failure{message: #2}
+                #0 is Outcome::Failure {message: #2}
                   let m = #2
                   branch 1
             "#]],
@@ -1249,12 +1250,12 @@ mod tests {
             "Maybe",
             indoc! {"
                 match x {
-                    Maybe::Just{value: v} => 0,
+                    Maybe::Just {value: v} => 0,
                     Maybe::Nothing => 1,
                 }
             "},
             expect![[r#"
-                #0 is Maybe::Just{value: #1}
+                #0 is Maybe::Just {value: #1}
                   let v = #1
                   branch 0
                 #0 is Maybe::Nothing
@@ -1276,14 +1277,14 @@ mod tests {
             "Outcome",
             indoc! {"
                 match x {
-                    Outcome::Success{value: _} => 0,
-                    Outcome::Failure{message: _} => 1,
+                    Outcome::Success {value: _} => 0,
+                    Outcome::Failure {message: _} => 1,
                 }
             "},
             expect![[r#"
-                #0 is Outcome::Success{value: #1}
+                #0 is Outcome::Success {value: #1}
                   branch 0
-                #0 is Outcome::Failure{message: #2}
+                #0 is Outcome::Failure {message: #2}
                   branch 1
             "#]],
         );
@@ -1303,16 +1304,16 @@ mod tests {
             "Status",
             indoc! {"
                 match x {
-                    Status::Pending{since: s} => 0,
-                    Status::Active{id: i, name: n} => 1,
+                    Status::Pending {since: s} => 0,
+                    Status::Active {id: i, name: n} => 1,
                     Status::Inactive => 2,
                 }
             "},
             expect![[r#"
-                #0 is Status::Pending{since: #1}
+                #0 is Status::Pending {since: #1}
                   let s = #1
                   branch 0
-                #0 is Status::Active{id: #2, name: #3}
+                #0 is Status::Active {id: #2, name: #3}
                   let i = #2
                   let n = #3
                   branch 1
@@ -1332,11 +1333,11 @@ mod tests {
             "Point3D",
             indoc! {"
                 match x {
-                    Point3D::Coords{x: a, y: b, z: c} => 0,
+                    Point3D::Coords {x: a, y: b, z: c} => 0,
                 }
             "},
             expect![[r#"
-                #0 is Point3D::Coords{x: #1, y: #2, z: #3}
+                #0 is Point3D::Coords {x: #1, y: #2, z: #3}
                   let a = #1
                   let b = #2
                   let c = #3
@@ -1355,11 +1356,11 @@ mod tests {
             "Point3D",
             indoc! {"
                 match x {
-                    Point3D::Coords{x: _, y: _, z: _} => 0,
+                    Point3D::Coords {x: _, y: _, z: _} => 0,
                 }
             "},
             expect![[r#"
-                #0 is Point3D::Coords{x: #1, y: #2, z: #3}
+                #0 is Point3D::Coords {x: #1, y: #2, z: #3}
                   branch 0
             "#]],
         );
@@ -1375,11 +1376,11 @@ mod tests {
             "Point3D",
             indoc! {"
                 match x {
-                    Point3D::Coords{x: a, y: _, z: c} => 0,
+                    Point3D::Coords {x: a, y: _, z: c} => 0,
                 }
             "},
             expect![[r#"
-                #0 is Point3D::Coords{x: #1, y: #2, z: #3}
+                #0 is Point3D::Coords {x: #1, y: #2, z: #3}
                   let a = #1
                   let c = #3
                   branch 0
@@ -1448,15 +1449,15 @@ mod tests {
             "Status",
             indoc! {"
                 match x {
-                    Status::Pending{since: s} => 0,
+                    Status::Pending {since: s} => 0,
                     _ => 1,
                 }
             "},
             expect![[r#"
-                #0 is Status::Pending{since: #1}
+                #0 is Status::Pending {since: #1}
                   let s = #1
                   branch 0
-                #0 is Status::Active{id: #2}
+                #0 is Status::Active {id: #2}
                   branch 1
                 #0 is Status::Inactive
                   branch 1
@@ -1477,11 +1478,11 @@ mod tests {
             "Outcome",
             indoc! {"
                 match x {
-                    Outcome::Success{value: v} => 0,
+                    Outcome::Success {value: v} => 0,
                 }
             "},
             expect![[r#"
-                error: Missing pattern(s) Outcome::Failure{message: _}
+                error: Missing pattern(s) Outcome::Failure {message: _}
                 match x {
                       ^
             "#]],
@@ -1502,11 +1503,11 @@ mod tests {
             "Status",
             indoc! {"
                 match x {
-                    Status::Pending{since: _} => 0,
+                    Status::Pending {since: _} => 0,
                 }
             "},
             expect![[r#"
-                error: Missing pattern(s) Status::Active{id: _}, Status::Inactive
+                error: Missing pattern(s) Status::Active {id: _}, Status::Inactive
                 match x {
                       ^
             "#]],
@@ -1526,15 +1527,15 @@ mod tests {
             "Outcome",
             indoc! {"
                 match x {
-                    Outcome::Success{value: v} => 0,
-                    Outcome::Success{value: w} => 1,
-                    Outcome::Failure{message: _} => 2,
+                    Outcome::Success {value: v} => 0,
+                    Outcome::Success {value: w} => 1,
+                    Outcome::Failure {message: _} => 2,
                 }
             "},
             expect![[r#"
-                error: Unreachable pattern Outcome::Success{value: w}
-                    Outcome::Success{value: w} => 1,
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                error: Unreachable pattern Outcome::Success {value: w}
+                    Outcome::Success {value: w} => 1,
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1553,13 +1554,13 @@ mod tests {
             indoc! {"
                 match x {
                     _ => 0,
-                    Outcome::Success{value: v} => 1,
+                    Outcome::Success {value: v} => 1,
                 }
             "},
             expect![[r#"
-                error: Unreachable pattern Outcome::Success{value: v}
-                    Outcome::Success{value: v} => 1,
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                error: Unreachable pattern Outcome::Success {value: v}
+                    Outcome::Success {value: v} => 1,
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1572,12 +1573,12 @@ mod tests {
             "Container",
             indoc! {"
                 match x {
-                    Container::Wrapped{inner: Some(v)} => 0,
-                    Container::Wrapped{inner: None} => 1,
+                    Container::Wrapped {inner: Some(v)} => 0,
+                    Container::Wrapped {inner: None} => 1,
                 }
             "},
             expect![[r#"
-                #0 is Container::Wrapped{inner: #1}
+                #0 is Container::Wrapped {inner: #1}
                   #1 is Some(#2)
                     let v = #2
                     branch 0
@@ -1595,11 +1596,11 @@ mod tests {
             "Container",
             indoc! {"
                 match x {
-                    Container::Wrapped{inner: Some(v)} => 0,
+                    Container::Wrapped {inner: Some(v)} => 0,
                 }
             "},
             expect![[r#"
-                error: Missing pattern(s) Container::Wrapped{inner: None}
+                error: Missing pattern(s) Container::Wrapped {inner: None}
                 match x {
                       ^
             "#]],
@@ -1613,12 +1614,12 @@ mod tests {
             "Flag",
             indoc! {"
                 match x {
-                    Flag::Active{enabled: true} => 0,
-                    Flag::Active{enabled: false} => 1,
+                    Flag::Active {enabled: true} => 0,
+                    Flag::Active {enabled: false} => 1,
                 }
             "},
             expect![[r#"
-                #0 is Flag::Active{enabled: #1}
+                #0 is Flag::Active {enabled: #1}
                   #1 is false
                     branch 1
                   #1 is true
@@ -1634,11 +1635,11 @@ mod tests {
             "Flag",
             indoc! {"
                 match x {
-                    Flag::Active{enabled: true} => 0,
+                    Flag::Active {enabled: true} => 0,
                 }
             "},
             expect![[r#"
-                error: Missing pattern(s) Flag::Active{enabled: false}
+                error: Missing pattern(s) Flag::Active {enabled: false}
                 match x {
                       ^
             "#]],
@@ -1663,11 +1664,11 @@ mod tests {
             "Rectangle",
             indoc! {"
                 match x {
-                    Rectangle::Bounds{x: a, y: b, width: w, height: h} => 0,
+                    Rectangle::Bounds {x: a, y: b, width: w, height: h} => 0,
                 }
             "},
             expect![[r#"
-                #0 is Rectangle::Bounds{x: #1, y: #2, width: #3, height: #4}
+                #0 is Rectangle::Bounds {x: #1, y: #2, width: #3, height: #4}
                   let a = #1
                   let b = #2
                   let w = #3
@@ -1692,18 +1693,18 @@ mod tests {
             "Event",
             indoc! {"
                 match x {
-                    Event::Click{x: a, y: b} => 0,
-                    Event::KeyPress{key: k} => 1,
+                    Event::Click {x: a, y: b} => 0,
+                    Event::KeyPress {key: k} => 1,
                     Event::Focus => 2,
                     Event::Blur => 3,
                 }
             "},
             expect![[r#"
-                #0 is Event::Click{x: #1, y: #2}
+                #0 is Event::Click {x: #1, y: #2}
                   let a = #1
                   let b = #2
                   branch 0
-                #0 is Event::KeyPress{key: #3}
+                #0 is Event::KeyPress {key: #3}
                   let k = #3
                   branch 1
                 #0 is Event::Focus
@@ -1721,14 +1722,83 @@ mod tests {
             "User",
             indoc! {"
                 match x {
-                    User{name: n, age: a} => 0,
+                    User {name: n, age: a} => 0,
                 }
             "},
             expect![[r#"
-                #0 is User{name: #1, age: #2}
+                #0 is User {name: #1, age: #2}
                   let n = #1
                   let a = #2
                   branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_match_with_fields_out_of_order() {
+        accept(
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            "User",
+            indoc! {"
+                match x {
+                    User {age: a, name: n} => 0,
+                }
+            "},
+            expect![[r#"
+                #0 is User {name: #1, age: #2}
+                  let a = #2
+                  let n = #1
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_enum_match_with_fields_out_of_order() {
+        accept(
+            TypeRegistryBuilder::new().enum_(
+                "Shape",
+                [
+                    ("Point", vec![("x", "Int"), ("visible", "Bool")]),
+                    ("Empty", vec![]),
+                ],
+            ),
+            "Shape",
+            indoc! {"
+                match x {
+                    Shape::Point {visible: true, x: a} => 0,
+                    Shape::Point {visible: false, x: _} => 1,
+                    Shape::Empty => 2,
+                }
+            "},
+            expect![[r#"
+                #0 is Shape::Point {x: #1, visible: #2}
+                  #2 is false
+                    branch 1
+                  #2 is true
+                    let a = #1
+                    branch 0
+                #0 is Shape::Empty
+                  branch 2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unreachable_record_pattern_with_fields_out_of_order() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            "User",
+            indoc! {"
+                match x {
+                    User {name: n, age: a} => 0,
+                    User {age: a, name: n} => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable pattern User {age: a, name: n}
+                    User {age: a, name: n} => 1,
+                    ^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1740,14 +1810,14 @@ mod tests {
             "Foo",
             indoc! {"
                 match x {
-                    Foo{a: true, b: true} => 0,
-                    Foo{a: true, b: false} => 1,
-                    Foo{a: false, b: true} => 2,
-                    Foo{a: false, b: false} => 3,
+                    Foo {a: true, b: true} => 0,
+                    Foo {a: true, b: false} => 1,
+                    Foo {a: false, b: true} => 2,
+                    Foo {a: false, b: false} => 3,
                 }
             "},
             expect![[r#"
-                #0 is Foo{a: #1, b: #2}
+                #0 is Foo {a: #1, b: #2}
                   #2 is false
                     #1 is false
                       branch 3
@@ -2086,7 +2156,7 @@ mod tests {
             "User",
             indoc! {"
                 match x {
-                    User{name: _, age: _} => 0,
+                    User {name: _, age: _} => 0,
                 }
             "},
             expect![[r#"
@@ -2105,12 +2175,12 @@ mod tests {
             "User",
             indoc! {"
                 match x {
-                    User{name: n, email: Some(e)} => 0,
-                    User{name: n, email: None} => 1,
+                    User {name: n, email: Some(e)} => 0,
+                    User {name: n, email: None} => 1,
                 }
             "},
             expect![[r#"
-                #0 is User{name: #1, email: #2}
+                #0 is User {name: #1, email: #2}
                   #2 is Some(#3)
                     let n = #1
                     let e = #3
@@ -2130,11 +2200,11 @@ mod tests {
             "User",
             indoc! {"
                 match x {
-                    User{name: n, email: Some(e)} => 0,
+                    User {name: n, email: Some(e)} => 0,
                 }
             "},
             expect![[r#"
-                error: Missing pattern(s) User{name: _, email: None}
+                error: Missing pattern(s) User {name: _, email: None}
                 match x {
                       ^
             "#]],
@@ -2148,13 +2218,13 @@ mod tests {
             "Foo",
             indoc! {"
                 match x {
-                    Foo{a: true, b: true} => 0,
-                    Foo{a: true, b: false} => 1,
-                    Foo{a: false, b: true} => 2,
+                    Foo {a: true, b: true} => 0,
+                    Foo {a: true, b: false} => 1,
+                    Foo {a: false, b: true} => 2,
                 }
             "},
             expect![[r#"
-                error: Missing pattern(s) Foo{a: false, b: false}
+                error: Missing pattern(s) Foo {a: false, b: false}
                 match x {
                       ^
             "#]],
@@ -2168,12 +2238,12 @@ mod tests {
             "Foo",
             indoc! {"
                 match x {
-                    Foo{a: true, b: true} => 0,
-                    Foo{a: false, b: false} => 1,
+                    Foo {a: true, b: true} => 0,
+                    Foo {a: false, b: false} => 1,
                 }
             "},
             expect![[r#"
-                error: Missing pattern(s) Foo{a: false, b: true}, Foo{a: true, b: false}
+                error: Missing pattern(s) Foo {a: false, b: true}, Foo {a: true, b: false}
                 match x {
                       ^
             "#]],
@@ -2187,13 +2257,13 @@ mod tests {
             "Option[User]",
             indoc! {"
                 match x {
-                    Some(User{name: n, age: a}) => 0,
+                    Some(User {name: n, age: a}) => 0,
                     None => 1,
                 }
             "},
             expect![[r#"
                 #0 is Some(#1)
-                  #1 is User{name: #2, age: #3}
+                  #1 is User {name: #2, age: #3}
                     let n = #2
                     let a = #3
                     branch 0
@@ -2210,7 +2280,7 @@ mod tests {
             "Option[User]",
             indoc! {"
                 match x {
-                    Some(User{name: _, age: _}) => 0,
+                    Some(User {name: _, age: _}) => 0,
                     None => 1,
                 }
             "},
@@ -2233,7 +2303,7 @@ mod tests {
             "Option[User]",
             indoc! {"
                 match x {
-                    Some(User{role: Role{title: _, salary: _}, created_at: _}) => 0,
+                    Some(User {role: Role {title: _, salary: _}, created_at: _}) => 0,
                     None => 1,
                 }
             "},
@@ -2256,7 +2326,7 @@ mod tests {
             "User",
             indoc! {"
                 match x {
-                    User{name: _, address: Address{street: _, city: _}} => 0,
+                    User {name: _, address: Address {street: _, city: _}} => 0,
                 }
             "},
             expect![[r#"
@@ -2277,7 +2347,7 @@ mod tests {
             "User",
             indoc! {"
                 match x {
-                    User{role: Role{title: _, salary: _}, created_at: _} => 0,
+                    User {role: Role {title: _, salary: _}, created_at: _} => 0,
                     _ => 1,
                 }
             "},
@@ -2299,11 +2369,11 @@ mod tests {
             "User",
             indoc! {"
                 match x {
-                    User{name: n, address: Address{street: _, city: _}} => 0,
+                    User {name: n, address: Address {street: _, city: _}} => 0,
                 }
             "},
             expect![[r#"
-                #0 is User{name: #1, address: #2}
+                #0 is User {name: #1, address: #2}
                   let n = #1
                   branch 0
             "#]],
@@ -2329,15 +2399,15 @@ mod tests {
             "Outcome",
             indoc! {"
                 match x {
-                    Outcome::Success{value: v, metadata: Metadata{created: _, updated: _}} => 0,
-                    Outcome::Failure{message: _} => 1,
+                    Outcome::Success {value: v, metadata: Metadata {created: _, updated: _}} => 0,
+                    Outcome::Failure {message: _} => 1,
                 }
             "},
             expect![[r#"
-                #0 is Outcome::Success{value: #1, metadata: #2}
+                #0 is Outcome::Success {value: #1, metadata: #2}
                   let v = #1
                   branch 0
-                #0 is Outcome::Failure{message: #3}
+                #0 is Outcome::Failure {message: #3}
                   branch 1
             "#]],
         );
@@ -2354,12 +2424,12 @@ mod tests {
             "Outer",
             indoc! {"
                 match x {
-                    Outer{middle: Middle{name: n, inner: Inner{x: _, y: _}}} => 0,
+                    Outer {middle: Middle {name: n, inner: Inner {x: _, y: _}}} => 0,
                 }
             "},
             expect![[r#"
-                #0 is Outer{middle: #1}
-                  #1 is Middle{name: #2, inner: #3}
+                #0 is Outer {middle: #1}
+                  #1 is Middle {name: #2, inner: #3}
                     let n = #2
                     branch 0
             "#]],
@@ -2393,12 +2463,12 @@ mod tests {
             "IntList",
             indoc! {"
                 match x {
-                    IntList::Cons{head: h, tail: t} => 0,
+                    IntList::Cons {head: h, tail: t} => 0,
                     IntList::Nil => 1,
                 }
             "},
             expect![[r#"
-                #0 is IntList::Cons{head: #1, tail: #2}
+                #0 is IntList::Cons {head: #1, tail: #2}
                   let h = #1
                   let t = #2
                   branch 0
@@ -2421,14 +2491,14 @@ mod tests {
             "IntList",
             indoc! {"
                 match x {
-                    IntList::Cons{head: h, tail: IntList::Nil} => 0,
-                    IntList::Cons{head: h, tail: IntList::Cons{head: h2, tail: rest}} => 1,
+                    IntList::Cons {head: h, tail: IntList::Nil} => 0,
+                    IntList::Cons {head: h, tail: IntList::Cons {head: h2, tail: rest}} => 1,
                     IntList::Nil => 2,
                 }
             "},
             expect![[r#"
-                #0 is IntList::Cons{head: #1, tail: #2}
-                  #2 is IntList::Cons{head: #3, tail: #4}
+                #0 is IntList::Cons {head: #1, tail: #2}
+                  #2 is IntList::Cons {head: #3, tail: #4}
                     let h = #1
                     let h2 = #3
                     let rest = #4
@@ -2455,12 +2525,12 @@ mod tests {
             "IntList",
             indoc! {"
                 match x {
-                    IntList::Cons{head: h, tail: IntList::Nil} => 0,
+                    IntList::Cons {head: h, tail: IntList::Nil} => 0,
                     IntList::Nil => 1,
                 }
             "},
             expect![[r#"
-                error: Missing pattern(s) IntList::Cons{head: _, tail: IntList::Cons{head: _, tail: _}}
+                error: Missing pattern(s) IntList::Cons {head: _, tail: IntList::Cons {head: _, tail: _}}
                 match x {
                       ^
             "#]],
@@ -2474,12 +2544,12 @@ mod tests {
             "Node",
             indoc! {"
                 match x {
-                    Node{value: v, next: Some(n)} => 0,
-                    Node{value: v, next: None} => 1,
+                    Node {value: v, next: Some(n)} => 0,
+                    Node {value: v, next: None} => 1,
                 }
             "},
             expect![[r#"
-                #0 is Node{value: #1, next: #2}
+                #0 is Node {value: #1, next: #2}
                   #2 is Some(#3)
                     let v = #1
                     let n = #3
@@ -2498,12 +2568,12 @@ mod tests {
             "Node",
             indoc! {"
                 match x {
-                    Node{value: v, next: Some(Node{value: v2, next: None})} => 0,
-                    Node{value: v, next: None} => 1,
+                    Node {value: v, next: Some(Node {value: v2, next: None})} => 0,
+                    Node {value: v, next: None} => 1,
                 }
             "},
             expect![[r#"
-                error: Missing pattern(s) Node{value: _, next: Some(Node{value: _, next: Some(_)})}
+                error: Missing pattern(s) Node {value: _, next: Some(Node {value: _, next: Some(_)})}
                 match x {
                       ^
             "#]],
@@ -2541,13 +2611,13 @@ mod tests {
             "Foo",
             indoc! {"
                 match x {
-                    Foo{a: true, b: Some(n)} => 0,
-                    Foo{a: true, b: None} => 1,
-                    Foo{a: false, b: _} => 2,
+                    Foo {a: true, b: Some(n)} => 0,
+                    Foo {a: true, b: None} => 1,
+                    Foo {a: false, b: _} => 2,
                 }
             "},
             expect![[r#"
-                #0 is Foo{a: #1, b: #2}
+                #0 is Foo {a: #1, b: #2}
                   #1 is false
                     branch 2
                   #1 is true
@@ -2567,12 +2637,12 @@ mod tests {
             "Foo",
             indoc! {"
                 match x {
-                    Foo{a: true, b: _} => 0,
-                    Foo{a: false, b: n} => 1,
+                    Foo {a: true, b: _} => 0,
+                    Foo {a: false, b: n} => 1,
                 }
             "},
             expect![[r#"
-                #0 is Foo{a: #1, b: #2}
+                #0 is Foo {a: #1, b: #2}
                   #1 is false
                     let n = #2
                     branch 1
@@ -2592,13 +2662,13 @@ mod tests {
             "Status",
             indoc! {"
                 match x {
-                    Status::Active{admin: true} => 0,
-                    Status::Active{admin: _} => 1,
+                    Status::Active {admin: true} => 0,
+                    Status::Active {admin: _} => 1,
                     Status::Inactive => 2,
                 }
             "},
             expect![[r#"
-                #0 is Status::Active{admin: #1}
+                #0 is Status::Active {admin: #1}
                   #1 is false
                     branch 1
                   #1 is true
@@ -2925,12 +2995,12 @@ mod tests {
             "Point",
             indoc! {"
                 match x {
-                    Point{xy: (n, true)} => 0,
-                    Point{xy: (_, false)} => 1,
+                    Point {xy: (n, true)} => 0,
+                    Point {xy: (_, false)} => 1,
                 }
             "},
             expect![[r#"
-                #0 is Point{xy: #1}
+                #0 is Point {xy: #1}
                   #1 is (#2, #3)
                     #3 is false
                       branch 1

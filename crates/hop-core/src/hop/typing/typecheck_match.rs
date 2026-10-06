@@ -5,8 +5,7 @@ use super::typecheck_pattern::typecheck_pattern;
 use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
-use crate::document::DocumentRange;
-use crate::hop::parsing::{ParsedExpr, ParsedMatchArm, ParsedPattern};
+use crate::hop::parsing::{ParsedExpr, ParsedMatchArm};
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::{MatchErrorSite, compile_match};
 use crate::hop::typing::type_env::TypeEnv;
@@ -51,72 +50,25 @@ pub fn typecheck_match(
         return None;
     }
     let mut typed_patterns = Vec::with_capacity(arms.len());
-    let mut arm_bindings = Vec::with_capacity(arms.len());
+    let mut typed_bodies = Vec::with_capacity(arms.len());
+    let mut result_type: Option<Type> = None;
+
     for arm in arms {
         let mut bindings = Vec::new();
-        typed_patterns.push(typecheck_pattern(
+        // The body of an arm whose pattern does not typecheck is skipped,
+        // since the variables the pattern binds are unknown
+        let Some(typed_pattern) = typecheck_pattern(
             &arm.pattern,
-            subject_type.clone(),
+            &subject_type,
             type_env,
             registry,
             &mut bindings,
+            definition_links,
             errors,
-        )?);
-        arm_bindings.push(bindings);
-    }
-
-    let tree = match compile_match(registry, &typed_patterns, subject_type) {
-        Ok(tree) => Some(tree),
-        Err(error) => {
-            let range = match error.site {
-                MatchErrorSite::Subject => subject.range(),
-                MatchErrorSite::Pattern(index) => arms[index].pattern.range(),
-            };
-            errors.push(TypeError::new(*error.kind, range.clone()));
-            None
-        }
-    };
-    let arm_bodies = typecheck_arm_bodies(
-        arms,
-        &arm_bindings,
-        inferred_type,
-        forwarded_params,
-        var_env,
-        type_env,
-        registry,
-        annotations,
-        definition_links,
-        asset_references,
-        errors,
-    );
-    let (tree, (typed_bodies, result_type)) = (tree?, arm_bodies?);
-
-    Some(TypedExpr::Match {
-        subject: Box::new(typed_subject),
-        arms: typed_patterns.into_iter().zip(typed_bodies).collect(),
-        decision: tree,
-        typ: result_type,
-    })
-}
-
-fn typecheck_arm_bodies(
-    arms: &[ParsedMatchArm],
-    arm_bindings: &[Vec<(VarName, Type, DocumentRange)>],
-    inferred_type: Option<&Type>,
-    forwarded_params: &[VarName],
-    var_env: &mut VariableScope,
-    type_env: &TypeEnv,
-    registry: &TypeRegistry,
-    annotations: &mut Vec<HoverAnnotation>,
-    definition_links: &mut Vec<DefinitionLink>,
-    asset_references: &mut Vec<AssetReference>,
-    errors: &mut Vec<TypeError>,
-) -> Option<(Vec<TypedExpr>, Type)> {
-    let mut typed_bodies = Vec::new();
-    let mut result_type: Option<Type> = None;
-
-    for (arm, bindings) in arms.iter().zip(arm_bindings) {
-        collect_pattern_definition_links(&arm.pattern, type_env, definition_links);
+        ) else {
+            continue;
+        };
+        typed_patterns.push(typed_pattern);
 
         let mut arm_ok = true;
         let mut pushed = 0;
@@ -124,16 +76,16 @@ fn typecheck_arm_bodies(
             match var_env.push(name.clone(), typ.clone(), range.clone()) {
                 Ok(_) => {
                     annotations.push(HoverAnnotation::TypeForVarName {
-                        range: range.clone(),
-                        typ: typ.clone(),
-                        var_name: name.clone(),
+                        range,
+                        typ,
+                        var_name: name,
                     });
                     pushed += 1;
                 }
                 Err(_) => {
                     errors.push(TypeError::new(
-                        TypeErrorKind::VariableAlreadyDefined { name: name.clone() },
-                        range.clone(),
+                        TypeErrorKind::VariableAlreadyDefined { name },
+                        range,
                     ));
                     arm_ok = false;
                 }
@@ -194,54 +146,31 @@ fn typecheck_arm_bodies(
         }
     }
 
+    // Exhaustiveness and reachability are only checked when every pattern
+    // typechecks, so that pattern indices line up with the arms
+    let tree = if typed_patterns.len() == arms.len() {
+        match compile_match(registry, &typed_patterns, subject_type) {
+            Ok(tree) => Some(tree),
+            Err(error) => {
+                let range = match error.site {
+                    MatchErrorSite::Subject => subject.range(),
+                    MatchErrorSite::Pattern(index) => arms[index].pattern.range(),
+                };
+                errors.push(TypeError::new(*error.kind, range.clone()));
+                None
+            }
+        }
+    } else {
+        None
+    };
     if typed_bodies.len() != arms.len() {
         return None;
     }
 
-    Some((typed_bodies, result_type?))
-}
-
-/// Collect definition links for enum and record type names in match patterns.
-fn collect_pattern_definition_links(
-    pattern: &ParsedPattern,
-    type_env: &TypeEnv,
-    definition_links: &mut Vec<DefinitionLink>,
-) {
-    match pattern {
-        ParsedPattern::EnumVariant {
-            type_name,
-            type_name_range,
-            fields,
-            ..
-        }
-        | ParsedPattern::Record {
-            type_name,
-            type_name_range,
-            fields,
-            ..
-        } => {
-            if let Some(name) = type_env.names.get(type_name.as_str()) {
-                definition_links.push(DefinitionLink {
-                    use_range: type_name_range.clone(),
-                    definition_range: name.definition_range.clone(),
-                });
-            }
-            for (_, _, field_pattern) in fields {
-                collect_pattern_definition_links(field_pattern, type_env, definition_links);
-            }
-        }
-        ParsedPattern::OptionSome { inner, .. } => {
-            collect_pattern_definition_links(inner, type_env, definition_links);
-        }
-        ParsedPattern::Tuple { args, .. } => {
-            for arg in args {
-                collect_pattern_definition_links(arg, type_env, definition_links);
-            }
-        }
-        ParsedPattern::Wildcard { .. }
-        | ParsedPattern::Binding { .. }
-        | ParsedPattern::BooleanTrue { .. }
-        | ParsedPattern::BooleanFalse { .. }
-        | ParsedPattern::OptionNone { .. } => {}
-    }
+    Some(TypedExpr::Match {
+        subject: Box::new(typed_subject),
+        arms: typed_patterns.into_iter().zip(typed_bodies).collect(),
+        decision: tree?,
+        typ: result_type?,
+    })
 }

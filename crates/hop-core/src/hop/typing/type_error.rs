@@ -269,6 +269,9 @@ pub enum TypeErrorKind {
     #[error("Variable {name} is already defined")]
     VariableAlreadyDefined { name: VarName },
 
+    #[error("Variable {name} is bound more than once in the pattern")]
+    DuplicatePatternBinding { name: VarName },
+
     #[error("Duplicate parameter '{name}'")]
     DuplicateParameter { name: VarName },
 

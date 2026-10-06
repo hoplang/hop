@@ -95,7 +95,7 @@ impl TypedMatchPattern {
                         }),
                         BoxDoc::text(", "),
                     );
-                    base.append(BoxDoc::text("{"))
+                    base.append(BoxDoc::text(" {"))
                         .append(fields_doc)
                         .append(BoxDoc::text("}"))
                 } else if args.is_empty() {

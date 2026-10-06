@@ -1,3 +1,4 @@
+use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedPattern;
 use crate::hop::typing::r#type::Type;
@@ -9,52 +10,70 @@ use crate::symbols::var_name::VarName;
 
 /// Typecheck a pattern against the type of the value it matches. Every
 /// variable the pattern binds is appended to `bindings` with its type and the
-/// range where it is bound.
+/// range where it is bound. A pattern binds each name at most once.
 pub fn typecheck_pattern(
     parsed: &ParsedPattern,
-    subject_type: Type,
+    subject_type: &Type,
     type_env: &TypeEnv,
     registry: &TypeRegistry,
     bindings: &mut Vec<(VarName, Type, DocumentRange)>,
+    definition_links: &mut Vec<DefinitionLink>,
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedMatchPattern> {
-    let pattern_type = match parsed {
-        ParsedPattern::Wildcard { .. } => return Some(TypedMatchPattern::Wildcard),
-        ParsedPattern::Binding { name, range } => {
-            bindings.push((name.clone(), subject_type, range.clone()));
-            return Some(TypedMatchPattern::Binding { name: name.clone() });
-        }
-        ParsedPattern::EnumVariant {
-            type_name,
-            type_name_range,
+    if let ParsedPattern::EnumVariant {
+        type_name,
+        type_name_range,
+        ..
+    }
+    | ParsedPattern::Record {
+        type_name,
+        type_name_range,
+        ..
+    } = parsed
+    {
+        let Some(Name {
+            kind: NameKind::Type(pattern_type),
+            definition_range,
             ..
+        }) = type_env.names.get(type_name.as_str())
+        else {
+            errors.push(TypeError::new(
+                TypeErrorKind::UndefinedType {
+                    type_name: type_name.clone(),
+                },
+                type_name_range.clone(),
+            ));
+            return None;
+        };
+        definition_links.push(DefinitionLink {
+            use_range: type_name_range.clone(),
+            definition_range: definition_range.clone(),
+        });
+        if pattern_type != subject_type {
+            errors.push(TypeError::new(
+                TypeErrorKind::MatchPatternTypeMismatch {
+                    expected: subject_type.clone(),
+                },
+                parsed.range().clone(),
+            ));
+            return None;
         }
-        | ParsedPattern::Record {
-            type_name,
-            type_name_range,
-            ..
-        } => match type_env.names.get(type_name.as_str()) {
-            Some(Name {
-                kind: NameKind::Type(typ),
-                ..
-            }) => Some(typ),
-            _ => {
+    }
+    match (parsed, registry.resolve(subject_type)) {
+        (ParsedPattern::Wildcard { .. }, _) => Some(TypedMatchPattern::Wildcard),
+
+        (ParsedPattern::Binding { name, range }, _) => {
+            if bindings.iter().any(|(bound, _, _)| bound == name) {
                 errors.push(TypeError::new(
-                    TypeErrorKind::UndefinedType {
-                        type_name: type_name.clone(),
-                    },
-                    type_name_range.clone(),
+                    TypeErrorKind::DuplicatePatternBinding { name: name.clone() },
+                    range.clone(),
                 ));
                 return None;
             }
-        },
-        ParsedPattern::BooleanTrue { .. }
-        | ParsedPattern::BooleanFalse { .. }
-        | ParsedPattern::OptionSome { .. }
-        | ParsedPattern::OptionNone { .. }
-        | ParsedPattern::Tuple { .. } => None,
-    };
-    match (parsed, registry.resolve(&subject_type)) {
+            bindings.push((name.clone(), subject_type.clone(), range.clone()));
+            Some(TypedMatchPattern::Binding { name: name.clone() })
+        }
+
         (ParsedPattern::BooleanTrue { .. }, Some(ResolvedType::Bool)) => {
             Some(TypedMatchPattern::Constructor {
                 constructor: Constructor::BooleanTrue,
@@ -74,10 +93,11 @@ pub fn typecheck_pattern(
         (ParsedPattern::OptionSome { inner, .. }, Some(ResolvedType::Option(inner_type))) => {
             let typed_inner = typecheck_pattern(
                 inner,
-                inner_type.clone(),
+                inner_type,
                 type_env,
                 registry,
                 bindings,
+                definition_links,
                 errors,
             )?;
             Some(TypedMatchPattern::Constructor {
@@ -104,7 +124,7 @@ pub fn typecheck_pattern(
                 ..
             },
             Some(ResolvedType::Enum { variants, .. }),
-        ) if pattern_type == Some(&subject_type) => {
+        ) => {
             let variant_fields = variants
                 .iter()
                 .find(|variant| variant.name.as_str() == variant_name.as_str())
@@ -146,10 +166,11 @@ pub fn typecheck_pattern(
                             index,
                             pattern: typecheck_pattern(
                                 field_pattern,
-                                field.typ.clone(),
+                                &field.typ,
                                 type_env,
                                 registry,
                                 bindings,
+                                definition_links,
                                 errors,
                             )?,
                         });
@@ -169,10 +190,9 @@ pub fn typecheck_pattern(
             }
 
             if fields.len() < variant_fields.len() {
-                let pattern_field_names: Vec<_> = fields.iter().map(|(name, _, _)| name).collect();
                 let missing_fields = variant_fields
                     .iter()
-                    .filter(|f| !pattern_field_names.contains(&&f.name))
+                    .filter(|f| !fields.iter().any(|(name, _, _)| name == &f.name))
                     .map(|f| f.name.clone())
                     .collect::<Vec<_>>();
                 errors.push(TypeError::new(
@@ -207,7 +227,7 @@ pub fn typecheck_pattern(
                 fields: subject_fields,
                 ..
             }),
-        ) if pattern_type == Some(&subject_type) => {
+        ) => {
             let mut typed_fields: Vec<TypedField> = Vec::new();
             for (field_name, field_name_range, field_pattern) in fields {
                 let found = subject_fields
@@ -232,10 +252,11 @@ pub fn typecheck_pattern(
                             index,
                             pattern: typecheck_pattern(
                                 field_pattern,
-                                field.typ.clone(),
+                                &field.typ,
                                 type_env,
                                 registry,
                                 bindings,
+                                definition_links,
                                 errors,
                             )?,
                         });
@@ -254,11 +275,9 @@ pub fn typecheck_pattern(
             }
 
             if fields.len() < subject_fields.len() {
-                let pattern_field_names =
-                    fields.iter().map(|(name, _, _)| name).collect::<Vec<_>>();
                 let missing_fields = subject_fields
                     .iter()
-                    .filter(|f| !pattern_field_names.contains(&&f.name))
+                    .filter(|f| !fields.iter().any(|(name, _, _)| name == &f.name))
                     .map(|f| f.name.clone())
                     .collect::<Vec<_>>();
                 errors.push(TypeError::new(
@@ -287,7 +306,15 @@ pub fn typecheck_pattern(
                 .iter()
                 .zip(elements)
                 .map(|(arg, element)| {
-                    typecheck_pattern(arg, element.clone(), type_env, registry, bindings, errors)
+                    typecheck_pattern(
+                        arg,
+                        element,
+                        type_env,
+                        registry,
+                        bindings,
+                        definition_links,
+                        errors,
+                    )
                 })
                 .collect::<Option<Vec<_>>>()?;
             Some(TypedMatchPattern::Constructor {
@@ -338,9 +365,10 @@ mod tests {
         let mut type_errors = Vec::new();
         if let Some(typed) = typecheck_pattern(
             &parsed,
-            subject_type,
+            &subject_type,
             &types.type_env(),
             types.registry(),
+            &mut Vec::new(),
             &mut Vec::new(),
             &mut type_errors,
         ) {
@@ -374,10 +402,10 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String")]),
             "User",
-            "Person{name: n}",
+            "Person {name: n}",
             expect![[r#"
                 error: Type 'Person' is not defined
-                Person{name: n}
+                Person {name: n}
                 ^^^^^^
             "#]],
         );
@@ -394,11 +422,11 @@ mod tests {
                 ],
             ),
             "Outcome",
-            "Outcome::Success{unknown: v}",
+            "Outcome::Success {unknown: v}",
             expect![[r#"
                 error: Unknown field 'unknown' in enum variant 'Outcome::Success'
-                Outcome::Success{unknown: v}
-                                 ^^^^^^^
+                Outcome::Success {unknown: v}
+                                  ^^^^^^^
             "#]],
         );
     }
@@ -407,11 +435,11 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
             "Point",
-            "Point::XY{x: a, unknown: b}",
+            "Point::XY {x: a, unknown: b}",
             expect![[r#"
                 error: Unknown field 'unknown' in enum variant 'Point::XY'
-                Point::XY{x: a, unknown: b}
-                                ^^^^^^^
+                Point::XY {x: a, unknown: b}
+                                 ^^^^^^^
             "#]],
         );
     }
@@ -420,11 +448,11 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
             "Point",
-            "Point::XY{foo: a, bar: b}",
+            "Point::XY {foo: a, bar: b}",
             expect![[r#"
                 error: Unknown field 'foo' in enum variant 'Point::XY'
-                Point::XY{foo: a, bar: b}
-                          ^^^
+                Point::XY {foo: a, bar: b}
+                           ^^^
             "#]],
         );
     }
@@ -433,10 +461,10 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
             "Point",
-            "Point::XY{x: a}",
+            "Point::XY {x: a}",
             expect![[r#"
                 error: Enum variant 'Point::XY' is missing fields: y
-                Point::XY{x: a}
+                Point::XY {x: a}
                 ^^^^^^^^^
             "#]],
         );
@@ -449,10 +477,10 @@ mod tests {
                 [("XYZ", vec![("x", "Int"), ("y", "Int"), ("z", "Int")])],
             ),
             "Point",
-            "Point::XYZ{x: a}",
+            "Point::XYZ {x: a}",
             expect![[r#"
                 error: Enum variant 'Point::XYZ' is missing fields: y, z
-                Point::XYZ{x: a}
+                Point::XYZ {x: a}
                 ^^^^^^^^^^
             "#]],
         );
@@ -478,11 +506,11 @@ mod tests {
                 [("Just", vec![("value", "Int")]), ("Nothing", vec![])],
             ),
             "Maybe",
-            "Maybe::Nothing{value: v}",
+            "Maybe::Nothing {value: v}",
             expect![[r#"
                 error: Unknown field 'value' in enum variant 'Maybe::Nothing'
-                Maybe::Nothing{value: v}
-                               ^^^^^
+                Maybe::Nothing {value: v}
+                                ^^^^^
             "#]],
         );
     }
@@ -504,10 +532,10 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
             "Point",
-            "Point::XYZ{x: a, y: b}",
+            "Point::XYZ {x: a, y: b}",
             expect![[r#"
                 error: Variant 'XYZ' is not defined in enum 'Point'
-                Point::XYZ{x: a, y: b}
+                Point::XYZ {x: a, y: b}
                 ^^^^^^^^^^
             "#]],
         );
@@ -517,10 +545,10 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             "User",
-            "User{name: n}",
+            "User {name: n}",
             expect![[r#"
                 error: Record 'User' is missing fields: age
-                User{name: n}
+                User {name: n}
                 ^^^^
             "#]],
         );
@@ -530,11 +558,11 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             "User",
-            "User{name: _, name: _}",
+            "User {name: _, name: _}",
             expect![[r#"
                 error: Duplicate field 'name' in record 'User'
-                User{name: _, name: _}
-                              ^^^^
+                User {name: _, name: _}
+                               ^^^^
             "#]],
         );
     }
@@ -543,11 +571,38 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
             "Point",
-            "Point::XY{x: _, x: _}",
+            "Point::XY {x: _, x: _}",
             expect![[r#"
                 error: Duplicate field 'x' in enum variant 'Point::XY'
-                Point::XY{x: _, x: _}
-                                ^
+                Point::XY {x: _, x: _}
+                                 ^
+            "#]],
+        );
+    }
+    #[test]
+    fn rejects_tuple_pattern_binding_a_name_twice() {
+        reject(
+            TypeRegistryBuilder::new(),
+            "(Bool, Bool)",
+            "(x, x)",
+            expect![[r#"
+                error: Variable x is bound more than once in the pattern
+                (x, x)
+                    ^
+            "#]],
+        );
+    }
+    #[test]
+    fn rejects_enum_variant_pattern_binding_a_name_twice() {
+        reject(
+            TypeRegistryBuilder::new()
+                .enum_("Point", [("XY", vec![("x", "Int"), ("y", "Option[Int]")])]),
+            "Point",
+            "Point::XY {x: a, y: Some(a)}",
+            expect![[r#"
+                error: Variable a is bound more than once in the pattern
+                Point::XY {x: a, y: Some(a)}
+                                         ^
             "#]],
         );
     }
@@ -556,11 +611,11 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String")]),
             "User",
-            "User{email: e}",
+            "User {email: e}",
             expect![[r#"
                 error: Unknown field 'email' in record 'User'
-                User{email: e}
-                     ^^^^^
+                User {email: e}
+                      ^^^^^
             "#]],
         );
     }
@@ -665,11 +720,11 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String")]),
             "(String,)",
-            "User{name}",
+            "User {name}",
             expect![[r#"
                 error: Pattern does not match type (String,)
-                User{name}
-                ^^^^^^^^^^
+                User {name}
+                ^^^^^^^^^^^
             "#]],
         );
     }

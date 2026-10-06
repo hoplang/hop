@@ -2560,7 +2560,7 @@ mod tests {
 
                 -- main.hop --
                 fn Main(account: Account) -> Html {
-                  match account.user {User{name: n} => concat(escape(n))}
+                  match account.user {User {name: n} => concat(escape(n))}
                 }
 
                 -- type registry --
@@ -4844,6 +4844,12 @@ mod tests {
                 5 |     {match color {Color::Red => "red", Color::Green => "green"}}
                 6 |     {match holder.color {Color::Red => "red", Color::Blue => "blue"}}
                   |                          ^^^^^^^^^^
+
+                error: Pattern does not match type Color
+                  --> main.hop (line 6, col 47)
+                5 |     {match color {Color::Red => "red", Color::Green => "green"}}
+                6 |     {match holder.color {Color::Red => "red", Color::Blue => "blue"}}
+                  |                                               ^^^^^^^^^^^
             "#]],
         );
     }
@@ -4867,6 +4873,12 @@ mod tests {
                 2 | fn Main(holder: Holder) -> Html {
                 3 |   <>{match holder.color {Color::Red => "red", Color::Blue => "blue"}}</>
                   |                          ^^^^^
+
+                error: Type 'Color' is not defined
+                  --> main.hop (line 3, col 47)
+                2 | fn Main(holder: Holder) -> Html {
+                3 |   <>{match holder.color {Color::Red => "red", Color::Blue => "blue"}}</>
+                  |                                               ^^^^^
             "#]],
         );
     }
@@ -5111,8 +5123,8 @@ mod tests {
                 -- main.hop --
                 fn Main(t: Tree) -> Html {
                   match t.root {
-                    Node::Leaf{label} => concat(escape(label)),
-                    Node::Branch{children} => for _ in children {
+                    Node::Leaf {label} => concat(escape(label)),
+                    Node::Branch {children} => for _ in children {
                       concat(raw("..."))
                     },
                   }
@@ -5702,7 +5714,7 @@ mod tests {
                 fn Badge(status: Status) -> Html {
                   concat(
                     escape(match status {
-                      Status::Active{since: _} => "active",
+                      Status::Active {since: _} => "active",
                       _ => "not active",
                     }),
                   )
@@ -5919,7 +5931,7 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Html {
                   match Status::Active {name: "test"} {
-                    Status::Active{name: n} => concat(escape(n)),
+                    Status::Active {name: n} => concat(escape(n)),
                     Status::Inactive => concat(raw("none")),
                   }
                 }
@@ -6127,6 +6139,41 @@ mod tests {
                 2 |     match x {
                 3 |         Some(x) => <>{x}</>,
                   |                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn typechecks_other_arms_when_a_pattern_is_rejected() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(x: Option[String]) -> Html {
+                    match x {
+                        Some(unused) => <>{missing}</>,
+                        Colour::Red => <>red</>,
+                        None => <>nothing</>,
+                    }
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: missing
+                  --> main.hop (line 3, col 28)
+                2 |     match x {
+                3 |         Some(unused) => <>{missing}</>,
+                  |                            ^^^^^^^
+
+                error: Type 'Colour' is not defined
+                  --> main.hop (line 4, col 9)
+                3 |         Some(unused) => <>{missing}</>,
+                4 |         Colour::Red => <>red</>,
+                  |         ^^^^^^
+
+                warning: Unused variable unused
+                  --> main.hop (line 3, col 14)
+                2 |     match x {
+                3 |         Some(unused) => <>{missing}</>,
+                  |              ^^^^^^
             "#]],
         );
     }
