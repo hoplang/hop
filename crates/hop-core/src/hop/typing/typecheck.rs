@@ -12343,6 +12343,54 @@ mod tests {
     }
 
     #[test]
+    fn rejects_argument_supplied_twice_in_markup_call_as_in_call_expression() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Button(kind: String, ...rest) -> Html {
+                  <button class={kind} ...rest></button>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <>
+                      <Button kind="a" Kind="b"/>
+                      {Button(kind: "a", "Kind": "b")}
+                      <Button kind="a" id="x" ID="y"/>
+                      {Button(kind: "a", id: "x", "ID": "y")}
+                    </>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Argument 'Kind' is supplied more than once
+                  --> main.hop (line 8, col 24)
+                 7 |     <>
+                 8 |       <Button kind="a" Kind="b"/>
+                   |                        ^^^^
+
+                error: Argument 'Kind' is supplied more than once
+                  --> main.hop (line 9, col 26)
+                 8 |       <Button kind="a" Kind="b"/>
+                 9 |       {Button(kind: "a", "Kind": "b")}
+                   |                          ^^^^^^
+
+                error: Argument 'ID' is supplied more than once
+                  --> main.hop (line 10, col 31)
+                 9 |       {Button(kind: "a", "Kind": "b")}
+                10 |       <Button kind="a" id="x" ID="y"/>
+                   |                               ^^
+
+                error: Argument 'ID' is supplied more than once
+                  --> main.hop (line 11, col 35)
+                10 |       <Button kind="a" id="x" ID="y"/>
+                11 |       {Button(kind: "a", id: "x", "ID": "y")}
+                   |                                   ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_named_call_missing_an_argument() {
         reject(
             indoc! {r#"

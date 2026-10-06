@@ -325,6 +325,12 @@ fn parse_opening_tag(
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
 ) -> (OpenElement, TagEnd) {
+    // An uppercase tag starts a markup call, anything else an HTML element.
+    let is_call = tag_name_range
+        .as_str()
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_uppercase());
     let mut attributes = Vec::new();
     let mut self_closing = false;
     let mut full_range = tag_start_range.clone();
@@ -362,7 +368,7 @@ fn parse_opening_tag(
                     },
                     None => ParsedAttribute::KeyOnly { name, name_range },
                 };
-                push_attribute(&mut attributes, attribute, errors);
+                push_attribute(&mut attributes, attribute, is_call, errors);
             }
 
             TagToken::AttributeExpressionStart {
@@ -382,6 +388,7 @@ fn parse_opening_tag(
                             name_range,
                             value,
                         },
+                        is_call,
                         errors,
                     );
                 }
@@ -395,6 +402,7 @@ fn parse_opening_tag(
                             name: var_name,
                             range,
                         },
+                        is_call,
                         errors,
                     );
                 }
@@ -456,15 +464,12 @@ fn parse_opening_tag(
         }
     }
 
-    // An uppercase tag starts a markup call, anything else an HTML element.
     let header = match tag_name_range.as_str() {
-        name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
-            ElementHeader::Function {
-                name: FunctionName::new(tag_name_range.to_cheap_string())
-                    .or_emit(errors, &tag_name_range),
-                attributes,
-            }
-        }
+        _ if is_call => ElementHeader::Function {
+            name: FunctionName::new(tag_name_range.to_cheap_string())
+                .or_emit(errors, &tag_name_range),
+            attributes,
+        },
         // A <base> changes how every URL on the page resolves, and <embed>
         // and <object> load external documents that <iframe>, <img> and
         // <video> cover, so they are rejected.
@@ -506,14 +511,18 @@ fn parse_opening_tag(
     )
 }
 
-/// Add an attribute to the tag it was written on, rejecting a name the tag
-/// already has.
+/// Add an attribute to the tag it was written on, rejecting a name an element
+/// already has. A markup call passes its attributes as arguments, so a name
+/// written twice there is reported when the call is checked, as for a call
+/// expression.
 fn push_attribute(
     attributes: &mut Vec<ParsedAttribute>,
     attribute: ParsedAttribute,
+    is_call: bool,
     errors: &mut Vec<ParseError>,
 ) {
-    if let (Some(name), Some(name_range)) = (attribute.name(), attribute.name_range())
+    if !is_call
+        && let (Some(name), Some(name_range)) = (attribute.name(), attribute.name_range())
         && attributes
             .iter()
             .any(|existing| existing.name() == Some(name))

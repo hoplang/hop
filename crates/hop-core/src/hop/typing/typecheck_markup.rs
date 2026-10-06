@@ -108,8 +108,13 @@ pub fn typecheck_markup(
                     ParsedAttribute::KeyOnly { name, name_range } => {
                         (name, name_range, Argument::Bare(name_range.clone()))
                     }
+                    // A second spread is reported with the rest it spreads, so
+                    // the first is kept, as on an element and in a call
+                    // expression.
                     ParsedAttribute::Spread { name, .. } => {
-                        spread = Some(name.clone());
+                        if spread.is_none() {
+                            spread = Some(name.clone());
+                        }
                         continue;
                     }
                 };
