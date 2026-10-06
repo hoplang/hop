@@ -1964,6 +1964,55 @@ mod tests {
     }
 
     #[test]
+    fn accepts_markup_call_of_function_returning_string() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Label(name: String) -> String {
+                  name + "!"
+                }
+
+                fn Main() -> Html {
+                  <p><Label name="a < b"/></p>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Label(name: String) -> String {
+                  (name + "!")
+                }
+
+                fn Main() -> Html {
+                  html(tag: "p", attrs: [], children: concat(escape(Label(name: "a < b"))))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_markup_call_of_function_returning_int() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Count() -> Int {
+                  1
+                }
+
+                fn Main() -> Html {
+                  <p><Count/></p>
+                }
+            "#},
+            expect![[r#"
+                error: Expected String or Html got Int
+                  --> main.hop (line 6, col 7)
+                5 | fn Main() -> Html {
+                6 |   <p><Count/></p>
+                  |       ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_function_invoked_without_children() {
         reject(
             indoc! {r#"

@@ -934,9 +934,12 @@ A fragment lets markup content be used where one expression is expected:
 
 #### Markup call expressions
 
-A markup call expression `<F …></F>` evaluates to the value that the
-[function](#function-declarations) `F` returns for its arguments. Each
-[attribute](#attributes) is the argument for the parameter it names.
+A markup call expression `<F …></F>` calls the
+[function](#function-declarations) `F` with its arguments, and inserts the
+value `F` returns as a [markup interpolation](#markup-interpolations) does: a
+value of type `Html` as the elements and text it consists of, and a value of
+type `String` as text, [escaped](#escaping). Each [attribute](#attributes) is
+the argument for the parameter it names.
 
 ```ebnf
 MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupContent "</" UppercaseIdentifier ">"
@@ -951,9 +954,10 @@ argument.
 
 The function `F` accepts an attribute for each of its parameters and, if it has
 a [rest parameter](#rest-parameters), the attributes the rest parameter accepts.
-A markup call is a compile error if `F` does not return `Html`, if it leaves out
-a parameter that has no default value, if an argument does not have the type of
-its parameter, or if it has an attribute that `F` does not accept.
+A markup call is a compile error if `F` returns a type other than `Html` or
+`String`, if it leaves out a parameter that has no default value, if an
+argument does not have the type of its parameter, or if it has an attribute
+that `F` does not accept.
 
 ```hop
 fn Badge(
@@ -1269,8 +1273,7 @@ Variant  ::= UppercaseIdentifier ( "{" ( FieldDecl ( "," FieldDecl )* ","? )? "}
 
 A function declaration `fn f(…) -> T { … }` declares the function `f`. A
 lowercase function is [called as `f(…)`](#call-expressions), and an uppercase
-function returning `Html` is
-[called by a markup call](#markup-call-expressions).
+function is [called by a markup call](#markup-call-expressions).
 
 ```ebnf
 FunctionDecl ::= "pub"? "fn" ( LowercaseIdentifier | UppercaseIdentifier ) "(" ( Param ( "," Param )* ","? )? ")" "->" Type BlockExpr
@@ -1327,18 +1330,22 @@ fn Tree(item: Item) -> Html {
 
 An implementation does not check that recursion terminates.
 
-Only an uppercase function that returns `Html` can be called by a markup call,
-and calling an uppercase function that returns another type is a compile error:
+A markup call inserts the value of the function as a
+[markup interpolation](#markup-interpolations) does, so an uppercase function
+called by a markup call returns `Html` or `String`. Calling an uppercase
+function that returns another type by a markup call is a compile error:
 
 ```hop
 fn Label() -> String {
-  "x"
+  "a < b"
 }
 
-fn Form() -> Html {
-  // error: Only a function returning Html can be called by a markup call
-  <Label/>
+fn Count() -> Int {
+  1
 }
+
+<Label/>  // a &lt; b
+<Count/>  // error: Expected String or Html got Int
 ```
 
 <a id="page-declarations"></a>

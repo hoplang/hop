@@ -143,9 +143,6 @@ pub enum TypeErrorKind {
         found: Type,
     },
 
-    #[error("Only a function returning Html can be called by a markup call")]
-    FunctionTagReturnTypeMismatch { name: FunctionName, found: Type },
-
     #[error("Expected Array[...] got {found}")]
     IterateeTypeMismatch { found: Type },
 

@@ -85,16 +85,7 @@ pub fn typecheck_node(
                 ));
                 return None;
             };
-            if signature.return_type != Type::Html {
-                errors.push(TypeError::new(
-                    TypeErrorKind::FunctionTagReturnTypeMismatch {
-                        name: function_name.clone(),
-                        found: signature.return_type.clone(),
-                    },
-                    function_name_opening_range.clone(),
-                ));
-                return None;
-            }
+            let return_type = signature.return_type.clone();
             let callee_rest_param = signature.rest_param.clone();
             let callee_params = signature.params.clone();
             let callee_tail = signature.tail.clone();
@@ -163,13 +154,29 @@ pub fn typecheck_node(
                 }
             };
 
-            Some(TypedExpr::FunctionCall {
+            let call = TypedExpr::FunctionCall {
                 function_name: function_name.clone(),
                 module: callee_module,
                 args: resolved_args,
                 rest,
-                typ: Type::Html,
-            })
+                typ: return_type.clone(),
+            };
+            // A markup call is inserted like an interpolation of the call, so
+            // the value is used as is when it is Html and escaped when it is a
+            // String.
+            match return_type {
+                Type::Html => Some(call),
+                Type::String => Some(TypedExpr::HtmlEscape {
+                    expr: Box::new(call),
+                }),
+                _ => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::InterpolationTypeMismatch { found: return_type },
+                        function_name_opening_range.clone(),
+                    ));
+                    None
+                }
+            }
         }
 
         ParsedNode::HtmlElement {
