@@ -2162,8 +2162,37 @@ mod tests {
     }
 
     #[test]
-    fn rejects_empty_content_for_required_children() {
-        reject(
+    fn accepts_both_tag_forms_for_defaulted_children() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(children: Html = <></>) -> Html {
+                    <div>{children}</div>
+                }
+
+                fn Main() -> Html {
+                    <>
+                        <Card/>
+                        <Card></Card>
+                    </>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Card(children: Html) -> Html {
+                  html(tag: "div", attrs: [], children: concat(children))
+                }
+
+                fn Main() -> Html {
+                  concat(Card(children: concat()), Card(children: concat()))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_empty_content_for_required_children() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
@@ -2175,18 +2204,21 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Card requires arguments: children
-                  --> main.hop (line 6, col 6)
-                5 | fn Main() -> Html {
-                6 |     <Card></Card>
-                  |      ^^^^
+                -- main.hop --
+                fn Card(children: Html) -> Html {
+                  html(tag: "div", attrs: [], children: concat(children))
+                }
+
+                fn Main() -> Html {
+                  Card(children: concat())
+                }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_comment_only_content_for_required_children() {
-        reject(
+    fn accepts_comment_only_content_for_required_children() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
@@ -2200,11 +2232,14 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function Card requires arguments: children
-                  --> main.hop (line 6, col 6)
-                5 | fn Main() -> Html {
-                6 |     <Card>
-                  |      ^^^^
+                -- main.hop --
+                fn Card(children: Html) -> Html {
+                  html(tag: "div", attrs: [], children: concat(children))
+                }
+
+                fn Main() -> Html {
+                  Card(children: concat())
+                }
             "#]],
         );
     }
@@ -3042,8 +3077,8 @@ mod tests {
     }
 
     #[test]
-    fn accepts_empty_content_for_function_that_does_not_accept_children() {
-        accept(
+    fn rejects_empty_content_for_function_that_does_not_accept_children() {
+        reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
@@ -3059,18 +3094,17 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                -- main.hop --
-                fn Bar() -> Html {
-                  concat(Main(), Main())
-                }
+                error: Function Main does not accept argument 'children'
+                  --> main.hop (line 7, col 17)
+                 6 |     <>
+                 7 |         <Main></Main>
+                   |                 ^^^^
 
-                fn Main() -> Html {
-                  html(
-                    tag: "strong",
-                    attrs: [],
-                    children: concat(raw("No children parameter here")),
-                  )
-                }
+                error: Function Main does not accept argument 'children'
+                  --> main.hop (line 9, col 11)
+                 8 |         <Main>
+                 9 |         </Main>
+                   |           ^^^^
             "#]],
         );
     }
@@ -8305,7 +8339,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_void_element_with_content() {
+    fn rejects_void_element_with_end_tag() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -8321,17 +8355,98 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: <br> is a void element and cannot have content
-                  --> main.hop (line 7, col 9)
+                error: <br> is a void element and cannot have an end tag
+                  --> main.hop (line 3, col 11)
+                 2 |   <p>
+                 3 |     <br></br>
+                   |           ^^
+
+                error: <br> is a void element and cannot have an end tag
+                  --> main.hop (line 5, col 7)
+                 4 |     <br>
+                 5 |     </br>
+                   |       ^^
+
+                error: <br> is a void element and cannot have an end tag
+                  --> main.hop (line 6, col 27)
+                 5 |     </br>
+                 6 |     <br><!-- comment --></br>
+                   |                           ^^
+
+                error: <br> is a void element and cannot have an end tag
+                  --> main.hop (line 7, col 15)
                  6 |     <br><!-- comment --></br>
                  7 |     <br>text</br>
-                   |         ^^^^
+                   |               ^^
 
-                error: <img> is a void element and cannot have content
-                  --> main.hop (line 8, col 22)
+                error: <img> is a void element and cannot have an end tag
+                  --> main.hop (line 8, col 30)
                  7 |     <br>text</br>
                  8 |     <img src="a.png">{name}</img>
-                   |                      ^^^^^^
+                   |                              ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_self_closing_tag_on_non_void_element() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  <div>
+                    <div/>
+                    <my-widget/>
+                    <script src="/app.js"/>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: <div> is not a void element and cannot be self-closing
+                  --> main.hop (line 3, col 6)
+                2 |   <div>
+                3 |     <div/>
+                  |      ^^^
+
+                error: <my-widget> is not a void element and cannot be self-closing
+                  --> main.hop (line 4, col 6)
+                3 |     <div/>
+                4 |     <my-widget/>
+                  |      ^^^^^^^^^
+
+                error: <script> is not a void element and cannot be self-closing
+                  --> main.hop (line 5, col 6)
+                4 |     <my-widget/>
+                5 |     <script src="/app.js"/>
+                  |      ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_self_closing_tag_on_svg_element() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  <svg>
+                    <path d="M0 0"/>
+                    <circle r="1"></circle>
+                  </svg>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  html(
+                    tag: "svg",
+                    attrs: [],
+                    children: concat(
+                      html(tag: "path", attrs: [d: escape("M0 0")], children: concat()),
+                      html(tag: "circle", attrs: [r: escape("1")], children: concat()),
+                    ),
+                  )
+                }
             "#]],
         );
     }
@@ -9589,8 +9704,8 @@ mod tests {
     }
 
     #[test]
-    fn accepts_children_content_when_inner_body_has_empty_content() {
-        accept(
+    fn rejects_children_when_inner_call_passes_empty_content() {
+        reject(
             indoc! {r#"
                 -- main.hop --
                 fn Foo(children: Html, class: String, ...rest) -> Html {
@@ -9598,6 +9713,33 @@ mod tests {
                 }
                 fn Card(...rest) -> Html {
                     <Foo ...rest></Foo>
+                }
+                page Main() {
+                  fn body() -> Html {
+                      <Card class="a">hi</Card>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Function Card does not accept argument 'children'
+                  --> main.hop (line 9, col 23)
+                 8 |   fn body() -> Html {
+                 9 |       <Card class="a">hi</Card>
+                   |                       ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_children_forwarded_through_rest_when_inner_call_is_self_closing() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Foo(children: Html, class: String, ...rest) -> Html {
+                    <div class={class} ...rest>{children}</div>
+                }
+                fn Card(...rest) -> Html {
+                    <Foo ...rest/>
                 }
                 page Main() {
                   fn body() -> Html {
@@ -9783,7 +9925,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn A(class: String = "", ...rest) -> Html {
-                    <div class={class} ...rest/>
+                    <div class={class} ...rest></div>
                 }
                 fn B(class: String = "", ...rest) -> Html {
                     <A class={class} ...rest/>
@@ -9819,7 +9961,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn A(class: String = "a", ...rest) -> Html {
-                    <div class={class} ...rest/>
+                    <div class={class} ...rest></div>
                 }
                 fn B(class: String = "b", ...rest) -> Html {
                     <A class={class} ...rest/>
@@ -10472,7 +10614,7 @@ mod tests {
                 import other::Foo
 
                 fn Main() -> Html {
-                	<Foo></Foo>
+                	<Foo/>
                 }
             "#},
             expect![[r#"

@@ -109,16 +109,23 @@ pub fn typecheck_node(
                 });
             }
 
-            // Empty content is no content, so `<F></F>` is the same as `<F/>`.
-            let content = match children.as_deref().map(|c| (c.first(), c.last())) {
-                Some((Some(first), Some(last))) => Some((
+            // A tag pair passes its content as `children`, even when the
+            // content is empty, while a self-closing tag passes no `children`.
+            // Empty content has no range of its own, so it is reported at the
+            // end tag that passes it.
+            let content = children.as_deref().map(|c| {
+                let range = match (c.first(), c.last(), function_name_closing_range) {
+                    (Some(first), Some(last), _) => first.range().clone().to(last.range().clone()),
+                    (_, _, Some(closing_range)) => closing_range.clone(),
+                    (_, _, None) => function_name_opening_range.clone(),
+                };
+                (
                     TypedExpr::HtmlConcat {
                         nodes: typed_children,
                     },
-                    first.range().clone().to(last.range().clone()),
-                )),
-                _ => None,
-            };
+                    range,
+                )
+            });
             let (resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
                 attributes,
                 &callee_params,
@@ -186,7 +193,7 @@ pub fn typecheck_node(
         ParsedNode::HtmlElement {
             kind: element,
             tag_name,
-            closing_tag_name: _,
+            closing_tag_name,
             attributes,
             children,
             range: _,
@@ -204,17 +211,28 @@ pub fn typecheck_node(
                 ));
             }
 
-            // `<br></br>` is the same as `<br/>`, but a void element with
-            // content is rejected.
-            if element.is_void()
-                && let (Some(first), Some(last)) = (children.first(), children.last())
-            {
-                errors.push(TypeError::new(
-                    TypeErrorKind::VoidElementWithContent {
-                        tag: tag_name.to_cheap_string(),
-                    },
-                    first.range().clone().to(last.range().clone()),
-                ));
+            // A void element is written as a single self-closing tag and any
+            // other element with a start and an end tag, as HTML reads them.
+            // An SVG element is the exception: HTML honors a self-closing tag
+            // on it, so both forms are accepted.
+            match closing_tag_name {
+                Some(closing_tag_name) if element.is_void() => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::VoidElementWithEndTag {
+                            tag: tag_name.to_cheap_string(),
+                        },
+                        closing_tag_name.clone(),
+                    ));
+                }
+                None if !element.is_void() && !element.is_svg() => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::NonVoidElementSelfClosing {
+                            tag: tag_name.to_cheap_string(),
+                        },
+                        tag_name.clone(),
+                    ));
+                }
+                _ => {}
             }
 
             let typed_attributes = typecheck_attributes(

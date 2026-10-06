@@ -1,4 +1,6 @@
-use crate::hop::parsing::token::{AttributeString, MarkupToken, RawTextToken, TagToken};
+use crate::hop::parsing::token::{
+    AttributeString, MarkupToken, RawTextClosingTag, RawTextToken, TagToken,
+};
 
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
@@ -126,24 +128,33 @@ pub fn next_raw_text_token(iter: &mut DocumentCursor, tag_name: &DocumentRange) 
     let mut content: Option<DocumentRange> = None;
     loop {
         // Consume the closing tag if the input is on it, keeping the '>'.
-        let closing_tag_end = iter.speculate(|iter| {
+        let closing_tag = iter.speculate(|iter| {
             // consume: '<'
-            iter.next_if(|s| s.ch() == '<')?;
+            let start = iter.next_if(|s| s.ch() == '<')?;
             // consume: '/'
             iter.next_if(|s| s.ch() == '/')?;
             skip_whitespace(iter);
             // consume: tag name
+            let mut tag_name_range: Option<DocumentRange> = None;
             for ch in tag_name.as_str().chars() {
-                iter.next_if(|s| s.ch() == ch)?;
+                let range = iter.next_if(|s| s.ch() == ch)?;
+                tag_name_range = Some(match tag_name_range {
+                    Some(tag_name_range) => tag_name_range.to(range),
+                    None => range,
+                });
             }
             skip_whitespace(iter);
             // consume: '>'
-            iter.next_if(|s| s.ch() == '>')
+            let end = iter.next_if(|s| s.ch() == '>')?;
+            Some(RawTextClosingTag {
+                tag_name_range: tag_name_range?,
+                range: start.to(end),
+            })
         });
-        if closing_tag_end.is_some() {
+        if closing_tag.is_some() {
             return RawTextToken {
                 content,
-                closing_tag_end,
+                closing_tag,
             };
         }
         match iter.next() {
@@ -151,7 +162,7 @@ pub fn next_raw_text_token(iter: &mut DocumentCursor, tag_name: &DocumentRange) 
             None => {
                 return RawTextToken {
                     content,
-                    closing_tag_end: None,
+                    closing_tag: None,
                 };
             }
         }

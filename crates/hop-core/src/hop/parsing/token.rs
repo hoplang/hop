@@ -213,8 +213,8 @@ pub enum TagToken {
     End { range: DocumentRange },
     /// The `/>` that ends the tag. E.g.
     /// ```text
-    /// <div/>
-    ///     ^^
+    /// <br/>
+    ///    ^^
     /// ```
     SelfClosingEnd { range: DocumentRange },
 }
@@ -232,13 +232,24 @@ pub struct RawTextToken {
     ///         ^^^^^^^^^^^
     /// ```
     pub content: Option<DocumentRange>,
-    /// The `>` that closed the element, or `None` when the input ended
-    /// before the closing tag. E.g.
+    /// The closing tag, or `None` when the input ended before one was found.
+    pub closing_tag: Option<RawTextClosingTag>,
+}
+
+/// The closing tag of a raw text element. E.g.
+/// ```text
+/// <script>let x = 20;</script>
+///                    ^^^^^^^^^
+/// ```
+pub struct RawTextClosingTag {
+    /// The name in the closing tag. E.g.
     /// ```text
     /// <script>let x = 20;</script>
-    ///                            ^
+    ///                      ^^^^^^
     /// ```
-    pub closing_tag_end: Option<DocumentRange>,
+    pub tag_name_range: DocumentRange,
+    /// The whole closing tag, from `</` to `>`.
+    pub range: DocumentRange,
 }
 
 /// A quoted attribute value, which is a string literal.

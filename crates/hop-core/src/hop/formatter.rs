@@ -589,6 +589,7 @@ fn format_node<'a>(
             .append(arena.text("</>")),
         ParsedNode::HtmlElement {
             kind: element,
+            closing_tag_name,
             attributes,
             children,
             range,
@@ -625,7 +626,11 @@ fn format_node<'a>(
                     .front()
                     .is_some_and(|c| c.start() < range.end());
 
-            if element.is_void() && empty {
+            // A void element is always written self-closing. An SVG element
+            // can be written either way, so its authored form is kept.
+            let self_closing =
+                element.is_void() || (element.is_svg() && closing_tag_name.is_none());
+            if self_closing && empty {
                 opening_tag_doc.append(arena.text("/>"))
             } else if empty {
                 // Empty element - put opening and closing tags on separate lines,
@@ -4812,6 +4817,29 @@ mod tests {
                     {" "}
                     world
                   </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn keeps_the_authored_form_of_svg_elements() {
+        check(
+            indoc! {r#"
+                fn Main() -> Html {
+                  <svg>
+                    <path d="M0 0"/>
+                    <circle r="1"></circle>
+                  </svg>
+                }
+            "#},
+            expect![[r#"
+                fn Main() -> Html {
+                  <svg>
+                    <path d="M0 0"/>
+                    <circle r="1">
+                    </circle>
+                  </svg>
                 }
             "#]],
         );

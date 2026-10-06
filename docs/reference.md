@@ -883,8 +883,8 @@ An end tag that does not have the same name as its start tag is a compile error.
 #### Element expressions
 
 An element expression `<x …>…</x>` evaluates to the element with that name,
-those attributes and that content. An element without content can be written
-with a single self-closing tag, `<x/>`, which is shorthand for `<x></x>`.
+those attributes and that content. A void element has no content and is
+written as a single self-closing tag, `<x/>`.
 
 ```ebnf
 ElementExpr ::= "<" ElementName Attribute* ">" MarkupContent "</" ElementName ">"
@@ -902,15 +902,17 @@ in the project stylesheet. Using `<base>`, `<embed>` or `<object>`, or a
 `<script>` with content, is a compile error for [XSS safety](#xss-safety).
 
 A void element is one of `area`, `br`, `col`, `hr`, `img`, `input`, `link`,
-`meta`, `source`, `track` and `wbr`, and a void element with content is a
-compile error.
+`meta`, `source`, `track` and `wbr`. A void element with an end tag is a
+compile error, and so is a self-closing tag on an element that is not void. The
+exception is an SVG element, which can be written either way.
 
 ```hop
 <p class="note">Hello</p> // <p class="note">Hello</p>
-<div/>                    // <div></div>
+<div></div>               // <div></div>
 <br/>                     // <br>
-<br></br>                 // <br>
-<br>text</br>             // error: <br> is a void element and cannot have content
+<path d="M0 0"/>          // <path d="M0 0"></path>
+<div/>                    // error: <div> is not a void element and cannot be self-closing
+<br></br>                 // error: <br> is a void element and cannot have an end tag
 ```
 
 <a id="fragment-expressions"></a>
@@ -946,11 +948,10 @@ MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupContent "</" Upp
                  | "<" UppercaseIdentifier Attribute* "/>"
 ```
 
-Like an element, a markup call without content can be written with a single
-self-closing tag, `<F/>`, which is shorthand for `<F></F>`. Content between the
-tags is shorthand for a `children` attribute: `<F>…</F>` is the same as `<F
-children={<>…</>}/>`. A markup call without content passes no `children`
-argument.
+The content between the tags is the argument for the parameter `children`, so
+`<F>…</F>` is the same as `<F children={<>…</>}/>`, even when the content is
+empty. A markup call written as a single self-closing tag, `<F/>`, passes no
+`children` argument.
 
 The function `F` accepts an attribute for each of its parameters and, if it has
 a [rest parameter](#rest-parameters), the attributes the rest parameter accepts.
@@ -970,9 +971,16 @@ fn Badge(
   </span>
 }
 
+fn Dot() -> Html {
+  <i></i>
+}
+
 <Badge label="new"><b>!</b></Badge>           // <span>new<b>!</b></span>
 <Badge label="new" children={<><b>!</b></>}/> // <span>new<b>!</b></span>
-<Badge label="new"></Badge>                   // error: Function Badge requires arguments: children
+<Badge label="new"></Badge>                   // <span>new</span>
+<Badge label="new"/>                          // error: Function Badge requires arguments: children
+<Dot/>                                        // <i></i>
+<Dot></Dot>                                   // error: Function Dot does not accept argument 'children'
 ```
 
 <a id="markup-content"></a>
@@ -1427,7 +1435,7 @@ For example, with the value of `v` [escaped](#escaping):
 let v = "R&D";
 
 <br/>                        // <br>
-<div/>                       // <div></div>
+<div></div>                  // <div></div>
 <input disabled value={v}/>  // <input disabled value="R&amp;D">
 ```
 

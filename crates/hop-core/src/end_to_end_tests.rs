@@ -1966,6 +1966,56 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn renders_self_closing_svg_element_with_end_tag() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    <svg>
+                      <path d="M0 0"/>
+                    </svg>
+                  }
+                }
+            "#},
+            r#"<svg><path d="M0 0"></path></svg>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  write("<svg")
+                  write(">")
+                  write("<path")
+                  write(" d=\"")
+                  write_string("M0 0")
+                  write("\"")
+                  write(">")
+                  write("</path>")
+                  write("</svg>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<svg><path d=\"M0 0\"></path></svg>")
+                }
+                -- expected output --
+                <svg><path d="M0 0"></path></svg>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn accepts_svg_attributes_on_forwarded_svg() {
         check(
             indoc! {r#"

@@ -244,7 +244,7 @@ fn parse_node(
                         builder.enter(element);
                         None
                     }
-                    TagEnd::Closed => builder.append_element(element, None),
+                    TagEnd::Closed(closing) => builder.append_element(element, closing),
                 }
             }
 
@@ -305,8 +305,9 @@ pub fn parse_markup(
 enum TagEnd {
     /// Children follow, then a closing tag.
     Open,
-    /// The element is finished as it stands.
-    Closed,
+    /// The element is finished as it stands, with the closing tag a raw text
+    /// element was read up to, or none for a self-closing tag.
+    Closed(Option<ClosingTag>),
 }
 
 /// Parse an opening tag from just after its name, and say whether children
@@ -327,13 +328,13 @@ fn parse_opening_tag(
     while let Ok(part) = tokenize_markup::next_tag_token(iter, errors, &tag_name_range) {
         match part {
             TagToken::End { range } => {
-                full_range = tag_start_range.clone().to(range);
+                full_range = tag_start_range.to(range);
                 break;
             }
 
             TagToken::SelfClosingEnd { range } => {
                 self_closing = true;
-                full_range = tag_start_range.clone().to(range);
+                full_range = tag_start_range.to(range);
                 break;
             }
 
@@ -403,10 +404,11 @@ fn parse_opening_tag(
     let raw_text = !self_closing && is_raw_content_tag(tag_name_range.as_str());
     let mut children = Vec::new();
     let mut closed = self_closing;
+    let mut closing_tag = None;
     if raw_text {
         let RawTextToken {
             content,
-            closing_tag_end,
+            closing_tag: raw_closing_tag,
         } = tokenize_markup::next_raw_text_token(iter, &tag_name_range);
         // A <script> may only reference an external file, so anything but
         // whitespace between its tags is rejected.
@@ -419,8 +421,11 @@ fn parse_opening_tag(
         children.extend(content.map(|range| ParsedNode::Text { range }));
         // Without a closing tag the element stays open, and is reported as
         // unclosed with everything else still open when the markup ends.
-        if let Some(closing_tag_end) = closing_tag_end {
-            full_range = tag_start_range.to(closing_tag_end);
+        if let Some(raw_closing_tag) = raw_closing_tag {
+            closing_tag = Some(ClosingTag {
+                tag_name_range: Some(raw_closing_tag.tag_name_range),
+                range: raw_closing_tag.range,
+            });
             closed = true;
         }
     }
@@ -460,7 +465,11 @@ fn parse_opening_tag(
         },
     };
 
-    let end = if closed { TagEnd::Closed } else { TagEnd::Open };
+    let end = if closed {
+        TagEnd::Closed(closing_tag)
+    } else {
+        TagEnd::Open
+    };
     (
         OpenElement {
             tag_name_range,
