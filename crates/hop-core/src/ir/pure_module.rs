@@ -62,7 +62,7 @@ pub enum PureForSource {
     RangeInclusive { start: PureExpr, end: PureExpr },
 }
 
-/// An argument passed to a FunctionCall.
+/// An argument passed to a Call.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PureArgument {
     pub name: VarName,
@@ -80,7 +80,7 @@ pub enum PureExpr {
         id: ExprId,
     },
 
-    /// A Match expression over an Enum, Boolean, or Option.
+    /// A Match expression over an Enum, Bool, or Option.
     ///
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
@@ -145,18 +145,18 @@ pub enum PureExpr {
         id: ExprId,
     },
 
-    /// A FunctionCall expression.
+    /// A call expression.
     ///
     /// Invokes a function and produces its result.
-    FunctionCall {
+    Call {
         function: IrFunction,
         args: Vec<PureArgument>,
         typ: Type,
         id: ExprId,
     },
 
-    /// A BooleanLiteral expression.
-    BooleanLiteral { value: bool, id: ExprId },
+    /// A BoolLiteral expression.
+    BoolLiteral { value: bool, id: ExprId },
 
     /// A FloatLiteral expression.
     FloatLiteral { value: f64, id: ExprId },
@@ -164,15 +164,15 @@ pub enum PureExpr {
     /// An IntLiteral expression.
     IntLiteral { value: i32, id: ExprId },
 
-    /// An ArrayLiteral expression.
-    ArrayLiteral {
+    /// An array expression.
+    Array {
         elements: Vec<PureExpr>,
         typ: Type,
         id: ExprId,
     },
 
-    /// A TupleLiteral expression.
-    TupleLiteral {
+    /// A tuple expression.
+    Tuple {
         elements: Vec<PureExpr>,
         typ: Type,
         id: ExprId,
@@ -186,16 +186,16 @@ pub enum PureExpr {
         id: ExprId,
     },
 
-    /// A RecordLiteral expression.
-    RecordLiteral {
+    /// A record expression.
+    Record {
         type_name: TypeName,
         fields: Vec<(FieldName, PureExpr)>,
         typ: Type,
         id: ExprId,
     },
 
-    /// An EnumLiteral expression.
-    EnumLiteral {
+    /// An enum expression.
+    Enum {
         type_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
@@ -204,8 +204,8 @@ pub enum PureExpr {
         id: ExprId,
     },
 
-    /// An OptionLiteral expression.
-    OptionLiteral {
+    /// An option expression.
+    Option {
         value: Option<Box<PureExpr>>,
         typ: Type,
         id: ExprId,
@@ -259,27 +259,27 @@ pub enum PureExpr {
         id: ExprId,
     },
 
-    /// A BooleanNegation expression.
+    /// A BoolNegation expression.
     ///
-    /// Must hold a Boolean expression.
-    /// Returns a Boolean.
-    BooleanNegation { operand: Box<PureExpr>, id: ExprId },
+    /// Must hold a Bool expression.
+    /// Returns a Bool.
+    BoolNegation { operand: Box<PureExpr>, id: ExprId },
 
-    /// A BooleanLogicalAnd expression.
+    /// A BoolLogicalAnd expression.
     ///
-    /// Must hold two Boolean expressions.
-    /// Returns a Boolean.
-    BooleanLogicalAnd {
+    /// Must hold two Bool expressions.
+    /// Returns a Bool.
+    BoolLogicalAnd {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
         id: ExprId,
     },
 
-    /// A BooleanLogicalOr expression.
+    /// A BoolLogicalOr expression.
     ///
-    /// Must hold two Boolean expressions.
-    /// Returns a Boolean.
-    BooleanLogicalOr {
+    /// Must hold two Bool expressions.
+    /// Returns a Bool.
+    BoolLogicalOr {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
         id: ExprId,
@@ -288,7 +288,7 @@ pub enum PureExpr {
     /// An Equals expression.
     ///
     /// Must hold two values of the same EquatableType.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     Equals {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
@@ -299,7 +299,7 @@ pub enum PureExpr {
     /// A LessThan expression.
     ///
     /// Must hold two values of the same ComparableType.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     LessThan {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
@@ -310,7 +310,7 @@ pub enum PureExpr {
     /// A LessThanOrEqual expression.
     ///
     /// Must hold two values of the same ComparableType.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     LessThanOrEqual {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
@@ -327,25 +327,25 @@ pub enum PureExpr {
     /// An ArrayIsEmpty expression.
     ///
     /// Must hold an Array expression.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     ArrayIsEmpty { array: Box<PureExpr>, id: ExprId },
 
     /// A StringIsEmpty expression.
     ///
     /// Must hold a String expression.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     StringIsEmpty { string: Box<PureExpr>, id: ExprId },
 
     /// An OptionIsSome expression.
     ///
     /// Must hold an Option expression.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     OptionIsSome { option: Box<PureExpr>, id: ExprId },
 
     /// An OptionIsNone expression.
     ///
     /// Must hold an Option expression.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     OptionIsNone { option: Box<PureExpr>, id: ExprId },
 
     /// An IntToString expression.
@@ -376,15 +376,15 @@ impl PureExpr {
         match self {
             PureExpr::VariableReference { typ, .. }
             | PureExpr::FieldAccess { typ, .. }
-            | PureExpr::ArrayLiteral { typ, .. }
-            | PureExpr::TupleLiteral { typ, .. }
+            | PureExpr::Array { typ, .. }
+            | PureExpr::Tuple { typ, .. }
             | PureExpr::TupleIndex { typ, .. }
-            | PureExpr::RecordLiteral { typ, .. }
-            | PureExpr::EnumLiteral { typ, .. }
-            | PureExpr::OptionLiteral { typ, .. }
+            | PureExpr::Record { typ, .. }
+            | PureExpr::Enum { typ, .. }
+            | PureExpr::Option { typ, .. }
             | PureExpr::Match { typ, .. }
             | PureExpr::Let { typ, .. }
-            | PureExpr::FunctionCall { typ, .. } => typ.clone(),
+            | PureExpr::Call { typ, .. } => typ.clone(),
 
             PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => Type::Float,
             PureExpr::IntLiteral { .. } => Type::Int,
@@ -409,13 +409,13 @@ impl PureExpr {
                 NumericType::Float => Type::Float,
             },
 
-            PureExpr::BooleanLiteral { .. }
-            | PureExpr::BooleanNegation { .. }
+            PureExpr::BoolLiteral { .. }
+            | PureExpr::BoolNegation { .. }
             | PureExpr::Equals { .. }
             | PureExpr::LessThan { .. }
             | PureExpr::LessThanOrEqual { .. }
-            | PureExpr::BooleanLogicalAnd { .. }
-            | PureExpr::BooleanLogicalOr { .. }
+            | PureExpr::BoolLogicalAnd { .. }
+            | PureExpr::BoolLogicalOr { .. }
             | PureExpr::ArrayIsEmpty { .. }
             | PureExpr::StringIsEmpty { .. }
             | PureExpr::OptionIsSome { .. }
@@ -437,24 +437,24 @@ impl PureExpr {
             | PureExpr::HtmlEscape { id, .. }
             | PureExpr::HtmlConcat { id, .. }
             | PureExpr::HtmlFor { id, .. }
-            | PureExpr::FunctionCall { id, .. }
-            | PureExpr::BooleanLiteral { id, .. }
+            | PureExpr::Call { id, .. }
+            | PureExpr::BoolLiteral { id, .. }
             | PureExpr::FloatLiteral { id, .. }
             | PureExpr::IntLiteral { id, .. }
-            | PureExpr::ArrayLiteral { id, .. }
-            | PureExpr::TupleLiteral { id, .. }
+            | PureExpr::Array { id, .. }
+            | PureExpr::Tuple { id, .. }
             | PureExpr::TupleIndex { id, .. }
-            | PureExpr::RecordLiteral { id, .. }
-            | PureExpr::EnumLiteral { id, .. }
-            | PureExpr::OptionLiteral { id, .. }
+            | PureExpr::Record { id, .. }
+            | PureExpr::Enum { id, .. }
+            | PureExpr::Option { id, .. }
             | PureExpr::StringConcat { id, .. }
             | PureExpr::NumericAdd { id, .. }
             | PureExpr::NumericSubtract { id, .. }
             | PureExpr::NumericMultiply { id, .. }
             | PureExpr::NumericNegation { id, .. }
-            | PureExpr::BooleanNegation { id, .. }
-            | PureExpr::BooleanLogicalAnd { id, .. }
-            | PureExpr::BooleanLogicalOr { id, .. }
+            | PureExpr::BoolNegation { id, .. }
+            | PureExpr::BoolLogicalAnd { id, .. }
+            | PureExpr::BoolLogicalOr { id, .. }
             | PureExpr::Equals { id, .. }
             | PureExpr::LessThan { id, .. }
             | PureExpr::LessThanOrEqual { id, .. }
@@ -531,13 +531,13 @@ impl PureExpr {
                 }
             }
 
-            PureExpr::FunctionCall { args, .. } => {
+            PureExpr::Call { args, .. } => {
                 for arg in args {
                     f(&arg.expr);
                 }
             }
 
-            PureExpr::ArrayLiteral { elements, .. } | PureExpr::TupleLiteral { elements, .. } => {
+            PureExpr::Array { elements, .. } | PureExpr::Tuple { elements, .. } => {
                 for element in elements {
                     f(element);
                 }
@@ -545,26 +545,27 @@ impl PureExpr {
 
             PureExpr::TupleIndex { tuple, .. } => f(tuple),
 
-            PureExpr::RecordLiteral { fields, .. } | PureExpr::EnumLiteral { fields, .. } => {
+            PureExpr::Record { fields, .. } | PureExpr::Enum { fields, .. } => {
                 for (_, value) in fields {
                     f(value);
                 }
             }
 
-            PureExpr::OptionLiteral { value, .. } => {
+            PureExpr::Option { value, .. } => {
                 if let Some(value) = value {
                     f(value);
                 }
             }
 
-            PureExpr::NumericNegation { operand, .. }
-            | PureExpr::BooleanNegation { operand, .. } => f(operand),
+            PureExpr::NumericNegation { operand, .. } | PureExpr::BoolNegation { operand, .. } => {
+                f(operand);
+            }
 
             PureExpr::NumericAdd { left, right, .. }
             | PureExpr::NumericSubtract { left, right, .. }
             | PureExpr::NumericMultiply { left, right, .. }
-            | PureExpr::BooleanLogicalAnd { left, right, .. }
-            | PureExpr::BooleanLogicalOr { left, right, .. }
+            | PureExpr::BoolLogicalAnd { left, right, .. }
+            | PureExpr::BoolLogicalOr { left, right, .. }
             | PureExpr::Equals { left, right, .. }
             | PureExpr::LessThan { left, right, .. }
             | PureExpr::LessThanOrEqual { left, right, .. } => {
@@ -587,7 +588,7 @@ impl PureExpr {
             PureExpr::VariableReference { .. }
             | PureExpr::StringLiteral { .. }
             | PureExpr::HtmlRaw { .. }
-            | PureExpr::BooleanLiteral { .. }
+            | PureExpr::BoolLiteral { .. }
             | PureExpr::FloatLiteral { .. }
             | PureExpr::IntLiteral { .. } => {}
         }
@@ -695,12 +696,12 @@ impl PureExpr {
                 id,
             },
 
-            PureExpr::FunctionCall {
+            PureExpr::Call {
                 function,
                 args,
                 typ,
                 id,
-            } => PureExpr::FunctionCall {
+            } => PureExpr::Call {
                 function,
                 args: args
                     .into_iter()
@@ -713,13 +714,13 @@ impl PureExpr {
                 id,
             },
 
-            PureExpr::ArrayLiteral { elements, typ, id } => PureExpr::ArrayLiteral {
+            PureExpr::Array { elements, typ, id } => PureExpr::Array {
                 elements: elements.into_iter().map(&mut *f).collect(),
                 typ,
                 id,
             },
 
-            PureExpr::TupleLiteral { elements, typ, id } => PureExpr::TupleLiteral {
+            PureExpr::Tuple { elements, typ, id } => PureExpr::Tuple {
                 elements: elements.into_iter().map(&mut *f).collect(),
                 typ,
                 id,
@@ -737,12 +738,12 @@ impl PureExpr {
                 id,
             },
 
-            PureExpr::RecordLiteral {
+            PureExpr::Record {
                 type_name,
                 fields,
                 typ,
                 id,
-            } => PureExpr::RecordLiteral {
+            } => PureExpr::Record {
                 type_name,
                 fields: fields
                     .into_iter()
@@ -752,13 +753,13 @@ impl PureExpr {
                 id,
             },
 
-            PureExpr::EnumLiteral {
+            PureExpr::Enum {
                 type_name,
                 variant_name,
                 fields,
                 typ,
                 id,
-            } => PureExpr::EnumLiteral {
+            } => PureExpr::Enum {
                 type_name,
                 variant_name,
                 fields: fields
@@ -769,7 +770,7 @@ impl PureExpr {
                 id,
             },
 
-            PureExpr::OptionLiteral { value, typ, id } => PureExpr::OptionLiteral {
+            PureExpr::Option { value, typ, id } => PureExpr::Option {
                 value: value.map(|v| Box::new(f(*v))),
                 typ,
                 id,
@@ -826,18 +827,18 @@ impl PureExpr {
                 id,
             },
 
-            PureExpr::BooleanNegation { operand, id } => PureExpr::BooleanNegation {
+            PureExpr::BoolNegation { operand, id } => PureExpr::BoolNegation {
                 operand: Box::new(f(*operand)),
                 id,
             },
 
-            PureExpr::BooleanLogicalAnd { left, right, id } => PureExpr::BooleanLogicalAnd {
+            PureExpr::BoolLogicalAnd { left, right, id } => PureExpr::BoolLogicalAnd {
                 left: Box::new(f(*left)),
                 right: Box::new(f(*right)),
                 id,
             },
 
-            PureExpr::BooleanLogicalOr { left, right, id } => PureExpr::BooleanLogicalOr {
+            PureExpr::BoolLogicalOr { left, right, id } => PureExpr::BoolLogicalOr {
                 left: Box::new(f(*left)),
                 right: Box::new(f(*right)),
                 id,
@@ -922,7 +923,7 @@ impl PureExpr {
             PureExpr::VariableReference { .. }
             | PureExpr::StringLiteral { .. }
             | PureExpr::HtmlRaw { .. }
-            | PureExpr::BooleanLiteral { .. }
+            | PureExpr::BoolLiteral { .. }
             | PureExpr::FloatLiteral { .. }
             | PureExpr::IntLiteral { .. } => self,
         }
@@ -1038,7 +1039,7 @@ impl PureExpr {
                     .append(BoxDoc::text("}"))
                     .group()
             }
-            PureExpr::FunctionCall { function, args, .. } => {
+            PureExpr::Call { function, args, .. } => {
                 let mut doc = BoxDoc::text("call ")
                     .append(BoxDoc::text(function.to_string()))
                     .append(BoxDoc::text("("));
@@ -1054,10 +1055,10 @@ impl PureExpr {
                 }
                 doc.append(BoxDoc::text(")"))
             }
-            PureExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            PureExpr::BoolLiteral { value, .. } => BoxDoc::text(value.to_string()),
             PureExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             PureExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            PureExpr::ArrayLiteral { elements, .. } => {
+            PureExpr::Array { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -1076,7 +1077,7 @@ impl PureExpr {
                         .append(BoxDoc::text("]"))
                 }
             }
-            PureExpr::TupleLiteral { elements, .. } => BoxDoc::text("(")
+            PureExpr::Tuple { elements, .. } => BoxDoc::text("(")
                 .append(
                     BoxDoc::line_()
                         .append(BoxDoc::intersperse(
@@ -1097,7 +1098,7 @@ impl PureExpr {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(index.to_string())),
-            PureExpr::RecordLiteral {
+            PureExpr::Record {
                 type_name, fields, ..
             } => {
                 if fields.is_empty() {
@@ -1153,18 +1154,18 @@ impl PureExpr {
                 .append(BoxDoc::text("-"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            PureExpr::BooleanNegation { operand, .. } => BoxDoc::nil()
+            PureExpr::BoolNegation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            PureExpr::BooleanLogicalAnd { left, right, .. } => BoxDoc::nil()
+            PureExpr::BoolLogicalAnd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" && "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            PureExpr::BooleanLogicalOr { left, right, .. } => BoxDoc::nil()
+            PureExpr::BoolLogicalOr { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" || "))
@@ -1188,7 +1189,7 @@ impl PureExpr {
                 .append(BoxDoc::text(" <= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            PureExpr::EnumLiteral {
+            PureExpr::Enum {
                 type_name,
                 variant_name,
                 fields,
@@ -1212,10 +1213,10 @@ impl PureExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            PureExpr::OptionLiteral { value, typ, .. } => {
+            PureExpr::Option { value, typ, .. } => {
                 let inner_type = match typ {
                     Type::Option(inner) => inner.to_doc(),
-                    _ => panic!("OptionLiteral must have Option type, got {:?}", typ),
+                    _ => panic!("Option expression must have Option type, got {:?}", typ),
                 };
                 let type_prefix = BoxDoc::text("Option[")
                     .append(inner_type)

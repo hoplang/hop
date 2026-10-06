@@ -58,7 +58,7 @@ pub struct WriterPageDeclaration {
     pub name: TypeName,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
-    /// IR nodes for the assembled page body
+    /// Statements for the assembled page body
     pub body: Vec<WriterStatement>,
 }
 
@@ -80,7 +80,7 @@ pub enum WriterFunctionBody {
     /// Call sites invoke this with a WriteFunction statement.
     Writes(Vec<WriterStatement>),
     /// Value-returning: evaluates to a value.
-    /// Call sites invoke this with a FunctionCall expression.
+    /// Call sites invoke this with a Call expression.
     Returns(WriterExpr),
 }
 
@@ -163,7 +163,7 @@ pub enum WriterExpr {
         typ: Type,
     },
 
-    /// A Match expression over an Enum, Boolean, or Option.
+    /// A Match expression over an Enum, Bool, or Option.
     ///
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
@@ -196,17 +196,17 @@ pub enum WriterExpr {
     /// Produced by rendering the body into a fresh buffer.
     HtmlLiteral { body: Vec<WriterStatement> },
 
-    /// A FunctionCall expression.
+    /// A call expression.
     ///
     /// Invokes a value-returning function and produces its result.
-    FunctionCall {
+    Call {
         function: IrFunction,
         args: Vec<WriterArgument>,
         typ: Type,
     },
 
-    /// A BooleanLiteral expression.
-    BooleanLiteral { value: bool },
+    /// A BoolLiteral expression.
+    BoolLiteral { value: bool },
 
     /// A FloatLiteral expression.
     FloatLiteral { value: f64 },
@@ -214,14 +214,14 @@ pub enum WriterExpr {
     /// An IntLiteral expression.
     IntLiteral { value: i32 },
 
-    /// An ArrayLiteral expression.
-    ArrayLiteral {
+    /// An array expression.
+    Array {
         elements: Vec<WriterExpr>,
         typ: Type,
     },
 
-    /// A TupleLiteral expression.
-    TupleLiteral {
+    /// A tuple expression.
+    Tuple {
         elements: Vec<WriterExpr>,
         typ: Type,
     },
@@ -233,15 +233,15 @@ pub enum WriterExpr {
         typ: Type,
     },
 
-    /// A RecordLiteral expression.
-    RecordLiteral {
+    /// A record expression.
+    Record {
         type_name: TypeName,
         fields: Vec<(FieldName, WriterExpr)>,
         typ: Type,
     },
 
-    /// An EnumLiteral expression.
-    EnumLiteral {
+    /// An enum expression.
+    Enum {
         type_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
@@ -249,8 +249,8 @@ pub enum WriterExpr {
         typ: Type,
     },
 
-    /// An OptionLiteral expression.
-    OptionLiteral {
+    /// An option expression.
+    Option {
         value: Option<Box<WriterExpr>>,
         typ: Type,
     },
@@ -299,26 +299,26 @@ pub enum WriterExpr {
         operand_type: NumericType,
     },
 
-    /// A BooleanNegation expression.
+    /// A BoolNegation expression.
     ///
-    /// Must hold a Boolean expression.
-    /// Returns a Boolean.
-    BooleanNegation { operand: Box<WriterExpr> },
+    /// Must hold a Bool expression.
+    /// Returns a Bool.
+    BoolNegation { operand: Box<WriterExpr> },
 
-    /// A BooleanLogicalAnd expression.
+    /// A BoolLogicalAnd expression.
     ///
-    /// Must hold two Boolean expressions.
-    /// Returns a Boolean.
-    BooleanLogicalAnd {
+    /// Must hold two Bool expressions.
+    /// Returns a Bool.
+    BoolLogicalAnd {
         left: Box<WriterExpr>,
         right: Box<WriterExpr>,
     },
 
-    /// A BooleanLogicalOr expression.
+    /// A BoolLogicalOr expression.
     ///
-    /// Must hold two Boolean expressions.
-    /// Returns a Boolean.
-    BooleanLogicalOr {
+    /// Must hold two Bool expressions.
+    /// Returns a Bool.
+    BoolLogicalOr {
         left: Box<WriterExpr>,
         right: Box<WriterExpr>,
     },
@@ -326,7 +326,7 @@ pub enum WriterExpr {
     /// An Equals expression.
     ///
     /// Must hold two values of the same EquatableType.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     Equals {
         left: Box<WriterExpr>,
         right: Box<WriterExpr>,
@@ -336,7 +336,7 @@ pub enum WriterExpr {
     /// A LessThan expression.
     ///
     /// Must hold two values of the same ComparableType.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     LessThan {
         left: Box<WriterExpr>,
         right: Box<WriterExpr>,
@@ -346,7 +346,7 @@ pub enum WriterExpr {
     /// A LessThanOrEqual expression.
     ///
     /// Must hold two values of the same ComparableType.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     LessThanOrEqual {
         left: Box<WriterExpr>,
         right: Box<WriterExpr>,
@@ -362,25 +362,25 @@ pub enum WriterExpr {
     /// An ArrayIsEmpty expression.
     ///
     /// Must hold an Array expression.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     ArrayIsEmpty { array: Box<WriterExpr> },
 
     /// A StringIsEmpty expression.
     ///
     /// Must hold a String expression.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     StringIsEmpty { string: Box<WriterExpr> },
 
     /// An OptionIsSome expression.
     ///
     /// Must hold an Option expression.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     OptionIsSome { option: Box<WriterExpr> },
 
     /// An OptionIsNone expression.
     ///
     /// Must hold an Option expression.
-    /// Returns a Boolean.
+    /// Returns a Bool.
     OptionIsNone { option: Box<WriterExpr> },
 
     /// An IntToString expression.
@@ -606,15 +606,15 @@ impl WriterExpr {
         match self {
             WriterExpr::VariableReference { typ, .. }
             | WriterExpr::FieldAccess { typ, .. }
-            | WriterExpr::ArrayLiteral { typ, .. }
-            | WriterExpr::TupleLiteral { typ, .. }
+            | WriterExpr::Array { typ, .. }
+            | WriterExpr::Tuple { typ, .. }
             | WriterExpr::TupleIndex { typ, .. }
-            | WriterExpr::RecordLiteral { typ, .. }
-            | WriterExpr::EnumLiteral { typ, .. }
-            | WriterExpr::OptionLiteral { typ, .. }
+            | WriterExpr::Record { typ, .. }
+            | WriterExpr::Enum { typ, .. }
+            | WriterExpr::Option { typ, .. }
             | WriterExpr::Match { typ, .. }
             | WriterExpr::Let { typ, .. }
-            | WriterExpr::FunctionCall { typ, .. } => typ.clone(),
+            | WriterExpr::Call { typ, .. } => typ.clone(),
 
             WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => Type::Float,
             WriterExpr::IntLiteral { .. } => Type::Int,
@@ -636,13 +636,13 @@ impl WriterExpr {
                 NumericType::Float => Type::Float,
             },
 
-            WriterExpr::BooleanLiteral { .. }
-            | WriterExpr::BooleanNegation { .. }
+            WriterExpr::BoolLiteral { .. }
+            | WriterExpr::BoolNegation { .. }
             | WriterExpr::Equals { .. }
             | WriterExpr::LessThan { .. }
             | WriterExpr::LessThanOrEqual { .. }
-            | WriterExpr::BooleanLogicalAnd { .. }
-            | WriterExpr::BooleanLogicalOr { .. }
+            | WriterExpr::BoolLogicalAnd { .. }
+            | WriterExpr::BoolLogicalOr { .. }
             | WriterExpr::ArrayIsEmpty { .. }
             | WriterExpr::StringIsEmpty { .. }
             | WriterExpr::OptionIsSome { .. }
@@ -677,7 +677,7 @@ impl WriterExpr {
                         .nest(2)
                 })
                 .append(BoxDoc::text("}")),
-            WriterExpr::FunctionCall { function, args, .. } => {
+            WriterExpr::Call { function, args, .. } => {
                 let mut doc = BoxDoc::text("call ")
                     .append(BoxDoc::text(function.to_string()))
                     .append(BoxDoc::text("("));
@@ -693,10 +693,10 @@ impl WriterExpr {
                 }
                 doc.append(BoxDoc::text(")"))
             }
-            WriterExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            WriterExpr::BoolLiteral { value, .. } => BoxDoc::text(value.to_string()),
             WriterExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             WriterExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            WriterExpr::TupleLiteral { elements, .. } => BoxDoc::text("(")
+            WriterExpr::Tuple { elements, .. } => BoxDoc::text("(")
                 .append(
                     BoxDoc::line_()
                         .append(BoxDoc::intersperse(
@@ -717,7 +717,7 @@ impl WriterExpr {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(index.to_string())),
-            WriterExpr::ArrayLiteral { elements, .. } => {
+            WriterExpr::Array { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -736,7 +736,7 @@ impl WriterExpr {
                         .append(BoxDoc::text("]"))
                 }
             }
-            WriterExpr::RecordLiteral {
+            WriterExpr::Record {
                 type_name, fields, ..
             } => {
                 if fields.is_empty() {
@@ -787,7 +787,7 @@ impl WriterExpr {
                 .append(BoxDoc::text(" * "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            WriterExpr::BooleanNegation { operand, .. } => BoxDoc::nil()
+            WriterExpr::BoolNegation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
@@ -815,19 +815,19 @@ impl WriterExpr {
                 .append(BoxDoc::text(" <= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            WriterExpr::BooleanLogicalAnd { left, right, .. } => BoxDoc::nil()
+            WriterExpr::BoolLogicalAnd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" && "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            WriterExpr::BooleanLogicalOr { left, right, .. } => BoxDoc::nil()
+            WriterExpr::BoolLogicalOr { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" || "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            WriterExpr::EnumLiteral {
+            WriterExpr::Enum {
                 type_name,
                 variant_name,
                 fields,
@@ -851,11 +851,11 @@ impl WriterExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            WriterExpr::OptionLiteral { value, typ, .. } => {
+            WriterExpr::Option { value, typ, .. } => {
                 // Extract inner type from Option[T] -> T
                 let inner_type = match typ {
                     Type::Option(inner) => inner.to_doc(),
-                    _ => panic!("OptionLiteral must have Option type, got {:?}", typ),
+                    _ => panic!("Option expression must have Option type, got {:?}", typ),
                 };
                 let type_prefix = BoxDoc::text("Option[")
                     .append(inner_type)

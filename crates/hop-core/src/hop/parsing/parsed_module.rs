@@ -11,7 +11,7 @@ use pretty::BoxDoc;
 use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
-pub struct ParsedAst {
+pub struct ParsedModule {
     // We use a Vec of enum to store the declarations so that the declaration
     // order is consistent when formatting.
     declarations: Vec<ParsedDeclaration>,
@@ -215,7 +215,7 @@ impl ParsedDeclaration {
     }
 }
 
-impl ParsedAst {
+impl ParsedModule {
     pub fn new(declarations: Vec<ParsedDeclaration>, comments: Vec<DocumentRange>) -> Self {
         Self {
             declarations,
@@ -227,7 +227,7 @@ impl ParsedAst {
         &self.comments
     }
 
-    /// Returns a reference to all declarations in the AST, preserving their original order.
+    /// Returns a reference to all declarations in the module, preserving their original order.
     pub fn declarations(&self) -> &[ParsedDeclaration] {
         &self.declarations
     }
@@ -238,7 +238,7 @@ impl ParsedAst {
             .find(|r| r.type_name.as_str() == name)
     }
 
-    /// Returns an iterator over all import declarations in the AST.
+    /// Returns an iterator over all import declarations in the module.
     pub fn import_declarations(&self) -> impl Iterator<Item = &ParsedImportDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Import(i) => Some(i),
@@ -246,7 +246,7 @@ impl ParsedAst {
         })
     }
 
-    /// Returns an iterator over all record declarations in the AST.
+    /// Returns an iterator over all record declarations in the module.
     pub fn record_declarations(&self) -> impl Iterator<Item = &ParsedRecordDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Record(r) => Some(r),
@@ -260,7 +260,7 @@ impl ParsedAst {
             .find(|e| e.type_name.as_str() == name)
     }
 
-    /// Returns an iterator over all enum declarations in the AST.
+    /// Returns an iterator over all enum declarations in the module.
     pub fn enum_declarations(&self) -> impl Iterator<Item = &ParsedEnumDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Enum(e) => Some(e),
@@ -304,7 +304,7 @@ impl ParsedAst {
     }
 }
 
-impl Display for ParsedAst {
+impl Display for ParsedModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(40))
     }

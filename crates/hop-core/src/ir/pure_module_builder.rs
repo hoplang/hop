@@ -306,7 +306,7 @@ impl PureBuilder {
     }
 
     pub fn bool(&self, b: bool) -> PureExpr {
-        PureExpr::BooleanLiteral {
+        PureExpr::BoolLiteral {
             value: b,
             id: self.next_expr_id(),
         }
@@ -443,10 +443,10 @@ impl PureBuilder {
         assert_eq!(
             operand.typ(),
             Type::Bool,
-            "BooleanNegation expects Bool operand, got: {}",
+            "BoolNegation expects Bool operand, got: {}",
             operand
         );
-        PureExpr::BooleanNegation {
+        PureExpr::BoolNegation {
             operand: Box::new(operand),
             id: self.next_expr_id(),
         }
@@ -469,16 +469,16 @@ impl PureBuilder {
         assert_eq!(
             left.typ(),
             Type::Bool,
-            "BooleanLogicalAnd expects Bool operands, got: {}",
+            "BoolLogicalAnd expects Bool operands, got: {}",
             left
         );
         assert_eq!(
             right.typ(),
             Type::Bool,
-            "BooleanLogicalAnd expects Bool operands, got: {}",
+            "BoolLogicalAnd expects Bool operands, got: {}",
             right
         );
-        PureExpr::BooleanLogicalAnd {
+        PureExpr::BoolLogicalAnd {
             left: Box::new(left),
             right: Box::new(right),
             id: self.next_expr_id(),
@@ -489,16 +489,16 @@ impl PureBuilder {
         assert_eq!(
             left.typ(),
             Type::Bool,
-            "BooleanLogicalOr expects Bool operands, got: {}",
+            "BoolLogicalOr expects Bool operands, got: {}",
             left
         );
         assert_eq!(
             right.typ(),
             Type::Bool,
-            "BooleanLogicalOr expects Bool operands, got: {}",
+            "BoolLogicalOr expects Bool operands, got: {}",
             right
         );
-        PureExpr::BooleanLogicalOr {
+        PureExpr::BoolLogicalOr {
             left: Box::new(left),
             right: Box::new(right),
             id: self.next_expr_id(),
@@ -523,7 +523,7 @@ impl PureBuilder {
             );
         }
 
-        PureExpr::ArrayLiteral {
+        PureExpr::Array {
             elements,
             typ: Type::Array(Box::new(element_type)),
             id: self.next_expr_id(),
@@ -531,7 +531,7 @@ impl PureBuilder {
     }
 
     pub fn tuple(&self, elements: Vec<PureExpr>) -> PureExpr {
-        PureExpr::TupleLiteral {
+        PureExpr::Tuple {
             typ: Type::Tuple(elements.iter().map(|element| element.typ()).collect()),
             elements,
             id: self.next_expr_id(),
@@ -631,7 +631,7 @@ impl PureBuilder {
             missing_fields
         );
 
-        PureExpr::RecordLiteral {
+        PureExpr::Record {
             type_name: name,
             fields: fields
                 .into_iter()
@@ -706,7 +706,7 @@ impl PureBuilder {
             missing_fields
         );
 
-        PureExpr::EnumLiteral {
+        PureExpr::Enum {
             type_name: name,
             variant_name: TypeName::parse(variant_name).unwrap(),
             fields: field_values
@@ -720,7 +720,7 @@ impl PureBuilder {
 
     pub fn some(&self, inner: PureExpr) -> PureExpr {
         let inner_type = inner.typ();
-        PureExpr::OptionLiteral {
+        PureExpr::Option {
             value: Some(Box::new(inner)),
             typ: Type::Option(Box::new(inner_type)),
             id: self.next_expr_id(),
@@ -732,7 +732,7 @@ impl PureBuilder {
     }
 
     pub fn none_typed(&self, inner_type: Type) -> PureExpr {
-        PureExpr::OptionLiteral {
+        PureExpr::Option {
             value: None,
             typ: Type::Option(Box::new(inner_type)),
             id: self.next_expr_id(),
@@ -1154,7 +1154,7 @@ impl PureBuilder {
             })
             .collect();
 
-        PureExpr::FunctionCall {
+        PureExpr::Call {
             function,
             args: pure_args,
             typ: return_type,

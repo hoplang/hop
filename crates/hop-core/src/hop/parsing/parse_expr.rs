@@ -10,13 +10,12 @@ use super::parse_helpers::{
     expect_identifier, expect_token, int_literal_value, next_if_eq, next_if_map, parse_delimited,
     parse_delimited_list,
 };
-use super::parse_nodes;
+use super::parse_markup;
 use super::parse_type::parse_type;
 use super::parsed_expr::{
-    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer, ParsedLoopSource,
-    ParsedMatchArm, ParsedNamedArgument, ParsedPattern,
+    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer, ParsedLetBinding,
+    ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument, ParsedPattern, ParsedUnaryOp,
 };
-use super::parsed_node::ParsedLetBinding;
 use super::token::LangToken;
 use super::tokenize_expr::{peek, peek2, peek3};
 
@@ -24,7 +23,7 @@ use super::tokenize_expr::{peek, peek2, peek3};
 /// `Restrictions` in rustc and rust-analyzer.
 #[derive(Debug, Clone, Copy)]
 pub struct Restrictions {
-    pub forbid_record_literals: bool,
+    pub forbid_record_expressions: bool,
 }
 
 pub fn parse_expr(
@@ -37,7 +36,7 @@ pub fn parse_expr(
         comments,
         errors,
         Restrictions {
-            forbid_record_literals: false,
+            forbid_record_expressions: false,
         },
     )
 }
@@ -51,7 +50,7 @@ pub fn parse_expr_with(
     let mut expr = parse_logical_and(iter, comments, errors, restrictions)?;
     while next_if_eq(iter, comments, errors, LangToken::LogicalOr).is_some() {
         let right = parse_logical_and(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::BinaryOp {
+        expr = ParsedExpr::Binary {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
             operator: ParsedBinaryOp::LogicalOr,
@@ -70,7 +69,7 @@ fn parse_logical_and(
     let mut expr = parse_equality(iter, comments, errors, restrictions)?;
     while next_if_eq(iter, comments, errors, LangToken::LogicalAnd).is_some() {
         let right = parse_equality(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::BinaryOp {
+        expr = ParsedExpr::Binary {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
             operator: ParsedBinaryOp::LogicalAnd,
@@ -93,7 +92,7 @@ fn parse_equality(
         _ => None,
     }) {
         let right = parse_relational(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::BinaryOp {
+        expr = ParsedExpr::Binary {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
             operator,
@@ -118,7 +117,7 @@ fn parse_relational(
         _ => None,
     }) {
         let right = parse_additive(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::BinaryOp {
+        expr = ParsedExpr::Binary {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
             operator,
@@ -141,7 +140,7 @@ fn parse_additive(
         _ => None,
     }) {
         let right = parse_multiplicative(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::BinaryOp {
+        expr = ParsedExpr::Binary {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
             operator,
@@ -160,7 +159,7 @@ fn parse_multiplicative(
     let mut expr = parse_unary(iter, comments, errors, restrictions)?;
     while next_if_eq(iter, comments, errors, LangToken::Asterisk).is_some() {
         let right = parse_unary(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::BinaryOp {
+        expr = ParsedExpr::Binary {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
             operator: ParsedBinaryOp::Multiply,
@@ -178,8 +177,9 @@ fn parse_unary(
 ) -> Result<ParsedExpr, ErrorEmitted> {
     if let Some(operator_range) = next_if_eq(iter, comments, errors, LangToken::Not) {
         let expr = parse_unary(iter, comments, errors, restrictions)?;
-        Ok(ParsedExpr::BooleanNegation {
+        Ok(ParsedExpr::Unary {
             range: operator_range.to(expr.range().clone()),
+            operator: ParsedUnaryOp::LogicalNot,
             operand: Box::new(expr),
         })
     } else if let Some(operator_range) = next_if_eq(iter, comments, errors, LangToken::Minus) {
@@ -215,8 +215,9 @@ fn parse_unary(
             }
         } else {
             let expr = parse_unary(iter, comments, errors, restrictions)?;
-            Ok(ParsedExpr::NumericNegation {
+            Ok(ParsedExpr::Unary {
                 range: operator_range.to(expr.range().clone()),
+                operator: ParsedUnaryOp::Minus,
                 operand: Box::new(expr),
             })
         }
@@ -291,9 +292,9 @@ pub fn parse_primary(
         next_if_map(iter, comments, errors, LangToken::not_uppercase_identifier)
     {
         if let Some(bang_range) = next_if_eq(iter, comments, errors, LangToken::Not) {
-            parse_macro_invocation(iter, comments, errors, name, name_range.to(bang_range))?
+            parse_macro(iter, comments, errors, name, name_range.to(bang_range))?
         } else if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
-            parse_function_call(iter, comments, errors, name, name_range, left_paren)?
+            parse_call(iter, comments, errors, name, name_range, left_paren)?
         } else {
             ParsedExpr::VariableReference {
                 value: VarName::new(name).or_emit(errors, &name_range)?,
@@ -304,13 +305,13 @@ pub fn parse_primary(
         next_if_map(iter, comments, errors, LangToken::uppercase_identifier)
     {
         if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
-            parse_function_call(iter, comments, errors, name, name_range, left_paren)?
+            parse_call(iter, comments, errors, name, name_range, left_paren)?
         } else {
             let type_name = TypeName::new(name).or_emit(errors, &name_range)?;
             if next_if_eq(iter, comments, errors, LangToken::ColonColon).is_some() {
-                parse_enum_literal(iter, comments, errors, type_name, name_range, restrictions)?
+                parse_enum(iter, comments, errors, type_name, name_range, restrictions)?
             } else {
-                parse_record_literal(iter, comments, errors, type_name, name_range, restrictions)?
+                parse_record(iter, comments, errors, type_name, name_range, restrictions)?
             }
         }
     } else if let Some((value, lit_range)) =
@@ -330,7 +331,7 @@ pub fn parse_primary(
             _ => None,
         })
     {
-        ParsedExpr::BooleanLiteral {
+        ParsedExpr::BoolLiteral {
             value,
             range: lit_range,
         }
@@ -371,7 +372,7 @@ pub fn parse_primary(
             &[],
             parse_expr,
         )?;
-        ParsedExpr::ArrayLiteral { elements, range }
+        ParsedExpr::Array { elements, range }
     } else if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
         let mut trailing_comma = false;
         let (mut elements, parens) = parse_delimited_list(
@@ -391,7 +392,7 @@ pub fn parse_primary(
         if elements.len() == 1 && !trailing_comma {
             elements.remove(0)
         } else {
-            ParsedExpr::TupleLiteral {
+            ParsedExpr::Tuple {
                 elements,
                 range: left_paren.to(parens),
             }
@@ -410,12 +411,12 @@ pub fn parse_primary(
             &left_paren,
             parse_expr,
         )?;
-        ParsedExpr::OptionLiteral {
+        ParsedExpr::Option {
             value: Some(Box::new(value)),
             range: some_range.to(parens),
         }
     } else if let Some(none_range) = next_if_eq(iter, comments, errors, LangToken::None) {
-        ParsedExpr::OptionLiteral {
+        ParsedExpr::Option {
             value: None,
             range: none_range,
         }
@@ -423,7 +424,7 @@ pub fn parse_primary(
         let (inner, _) = parse_block(iter, comments, errors, &left_brace)?;
         inner
     } else if let Some(left_angle) = next_if_eq(iter, comments, errors, LangToken::LessThan) {
-        parse_nodes::parse_markup(iter, comments, errors, left_angle)?
+        parse_markup::parse_markup_expr(iter, comments, errors, left_angle)?
     } else {
         return Err(match peek(iter) {
             Some((LangToken::Let, token_range)) => {
@@ -466,7 +467,7 @@ pub fn parse_primary(
 }
 
 /// Parse a call's argument list from a `(` the caller has already consumed.
-fn parse_function_call(
+fn parse_call(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
@@ -517,7 +518,7 @@ fn parse_function_call(
             }
         }
     }
-    Ok(ParsedExpr::FunctionCall {
+    Ok(ParsedExpr::Call {
         name: FunctionName::new(name).or_emit(errors, &name_range)?,
         name_range: name_range.clone(),
         args: if is_named {
@@ -529,7 +530,7 @@ fn parse_function_call(
     })
 }
 
-fn parse_macro_invocation(
+fn parse_macro(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
@@ -546,7 +547,7 @@ fn parse_macro_invocation(
         &[],
         parse_expr,
     )?;
-    Ok(ParsedExpr::MacroInvocation {
+    Ok(ParsedExpr::Macro {
         name: macro_name,
         subject_range: subject_range.clone(),
         args,
@@ -554,7 +555,7 @@ fn parse_macro_invocation(
     })
 }
 
-fn parse_record_literal(
+fn parse_record(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
@@ -568,15 +569,12 @@ fn parse_record_literal(
     }
     let left_brace = match next_if_field_list(iter, comments, errors, restrictions) {
         Some(left_brace) => left_brace,
-        // A bare type name is not an expression, so the literal is the
-        // problem rather than the `{` that was left for the block.
-        None if restrictions.forbid_record_literals
+        // A bare type name is not an expression, so the record expression
+        // is the problem rather than the `{` that was left for the block.
+        None if restrictions.forbid_record_expressions
             && matches!(peek(iter), Some((LangToken::LeftBrace, _))) =>
         {
-            return Err(errors.emit(
-                ParseErrorKind::RecordLiteralNotAllowedHere {},
-                type_name_range,
-            ));
+            return Err(errors.emit(ParseErrorKind::RecordNotAllowedHere {}, type_name_range));
         }
         None => expect_token(iter, comments, errors, &LangToken::LeftBrace)?,
     };
@@ -609,22 +607,17 @@ fn parse_record_literal(
             Entry::Field(field) => fields.push(field),
             Entry::Spread(subject, spread_range) => {
                 if spread.is_some() {
-                    return Err(
-                        errors.emit(ParseErrorKind::DuplicateSpreadInRecordLiteral, spread_range)
-                    );
+                    return Err(errors.emit(ParseErrorKind::DuplicateSpreadInRecord, spread_range));
                 }
                 spread = Some(Box::new(subject));
             }
         }
     }
     let range = type_name_range.clone().to(braces);
-    if restrictions.forbid_record_literals {
-        let _ = errors.emit(
-            ParseErrorKind::RecordLiteralNotAllowedHere {},
-            range.clone(),
-        );
+    if restrictions.forbid_record_expressions {
+        let _ = errors.emit(ParseErrorKind::RecordNotAllowedHere {}, range.clone());
     }
-    Ok(ParsedExpr::RecordLiteral {
+    Ok(ParsedExpr::Record {
         type_name,
         type_name_range,
         fields,
@@ -633,7 +626,7 @@ fn parse_record_literal(
     })
 }
 
-fn parse_enum_literal(
+fn parse_enum(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
@@ -655,9 +648,7 @@ fn parse_enum_literal(
             |iter, comments, errors| {
                 if let Some(spread_range) = next_if_eq(iter, comments, errors, LangToken::DotDotDot)
                 {
-                    return Err(
-                        errors.emit(ParseErrorKind::SpreadNotAllowedInEnumLiteral, spread_range)
-                    );
+                    return Err(errors.emit(ParseErrorKind::SpreadNotAllowedInEnum, spread_range));
                 }
                 let (field_name, field_name_range) = expect_identifier(iter, comments, errors)?;
                 let field_name = FieldName::new(field_name).or_emit(errors, &field_name_range)?;
@@ -669,9 +660,9 @@ fn parse_enum_literal(
                 })
             },
         )?;
-        if restrictions.forbid_record_literals {
+        if restrictions.forbid_record_expressions {
             let _ = errors.emit(
-                ParseErrorKind::RecordLiteralNotAllowedHere {},
+                ParseErrorKind::RecordNotAllowedHere {},
                 type_name_range.clone().to(braces.clone()),
             );
         }
@@ -679,7 +670,7 @@ fn parse_enum_literal(
     } else {
         (Vec::new(), variant_range.clone())
     };
-    Ok(ParsedExpr::EnumLiteral {
+    Ok(ParsedExpr::Enum {
         type_name,
         variant_name: TypeName::new(variant_name).or_emit(errors, &variant_range)?,
         fields,
@@ -689,12 +680,12 @@ fn parse_enum_literal(
     })
 }
 
-/// Consume the `{` that starts a field list of a record or enum literal.
+/// Consume the `{` that starts a field list of a record or enum expression.
 ///
-/// Where record literals are forbidden the `{` is left alone, since it
+/// Where record expressions are forbidden the `{` is left alone, since it
 /// belongs to the block after the expression, unless what follows it can
 /// only be a field list: `{ x,`, `{ x:`, or `{ ...`. The caller then
-/// parses the literal anyway, so that the parse resumes after it, and
+/// parses the expression anyway, so that the parse resumes after it, and
 /// reports it.
 fn next_if_field_list(
     iter: &mut DocumentCursor,
@@ -702,7 +693,7 @@ fn next_if_field_list(
     errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Option<DocumentRange> {
-    if restrictions.forbid_record_literals {
+    if restrictions.forbid_record_expressions {
         let likely_field_list = matches!(peek(iter), Some((LangToken::LeftBrace, _)))
             && match peek2(iter) {
                 Some((LangToken::DotDotDot, _)) => true,
@@ -738,7 +729,7 @@ fn parse_for(
         comments,
         errors,
         Restrictions {
-            forbid_record_literals: true,
+            forbid_record_expressions: true,
         },
     )?;
     let source = if next_if_eq(iter, comments, errors, LangToken::DotDotEq).is_some() {
@@ -747,7 +738,7 @@ fn parse_for(
             comments,
             errors,
             Restrictions {
-                forbid_record_literals: true,
+                forbid_record_expressions: true,
             },
         )?;
         ParsedLoopSource::RangeInclusive {
@@ -779,7 +770,7 @@ fn parse_match(
         comments,
         errors,
         Restrictions {
-            forbid_record_literals: true,
+            forbid_record_expressions: true,
         },
     )?;
     let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
@@ -815,10 +806,10 @@ pub fn parse_pattern(
         });
     }
     if let Some(range) = next_if_eq(iter, comments, errors, LangToken::True) {
-        return Ok(ParsedPattern::BooleanTrue { range });
+        return Ok(ParsedPattern::BoolTrue { range });
     }
     if let Some(range) = next_if_eq(iter, comments, errors, LangToken::False) {
-        return Ok(ParsedPattern::BooleanFalse { range });
+        return Ok(ParsedPattern::BoolFalse { range });
     }
     if let Some(range) = next_if_eq(iter, comments, errors, LangToken::None) {
         return Ok(ParsedPattern::OptionNone { range });
@@ -986,11 +977,11 @@ mod tests {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    // RECORD LITERAL                                                        //
+    // RECORD EXPRESSION                                                     //
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn accepts_record_literal_with_single_field() {
+    fn accepts_record_expression_with_single_field() {
         accept(
             r#"User {name: "John"}"#,
             expect![[r#"
@@ -1000,7 +991,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_multiple_fields() {
+    fn accepts_record_expression_with_multiple_fields() {
         accept(
             r#"User {name: "John", age: 30, active: true}"#,
             expect![[r#"
@@ -1010,7 +1001,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_no_fields() {
+    fn accepts_record_expression_with_no_fields() {
         accept(
             "Empty {}",
             expect![[r#"
@@ -1020,7 +1011,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_trailing_comma() {
+    fn accepts_record_expression_with_trailing_comma() {
         accept(
             r#"User {name: "John", age: 30,}"#,
             expect![[r#"
@@ -1030,7 +1021,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_multiline_fields() {
+    fn accepts_record_expression_with_multiline_fields() {
         accept(
             indoc! {r#"
                 User {
@@ -1044,7 +1035,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_nested_records() {
+    fn accepts_record_expression_with_nested_records() {
         accept(
             r#"Wrapper {inner: Inner {value: 42}}"#,
             expect![[r#"
@@ -1054,7 +1045,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_expression_values() {
+    fn accepts_record_expression_with_expression_values() {
         accept(
             "Point {x: a + b, y: c * 2}",
             expect![[r#"
@@ -1064,7 +1055,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_when_closing_brace_is_missing() {
+    fn rejects_record_expression_when_closing_brace_is_missing() {
         reject(
             r#"User {name: "John""#,
             expect![[r#"
@@ -1077,7 +1068,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_when_colon_is_missing() {
+    fn rejects_record_expression_when_colon_is_missing() {
         reject(
             r#"User {name "John"}"#,
             expect![[r#"
@@ -1092,7 +1083,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_braces_single_field() {
+    fn accepts_record_expression_with_braces_single_field() {
         accept(
             r#"User {name: "John"}"#,
             expect![[r#"
@@ -1102,7 +1093,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_braces_multiple_fields() {
+    fn accepts_record_expression_with_braces_multiple_fields() {
         accept(
             r#"User {name: "John", age: 30}"#,
             expect![[r#"
@@ -1112,7 +1103,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_braces_no_fields() {
+    fn accepts_record_expression_with_braces_no_fields() {
         accept(
             "Empty {}",
             expect![[r#"
@@ -1122,7 +1113,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_braces_trailing_comma() {
+    fn accepts_record_expression_with_braces_trailing_comma() {
         accept(
             r#"User {name: "John",}"#,
             expect![[r#"
@@ -1132,7 +1123,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_spread_first() {
+    fn accepts_record_expression_with_spread_first() {
         accept(
             r#"User {...base, name: "John"}"#,
             expect![[r#"
@@ -1142,7 +1133,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_spread_last_canonicalized_to_first() {
+    fn accepts_record_expression_with_spread_last_canonicalized_to_first() {
         accept(
             r#"User {name: "John", ...base}"#,
             expect![[r#"
@@ -1152,7 +1143,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_only_spread() {
+    fn accepts_record_expression_with_only_spread() {
         accept(
             "User {...base}",
             expect![[r#"
@@ -1162,7 +1153,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_spread_of_field_access() {
+    fn accepts_record_expression_with_spread_of_field_access() {
         accept(
             "State {...app.state, num: 1}",
             expect![[r#"
@@ -1172,7 +1163,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_spread_and_trailing_comma() {
+    fn accepts_record_expression_with_spread_and_trailing_comma() {
         accept(
             r#"User {...base, name: "John",}"#,
             expect![[r#"
@@ -1182,12 +1173,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_two_spreads() {
+    fn rejects_record_expression_with_two_spreads() {
         reject(
             "User {...a, ...b}",
             expect![[r#"
                 -- errors --
-                error: At most one spread is allowed in a record literal
+                error: At most one spread is allowed in a record expression
                 User {...a, ...b}
                             ^^^^
             "#]],
@@ -1195,7 +1186,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_spread_missing_subject() {
+    fn rejects_record_expression_with_spread_missing_subject() {
         reject(
             "User {...}",
             expect![[r#"
@@ -1225,7 +1216,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_mismatched_brace_paren() {
+    fn rejects_record_expression_with_mismatched_brace_paren() {
         reject(
             r#"Foo {bar: "baz")"#,
             expect![[r#"
@@ -1400,7 +1391,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_empty_tuple_literal() {
+    fn accepts_empty_tuple_expression() {
         accept(
             "()",
             expect![[r#"
@@ -1410,7 +1401,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_tuple_literal() {
+    fn accepts_tuple_expression() {
         accept(
             r#"(1, "two", [3])"#,
             expect![[r#"
@@ -1420,7 +1411,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_one_tuple_literal() {
+    fn accepts_one_tuple_expression() {
         accept(
             "(x,)",
             expect![[r#"
@@ -1430,7 +1421,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_tuple_literal_with_trailing_comma() {
+    fn accepts_tuple_expression_with_trailing_comma() {
         accept(
             "(x, y,)",
             expect![[r#"
@@ -1440,7 +1431,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_nested_tuple_literal() {
+    fn accepts_nested_tuple_expression() {
         accept(
             "((a, b), (c,), ())",
             expect![[r#"
@@ -1460,7 +1451,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_tuple_literal_as_match_subject() {
+    fn accepts_tuple_expression_as_match_subject() {
         accept(
             "match (a, b) { (true, _) => 0, (false, _) => 1 }",
             expect![[r#"
@@ -1480,7 +1471,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_tuple_literal_with_missing_element() {
+    fn rejects_tuple_expression_with_missing_element() {
         reject(
             "(a, , b)",
             expect![[r#"
@@ -2536,11 +2527,11 @@ mod tests {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    // ENUM LITERAL                                                          //
+    // ENUM EXPRESSION                                                       //
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn accepts_enum_literal() {
+    fn accepts_enum_expression() {
         accept(
             "Color::Red",
             expect![[r#"
@@ -2550,7 +2541,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_in_equality() {
+    fn accepts_enum_expression_in_equality() {
         accept(
             "Color::Red == Color::Green",
             expect![[r#"
@@ -2560,7 +2551,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_in_record_field() {
+    fn accepts_enum_expression_in_record_field() {
         accept(
             r#"User {name: "Alice", status: Status::Active}"#,
             expect![[r#"
@@ -2570,7 +2561,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_enum_literal_with_lowercase_variant() {
+    fn rejects_enum_expression_with_lowercase_variant() {
         reject(
             "Color::red",
             expect![[r#"
@@ -2583,7 +2574,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_enum_literal_missing_variant() {
+    fn rejects_enum_expression_missing_variant() {
         reject(
             "Color::",
             expect![[r#"
@@ -2596,7 +2587,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_with_single_field() {
+    fn accepts_enum_expression_with_single_field() {
         accept(
             "Outcome::Success {value: 42}",
             expect![[r#"
@@ -2606,7 +2597,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_with_multiple_fields() {
+    fn accepts_enum_expression_with_multiple_fields() {
         accept(
             r#"Event::Click {x: 10, y: 20}"#,
             expect![[r#"
@@ -2616,7 +2607,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_with_string_field() {
+    fn accepts_enum_expression_with_string_field() {
         accept(
             r#"Outcome::Failure {message: "something went wrong"}"#,
             expect![[r#"
@@ -2626,7 +2617,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_with_nested_expression() {
+    fn accepts_enum_expression_with_nested_expression() {
         accept(
             r#"Outcome::Success {value: x + 1}"#,
             expect![[r#"
@@ -2636,12 +2627,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_enum_literal_with_spread() {
+    fn rejects_enum_expression_with_spread() {
         reject(
             "Outcome::Success {...other, value: 42}",
             expect![[r#"
                 -- errors --
-                error: Spread is not allowed in an enum variant literal
+                error: Spread is not allowed in an enum expression
                 Outcome::Success {...other, value: 42}
                                   ^^^
                 -- ast --
@@ -2651,7 +2642,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_with_trailing_comma() {
+    fn accepts_enum_expression_with_trailing_comma() {
         accept(
             "Outcome::Success {value: 42,}",
             expect![[r#"
@@ -2661,11 +2652,11 @@ mod tests {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    // ENUM LITERAL (BRACE SYNTAX)                                           //
+    // ENUM EXPRESSION (BRACE SYNTAX)                                        //
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn accepts_enum_literal_with_braces_single_field() {
+    fn accepts_enum_expression_with_braces_single_field() {
         accept(
             "Outcome::Success {value: 42}",
             expect![[r#"
@@ -2675,7 +2666,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_with_braces_multiple_fields() {
+    fn accepts_enum_expression_with_braces_multiple_fields() {
         accept(
             "Event::Click {x: 10, y: 20}",
             expect![[r#"
@@ -2685,7 +2676,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_with_braces_containing_record_with_braces() {
+    fn accepts_enum_expression_with_braces_containing_record_with_braces() {
         accept(
             r#"Outcome::Success {value: Inner {x: 1}}"#,
             expect![[r#"
@@ -2695,7 +2686,7 @@ mod tests {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    // OPTION LITERAL                                                        //
+    // OPTION EXPRESSION                                                     //
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
@@ -3126,7 +3117,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_for_expression_over_array_literal() {
+    fn accepts_for_expression_over_array_expression() {
         accept(
             "for item in [1, 2, 3] { item }",
             expect![[r#"
@@ -3257,7 +3248,7 @@ mod tests {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    // MACRO INVOCATIONS                                                     //
+    // MACRO EXPRESSION                                                      //
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
@@ -3371,7 +3362,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_method_call_on_boolean_literal() {
+    fn accepts_method_call_on_bool_literal() {
         accept(
             "true.to_string()",
             expect![[r#"
@@ -3411,7 +3402,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_method_call_on_array_literal() {
+    fn accepts_method_call_on_array_expression() {
         accept(
             "[1, 2, 3].length()",
             expect![[r#"
@@ -3453,10 +3444,10 @@ mod tests {
         );
     }
 
-    // Record and enum literals with postfix access
+    // Record and enum expressions with postfix access
 
     #[test]
-    fn accepts_field_access_on_record_literal() {
+    fn accepts_field_access_on_record_expression() {
         accept(
             r#"User {name: "John"}.name"#,
             expect![[r#"
@@ -3466,7 +3457,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_method_call_on_record_literal() {
+    fn accepts_method_call_on_record_expression() {
         accept(
             r#"User {name: "John"}.to_string()"#,
             expect![[r#"
@@ -3476,7 +3467,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_field_access_on_enum_literal() {
+    fn accepts_field_access_on_enum_expression() {
         accept(
             "Status::Active.value",
             expect![[r#"
@@ -3485,10 +3476,10 @@ mod tests {
         );
     }
 
-    // Option literals with postfix access
+    // Option expressions with postfix access
 
     #[test]
-    fn accepts_method_call_on_some_literal() {
+    fn accepts_method_call_on_some() {
         accept(
             "Some(42).unwrap()",
             expect![[r#"
@@ -3498,7 +3489,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_method_call_on_none_literal() {
+    fn accepts_method_call_on_none() {
         accept(
             "None.is_none()",
             expect![[r#"
@@ -3508,7 +3499,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_field_access_on_some_literal() {
+    fn accepts_field_access_on_some() {
         accept(
             "Some(42).value",
             expect![[r#"

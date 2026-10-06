@@ -6,13 +6,15 @@ use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_call::{Argument, CallArguments, NamedArgument, typecheck_call};
 use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join};
+use super::typecheck_markup::typecheck_markup;
 use super::typecheck_match::typecheck_match;
-use super::typecheck_node::typecheck_node;
 use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
-use crate::hop::parsing::{ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource};
+use crate::hop::parsing::{
+    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource, ParsedUnaryOp,
+};
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField};
@@ -23,7 +25,7 @@ use crate::symbols::var_name::VarName;
 /// Resolve a parsed Expr to a typed Expr.
 ///
 /// The optional `expected_type` is used for bidirectional type checking, allowing
-/// empty array literals to infer their element type from context.
+/// empty arrays to infer their element type from context.
 pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
     expected_type: Option<&Type>,
@@ -37,8 +39,8 @@ pub fn typecheck_expr(
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
     match parsed_expr {
-        ParsedExpr::Markup { node } => typecheck_node(
-            node,
+        ParsedExpr::Markup { markup } => typecheck_markup(
+            markup,
             forwarded_params,
             registry,
             errors,
@@ -76,9 +78,7 @@ pub fn typecheck_expr(
                 None
             }
         }
-        ParsedExpr::BooleanLiteral { value, .. } => {
-            Some(TypedExpr::BooleanLiteral { value: *value })
-        }
+        ParsedExpr::BoolLiteral { value, .. } => Some(TypedExpr::BoolLiteral { value: *value }),
         ParsedExpr::StringLiteral { value, .. } => {
             let value = value
                 .cook(&mut |ch, range| {
@@ -148,7 +148,7 @@ pub fn typecheck_expr(
                 }
             }
         }
-        ParsedExpr::BinaryOp {
+        ParsedExpr::Binary {
             left,
             operator,
             right,
@@ -307,8 +307,8 @@ pub fn typecheck_expr(
                     }
                     let (left, right) = (Box::new(typed_left), Box::new(typed_right));
                     Some(match operator {
-                        ParsedBinaryOp::LogicalAnd => TypedExpr::BooleanLogicalAnd { left, right },
-                        _ => TypedExpr::BooleanLogicalOr { left, right },
+                        ParsedBinaryOp::LogicalAnd => TypedExpr::BoolLogicalAnd { left, right },
+                        _ => TypedExpr::BoolLogicalOr { left, right },
                     })
                 }
                 ParsedBinaryOp::Plus | ParsedBinaryOp::Minus | ParsedBinaryOp::Multiply => {
@@ -366,7 +366,9 @@ pub fn typecheck_expr(
                 }
             }
         }
-        ParsedExpr::BooleanNegation { operand, .. } => {
+        ParsedExpr::Unary {
+            operator, operand, ..
+        } => {
             let typed_operand = typecheck_expr(
                 operand,
                 None,
@@ -379,55 +381,45 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             )?;
-            if typed_operand.typ() != Type::Bool {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeMismatch {
-                        context: TypeMismatchContext::BooleanNegation,
-                        expected: Type::Bool,
-                        found: typed_operand.typ(),
-                    },
-                    operand.range().clone(),
-                ));
-                return None;
-            }
-            Some(TypedExpr::BooleanNegation {
-                operand: Box::new(typed_operand),
-            })
-        }
-        ParsedExpr::NumericNegation { operand, .. } => {
-            let typed_operand = typecheck_expr(
-                operand,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            )?;
-            match typed_operand.typ() {
-                Type::Int => Some(TypedExpr::NumericNegation {
-                    operand: Box::new(typed_operand),
-                    operand_type: NumericType::Int,
-                }),
-                Type::Float => Some(TypedExpr::NumericNegation {
-                    operand: Box::new(typed_operand),
-                    operand_type: NumericType::Float,
-                }),
-                _ => {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::NumericNegationTypeMismatch {
-                            found: typed_operand.typ(),
-                        },
-                        operand.range().clone(),
-                    ));
-                    None
+            match operator {
+                ParsedUnaryOp::LogicalNot => {
+                    if typed_operand.typ() != Type::Bool {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::TypeMismatch {
+                                context: TypeMismatchContext::BoolNegation,
+                                expected: Type::Bool,
+                                found: typed_operand.typ(),
+                            },
+                            operand.range().clone(),
+                        ));
+                        return None;
+                    }
+                    Some(TypedExpr::BoolNegation {
+                        operand: Box::new(typed_operand),
+                    })
                 }
+                ParsedUnaryOp::Minus => match typed_operand.typ() {
+                    Type::Int => Some(TypedExpr::NumericNegation {
+                        operand: Box::new(typed_operand),
+                        operand_type: NumericType::Int,
+                    }),
+                    Type::Float => Some(TypedExpr::NumericNegation {
+                        operand: Box::new(typed_operand),
+                        operand_type: NumericType::Float,
+                    }),
+                    _ => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::NumericNegationTypeMismatch {
+                                found: typed_operand.typ(),
+                            },
+                            operand.range().clone(),
+                        ));
+                        None
+                    }
+                },
             }
         }
-        ParsedExpr::ArrayLiteral { elements, range } => {
+        ParsedExpr::Array { elements, range } => {
             if elements.is_empty() {
                 let elem_type = match expected_type {
                     Some(Type::Array(elem)) => elem.clone(),
@@ -439,7 +431,7 @@ pub fn typecheck_expr(
                         return None;
                     }
                 };
-                Some(TypedExpr::ArrayLiteral {
+                Some(TypedExpr::Array {
                     elements: vec![],
                     typ: Type::Array(elem_type),
                 })
@@ -500,13 +492,13 @@ pub fn typecheck_expr(
                 if typed_elements.len() != elements.len() {
                     return None;
                 }
-                Some(TypedExpr::ArrayLiteral {
+                Some(TypedExpr::Array {
                     elements: typed_elements,
                     typ: Type::Array(Box::new(first_type?)),
                 })
             }
         }
-        ParsedExpr::TupleLiteral { elements, .. } => {
+        ParsedExpr::Tuple { elements, .. } => {
             let expected_element_types: Option<&[Type]> = match expected_type {
                 Some(Type::Tuple(element_types)) if element_types.len() == elements.len() => {
                     Some(element_types)
@@ -535,12 +527,12 @@ pub fn typecheck_expr(
                 return None;
             }
             let typ = Type::Tuple(typed_elements.iter().map(|e| e.typ()).collect());
-            Some(TypedExpr::TupleLiteral {
+            Some(TypedExpr::Tuple {
                 elements: typed_elements,
                 typ,
             })
         }
-        ParsedExpr::RecordLiteral {
+        ParsedExpr::Record {
             type_name,
             type_name_range,
             fields,
@@ -672,7 +664,7 @@ pub fn typecheck_expr(
                 if actual_type != *field_type {
                     errors.push(TypeError::new(
                         TypeErrorKind::TypeMismatch {
-                            context: TypeMismatchContext::RecordLiteralField,
+                            context: TypeMismatchContext::RecordField,
                             expected: field_type.clone(),
                             found: actual_type,
                         },
@@ -684,7 +676,8 @@ pub fn typecheck_expr(
                 typed_fields.push((field.name.clone(), typed_value));
             }
 
-            // The literals below assume every explicit field was typechecked.
+            // The record expressions below assume every explicit field
+            // was typechecked.
             if typed_fields.len() != fields.len() {
                 return None;
             }
@@ -706,7 +699,7 @@ pub fn typecheck_expr(
                     return None;
                 }
 
-                return Some(TypedExpr::RecordLiteral {
+                return Some(TypedExpr::Record {
                     type_name: type_name.clone(),
                     fields: typed_fields,
                     typ: record_type,
@@ -734,7 +727,7 @@ pub fn typecheck_expr(
                 typ: record_type,
             })
         }
-        ParsedExpr::EnumLiteral {
+        ParsedExpr::Enum {
             type_name,
             variant_name,
             fields,
@@ -885,14 +878,14 @@ pub fn typecheck_expr(
                 typed_fields
             };
 
-            Some(TypedExpr::EnumLiteral {
+            Some(TypedExpr::Enum {
                 type_name: type_name.clone(),
                 variant_name: variant_name.clone(),
                 fields: typed_fields,
                 typ: enum_type,
             })
         }
-        ParsedExpr::OptionLiteral { value, range } => match value {
+        ParsedExpr::Option { value, range } => match value {
             Some(inner_expr) => {
                 let expected_inner_type: Option<Type> = match expected_type {
                     Some(Type::Option(elem)) => Some(elem.as_ref().clone()),
@@ -911,7 +904,7 @@ pub fn typecheck_expr(
                     errors,
                 )?;
                 let inner_type = typed_inner.typ();
-                Some(TypedExpr::OptionLiteral {
+                Some(TypedExpr::Option {
                     value: Some(Box::new(typed_inner)),
                     typ: Type::Option(Box::new(inner_type)),
                 })
@@ -927,7 +920,7 @@ pub fn typecheck_expr(
                         return None;
                     }
                 };
-                Some(TypedExpr::OptionLiteral {
+                Some(TypedExpr::Option {
                     value: None,
                     typ: Type::Option(elem_type),
                 })
@@ -1201,7 +1194,7 @@ pub fn typecheck_expr(
                 typ: Type::Html,
             })
         }
-        ParsedExpr::MacroInvocation {
+        ParsedExpr::Macro {
             name,
             subject_range,
             args,
@@ -1422,7 +1415,7 @@ pub fn typecheck_expr(
             }
             typed
         }
-        ParsedExpr::FunctionCall {
+        ParsedExpr::Call {
             name,
             name_range,
             args,
@@ -1602,7 +1595,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_equality_between_boolean_and_string() {
+    fn rejects_equality_between_bool_and_string() {
         reject(
             TypeRegistryBuilder::new(),
             &[("enabled", "Bool"), ("name", "String")],
@@ -1750,12 +1743,12 @@ mod tests {
     }
 
     #[test]
-    fn accepts_boolean_literal_true() {
+    fn accepts_bool_literal_true() {
         accept(TypeRegistryBuilder::new(), &[], "true", expect!["Bool"]);
     }
 
     #[test]
-    fn accepts_boolean_literal_false() {
+    fn accepts_bool_literal_false() {
         accept(TypeRegistryBuilder::new(), &[], "false", expect!["Bool"]);
     }
 
@@ -1794,7 +1787,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_boolean_equality() {
+    fn accepts_bool_equality() {
         accept(
             TypeRegistryBuilder::new(),
             &[("enabled", "Bool")],
@@ -2002,7 +1995,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_concatenation_with_right_boolean() {
+    fn rejects_concatenation_with_right_bool() {
         reject(
             TypeRegistryBuilder::new(),
             &[],
@@ -2047,7 +2040,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_logical_and_with_boolean_variables() {
+    fn accepts_logical_and_with_bool_variables() {
         accept(
             TypeRegistryBuilder::new(),
             &[("a", "Bool"), ("b", "Bool")],
@@ -2057,7 +2050,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_logical_and_with_boolean_literals() {
+    fn accepts_logical_and_with_bool_literals() {
         accept(
             TypeRegistryBuilder::new(),
             &[],
@@ -2139,7 +2132,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_logical_or_with_boolean_variables() {
+    fn accepts_logical_or_with_bool_variables() {
         accept(
             TypeRegistryBuilder::new(),
             &[("a", "Bool"), ("b", "Bool")],
@@ -2149,7 +2142,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_logical_or_with_boolean_literals() {
+    fn accepts_logical_or_with_bool_literals() {
         accept(
             TypeRegistryBuilder::new(),
             &[],
@@ -2334,7 +2327,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_addition_of_boolean_and_int() {
+    fn rejects_addition_of_bool_and_int() {
         reject(
             TypeRegistryBuilder::new(),
             &[("flag", "Bool"), ("count", "Int")],
@@ -2469,7 +2462,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn accepts_simple_record_literal() {
+    fn accepts_simple_record_expression() {
         accept(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[],
@@ -2479,7 +2472,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_variables() {
+    fn accepts_record_expression_with_variables() {
         accept(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user_name", "String"), ("user_age", "Int")],
@@ -2503,7 +2496,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_naming_an_enum() {
+    fn rejects_record_expression_naming_an_enum() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
             &[],
@@ -2581,7 +2574,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_missing_field() {
+    fn rejects_record_expression_with_missing_field() {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[],
@@ -2640,7 +2633,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_unknown_field() {
+    fn rejects_record_expression_with_unknown_field() {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[],
@@ -2654,7 +2647,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_type_mismatch() {
+    fn rejects_record_expression_with_type_mismatch() {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[],
@@ -2668,7 +2661,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_nested_record_literal() {
+    fn accepts_nested_record_expression() {
         accept(
             TypeRegistryBuilder::new()
                 .record("Address", [("city", "String")])
@@ -2690,7 +2683,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_duplicate_field() {
+    fn rejects_record_expression_with_duplicate_field() {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[],
@@ -2704,7 +2697,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_duplicate_field_of_wrong_type() {
+    fn rejects_record_expression_with_duplicate_field_of_wrong_type() {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[],
@@ -2722,7 +2715,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn accepts_record_literal_with_spread_completing_missing_fields() {
+    fn accepts_record_expression_with_spread_completing_missing_fields() {
         accept(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
@@ -2732,7 +2725,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_only_spread() {
+    fn accepts_record_expression_with_only_spread() {
         accept(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
@@ -2742,7 +2735,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_spread_of_field_access() {
+    fn accepts_record_expression_with_spread_of_field_access() {
         accept(
             TypeRegistryBuilder::new()
                 .record("State", [("query", "String"), ("num", "Int")])
@@ -2754,7 +2747,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_with_spread_and_all_fields_overridden() {
+    fn accepts_record_expression_with_spread_and_all_fields_overridden() {
         accept(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
@@ -2764,7 +2757,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_spread_of_different_record_type() {
+    fn rejects_record_expression_with_spread_of_different_record_type() {
         reject(
             TypeRegistryBuilder::new()
                 .record("User", [("name", "String")])
@@ -2780,7 +2773,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_spread_of_non_record_type() {
+    fn rejects_record_expression_with_spread_of_non_record_type() {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[("name", "String")],
@@ -2794,7 +2787,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_spread_and_unknown_field() {
+    fn rejects_record_expression_with_spread_and_unknown_field() {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[("user", "User")],
@@ -2808,7 +2801,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_spread_and_duplicate_field() {
+    fn rejects_record_expression_with_spread_and_duplicate_field() {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
@@ -2989,7 +2982,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal() {
+    fn accepts_enum_expression() {
         accept(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[],
@@ -3027,7 +3020,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_enum_literal_naming_a_record() {
+    fn rejects_enum_expression_naming_a_record() {
         reject(
             TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[],
@@ -3258,7 +3251,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_some_with_boolean_literal() {
+    fn accepts_some_with_bool_literal() {
         accept(
             TypeRegistryBuilder::new(),
             &[],
@@ -3318,7 +3311,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_some_with_record_literal() {
+    fn accepts_some_with_record_expression() {
         accept(
             TypeRegistryBuilder::new().record("Point", [("x", "Int"), ("y", "Int")]),
             &[],
@@ -3328,7 +3321,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_some_with_enum_literal() {
+    fn accepts_some_with_enum_expression() {
         accept(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[],
@@ -3811,7 +3804,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn accepts_boolean_match_with_both_values() {
+    fn accepts_bool_match_with_both_values() {
         accept(
             TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
@@ -3826,7 +3819,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_boolean_match_with_wildcard() {
+    fn accepts_bool_match_with_wildcard() {
         accept(
             TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
@@ -3841,7 +3834,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_boolean_match_with_only_wildcard() {
+    fn rejects_bool_match_with_only_wildcard() {
         reject(
             TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
@@ -3859,7 +3852,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_enum_pattern_in_boolean_match() {
+    fn rejects_enum_pattern_in_bool_match() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red"]),
             &[("flag", "Bool")],
@@ -3878,7 +3871,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_boolean_pattern_in_enum_match() {
+    fn rejects_bool_pattern_in_enum_match() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
             &[("color", "Color")],
@@ -4049,7 +4042,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_boolean_pattern_in_option_match() {
+    fn rejects_bool_pattern_in_option_match() {
         reject(
             TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
@@ -5276,7 +5269,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_len_on_array_literal() {
+    fn accepts_len_on_array_expression() {
         accept(
             TypeRegistryBuilder::new(),
             &[],

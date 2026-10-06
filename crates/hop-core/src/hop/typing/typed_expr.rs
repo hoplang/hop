@@ -30,7 +30,7 @@ pub enum TypedExpr {
     StringLiteral { value: CheapString },
 
     /// A boolean literal expression, e.g. true
-    BooleanLiteral { value: bool },
+    BoolLiteral { value: bool },
 
     /// A float literal expression, e.g. 2.5
     FloatLiteral { value: f64 },
@@ -38,22 +38,22 @@ pub enum TypedExpr {
     /// An integer literal expression, e.g. 42
     IntLiteral { value: i32 },
 
-    /// An array literal expression, e.g. [1, 2, 3]
-    ArrayLiteral { elements: Vec<Self>, typ: Type },
+    /// An array expression, e.g. [1, 2, 3]
+    Array { elements: Vec<Self>, typ: Type },
 
-    /// A tuple literal expression, e.g. (foo, bar)
-    TupleLiteral { elements: Vec<Self>, typ: Type },
+    /// A tuple expression, e.g. (foo, bar)
+    Tuple { elements: Vec<Self>, typ: Type },
 
-    /// A record literal expression, e.g. User(name: "John", age: 30)
-    RecordLiteral {
+    /// A record expression, e.g. User {name: "John", age: 30}
+    Record {
         type_name: TypeName,
         fields: Vec<(FieldName, Self)>,
         typ: Type,
     },
 
-    /// A record literal that reads the fields it does not supply from
-    /// `base`, e.g. User { ...user, name: "John" }. The fields are in
-    /// declaration order.
+    /// A record expression with a spread, which reads the fields it does not
+    /// supply from `base`, e.g. User {...user, name: "John"}. The fields are
+    /// in declaration order.
     RecordUpdate {
         type_name: TypeName,
         base: Box<Self>,
@@ -61,8 +61,8 @@ pub enum TypedExpr {
         typ: Type,
     },
 
-    /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
-    EnumLiteral {
+    /// An enum expression, e.g. Status::Active or Status::Away {since: "Monday"}
+    Enum {
         type_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
@@ -70,8 +70,8 @@ pub enum TypedExpr {
         typ: Type,
     },
 
-    /// An option literal expression, e.g. Some(42) or None
-    OptionLiteral {
+    /// An option expression, e.g. Some(42) or None
+    Option {
         /// The inner value (Some) or None
         value: Option<Box<Self>>,
         typ: Type,
@@ -112,8 +112,8 @@ pub enum TypedExpr {
         operand_types: NumericType,
     },
 
-    /// Boolean negation expression
-    BooleanNegation { operand: Box<Self> },
+    /// Bool negation expression
+    BoolNegation { operand: Box<Self> },
 
     /// Numeric negation expression
     NumericNegation {
@@ -121,11 +121,11 @@ pub enum TypedExpr {
         operand_type: NumericType,
     },
 
-    /// Boolean logical AND expression
-    BooleanLogicalAnd { left: Box<Self>, right: Box<Self> },
+    /// Bool logical AND expression
+    BoolLogicalAnd { left: Box<Self>, right: Box<Self> },
 
-    /// Boolean logical OR expression
-    BooleanLogicalOr { left: Box<Self>, right: Box<Self> },
+    /// Bool logical OR expression
+    BoolLogicalOr { left: Box<Self>, right: Box<Self> },
 
     /// Equals expression
     Equals {
@@ -217,7 +217,7 @@ pub enum TypedExpr {
     IntToFloat { value: Box<Self> },
 
     /// Concatenation of Html
-    HtmlConcat { nodes: Vec<Self> },
+    HtmlConcat { parts: Vec<Self> },
 
     /// Literal markup text, e.g. `Hello`.
     /// Trusted and emitted without escaping.
@@ -228,7 +228,7 @@ pub enum TypedExpr {
     HtmlEscape { expr: Box<Self> },
 
     /// An HTML element, e.g. `<div class="x">...</div>`
-    HtmlElement {
+    Element {
         element: HtmlElementKind,
         attrs: TypedAttrs,
         children: Box<Self>,
@@ -238,8 +238,8 @@ pub enum TypedExpr {
     /// relative to the project root.
     Asset { path: RootRelativeFilePath },
 
-    /// A function call expression, e.g. foo(1, 2)
-    FunctionCall {
+    /// A call expression, e.g. foo(1, 2)
+    Call {
         function_name: FunctionName,
         /// The module that declares the callee.
         module: RootContainedFilePath,
@@ -252,7 +252,7 @@ pub enum TypedExpr {
 
 #[derive(Debug, Clone)]
 pub enum TypedRecordUpdateField {
-    /// A field supplied in the literal.
+    /// A field supplied in the record expression.
     Explicit(TypedExpr),
     /// A field read from the base record, which has the given type.
     FromBase(Type),
@@ -271,7 +271,7 @@ pub struct TypedAttribute {
 }
 
 /// The attributes an element or a rest parameter receives: those written at
-/// the site, followed by those forwarded through a `{...rest}` spread.
+/// the site, followed by those forwarded through a `...rest` spread.
 #[derive(Debug, Clone)]
 pub struct TypedAttrs {
     pub attributes: Vec<TypedAttribute>,
@@ -322,17 +322,17 @@ impl TypedExpr {
         match self {
             TypedExpr::Var { typ, .. }
             | TypedExpr::FieldAccess { typ, .. }
-            | TypedExpr::ArrayLiteral { typ, .. }
-            | TypedExpr::TupleLiteral { typ, .. }
-            | TypedExpr::RecordLiteral { typ, .. }
+            | TypedExpr::Array { typ, .. }
+            | TypedExpr::Tuple { typ, .. }
+            | TypedExpr::Record { typ, .. }
             | TypedExpr::RecordUpdate { typ, .. }
-            | TypedExpr::EnumLiteral { typ, .. }
-            | TypedExpr::OptionLiteral { typ, .. }
+            | TypedExpr::Enum { typ, .. }
+            | TypedExpr::Option { typ, .. }
             | TypedExpr::Match { typ, .. }
             | TypedExpr::Let { typ, .. }
             | TypedExpr::For { typ, .. }
             | TypedExpr::OptionUnwrapOr { typ, .. }
-            | TypedExpr::FunctionCall { typ, .. } => typ.clone(),
+            | TypedExpr::Call { typ, .. } => typ.clone(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::Float,
             TypedExpr::IntLiteral { .. } => Type::Int,
@@ -353,16 +353,16 @@ impl TypedExpr {
                 NumericType::Float => Type::Float,
             },
 
-            TypedExpr::BooleanLiteral { .. }
-            | TypedExpr::BooleanNegation { .. }
+            TypedExpr::BoolLiteral { .. }
+            | TypedExpr::BoolNegation { .. }
             | TypedExpr::Equals { .. }
             | TypedExpr::NotEquals { .. }
             | TypedExpr::LessThan { .. }
             | TypedExpr::GreaterThan { .. }
             | TypedExpr::LessThanOrEqual { .. }
             | TypedExpr::GreaterThanOrEqual { .. }
-            | TypedExpr::BooleanLogicalAnd { .. }
-            | TypedExpr::BooleanLogicalOr { .. }
+            | TypedExpr::BoolLogicalAnd { .. }
+            | TypedExpr::BoolLogicalOr { .. }
             | TypedExpr::ArrayIsEmpty { .. }
             | TypedExpr::StringIsEmpty { .. }
             | TypedExpr::OptionIsSome { .. }
@@ -373,20 +373,20 @@ impl TypedExpr {
             TypedExpr::HtmlConcat { .. }
             | TypedExpr::HtmlRaw { .. }
             | TypedExpr::HtmlEscape { .. }
-            | TypedExpr::HtmlElement { .. } => Type::Html,
+            | TypedExpr::Element { .. } => Type::Html,
         }
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        fn concat_to_doc(nodes: &[TypedExpr]) -> BoxDoc<'_> {
-            if nodes.is_empty() {
+        fn concat_to_doc(parts: &[TypedExpr]) -> BoxDoc<'_> {
+            if parts.is_empty() {
                 BoxDoc::text("concat()")
             } else {
                 BoxDoc::text("concat(")
                     .append(
                         BoxDoc::line_()
                             .append(BoxDoc::intersperse(
-                                nodes.iter().map(|node| node.to_doc()),
+                                parts.iter().map(|part| part.to_doc()),
                                 BoxDoc::text(",").append(BoxDoc::line()),
                             ))
                             .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
@@ -409,10 +409,10 @@ impl TypedExpr {
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
             TypedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
-            TypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            TypedExpr::BoolLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            TypedExpr::ArrayLiteral { elements, .. } => BoxDoc::text("[")
+            TypedExpr::Array { elements, .. } => BoxDoc::text("[")
                 .append(
                     BoxDoc::line_()
                         .append(BoxDoc::intersperse(
@@ -425,7 +425,7 @@ impl TypedExpr {
                         .group(),
                 )
                 .append(BoxDoc::text("]")),
-            TypedExpr::TupleLiteral { elements, .. } => BoxDoc::text("(")
+            TypedExpr::Tuple { elements, .. } => BoxDoc::text("(")
                 .append(
                     BoxDoc::line_()
                         .append(BoxDoc::intersperse(
@@ -442,7 +442,7 @@ impl TypedExpr {
                         .group(),
                 )
                 .append(BoxDoc::text(")")),
-            TypedExpr::RecordLiteral {
+            TypedExpr::Record {
                 type_name, fields, ..
             } => BoxDoc::text(type_name.as_str())
                 .append(BoxDoc::text(" {"))
@@ -518,7 +518,7 @@ impl TypedExpr {
                 .append(BoxDoc::text(" * "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::BooleanNegation { operand, .. } => BoxDoc::nil()
+            TypedExpr::BoolNegation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
@@ -564,19 +564,19 @@ impl TypedExpr {
                 .append(BoxDoc::text(" >= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::BooleanLogicalAnd { left, right, .. } => BoxDoc::nil()
+            TypedExpr::BoolLogicalAnd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" && "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::BooleanLogicalOr { left, right, .. } => BoxDoc::nil()
+            TypedExpr::BoolLogicalOr { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" || "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::EnumLiteral {
+            TypedExpr::Enum {
                 type_name,
                 variant_name,
                 fields,
@@ -600,7 +600,7 @@ impl TypedExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            TypedExpr::OptionLiteral { value, .. } => match value {
+            TypedExpr::Option { value, .. } => match value {
                 Some(inner) => BoxDoc::text("Some(")
                     .append(inner.to_doc())
                     .append(BoxDoc::text(")")),
@@ -655,7 +655,7 @@ impl TypedExpr {
             TypedExpr::IntToString { value } => value.to_doc().append(BoxDoc::text(".to_string()")),
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
-            TypedExpr::HtmlConcat { nodes } => concat_to_doc(nodes),
+            TypedExpr::HtmlConcat { parts } => concat_to_doc(parts),
             TypedExpr::HtmlRaw { value } => BoxDoc::text("raw(")
                 .append(BoxDoc::text(format!("{:?}", value.as_str())))
                 .append(")"),
@@ -688,7 +688,7 @@ impl TypedExpr {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
             }
-            TypedExpr::HtmlElement {
+            TypedExpr::Element {
                 element,
                 attrs,
                 children,
@@ -717,7 +717,7 @@ impl TypedExpr {
             TypedExpr::Asset { path } => BoxDoc::text("asset!(\"/")
                 .append(BoxDoc::text(path.as_str()))
                 .append(BoxDoc::text("\")")),
-            TypedExpr::FunctionCall {
+            TypedExpr::Call {
                 function_name,
                 args,
                 rest,

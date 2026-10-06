@@ -420,7 +420,7 @@ impl<'a> Compiler<'a> {
                 typ: typ.clone(),
                 id: expr_id,
             },
-            TypedExpr::BooleanNegation { operand, .. } => PureExpr::BooleanNegation {
+            TypedExpr::BoolNegation { operand, .. } => PureExpr::BoolNegation {
                 operand: Box::new(self.compile_expr(operand)),
                 id: expr_id,
             },
@@ -432,22 +432,22 @@ impl<'a> Compiler<'a> {
                 operand_type: operand_type.clone(),
                 id: expr_id,
             },
-            TypedExpr::ArrayLiteral { elements, typ, .. } => PureExpr::ArrayLiteral {
+            TypedExpr::Array { elements, typ, .. } => PureExpr::Array {
                 elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
                 typ: typ.clone(),
                 id: expr_id,
             },
-            TypedExpr::TupleLiteral { elements, typ } => PureExpr::TupleLiteral {
+            TypedExpr::Tuple { elements, typ } => PureExpr::Tuple {
                 elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
                 typ: typ.clone(),
                 id: expr_id,
             },
-            TypedExpr::RecordLiteral {
+            TypedExpr::Record {
                 type_name,
                 fields,
                 typ,
                 ..
-            } => PureExpr::RecordLiteral {
+            } => PureExpr::Record {
                 type_name: type_name.clone(),
                 fields: fields
                     .iter()
@@ -465,7 +465,7 @@ impl<'a> Compiler<'a> {
                 let value = Box::new(self.compile_expr(base));
                 let base_var = IrVar::new(self.next_var_id());
                 let literal_id = self.next_expr_id();
-                let literal = PureExpr::RecordLiteral {
+                let literal = PureExpr::Record {
                     type_name: type_name.clone(),
                     fields: fields
                         .iter()
@@ -513,7 +513,7 @@ impl<'a> Compiler<'a> {
                     id: expr_id,
                 }
             }
-            TypedExpr::BooleanLiteral { value, .. } => PureExpr::BooleanLiteral {
+            TypedExpr::BoolLiteral { value, .. } => PureExpr::BoolLiteral {
                 value: *value,
                 id: expr_id,
             },
@@ -546,9 +546,9 @@ impl<'a> Compiler<'a> {
                 operand_types,
                 ..
             } => {
-                // Desugar NotEquals into BooleanNegation(Equals(...))
+                // Desugar NotEquals into BoolNegation(Equals(...))
                 let equals_id = self.next_expr_id();
-                PureExpr::BooleanNegation {
+                PureExpr::BoolNegation {
                     operand: Box::new(PureExpr::Equals {
                         left: Box::new(self.compile_expr(left)),
                         right: Box::new(self.compile_expr(right)),
@@ -604,12 +604,12 @@ impl<'a> Compiler<'a> {
                 operand_types: operand_types.clone(),
                 id: expr_id,
             },
-            TypedExpr::BooleanLogicalAnd { left, right, .. } => PureExpr::BooleanLogicalAnd {
+            TypedExpr::BoolLogicalAnd { left, right, .. } => PureExpr::BoolLogicalAnd {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 id: expr_id,
             },
-            TypedExpr::BooleanLogicalOr { left, right, .. } => PureExpr::BooleanLogicalOr {
+            TypedExpr::BoolLogicalOr { left, right, .. } => PureExpr::BoolLogicalOr {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 id: expr_id,
@@ -647,12 +647,12 @@ impl<'a> Compiler<'a> {
                 operand_types: operand_types.clone(),
                 id: expr_id,
             },
-            TypedExpr::EnumLiteral {
+            TypedExpr::Enum {
                 type_name,
                 variant_name,
                 fields,
                 typ,
-            } => PureExpr::EnumLiteral {
+            } => PureExpr::Enum {
                 type_name: type_name.clone(),
                 variant_name: variant_name.clone(),
                 fields: fields
@@ -684,22 +684,25 @@ impl<'a> Compiler<'a> {
                     id: expr_id,
                 }
             }
-            TypedExpr::OptionLiteral { value, typ } => PureExpr::OptionLiteral {
+            TypedExpr::Option { value, typ } => PureExpr::Option {
                 value: value.as_ref().map(|v| Box::new(self.compile_expr(v))),
                 typ: typ.clone(),
                 id: expr_id,
             },
-            TypedExpr::HtmlConcat { nodes } => {
-                let mut parts = Vec::with_capacity(nodes.len());
-                for node in nodes {
+            TypedExpr::HtmlConcat { parts } => {
+                let mut compiled = Vec::with_capacity(parts.len());
+                for part in parts {
                     assert_eq!(
-                        node.typ(),
+                        part.typ(),
                         Type::Html,
-                        "HtmlConcat must hold Html, but holds {node}"
+                        "HtmlConcat must hold Html, but holds {part}"
                     );
-                    parts.push(self.compile_expr(node));
+                    compiled.push(self.compile_expr(part));
                 }
-                PureExpr::HtmlConcat { parts, id: expr_id }
+                PureExpr::HtmlConcat {
+                    parts: compiled,
+                    id: expr_id,
+                }
             }
             TypedExpr::HtmlRaw { value } => PureExpr::HtmlRaw {
                 content: value.to_string(),
@@ -716,7 +719,7 @@ impl<'a> Compiler<'a> {
                     id: expr_id,
                 }
             }
-            TypedExpr::HtmlElement {
+            TypedExpr::Element {
                 element,
                 attrs,
                 children,
@@ -748,7 +751,7 @@ impl<'a> Compiler<'a> {
                 }
                 PureExpr::HtmlConcat { parts, id: expr_id }
             }
-            TypedExpr::FunctionCall {
+            TypedExpr::Call {
                 function_name,
                 module,
                 args,
@@ -780,7 +783,7 @@ impl<'a> Compiler<'a> {
                         expr: PureExpr::HtmlConcat { parts, id },
                     });
                 }
-                PureExpr::FunctionCall {
+                PureExpr::Call {
                     function: self.declared[&(module.clone(), function_name.clone())].clone(),
                     args: compiled_args,
                     typ: typ.clone(),
@@ -1002,10 +1005,10 @@ mod tests {
     }
 
     #[test]
-    fn should_compile_if_node() {
+    fn should_compile_if_html() {
         check(
             build_page("MainComp", [("show", Type::Bool)], |t| {
-                t.if_node(t.var_expr("show"), |t| {
+                t.if_html(t.var_expr("show"), |t| {
                     t.div(vec![], |t| {
                         t.text("Visible");
                     });
@@ -1055,14 +1058,14 @@ mod tests {
     }
 
     #[test]
-    fn should_compile_for_node() {
+    fn should_compile_for_html() {
         check(
             build_page(
                 "MainComp",
                 vec![("items", Type::Array(Box::new(Type::String)))],
                 |t| {
                     t.ul(vec![], |t| {
-                        t.for_node("item", t.var_expr("items"), |t| {
+                        t.for_html("item", t.var_expr("items"), |t| {
                             t.li(vec![], |t| {
                                 t.text_expr(t.var_expr("item"));
                             });
@@ -1273,10 +1276,10 @@ mod tests {
     }
 
     #[test]
-    fn should_compile_bool_match_node() {
+    fn should_compile_bool_match_html() {
         check(
             build_page("TestComp", vec![("flag", Type::Bool)], |t| {
-                t.bool_match_node(
+                t.bool_match_html(
                     t.var_expr("flag"),
                     |t| {
                         t.text("yes");

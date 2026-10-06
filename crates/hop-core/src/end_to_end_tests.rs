@@ -195,7 +195,7 @@ fn check_with_asset_path_rewriter(
         panic!("Diagnostics found");
     }
 
-    let typed_asts = program.typed_modules().clone();
+    let typed_modules = program.typed_modules().clone();
     let registry = program.type_registry();
 
     // Compile to IR without optimization
@@ -205,7 +205,7 @@ fn check_with_asset_path_rewriter(
         asset_path_rewriter: asset_path_rewriter.clone(),
         ..Default::default()
     };
-    let unoptimized_pure = orchestrate_pure(&typed_asts, unoptimized_options);
+    let unoptimized_pure = orchestrate_pure(&typed_modules, unoptimized_options);
 
     // Compile to IR with optimization
     let optimized_options = OrchestrateOptions {
@@ -214,7 +214,7 @@ fn check_with_asset_path_rewriter(
         asset_path_rewriter,
         ..Default::default()
     };
-    let optimized_pure = orchestrate_pure(&typed_asts, optimized_options);
+    let optimized_pure = orchestrate_pure(&typed_modules, optimized_options);
 
     // Evaluate the Pure modules before lowering consumes them.
     let unoptimized_eval = execute_evaluator(&unoptimized_pure);
@@ -6335,7 +6335,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn boolean_logical_and() {
+    fn bool_logical_and() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -6392,7 +6392,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn boolean_logical_or() {
+    fn bool_logical_or() {
         check(
             indoc! {r#"
                 -- main.hop --

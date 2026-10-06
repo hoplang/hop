@@ -1,7 +1,7 @@
 use super::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use super::parse_expr;
 use super::parsed_expr::ParsedExpr;
-use super::parsed_node::{ParsedAttribute, ParsedNode};
+use super::parsed_markup::{ParsedAttribute, ParsedMarkup};
 use super::token::MarkupToken;
 use super::token::RawTextToken;
 use super::token::TagToken;
@@ -45,7 +45,7 @@ struct OpenElement {
     opening_range: DocumentRange,
     /// What was read off the opening tag, waiting for the children.
     header: ElementHeader,
-    children: Vec<ParsedNode>,
+    children: Vec<ParsedMarkup>,
 }
 
 impl OpenElement {
@@ -62,7 +62,7 @@ impl OpenElement {
 
     /// Build the element without a closing tag, reporting that it never got
     /// one.
-    fn close_unclosed(self, errors: &mut Vec<ParseError>) -> Result<ParsedNode, ErrorEmitted> {
+    fn close_unclosed(self, errors: &mut Vec<ParseError>) -> Result<ParsedMarkup, ErrorEmitted> {
         let kind = match self.header {
             ElementHeader::Fragment => ParseErrorKind::UnclosedFragment {},
             ElementHeader::Function { .. } | ElementHeader::Html { .. } => {
@@ -109,8 +109,8 @@ impl MarkupBuilder {
     /// finished markup when nothing is open.
     fn append(
         &mut self,
-        item: Result<ParsedNode, ErrorEmitted>,
-    ) -> Option<Result<ParsedNode, ErrorEmitted>> {
+        item: Result<ParsedMarkup, ErrorEmitted>,
+    ) -> Option<Result<ParsedMarkup, ErrorEmitted>> {
         match self.open.last_mut() {
             // A dropped child is just missing from its parent.
             Some(element) => {
@@ -121,13 +121,16 @@ impl MarkupBuilder {
         }
     }
 
-    /// Add a node to the innermost open element, or to the top level.
-    fn append_node(&mut self, node: ParsedNode) -> Option<Result<ParsedNode, ErrorEmitted>> {
-        self.append(Ok(node))
+    /// Add markup to the innermost open element, or to the top level.
+    fn append_markup(
+        &mut self,
+        markup: ParsedMarkup,
+    ) -> Option<Result<ParsedMarkup, ErrorEmitted>> {
+        self.append(Ok(markup))
     }
 
     /// Drop an item that could not be built, keeping the proof of why.
-    fn drop_item(&mut self, guar: ErrorEmitted) -> Option<Result<ParsedNode, ErrorEmitted>> {
+    fn drop_item(&mut self, guar: ErrorEmitted) -> Option<Result<ParsedMarkup, ErrorEmitted>> {
         self.append(Err(guar))
     }
 
@@ -141,7 +144,7 @@ impl MarkupBuilder {
         &mut self,
         element: OpenElement,
         closing: Option<ClosingTag>,
-    ) -> Option<Result<ParsedNode, ErrorEmitted>> {
+    ) -> Option<Result<ParsedMarkup, ErrorEmitted>> {
         self.append(close_element(element, closing))
     }
 
@@ -152,7 +155,7 @@ impl MarkupBuilder {
         &mut self,
         closing: ClosingTag,
         errors: &mut Vec<ParseError>,
-    ) -> Option<Result<ParsedNode, ErrorEmitted>> {
+    ) -> Option<Result<ParsedMarkup, ErrorEmitted>> {
         let Some(depth) = self
             .open
             .iter()
@@ -186,7 +189,7 @@ impl MarkupBuilder {
 
     /// Take the markup, closing everything left open. Something is open:
     /// the markup would otherwise have finished with its last item.
-    fn finish(mut self, errors: &mut Vec<ParseError>) -> Result<ParsedNode, ErrorEmitted> {
+    fn finish(mut self, errors: &mut Vec<ParseError>) -> Result<ParsedMarkup, ErrorEmitted> {
         loop {
             let element = self.open.pop().expect("an element is open");
             if let Some(item) = self.append(element.close_unclosed(errors)) {
@@ -196,25 +199,27 @@ impl MarkupBuilder {
     }
 }
 
-/// Parse one node, from a `<` the caller has already consumed.
+/// Parse one piece of markup, from a `<` the caller has already consumed.
 ///
-/// Fails when nothing there built a node.
+/// Fails when nothing there built any markup.
 ///
 /// We do our best here to build as much markup as possible even when we
 /// encounter errors.
-fn parse_node(
+fn parse_markup(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
     left_angle: DocumentRange,
-) -> Result<ParsedNode, ErrorEmitted> {
+) -> Result<ParsedMarkup, ErrorEmitted> {
     let mut builder = MarkupBuilder::default();
     let mut token = tokenize_markup::lex_tag(iter, errors, left_angle)?;
 
     loop {
         let finished = match token {
-            MarkupToken::Text { range } => builder.append_node(ParsedNode::Text { range }),
-            MarkupToken::Newline { range } => builder.append_node(ParsedNode::Newline { range }),
+            MarkupToken::Text { range } => builder.append_markup(ParsedMarkup::Text { range }),
+            MarkupToken::Newline { range } => {
+                builder.append_markup(ParsedMarkup::Newline { range })
+            }
             // A comment in content is collected like a `//` comment. A comment
             // that opens the markup stands where an expression is expected.
             MarkupToken::Comment { range } => {
@@ -231,7 +236,7 @@ fn parse_node(
             MarkupToken::ExpressionStart { left_brace } => {
                 match parse_expr::parse_block(iter, comments, errors, &left_brace) {
                     Ok((expression, range)) => {
-                        builder.append_node(ParsedNode::Interpolation { expression, range })
+                        builder.append_markup(ParsedMarkup::Interpolation { expression, range })
                     }
                     Err(guar) => builder.drop_item(guar),
                 }
@@ -288,16 +293,16 @@ fn parse_node(
 
 /// Parse markup in expression position, from a '<' the caller has
 /// already consumed.
-pub fn parse_markup(
+pub fn parse_markup_expr(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
     left_angle: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut node = parse_node(iter, comments, errors, left_angle)?;
-    whitespace::normalize_node(&mut node);
+    let mut markup = parse_markup(iter, comments, errors, left_angle)?;
+    whitespace::normalize_markup(&mut markup);
     Ok(ParsedExpr::Markup {
-        node: Box::new(node),
+        markup: Box::new(markup),
     })
 }
 
@@ -418,7 +423,7 @@ fn parse_opening_tag(
         {
             let _ = errors.emit(ParseErrorKind::InlineScriptNotAllowed, content);
         }
-        children.extend(content.map(|range| ParsedNode::Text { range }));
+        children.extend(content.map(|range| ParsedMarkup::Text { range }));
         // Without a closing tag the element stays open, and is reported as
         // unclosed with everything else still open when the markup ends.
         if let Some(raw_closing_tag) = raw_closing_tag {
@@ -514,7 +519,7 @@ fn push_attribute(
 fn close_element(
     element: OpenElement,
     closing: Option<ClosingTag>,
-) -> Result<ParsedNode, ErrorEmitted> {
+) -> Result<ParsedMarkup, ErrorEmitted> {
     let OpenElement {
         tag_name_range,
         opening_range,
@@ -529,11 +534,11 @@ fn close_element(
     };
 
     match header {
-        ElementHeader::Fragment => Ok(ParsedNode::Fragment { children, range }),
+        ElementHeader::Fragment => Ok(ParsedMarkup::Fragment { children, range }),
 
         ElementHeader::Function { name, attributes } => {
             let children = closing_tag_name.is_some().then_some(children);
-            Ok(ParsedNode::FunctionInvocation {
+            Ok(ParsedMarkup::Call {
                 function_name: name?,
                 function_name_opening_range: tag_name_range,
                 function_name_closing_range: closing_tag_name,
@@ -546,7 +551,7 @@ fn close_element(
         ElementHeader::Html {
             element,
             attributes,
-        } => Ok(ParsedNode::HtmlElement {
+        } => Ok(ParsedMarkup::Element {
             kind: element?,
             tag_name: tag_name_range,
             closing_tag_name,

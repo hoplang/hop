@@ -74,7 +74,7 @@ pub fn inline_function_calls(module: PureModule) -> PureModule {
 }
 
 fn collect_callees(expr: &PureExpr, out: &mut BTreeSet<FunctionId>) {
-    if let PureExpr::FunctionCall { function, .. } = expr {
+    if let PureExpr::Call { function, .. } = expr {
         out.insert(function.id);
     }
     expr.for_each_child(&mut |child| collect_callees(child, out));
@@ -88,7 +88,7 @@ fn inline(
     var_ids: &mut VarIdCounter,
 ) -> PureExpr {
     match expr {
-        PureExpr::FunctionCall {
+        PureExpr::Call {
             function,
             args,
             typ,
@@ -105,7 +105,7 @@ fn inline(
             let callee = match decls.get(&function.id) {
                 Some(decl) if !recursive.contains(&function.id) => decl,
                 _ => {
-                    return PureExpr::FunctionCall {
+                    return PureExpr::Call {
                         function,
                         args,
                         typ,
@@ -116,7 +116,7 @@ fn inline(
 
             match instantiate(callee, args, expr_ids, var_ids) {
                 Ok(body) => body,
-                Err(args) => PureExpr::FunctionCall {
+                Err(args) => PureExpr::Call {
                     function,
                     args,
                     typ,
@@ -193,7 +193,7 @@ fn is_trivial(expr: &PureExpr) -> bool {
             | PureExpr::StringLiteral { .. }
             | PureExpr::IntLiteral { .. }
             | PureExpr::FloatLiteral { .. }
-            | PureExpr::BooleanLiteral { .. }
+            | PureExpr::BoolLiteral { .. }
             | PureExpr::HtmlRaw { .. }
     )
 }
@@ -630,7 +630,7 @@ mod tests {
                     content: marker.to_string(),
                     id: expr_ids.next(),
                 },
-                PureExpr::FunctionCall {
+                PureExpr::Call {
                     function: callee,
                     args: vec![PureArgument {
                         name,

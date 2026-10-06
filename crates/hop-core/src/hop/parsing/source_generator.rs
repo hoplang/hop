@@ -5,10 +5,10 @@ use std::ops::RangeInclusive;
 const DEPTH: usize = 3;
 
 const ANYWHERE: Restrictions = Restrictions {
-    forbid_record_literals: false,
+    forbid_record_expressions: false,
 };
 const BEFORE_BRACE: Restrictions = Restrictions {
-    forbid_record_literals: true,
+    forbid_record_expressions: true,
 };
 
 const VAR_NAMES: &[&str] = &["a", "b", "x", "foo", "foo_bar", "x1"];
@@ -405,7 +405,7 @@ fn primary(
             P::For,
             P::Markup,
         ]);
-        if !restrictions.forbid_record_literals {
+        if !restrictions.forbid_record_expressions {
             kinds.extend([P::EnumFields, P::Record]);
         }
     }
@@ -629,10 +629,10 @@ fn markup(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()
         Void,
         Element,
         Raw,
-        Invocation,
+        Call,
         Fragment,
     }
-    let kinds = [P::Void, P::Element, P::Raw, P::Invocation, P::Fragment];
+    let kinds = [P::Void, P::Element, P::Raw, P::Call, P::Fragment];
     let p = u.choose(&kinds)?;
     match p {
         P::Void => {
@@ -648,7 +648,7 @@ fn markup(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()
                 out.push('>');
             }
         }
-        P::Element | P::Invocation => {
+        P::Element | P::Call => {
             let tag = if matches!(p, P::Element) {
                 u.choose(ELEMENT_TAGS)?
             } else {

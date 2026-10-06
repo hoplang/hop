@@ -9,8 +9,8 @@ use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, Document, DocumentPosition, PositionEncoding};
 use crate::hop::assembly::TailwindInjection;
 use crate::hop::format;
-use crate::hop::parsing::{ParseError, ParsedAst, parse};
-use crate::hop::typing::{Export, TypeError, TypeRegistry, TypedAst, typecheck};
+use crate::hop::parsing::{ParseError, ParsedModule, parse};
+use crate::hop::typing::{Export, TypeError, TypeRegistry, TypedModule, typecheck};
 use crate::hover_annotation::HoverAnnotation;
 use crate::ir;
 use crate::ir::Transpiler;
@@ -26,14 +26,14 @@ pub struct Program {
     pub(super) css_documents: HashMap<RootContainedFilePath, Document>,
     pub(super) css_errors: HashMap<RootContainedFilePath, Vec<CssError>>,
     pub(super) parse_errors: HashMap<RootContainedFilePath, Vec<ParseError>>,
-    pub(super) parsed_asts: HashMap<RootContainedFilePath, ParsedAst>,
+    pub(super) parsed_modules: HashMap<RootContainedFilePath, ParsedModule>,
     pub(super) exports: HashMap<RootContainedFilePath, HashMap<CheapString, Export>>,
     pub(super) type_registry: TypeRegistry,
     pub(super) type_errors: HashMap<RootContainedFilePath, Vec<TypeError>>,
     pub(super) hover_annotations: HashMap<RootContainedFilePath, Vec<HoverAnnotation>>,
     pub(super) definition_links: HashMap<RootContainedFilePath, Vec<DefinitionLink>>,
     pub(super) asset_references: HashMap<RootContainedFilePath, Vec<AssetReference>>,
-    pub(super) typed_asts: HashMap<RootContainedFilePath, TypedAst>,
+    pub(super) typed_modules: HashMap<RootContainedFilePath, TypedModule>,
 }
 
 impl Program {
@@ -58,16 +58,17 @@ impl Program {
         // Parse the document
         let parse_errors = self.parse_errors.entry(document_id.clone()).or_default();
         parse_errors.clear();
-        let parsed_ast = parse(document, parse_errors);
+        let parsed_module = parse(document, parse_errors);
 
         // Get all modules that this module depends on
-        let module_dependencies = parsed_ast
+        let module_dependencies = parsed_module
             .import_declarations()
             .map(|import_node| import_node.module_name.to_file_path())
             .collect::<BTreeSet<RootContainedFilePath>>();
 
-        // Store the AST
-        self.parsed_asts.insert(document_id.clone(), parsed_ast);
+        // Store the parsed module
+        self.parsed_modules
+            .insert(document_id.clone(), parsed_module);
 
         // Typecheck the module along with all dependent modules (grouped
         // into strongly connected components).
@@ -77,13 +78,13 @@ impl Program {
         for names in &grouped_modules {
             let modules = names
                 .iter()
-                .filter_map(|name| self.parsed_asts.get_key_value(name))
+                .filter_map(|name| self.parsed_modules.get_key_value(name))
                 .collect::<Vec<_>>();
             typecheck(
                 &modules,
                 &mut self.exports,
                 &mut self.type_registry,
-                &mut self.typed_asts,
+                &mut self.typed_modules,
                 &mut self.type_errors,
                 &mut self.hover_annotations,
                 &mut self.definition_links,
@@ -103,13 +104,13 @@ impl Program {
         // Remove document and parsed state
         self.documents.remove(document_id);
         self.parse_errors.remove(document_id);
-        self.parsed_asts.remove(document_id);
+        self.parsed_modules.remove(document_id);
         self.exports.remove(document_id);
         self.type_registry.remove_module(document_id);
         self.type_errors.remove(document_id);
         self.hover_annotations.remove(document_id);
         self.asset_references.remove(document_id);
-        self.typed_asts.remove(document_id);
+        self.typed_modules.remove(document_id);
 
         // Clear the module's dependencies but keep the node so that its
         // dependents are still found and re-typechecked.
@@ -121,14 +122,14 @@ impl Program {
         for names in grouped_modules {
             let modules = names
                 .iter()
-                .filter_map(|name| self.parsed_asts.get_key_value(name))
+                .filter_map(|name| self.parsed_modules.get_key_value(name))
                 .collect::<Vec<_>>();
             if !modules.is_empty() {
                 typecheck(
                     &modules,
                     &mut self.exports,
                     &mut self.type_registry,
-                    &mut self.typed_asts,
+                    &mut self.typed_modules,
                     &mut self.type_errors,
                     &mut self.hover_annotations,
                     &mut self.definition_links,
@@ -180,8 +181,8 @@ impl Program {
         &self,
         document_id: &RootContainedFilePath,
     ) -> Result<String, FormatError> {
-        let ast = self
-            .parsed_asts
+        let module = self
+            .parsed_modules
             .get(document_id)
             .ok_or_else(|| FormatError::DocumentNotFound(document_id.clone()))?;
 
@@ -193,7 +194,7 @@ impl Program {
             return Err(FormatError::HasParseErrors(document_id.clone()));
         }
 
-        Ok(format(ast))
+        Ok(format(module))
     }
 
     /// Returns the text of every hop document concatenated into a single string.
@@ -252,8 +253,8 @@ impl Program {
     }
 
     /// Get all typed modules for compilation
-    pub(crate) fn typed_modules(&self) -> &HashMap<RootContainedFilePath, TypedAst> {
-        &self.typed_asts
+    pub(crate) fn typed_modules(&self) -> &HashMap<RootContainedFilePath, TypedModule> {
+        &self.typed_modules
     }
 
     #[cfg(test)]
@@ -264,9 +265,9 @@ impl Program {
     /// Return the names of every page declared across all modules, sorted.
     pub fn page_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self
-            .typed_asts
+            .typed_modules
             .values()
-            .flat_map(|ast| ast.page_declarations())
+            .flat_map(|module| module.page_declarations())
             .map(|page| page.name.to_string())
             .collect();
         names.sort();

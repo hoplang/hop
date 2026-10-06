@@ -263,8 +263,8 @@ fn is_free_from_bindings(pattern: &TypedPattern) -> bool {
 /// Returns the index of a constructor within the given type.
 fn constructor_index(cons: &Constructor, resolved: ResolvedType<'_>) -> usize {
     match cons {
-        Constructor::BooleanFalse => 0,
-        Constructor::BooleanTrue => 1,
+        Constructor::BoolFalse => 0,
+        Constructor::BoolTrue => 1,
         Constructor::OptionSome => 0,
         Constructor::OptionNone => 1,
         Constructor::EnumVariant { variant_name, .. } => {
@@ -427,8 +427,8 @@ fn compile_rows(
     let mut cases = match resolved {
         ResolvedType::Bool => {
             vec![
-                (Constructor::BooleanFalse, Vec::new(), Vec::new()),
-                (Constructor::BooleanTrue, Vec::new(), Vec::new()),
+                (Constructor::BoolFalse, Vec::new(), Vec::new()),
+                (Constructor::BoolTrue, Vec::new(), Vec::new()),
             ]
         }
         ResolvedType::Option(inner) => {

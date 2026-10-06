@@ -2,7 +2,7 @@ use super::{Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
-use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedNode};
+use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedMarkup};
 use crate::hop::typing::type_env::{FunctionSignature, Tail, TypeEnv};
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::type_registry::TypeRegistry;
@@ -14,8 +14,8 @@ use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
 use crate::symbols::var_name::VarName;
 
-pub fn typecheck_node(
-    node: &ParsedNode,
+pub fn typecheck_markup(
+    markup: &ParsedMarkup,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -25,12 +25,12 @@ pub fn typecheck_node(
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedExpr> {
-    match node {
-        ParsedNode::Fragment { children, range: _ } => {
+    match markup {
+        ParsedMarkup::Fragment { children, range: _ } => {
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(
+                    typecheck_markup(
                         child,
                         forwarded_params,
                         registry,
@@ -45,11 +45,11 @@ pub fn typecheck_node(
                 .collect();
 
             Some(TypedExpr::HtmlConcat {
-                nodes: typed_children,
+                parts: typed_children,
             })
         }
 
-        ParsedNode::FunctionInvocation {
+        ParsedMarkup::Call {
             function_name,
             function_name_opening_range,
             function_name_closing_range,
@@ -134,7 +134,7 @@ pub fn typecheck_node(
                         quoted_range.clone(),
                     ),
                     ParsedAttribute::KeyOnly { .. } => Argument::Desugared(
-                        TypedExpr::BooleanLiteral { value: true },
+                        TypedExpr::BoolLiteral { value: true },
                         name_range.clone(),
                     ),
                     // A spread has no attribute name, so the `name_range()`
@@ -238,7 +238,7 @@ pub fn typecheck_node(
             }
         }
 
-        ParsedNode::HtmlElement {
+        ParsedMarkup::Element {
             kind: element,
             tag_name,
             closing_tag_name,
@@ -299,7 +299,7 @@ pub fn typecheck_node(
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(
+                    typecheck_markup(
                         child,
                         forwarded_params,
                         registry,
@@ -313,7 +313,7 @@ pub fn typecheck_node(
                 })
                 .collect();
 
-            Some(TypedExpr::HtmlElement {
+            Some(TypedExpr::Element {
                 element: element.clone(),
                 attrs: TypedAttrs {
                     attributes: typed_attributes,
@@ -325,12 +325,12 @@ pub fn typecheck_node(
                     }),
                 },
                 children: Box::new(TypedExpr::HtmlConcat {
-                    nodes: typed_children,
+                    parts: typed_children,
                 }),
             })
         }
 
-        ParsedNode::Interpolation {
+        ParsedMarkup::Interpolation {
             expression,
             range: _,
         } => {
@@ -365,11 +365,11 @@ pub fn typecheck_node(
             }
         }
 
-        ParsedNode::Text { range } => Some(TypedExpr::HtmlRaw {
+        ParsedMarkup::Text { range } => Some(TypedExpr::HtmlRaw {
             value: range.to_cheap_string(),
         }),
 
-        ParsedNode::Newline { .. } => Some(TypedExpr::HtmlRaw {
+        ParsedMarkup::Newline { .. } => Some(TypedExpr::HtmlRaw {
             value: CheapString::new(" ".to_string()),
         }),
     }

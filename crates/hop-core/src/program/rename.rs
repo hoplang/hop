@@ -1,45 +1,45 @@
 use super::Program;
-use super::find_node::find_node_at_position;
+use super::find_markup::find_markup_at_position;
 use crate::document::{DocumentPosition, DocumentRange};
-use crate::hop::parsing::ParsedNode;
+use crate::hop::parsing::ParsedMarkup;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 
 impl Program {
     pub fn rename_locations(&self, position: &DocumentPosition) -> Option<Vec<DocumentRange>> {
         let document_id = position.document_id();
-        let ast = self.parsed_asts.get(document_id)?;
+        let module = self.parsed_modules.get(document_id)?;
 
         // Check if cursor is on a record declaration name
-        for record in ast.record_declarations() {
+        for record in module.record_declarations() {
             if record.type_name_range.contains_position(position) {
                 return Some(self.collect_record_rename_locations(&record.type_name, document_id));
             }
         }
 
         // Check if cursor is on an enum declaration name
-        for enum_decl in ast.enum_declarations() {
+        for enum_decl in module.enum_declarations() {
             if enum_decl.type_name_range.contains_position(position) {
                 return Some(self.collect_enum_rename_locations(&enum_decl.type_name, document_id));
             }
         }
 
-        for function in ast.function_declarations() {
+        for function in module.function_declarations() {
             if function.name_range.contains_position(position) {
                 return Some(self.collect_function_rename_locations(&function.name_range));
             }
         }
 
-        let node = find_node_at_position(ast, position)?;
+        let markup = find_markup_at_position(module, position)?;
 
-        let is_on_tag_name = node.tag_names().any(|r| r.contains_position(position));
+        let is_on_tag_name = markup.tag_names().any(|r| r.contains_position(position));
 
         if !is_on_tag_name {
             return None;
         }
 
-        match node {
-            ParsedNode::FunctionInvocation { .. } => {
+        match markup {
+            ParsedMarkup::Call { .. } => {
                 let link = self
                     .definition_links
                     .get(document_id)?
@@ -47,7 +47,7 @@ impl Program {
                     .find(|link| link.use_range.contains_position(position))?;
                 Some(self.collect_function_rename_locations(&link.definition_range))
             }
-            n @ ParsedNode::HtmlElement { .. } => Some(n.tag_names().cloned().collect()),
+            n @ ParsedMarkup::Element { .. } => Some(n.tag_names().cloned().collect()),
             _ => None,
         }
     }
@@ -59,17 +59,17 @@ impl Program {
         &self,
         position: &DocumentPosition,
     ) -> Option<(DocumentRange, String)> {
-        let ast = self.parsed_asts.get(position.document_id())?;
+        let module = self.parsed_modules.get(position.document_id())?;
 
-        let mut declaration_names = ast
+        let mut declaration_names = module
             .record_declarations()
             .map(|record| &record.type_name_range)
-            .chain(ast.enum_declarations().map(|e| &e.type_name_range))
-            .chain(ast.function_declarations().map(|f| &f.name_range));
+            .chain(module.enum_declarations().map(|e| &e.type_name_range))
+            .chain(module.function_declarations().map(|f| &f.name_range));
 
         let range = match declaration_names.find(|r| r.contains_position(position)) {
             Some(range) => range,
-            None => find_node_at_position(ast, position)?
+            None => find_markup_at_position(module, position)?
                 .tag_names()
                 .find(|r| r.contains_position(position))?,
         };
@@ -107,7 +107,7 @@ impl Program {
     ) -> Vec<DocumentRange> {
         // Find the definition range (the name_range of the record declaration)
         let definition_range = self
-            .parsed_asts
+            .parsed_modules
             .get(definition_module)
             .and_then(|module| module.find_record_declaration(record_name.as_str()))
             .map(|decl| &decl.type_name_range);
@@ -137,7 +137,7 @@ impl Program {
     ) -> Vec<DocumentRange> {
         // Find the definition range (the name_range of the enum declaration)
         let definition_range = self
-            .parsed_asts
+            .parsed_modules
             .get(definition_module)
             .and_then(|module| module.find_enum_declaration(enum_name.as_str()))
             .map(|decl| &decl.type_name_range);

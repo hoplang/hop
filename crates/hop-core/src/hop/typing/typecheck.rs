@@ -4,9 +4,9 @@ use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::{
-    ParsedAst, ParsedDeclaration, ParsedEnumDeclaration, ParsedExpr, ParsedFunctionDeclaration,
-    ParsedImportDeclaration, ParsedNode, ParsedPageDeclaration, ParsedParameter, ParsedPattern,
-    ParsedRecordDeclaration, ParsedType,
+    ParsedDeclaration, ParsedEnumDeclaration, ParsedExpr, ParsedFunctionDeclaration,
+    ParsedImportDeclaration, ParsedMarkup, ParsedModule, ParsedPageDeclaration, ParsedParameter,
+    ParsedPattern, ParsedRecordDeclaration, ParsedType,
 };
 use crate::hop::typing::export::Export;
 use crate::hop::typing::resolve_type::resolve_type;
@@ -19,8 +19,8 @@ use crate::hop::typing::type_registry::{
     EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
 };
 use crate::hop::typing::typecheck_expr::typecheck_expr;
-use crate::hop::typing::typed_ast::{
-    TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
+use crate::hop::typing::typed_module::{
+    TypedFunctionDeclaration, TypedModule, TypedPageDeclaration, TypedParameter,
 };
 use crate::hop::typing::variable_scope::VariableScope;
 use crate::hover_annotation::HoverAnnotation;
@@ -30,10 +30,10 @@ use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
 pub fn typecheck(
-    modules: &[(&RootContainedFilePath, &ParsedAst)],
+    modules: &[(&RootContainedFilePath, &ParsedModule)],
     exports: &mut HashMap<RootContainedFilePath, HashMap<CheapString, Export>>,
     registry: &mut TypeRegistry,
-    typed_asts: &mut HashMap<RootContainedFilePath, TypedAst>,
+    typed_modules: &mut HashMap<RootContainedFilePath, TypedModule>,
     errors: &mut HashMap<RootContainedFilePath, Vec<TypeError>>,
     annotations: &mut HashMap<RootContainedFilePath, Vec<HoverAnnotation>>,
     definition_links: &mut HashMap<RootContainedFilePath, Vec<DefinitionLink>>,
@@ -51,7 +51,7 @@ pub fn typecheck(
         module_asset_references.clear();
         registry.remove_module(document_id);
 
-        let typed_ast = typecheck_module(
+        let typed_module = typecheck_module(
             document_id,
             module,
             exports,
@@ -61,7 +61,7 @@ pub fn typecheck(
             module_definition_links,
             module_asset_references,
         );
-        typed_asts.insert(document_id.clone(), typed_ast);
+        typed_modules.insert(document_id.clone(), typed_module);
 
         if modules.len() > 1 {
             module_errors.clear();
@@ -82,14 +82,14 @@ pub fn typecheck(
 
 fn typecheck_module(
     document_id: &RootContainedFilePath,
-    parsed_ast: &ParsedAst,
+    parsed_module: &ParsedModule,
     exports: &mut HashMap<RootContainedFilePath, HashMap<CheapString, Export>>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> TypedAst {
+) -> TypedModule {
     let mut module_exports: HashMap<CheapString, Export> = HashMap::new();
 
     let mut typed_pages = Vec::new();
@@ -101,7 +101,7 @@ fn typecheck_module(
     // reported at the second occurrence.
     let mut names: HashMap<CheapString, Name> = HashMap::new();
     let mut imported_functions: HashMap<CheapString, FunctionSignature> = HashMap::new();
-    for decl in parsed_ast.declarations() {
+    for decl in parsed_module.declarations() {
         let (name, name_range, kind, export) = match decl {
             ParsedDeclaration::Import(import) => {
                 let ParsedImportDeclaration {
@@ -236,7 +236,7 @@ fn typecheck_module(
     // Phase 2
     //
     // Resolve type definitions.
-    for record in parsed_ast.record_declarations() {
+    for record in parsed_module.record_declarations() {
         typecheck_record_declaration(
             record,
             document_id,
@@ -246,7 +246,7 @@ fn typecheck_module(
             definition_links,
         );
     }
-    for enum_decl in parsed_ast.enum_declarations() {
+    for enum_decl in parsed_module.enum_declarations() {
         typecheck_enum_declaration(
             enum_decl,
             document_id,
@@ -261,7 +261,7 @@ fn typecheck_module(
     //
     // Register signatures and resolve rest spreads.
     let mut pending_functions = Vec::new();
-    for function in parsed_ast.function_declarations() {
+    for function in parsed_module.function_declarations() {
         pending_functions.extend(create_function_signature(
             function,
             &names,
@@ -284,7 +284,7 @@ fn typecheck_module(
     // Pair each function's rest parameter with the spread that forwards it.
     // This is purely syntactic, so it runs before any signature is settled.
     let mut rest_targets: HashMap<CheapString, Option<RestSpreadTarget>> = HashMap::new();
-    for function in parsed_ast.function_declarations() {
+    for function in parsed_module.function_declarations() {
         let mut spreads = Vec::new();
         collect_spreads(&function.body, &mut spreads);
         let rest_target = pair_rest_spread(
@@ -301,7 +301,7 @@ fn typecheck_module(
     }
     // Pages cannot declare a rest, so every spread in their bodies fails to
     // name one.
-    for page in parsed_ast.page_declarations() {
+    for page in parsed_module.page_declarations() {
         let mut spreads = Vec::new();
         if let Some(head) = &page.head {
             collect_spreads(&head.body, &mut spreads);
@@ -313,7 +313,7 @@ fn typecheck_module(
         names,
         functions: resolve_rest_targets(&rest_targets, &declared, errors),
     };
-    for function in parsed_ast.function_declarations() {
+    for function in parsed_module.function_declarations() {
         let name = function.name.as_str();
         if type_env.names[name].definition_range != function.name_range {
             continue;
@@ -349,7 +349,7 @@ fn typecheck_module(
         ));
     }
     typed_function_declarations.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
-    for page in parsed_ast.page_declarations() {
+    for page in parsed_module.page_declarations() {
         typed_pages.push(typecheck_page_declaration(
             page,
             registry,
@@ -365,7 +365,7 @@ fn typecheck_module(
     //
     // Check for unused imports. A name counts as used wherever it is written,
     // whether or not it resolved.
-    let referenced = referenced_names(parsed_ast);
+    let referenced = referenced_names(parsed_module);
     for (name, entry) in &type_env.names {
         let Some(import_range) = &entry.import_range else {
             continue;
@@ -383,7 +383,7 @@ fn typecheck_module(
 
     exports.insert(document_id.clone(), module_exports);
 
-    TypedAst::new(typed_pages, typed_function_declarations)
+    TypedModule::new(typed_pages, typed_function_declarations)
 }
 
 fn typecheck_record_declaration(
@@ -542,7 +542,7 @@ fn check_declaration_body(
     errors: &mut Vec<TypeError>,
 ) -> TypedExpr {
     let Some(typed_body) = typed_body else {
-        return TypedExpr::HtmlConcat { nodes: Vec::new() };
+        return TypedExpr::HtmlConcat { parts: Vec::new() };
     };
     let found = typed_body.typ();
     if found != Type::Html {
@@ -554,7 +554,7 @@ fn check_declaration_body(
             },
             range.clone(),
         ));
-        return TypedExpr::HtmlConcat { nodes: Vec::new() };
+        return TypedExpr::HtmlConcat { parts: Vec::new() };
     }
     typed_body
 }
@@ -711,7 +711,7 @@ fn typecheck_page_declaration(
         params: typed_params,
         head: match head {
             Some(head) => check_declaration_body(typed_head, head.body.range(), errors),
-            None => TypedExpr::HtmlConcat { nodes: Vec::new() },
+            None => TypedExpr::HtmlConcat { parts: Vec::new() },
         },
         body: check_declaration_body(typed_body, body.body.range(), errors),
     }
@@ -983,10 +983,10 @@ fn validate_examples_annotation(
 }
 
 /// Every name written in the module, whether or not it resolves: in type
-/// positions, record and enum literals, patterns, calls and tag invocations.
-fn referenced_names(parsed_ast: &ParsedAst) -> HashSet<CheapString> {
+/// positions, record and enum expressions, patterns, calls and markup calls.
+fn referenced_names(parsed_module: &ParsedModule) -> HashSet<CheapString> {
     let mut names = HashSet::new();
-    for decl in parsed_ast.declarations() {
+    for decl in parsed_module.declarations() {
         match decl {
             ParsedDeclaration::Import(_) => {}
             ParsedDeclaration::Record(record) => {
@@ -1048,7 +1048,7 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
 
 fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
     match expr {
-        ParsedExpr::RecordLiteral { type_name, .. } | ParsedExpr::EnumLiteral { type_name, .. } => {
+        ParsedExpr::Record { type_name, .. } | ParsedExpr::Enum { type_name, .. } => {
             out.insert(type_name.to_cheap_string());
         }
         ParsedExpr::Match { arms, .. } => {
@@ -1056,10 +1056,10 @@ fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
                 collect_names_in_pattern(&arm.pattern, out);
             }
         }
-        ParsedExpr::FunctionCall { name, .. } => {
+        ParsedExpr::Call { name, .. } => {
             out.insert(name.to_cheap_string());
         }
-        ParsedExpr::Markup { node } => collect_names_in_node(node, out),
+        ParsedExpr::Markup { markup } => collect_names_in_markup(markup, out),
         ParsedExpr::Let { binding, .. } => {
             if let Some(var_type) = &binding.var_type {
                 collect_names_in_type(var_type, out);
@@ -1070,15 +1070,15 @@ fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
     expr.for_each_child(&mut |child| collect_names_in_expr(child, out));
 }
 
-fn collect_names_in_node(node: &ParsedNode, out: &mut HashSet<CheapString>) {
-    if let ParsedNode::FunctionInvocation { function_name, .. } = node {
+fn collect_names_in_markup(markup: &ParsedMarkup, out: &mut HashSet<CheapString>) {
+    if let ParsedMarkup::Call { function_name, .. } = markup {
         out.insert(function_name.to_cheap_string());
     }
-    for expr in node.expressions() {
+    for expr in markup.expressions() {
         collect_names_in_expr(expr, out);
     }
-    for child in node.children() {
-        collect_names_in_node(child, out);
+    for child in markup.children() {
+        collect_names_in_markup(child, out);
     }
 }
 
@@ -1105,8 +1105,8 @@ fn collect_names_in_pattern(pattern: &ParsedPattern, out: &mut HashSet<CheapStri
         }
         ParsedPattern::Wildcard { .. }
         | ParsedPattern::Binding { .. }
-        | ParsedPattern::BooleanTrue { .. }
-        | ParsedPattern::BooleanFalse { .. }
+        | ParsedPattern::BoolTrue { .. }
+        | ParsedPattern::BoolFalse { .. }
         | ParsedPattern::OptionNone { .. } => {}
     }
 }
@@ -1142,7 +1142,7 @@ mod tests {
         let mut type_annotations = HashMap::new();
         let mut definition_links = HashMap::new();
         let mut asset_references = HashMap::new();
-        let mut typed_asts = HashMap::new();
+        let mut typed_modules = HashMap::new();
         let mut document_ids = Vec::new();
 
         for file in archive.iter() {
@@ -1154,7 +1154,7 @@ mod tests {
             let document_id = RootContainedFilePath::new(&file.name).unwrap();
             document_ids.push(document_id.clone());
             let document = Document::new(document_id.clone(), source_code.to_string());
-            let ast = parse(document, &mut parse_errors);
+            let module = parse(document, &mut parse_errors);
 
             if !parse_errors.is_empty() {
                 panic!(
@@ -1165,10 +1165,10 @@ mod tests {
             }
 
             typecheck(
-                &[(&document_id, &ast)],
+                &[(&document_id, &module)],
                 &mut state,
                 &mut registry,
-                &mut typed_asts,
+                &mut typed_modules,
                 &mut type_errors,
                 &mut type_annotations,
                 &mut definition_links,
@@ -1200,8 +1200,8 @@ mod tests {
             parts.join("\n")
         } else {
             for document_id in &document_ids {
-                if let Some(typed_ast) = typed_asts.get(document_id) {
-                    ast_output.push(format!("-- {} --\n{}", document_id.as_str(), typed_ast));
+                if let Some(typed_module) = typed_modules.get(document_id) {
+                    ast_output.push(format!("-- {} --\n{}", document_id.as_str(), typed_module));
                 }
             }
             let types = registry.to_string();
@@ -1909,7 +1909,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_fragment_node() {
+    fn accepts_fragment() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3155,7 +3155,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_on_tuple_literal() {
+    fn accepts_match_on_tuple_expression() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3181,7 +3181,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_tuple_literal_argument() {
+    fn accepts_tuple_expression_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3208,7 +3208,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_tuple_literal_with_element_types_inferred_from_context() {
+    fn accepts_tuple_expression_with_element_types_inferred_from_context() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3267,7 +3267,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_tuple_literal_argument_with_wrong_element_type() {
+    fn rejects_tuple_expression_argument_with_wrong_element_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3291,7 +3291,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_tuple_literal_argument_with_wrong_arity() {
+    fn rejects_tuple_expression_argument_with_wrong_arity() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3315,7 +3315,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_inferring_empty_array_in_tuple_literal() {
+    fn rejects_inferring_empty_array_in_tuple_expression() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3337,7 +3337,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_tuple_literal_in_text_expression() {
+    fn rejects_tuple_expression_in_text_expression() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3827,7 +3827,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_iterating_over_a_boolean() {
+    fn rejects_when_iterating_over_a_bool() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6042,7 +6042,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_parameter_with_default_macro_invocation() {
+    fn rejects_parameter_with_default_macro_call() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6494,7 +6494,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_on_enum_literal_with_fields() {
+    fn accepts_match_on_enum_expression_with_fields() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -7341,7 +7341,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_boolean_expression_attribute() {
+    fn rejects_bool_expression_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -7360,7 +7360,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_boolean_literal_attribute() {
+    fn rejects_bool_literal_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -7398,7 +7398,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_some_literal_attribute() {
+    fn rejects_some_as_attribute_value() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -8046,7 +8046,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_inferred_record_literal_let_binding() {
+    fn accepts_inferred_record_expression_let_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -10688,7 +10688,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_forward_function_invocation() {
+    fn accepts_forward_markup_call() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -10744,7 +10744,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_invocation_inside_match_arm_cycle() {
+    fn accepts_markup_call_inside_match_arm_cycle() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -12347,7 +12347,7 @@ mod tests {
             let source = random_source(u)?;
             let document_id = RootContainedFilePath::new("test.hop").unwrap();
             let mut parse_errors = Vec::new();
-            let ast = parse(
+            let module = parse(
                 Document::new(document_id.clone(), source.clone()),
                 &mut parse_errors,
             );
@@ -12356,7 +12356,7 @@ mod tests {
                 "parse errors: {parse_errors:?}\n\nsource:\n{source}"
             );
             typecheck(
-                &[(&document_id, &ast)],
+                &[(&document_id, &module)],
                 &mut HashMap::new(),
                 &mut TypeRegistry::default(),
                 &mut HashMap::new(),

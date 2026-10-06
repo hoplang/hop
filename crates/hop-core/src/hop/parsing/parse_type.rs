@@ -22,7 +22,7 @@ pub fn parse_type(
     if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeFloat) {
         return Ok(ParsedType::Float { range: type_range });
     }
-    if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeBoolean) {
+    if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeBool) {
         return Ok(ParsedType::Bool { range: type_range });
     }
     if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeHtml) {

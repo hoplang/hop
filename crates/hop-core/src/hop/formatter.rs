@@ -1,9 +1,10 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::{
-    ParsedArguments, ParsedAst, ParsedAttribute, ParsedDeclaration, ParsedEnumDeclaration,
+    ParsedArguments, ParsedAttribute, ParsedDeclaration, ParsedEnumDeclaration,
     ParsedEnumDeclarationVariant, ParsedExpr, ParsedFieldDeclaration, ParsedFunctionDeclaration,
-    ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource, ParsedMatchArm, ParsedNode,
-    ParsedPageDeclaration, ParsedParameter, ParsedPattern, ParsedRecordDeclaration, ParsedType,
+    ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource, ParsedMarkup, ParsedMatchArm,
+    ParsedModule, ParsedPageDeclaration, ParsedParameter, ParsedPattern, ParsedRecordDeclaration,
+    ParsedType,
 };
 use crate::html::HtmlElementKind;
 use pretty::{Arena, DocAllocator, DocBuilder};
@@ -17,9 +18,9 @@ struct Comments<'a> {
     markup: VecDeque<&'a DocumentRange>,
 }
 
-pub fn format(ast: &ParsedAst) -> String {
+pub fn format(module: &ParsedModule) -> String {
     let arena = Arena::new();
-    format_ast(ast, &arena).pretty(60).to_string()
+    format_module(module, &arena).pretty(60).to_string()
 }
 
 /// Wraps items in a grouped body with trailing comma that disappear
@@ -99,9 +100,9 @@ where
     }
 }
 
-fn format_ast<'a>(ast: &'a ParsedAst, arena: &'a Arena<'a>) -> DocBuilder<'a, Arena<'a>> {
-    let declarations = ast.declarations();
-    let (markup, line) = ast
+fn format_module<'a>(module: &'a ParsedModule, arena: &'a Arena<'a>) -> DocBuilder<'a, Arena<'a>> {
+    let declarations = module.declarations();
+    let (markup, line) = module
         .comments()
         .iter()
         .partition(|comment| comment.as_str().starts_with("<!--"));
@@ -518,20 +519,20 @@ fn format_attribute<'a>(
     }
 }
 
-fn format_node<'a>(
+fn format_markup<'a>(
     arena: &'a Arena<'a>,
-    node: &'a ParsedNode,
+    markup: &'a ParsedMarkup,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    match node {
-        ParsedNode::Text { range } => arena.text(range.as_str()),
-        // Newline nodes are handled by format_children (they signal where to break).
+    match markup {
+        ParsedMarkup::Text { range } => arena.text(range.as_str()),
+        // Newlines are handled by format_children (they signal where to break).
         // This case is here for completeness but shouldn't be reached in normal formatting.
-        ParsedNode::Newline { .. } => arena.nil(),
-        ParsedNode::Interpolation { expression, .. } => {
+        ParsedMarkup::Newline { .. } => arena.nil(),
+        ParsedMarkup::Interpolation { expression, .. } => {
             format_braced_expr(arena, expression, comments)
         }
-        ParsedNode::FunctionInvocation {
+        ParsedMarkup::Call {
             function_name,
             attributes,
             children,
@@ -574,7 +575,7 @@ fn format_node<'a>(
                     .append(arena.text(">")),
             }
         }
-        ParsedNode::Fragment { children, range }
+        ParsedMarkup::Fragment { children, range }
             if children.is_empty()
                 && !comments
                     .markup
@@ -583,11 +584,11 @@ fn format_node<'a>(
         {
             arena.text("<></>")
         }
-        ParsedNode::Fragment { children, range } => arena
+        ParsedMarkup::Fragment { children, range } => arena
             .text("<>")
             .append(format_children(arena, children, range.end(), comments))
             .append(arena.text("</>")),
-        ParsedNode::HtmlElement {
+        ParsedMarkup::Element {
             kind: element,
             closing_tag_name,
             attributes,
@@ -652,7 +653,7 @@ fn format_node<'a>(
                 // to avoid altering semantically significant whitespace
                 let mut doc = opening_tag_doc.append(arena.text(">"));
                 for child in children {
-                    if let ParsedNode::Text { range } = child {
+                    if let ParsedMarkup::Text { range } = child {
                         doc = doc.append(arena.text(range.as_str()));
                     }
                 }
@@ -675,7 +676,7 @@ fn format_node<'a>(
 /// comments written among them.
 fn format_children<'a>(
     arena: &'a Arena<'a>,
-    children: &'a [ParsedNode],
+    children: &'a [ParsedMarkup],
     end: usize,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
@@ -683,14 +684,14 @@ fn format_children<'a>(
         return arena.hardline();
     }
 
-    // Collect non-Newline nodes with their "preceded by newline" flag.
-    // Newline nodes signal where to insert line breaks between inline content.
-    let mut items: Vec<(bool, &ParsedNode)> = Vec::new();
+    // Collect the markup other than Newlines with its "preceded by newline" flag.
+    // Newlines signal where to insert line breaks between inline content.
+    let mut items: Vec<(bool, &ParsedMarkup)> = Vec::new();
     let mut prev_was_newline = false;
 
     for child in children {
         match child {
-            ParsedNode::Newline { .. } => {
+            ParsedMarkup::Newline { .. } => {
                 prev_was_newline = true;
             }
             _ => {
@@ -704,15 +705,15 @@ fn format_children<'a>(
 
     for i in 0..items.len() {
         let (preceded_by_newline, child) = items[i];
-        let prev_node = if i > 0 { Some(items[i - 1].1) } else { None };
-        let next_node = items.get(i + 1).map(|(_, n)| *n);
+        let prev_markup = if i > 0 { Some(items[i - 1].1) } else { None };
+        let next_markup = items.get(i + 1).map(|(_, n)| *n);
 
         // Decide separator: line break if preceded by a newline, or if either
         // side is not Text, in which case the break emits nothing.
-        let need_break = if let Some(prev) = prev_node {
+        let need_break = if let Some(prev) = prev_markup {
             preceded_by_newline
-                || !matches!(prev, ParsedNode::Text { .. })
-                || !matches!(child, ParsedNode::Text { .. })
+                || !matches!(prev, ParsedMarkup::Text { .. })
+                || !matches!(child, ParsedMarkup::Text { .. })
         } else {
             false
         };
@@ -733,15 +734,15 @@ fn format_children<'a>(
             }
         }
 
-        if let ParsedNode::Text { range } = child {
+        if let ParsedMarkup::Text { range } = child {
             let text = range.as_str();
             let leading_ws = &text[..text.len() - text.trim_start().len()];
             let trailing_ws = &text[text.trim_end().len()..];
             let trimmed = text.trim();
             let prev_forces_break =
-                prev_node.is_some_and(|n| !matches!(n, ParsedNode::Text { .. }));
+                prev_markup.is_some_and(|n| !matches!(n, ParsedMarkup::Text { .. }));
             let next_forces_break =
-                next_node.is_some_and(|n| !matches!(n, ParsedNode::Text { .. }));
+                next_markup.is_some_and(|n| !matches!(n, ParsedMarkup::Text { .. }));
 
             let leading_needs_space =
                 !leading_ws.is_empty() && prev_forces_break && !preceded_by_newline;
@@ -771,7 +772,7 @@ fn format_children<'a>(
                 }
             }
         } else {
-            doc = doc.append(format_node(arena, child, comments));
+            doc = doc.append(format_markup(arena, child, comments));
         }
     }
 
@@ -848,9 +849,9 @@ fn format_expr_before_brace<'a>(
 /// parentheses of their own are looked into.
 fn contains_exterior_record_literal(expr: &ParsedExpr) -> bool {
     match expr {
-        ParsedExpr::RecordLiteral { .. } => true,
-        ParsedExpr::EnumLiteral { fields, .. } => !fields.is_empty(),
-        ParsedExpr::BinaryOp {
+        ParsedExpr::Record { .. } => true,
+        ParsedExpr::Enum { fields, .. } => !fields.is_empty(),
+        ParsedExpr::Binary {
             left,
             operator,
             right,
@@ -860,8 +861,7 @@ fn contains_exterior_record_literal(expr: &ParsedExpr) -> bool {
             (left.binding_power() >= left_power && contains_exterior_record_literal(left))
                 || (right.binding_power() >= right_power && contains_exterior_record_literal(right))
         }
-        ParsedExpr::BooleanNegation { operand, .. }
-        | ParsedExpr::NumericNegation { operand, .. } => {
+        ParsedExpr::Unary { operand, .. } => {
             operand.binding_power() >= ParsedExpr::PREFIX_BINDING_POWER
                 && contains_exterior_record_literal(operand)
         }
@@ -986,7 +986,7 @@ fn format_expr<'a>(
             )
             .append(arena.hardline())
             .append(arena.text("}")),
-        ParsedExpr::Markup { node } => format_node(arena, node, comments),
+        ParsedExpr::Markup { markup } => format_markup(arena, markup, comments),
         ParsedExpr::FieldAccess {
             record: object,
             field,
@@ -1024,7 +1024,7 @@ fn format_expr<'a>(
             .text("\"")
             .append(arena.text(value.as_raw_str()))
             .append(arena.text("\"")),
-        ParsedExpr::BooleanLiteral { range, .. } => arena.text(range.as_str()),
+        ParsedExpr::BoolLiteral { range, .. } => arena.text(range.as_str()),
         ParsedExpr::IntLiteral {
             minus_range,
             digits_range,
@@ -1041,7 +1041,7 @@ fn format_expr<'a>(
                 None => digits,
             }
         }
-        ParsedExpr::ArrayLiteral { elements, .. } => {
+        ParsedExpr::Array { elements, .. } => {
             if elements.is_empty() {
                 arena.text("[]")
             } else {
@@ -1058,7 +1058,7 @@ fn format_expr<'a>(
                     .append(arena.text("]"))
             }
         }
-        ParsedExpr::TupleLiteral { elements, .. } => {
+        ParsedExpr::Tuple { elements, .. } => {
             if elements.is_empty() {
                 arena.text("()")
             } else if elements.len() == 1 {
@@ -1080,7 +1080,7 @@ fn format_expr<'a>(
                     .append(arena.text(")"))
             }
         }
-        ParsedExpr::RecordLiteral {
+        ParsedExpr::Record {
             type_name,
             fields,
             spread,
@@ -1112,7 +1112,15 @@ fn format_expr<'a>(
                     .append(arena.text("}"))
             }
         }
-        ParsedExpr::BinaryOp {
+        ParsedExpr::Unary {
+            operator, operand, ..
+        } => arena.text(operator.as_str()).append(format_expr_in_slot(
+            arena,
+            operand,
+            ParsedExpr::PREFIX_BINDING_POWER,
+            comments,
+        )),
+        ParsedExpr::Binary {
             left,
             operator,
             right,
@@ -1125,19 +1133,7 @@ fn format_expr<'a>(
                 .append(arena.text(" "))
                 .append(format_expr_in_slot(arena, right, right_power, comments))
         }
-        ParsedExpr::BooleanNegation { operand, .. } => arena.text("!").append(format_expr_in_slot(
-            arena,
-            operand,
-            ParsedExpr::PREFIX_BINDING_POWER,
-            comments,
-        )),
-        ParsedExpr::NumericNegation { operand, .. } => arena.text("-").append(format_expr_in_slot(
-            arena,
-            operand,
-            ParsedExpr::PREFIX_BINDING_POWER,
-            comments,
-        )),
-        ParsedExpr::EnumLiteral {
+        ParsedExpr::Enum {
             type_name,
             variant_name,
             fields,
@@ -1216,7 +1212,7 @@ fn format_expr<'a>(
                     .append(arena.text("}"))
             }
         }
-        ParsedExpr::OptionLiteral { value, .. } => match value {
+        ParsedExpr::Option { value, .. } => match value {
             Some(inner) => arena
                 .text("Some(")
                 .append(
@@ -1230,7 +1226,7 @@ fn format_expr<'a>(
                 .group(),
             None => arena.text("None"),
         },
-        ParsedExpr::MacroInvocation { name, args, .. } => {
+        ParsedExpr::Macro { name, args, .. } => {
             let mut expanded_docs: Vec<DocBuilder<'a, Arena<'a>>> = Vec::new();
             if name == "join" {
                 for e in args {
@@ -1316,7 +1312,7 @@ fn format_expr<'a>(
                     .append(arena.text(")"))
             }
         }
-        ParsedExpr::FunctionCall { name, args, .. } => {
+        ParsedExpr::Call { name, args, .. } => {
             let is_empty = match args {
                 ParsedArguments::Positional(values) => values.is_empty(),
                 ParsedArguments::Named(named) => named.is_empty(),
@@ -1403,8 +1399,8 @@ fn format_pattern<'a>(
     let (base, fields) = match pattern {
         ParsedPattern::Wildcard { .. } => return arena.text("_"),
         ParsedPattern::Binding { name, .. } => return arena.text(name.as_str()),
-        ParsedPattern::BooleanTrue { .. } => return arena.text("true"),
-        ParsedPattern::BooleanFalse { .. } => return arena.text("false"),
+        ParsedPattern::BoolTrue { .. } => return arena.text("true"),
+        ParsedPattern::BoolFalse { .. } => return arena.text("false"),
         ParsedPattern::OptionNone { .. } => return arena.text("None"),
         ParsedPattern::OptionSome { inner, .. } => {
             return arena
@@ -1488,11 +1484,11 @@ mod tests {
         let mut errors = Vec::new();
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let document = Document::new(document_id, source.to_string());
-        let ast = parse(document, &mut errors);
+        let module = parse(document, &mut errors);
         if !errors.is_empty() {
             panic!("Parse errors: {:?}", errors);
         }
-        let formatted = format(&ast);
+        let formatted = format(&module);
         expected.assert_eq(&formatted);
 
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
@@ -1512,7 +1508,7 @@ mod tests {
             let source = random_source(u)?;
             let document_id = RootContainedFilePath::new("test.hop").unwrap();
             let mut errors = Vec::new();
-            let ast = parse(
+            let module = parse(
                 Document::new(document_id.clone(), source.clone()),
                 &mut errors,
             );
@@ -1520,7 +1516,7 @@ mod tests {
                 errors.is_empty(),
                 "parse errors: {errors:?}\n\nsource:\n{source}"
             );
-            let formatted = format(&ast);
+            let formatted = format(&module);
             let document = Document::new(document_id, formatted.clone());
             let formatted_ast = parse(document, &mut errors);
             assert!(

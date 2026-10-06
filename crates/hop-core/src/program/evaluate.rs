@@ -81,10 +81,11 @@ impl Program {
         })?;
 
         let (document_id, page_decl) = self
-            .typed_asts
+            .typed_modules
             .iter()
-            .find_map(|(document_id, ast)| {
-                ast.page_declarations()
+            .find_map(|(document_id, module)| {
+                module
+                    .page_declarations()
                     .iter()
                     .find(|ep| ep.name == page_name)
                     .map(|ep| (document_id, ep))

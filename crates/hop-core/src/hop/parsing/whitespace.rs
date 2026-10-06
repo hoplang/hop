@@ -1,7 +1,7 @@
-use super::parsed_node::ParsedNode;
+use super::parsed_markup::ParsedMarkup;
 use crate::html::HtmlElementKind;
 
-/// Normalize whitespace in a parsed node sequence.
+/// Normalize whitespace in a sequence of parsed markup.
 ///
 /// The pass handles two concerns:
 ///
@@ -9,105 +9,106 @@ use crate::html::HtmlElementKind;
 ///
 /// - Trim the start of a Text that begins its sequence or follows a Newline
 /// - Trim the end of a Text that ends its sequence or precedes a Newline
-/// - Drop Text nodes that are empty after trimming
+/// - Drop Texts that are empty after trimming
 ///
 /// Texts in a row, which a comment split, are trimmed as one text.
 ///
 /// ## 2. Newline-to-Space Conversion
 ///
-/// - Keep a Newline only between two Text nodes, and of a run of Newlines
+/// - Keep a Newline only between two Texts, and of a run of Newlines
 ///   only the last. A newline beside anything else, a tag or an
 ///   interpolation, emits nothing.
 ///
 /// A raw text element (`<script>`, `<style>`) may only hold whitespace, which
 /// carries no meaning and is dropped. Content it is not allowed to hold is
 /// passed through verbatim.
-fn normalize(nodes: &mut Vec<ParsedNode>) {
-    trim_text(nodes);
-    drop_newlines(nodes);
-    for node in nodes.iter_mut() {
-        normalize_node(node);
+fn normalize(content: &mut Vec<ParsedMarkup>) {
+    trim_text(content);
+    drop_newlines(content);
+    for markup in content.iter_mut() {
+        normalize_markup(markup);
     }
 }
 
-/// Normalize whitespace inside a single node.
-pub fn normalize_node(node: &mut ParsedNode) {
-    match node {
+/// Normalize whitespace inside a single piece of markup.
+pub fn normalize_markup(markup: &mut ParsedMarkup) {
+    match markup {
         // Whitespace between a raw text element's tags is not content, so it is
         // dropped. Anything else there has already been rejected by the parser,
         // and is kept as written so that normalizing never discards code.
-        ParsedNode::HtmlElement {
+        ParsedMarkup::Element {
             kind: HtmlElementKind::Script | HtmlElementKind::Style,
             children,
             ..
         } => children.retain(|child| match child {
-            ParsedNode::Text { range } => !range.as_str().trim().is_empty(),
+            ParsedMarkup::Text { range } => !range.as_str().trim().is_empty(),
             _ => true,
         }),
-        ParsedNode::HtmlElement { children, .. } | ParsedNode::Fragment { children, .. } => {
+        ParsedMarkup::Element { children, .. } | ParsedMarkup::Fragment { children, .. } => {
             normalize(children);
         }
-        ParsedNode::FunctionInvocation { children, .. } => {
+        ParsedMarkup::Call { children, .. } => {
             if let Some(children) = children {
                 normalize(children);
             }
         }
-        ParsedNode::Text { .. } | ParsedNode::Newline { .. } | ParsedNode::Interpolation { .. } => {
-        }
+        ParsedMarkup::Text { .. }
+        | ParsedMarkup::Newline { .. }
+        | ParsedMarkup::Interpolation { .. } => {}
     }
 }
 
-fn trim_text(nodes: &mut Vec<ParsedNode>) {
+fn trim_text(content: &mut Vec<ParsedMarkup>) {
     let mut trim = true;
-    for node in nodes.iter_mut() {
-        match node {
-            ParsedNode::Text { range } if trim => {
+    for markup in content.iter_mut() {
+        match markup {
+            ParsedMarkup::Text { range } if trim => {
                 *range = range.trim_start();
                 trim = range.as_str().is_empty();
             }
-            ParsedNode::Newline { .. } => trim = true,
+            ParsedMarkup::Newline { .. } => trim = true,
             _ => trim = false,
         }
     }
     let mut trim = true;
-    for node in nodes.iter_mut().rev() {
-        match node {
-            ParsedNode::Text { range } if trim => {
+    for markup in content.iter_mut().rev() {
+        match markup {
+            ParsedMarkup::Text { range } if trim => {
                 *range = range.trim_end();
                 trim = range.as_str().is_empty();
             }
-            ParsedNode::Newline { .. } => trim = true,
+            ParsedMarkup::Newline { .. } => trim = true,
             _ => trim = false,
         }
     }
-    nodes.retain(|node| match node {
-        ParsedNode::Text { range } => !range.as_str().is_empty(),
+    content.retain(|markup| match markup {
+        ParsedMarkup::Text { range } => !range.as_str().is_empty(),
         _ => true,
     });
 }
 
-fn drop_newlines(nodes: &mut Vec<ParsedNode>) {
-    let mut kept = Vec::with_capacity(nodes.len());
-    // The last Newline since the previous node that is not a Newline.
+fn drop_newlines(content: &mut Vec<ParsedMarkup>) {
+    let mut kept = Vec::with_capacity(content.len());
+    // The last Newline since the previous markup that is not a Newline.
     let mut newline = None;
-    for node in nodes.drain(..) {
-        match node {
-            ParsedNode::Newline { .. } => newline = Some(node),
-            ParsedNode::Text { .. } => {
+    for markup in content.drain(..) {
+        match markup {
+            ParsedMarkup::Newline { .. } => newline = Some(markup),
+            ParsedMarkup::Text { .. } => {
                 if let Some(newline) = newline.take()
-                    && matches!(kept.last(), Some(ParsedNode::Text { .. }))
+                    && matches!(kept.last(), Some(ParsedMarkup::Text { .. }))
                 {
                     kept.push(newline);
                 }
-                kept.push(node);
+                kept.push(markup);
             }
             _ => {
                 newline = None;
-                kept.push(node);
+                kept.push(markup);
             }
         }
     }
-    *nodes = kept;
+    *content = kept;
 }
 
 #[cfg(test)]
@@ -139,9 +140,9 @@ mod tests {
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
         let mut errors = Vec::new();
         let document = Document::new(document_id, source.to_string());
-        let ast = parse::parse(document, &mut errors);
+        let module = parse::parse(document, &mut errors);
         assert!(errors.is_empty(), "parse errors: {errors:?}");
-        format(&ast)
+        format(&module)
     }
 
     fn render(source: &str) -> String {
@@ -155,10 +156,10 @@ mod tests {
         let diagnostics = program.diagnostics();
         assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
 
-        let typed_asts = program.typed_modules().clone();
+        let typed_modules = program.typed_modules().clone();
         let page_name = TypeName::parse("Test").unwrap();
         let module = orchestrate_pure(
-            &typed_asts,
+            &typed_modules,
             OrchestrateOptions {
                 skip_html_structure: true,
                 skip_optimization: true,

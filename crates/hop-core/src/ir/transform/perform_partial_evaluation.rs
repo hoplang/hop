@@ -73,10 +73,8 @@ fn eval(
             } => {
                 let subject = eval(*subject, env, expr_ids);
                 match subject {
-                    PureExpr::BooleanLiteral { value: true, .. } => eval(*true_body, env, expr_ids),
-                    PureExpr::BooleanLiteral { value: false, .. } => {
-                        eval(*false_body, env, expr_ids)
-                    }
+                    PureExpr::BoolLiteral { value: true, .. } => eval(*true_body, env, expr_ids),
+                    PureExpr::BoolLiteral { value: false, .. } => eval(*false_body, env, expr_ids),
                     subject => PureExpr::Match {
                         match_: Match::Bool {
                             subject: Box::new(subject),
@@ -96,7 +94,7 @@ fn eval(
             } => {
                 let subject = eval(*subject, env, expr_ids);
                 match subject {
-                    PureExpr::OptionLiteral {
+                    PureExpr::Option {
                         value: Some(inner), ..
                     } => {
                         let selected = match some_arm_binding {
@@ -111,9 +109,7 @@ fn eval(
                         };
                         eval(selected, env, expr_ids)
                     }
-                    PureExpr::OptionLiteral { value: None, .. } => {
-                        eval(*none_arm_body, env, expr_ids)
-                    }
+                    PureExpr::Option { value: None, .. } => eval(*none_arm_body, env, expr_ids),
                     subject => PureExpr::Match {
                         match_: Match::Option {
                             subject: Box::new(subject),
@@ -129,7 +125,7 @@ fn eval(
             Match::Enum { subject, arms } => {
                 let subject = eval(*subject, env, expr_ids);
                 match subject {
-                    PureExpr::EnumLiteral {
+                    PureExpr::Enum {
                         type_name,
                         variant_name,
                         fields,
@@ -195,11 +191,9 @@ fn eval(
 /// unchanged otherwise.
 fn try_fold(expr: PureExpr) -> PureExpr {
     match expr {
-        PureExpr::BooleanNegation { operand, id } => match *operand {
-            PureExpr::BooleanLiteral { value, .. } => {
-                PureExpr::BooleanLiteral { value: !value, id }
-            }
-            operand => PureExpr::BooleanNegation {
+        PureExpr::BoolNegation { operand, id } => match *operand {
+            PureExpr::BoolLiteral { value, .. } => PureExpr::BoolLiteral { value: !value, id },
+            operand => PureExpr::BoolNegation {
                 operand: Box::new(operand),
                 id,
             },
@@ -256,7 +250,7 @@ fn try_fold(expr: PureExpr) -> PureExpr {
         },
 
         PureExpr::StringIsEmpty { string, id } => match *string {
-            PureExpr::StringLiteral { value, .. } => PureExpr::BooleanLiteral {
+            PureExpr::StringLiteral { value, .. } => PureExpr::BoolLiteral {
                 value: value.as_str().is_empty(),
                 id,
             },
@@ -267,7 +261,7 @@ fn try_fold(expr: PureExpr) -> PureExpr {
         },
 
         PureExpr::OptionIsSome { option, id } => match *option {
-            PureExpr::OptionLiteral { value, .. } => PureExpr::BooleanLiteral {
+            PureExpr::Option { value, .. } => PureExpr::BoolLiteral {
                 value: value.is_some(),
                 id,
             },
@@ -278,7 +272,7 @@ fn try_fold(expr: PureExpr) -> PureExpr {
         },
 
         PureExpr::OptionIsNone { option, id } => match *option {
-            PureExpr::OptionLiteral { value, .. } => PureExpr::BooleanLiteral {
+            PureExpr::Option { value, .. } => PureExpr::BoolLiteral {
                 value: value.is_none(),
                 id,
             },
@@ -289,7 +283,7 @@ fn try_fold(expr: PureExpr) -> PureExpr {
         },
 
         PureExpr::ArrayIsEmpty { array, id } => match *array {
-            PureExpr::ArrayLiteral { elements, .. } => PureExpr::BooleanLiteral {
+            PureExpr::Array { elements, .. } => PureExpr::BoolLiteral {
                 value: elements.is_empty(),
                 id,
             },
@@ -300,7 +294,7 @@ fn try_fold(expr: PureExpr) -> PureExpr {
         },
 
         PureExpr::ArrayLength { array, id } => match *array {
-            PureExpr::ArrayLiteral { elements, .. } => PureExpr::IntLiteral {
+            PureExpr::Array { elements, .. } => PureExpr::IntLiteral {
                 value: elements.len() as i32,
                 id,
             },
@@ -316,7 +310,7 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             typ,
             id,
         } => match *record {
-            PureExpr::RecordLiteral {
+            PureExpr::Record {
                 type_name, fields, ..
             } => fields
                 .into_iter()
@@ -337,7 +331,7 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             typ,
             id,
         } => match *tuple {
-            PureExpr::TupleLiteral { elements, .. } => {
+            PureExpr::Tuple { elements, .. } => {
                 let len = elements.len();
                 elements
                     .into_iter()
@@ -358,19 +352,18 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             operand_types,
             id,
         } => match (*left, *right) {
-            (
-                PureExpr::BooleanLiteral { value: l, .. },
-                PureExpr::BooleanLiteral { value: r, .. },
-            ) => PureExpr::BooleanLiteral { value: l == r, id },
+            (PureExpr::BoolLiteral { value: l, .. }, PureExpr::BoolLiteral { value: r, .. }) => {
+                PureExpr::BoolLiteral { value: l == r, id }
+            }
             (
                 PureExpr::StringLiteral { value: l, .. },
                 PureExpr::StringLiteral { value: r, .. },
-            ) => PureExpr::BooleanLiteral { value: l == r, id },
+            ) => PureExpr::BoolLiteral { value: l == r, id },
             (PureExpr::IntLiteral { value: l, .. }, PureExpr::IntLiteral { value: r, .. }) => {
-                PureExpr::BooleanLiteral { value: l == r, id }
+                PureExpr::BoolLiteral { value: l == r, id }
             }
             (PureExpr::FloatLiteral { value: l, .. }, PureExpr::FloatLiteral { value: r, .. }) => {
-                PureExpr::BooleanLiteral { value: l == r, id }
+                PureExpr::BoolLiteral { value: l == r, id }
             }
             (left, right) => PureExpr::Equals {
                 left: Box::new(left),
@@ -418,24 +411,22 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             }
         }
 
-        PureExpr::BooleanLogicalAnd { left, right, id } => match (*left, *right) {
-            (
-                PureExpr::BooleanLiteral { value: l, .. },
-                PureExpr::BooleanLiteral { value: r, .. },
-            ) => PureExpr::BooleanLiteral { value: l && r, id },
-            (left, right) => PureExpr::BooleanLogicalAnd {
+        PureExpr::BoolLogicalAnd { left, right, id } => match (*left, *right) {
+            (PureExpr::BoolLiteral { value: l, .. }, PureExpr::BoolLiteral { value: r, .. }) => {
+                PureExpr::BoolLiteral { value: l && r, id }
+            }
+            (left, right) => PureExpr::BoolLogicalAnd {
                 left: Box::new(left),
                 right: Box::new(right),
                 id,
             },
         },
 
-        PureExpr::BooleanLogicalOr { left, right, id } => match (*left, *right) {
-            (
-                PureExpr::BooleanLiteral { value: l, .. },
-                PureExpr::BooleanLiteral { value: r, .. },
-            ) => PureExpr::BooleanLiteral { value: l || r, id },
-            (left, right) => PureExpr::BooleanLogicalOr {
+        PureExpr::BoolLogicalOr { left, right, id } => match (*left, *right) {
+            (PureExpr::BoolLiteral { value: l, .. }, PureExpr::BoolLiteral { value: r, .. }) => {
+                PureExpr::BoolLiteral { value: l || r, id }
+            }
+            (left, right) => PureExpr::BoolLogicalOr {
                 left: Box::new(left),
                 right: Box::new(right),
                 id,
@@ -518,10 +509,10 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             id,
         } => match (*left, *right) {
             (PureExpr::IntLiteral { value: l, .. }, PureExpr::IntLiteral { value: r, .. }) => {
-                PureExpr::BooleanLiteral { value: l < r, id }
+                PureExpr::BoolLiteral { value: l < r, id }
             }
             (PureExpr::FloatLiteral { value: l, .. }, PureExpr::FloatLiteral { value: r, .. }) => {
-                PureExpr::BooleanLiteral { value: l < r, id }
+                PureExpr::BoolLiteral { value: l < r, id }
             }
             (left, right) => PureExpr::LessThan {
                 left: Box::new(left),
@@ -538,10 +529,10 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             id,
         } => match (*left, *right) {
             (PureExpr::IntLiteral { value: l, .. }, PureExpr::IntLiteral { value: r, .. }) => {
-                PureExpr::BooleanLiteral { value: l <= r, id }
+                PureExpr::BoolLiteral { value: l <= r, id }
             }
             (PureExpr::FloatLiteral { value: l, .. }, PureExpr::FloatLiteral { value: r, .. }) => {
-                PureExpr::BooleanLiteral { value: l <= r, id }
+                PureExpr::BoolLiteral { value: l <= r, id }
             }
             (left, right) => PureExpr::LessThanOrEqual {
                 left: Box::new(left),
@@ -559,16 +550,16 @@ fn try_fold(expr: PureExpr) -> PureExpr {
 /// environment and copy to use sites.
 fn is_const(expr: &PureExpr) -> bool {
     match expr {
-        PureExpr::BooleanLiteral { .. }
+        PureExpr::BoolLiteral { .. }
         | PureExpr::StringLiteral { .. }
         | PureExpr::IntLiteral { .. }
         | PureExpr::FloatLiteral { .. } => true,
 
-        PureExpr::EnumLiteral { fields, .. } => fields.iter().all(|(_, value)| is_const(value)),
-        PureExpr::RecordLiteral { fields, .. } => fields.iter().all(|(_, value)| is_const(value)),
-        PureExpr::ArrayLiteral { elements, .. } => elements.iter().all(is_const),
-        PureExpr::TupleLiteral { elements, .. } => elements.iter().all(is_const),
-        PureExpr::OptionLiteral { value, .. } => value.as_ref().is_none_or(|inner| is_const(inner)),
+        PureExpr::Enum { fields, .. } => fields.iter().all(|(_, value)| is_const(value)),
+        PureExpr::Record { fields, .. } => fields.iter().all(|(_, value)| is_const(value)),
+        PureExpr::Array { elements, .. } => elements.iter().all(is_const),
+        PureExpr::Tuple { elements, .. } => elements.iter().all(is_const),
+        PureExpr::Option { value, .. } => value.as_ref().is_none_or(|inner| is_const(inner)),
 
         PureExpr::Let { .. }
         | PureExpr::Match { .. }
@@ -579,15 +570,15 @@ fn is_const(expr: &PureExpr) -> bool {
         | PureExpr::HtmlEscape { .. }
         | PureExpr::HtmlConcat { .. }
         | PureExpr::HtmlFor { .. }
-        | PureExpr::FunctionCall { .. }
+        | PureExpr::Call { .. }
         | PureExpr::StringConcat { .. }
         | PureExpr::NumericAdd { .. }
         | PureExpr::NumericSubtract { .. }
         | PureExpr::NumericMultiply { .. }
         | PureExpr::NumericNegation { .. }
-        | PureExpr::BooleanNegation { .. }
-        | PureExpr::BooleanLogicalAnd { .. }
-        | PureExpr::BooleanLogicalOr { .. }
+        | PureExpr::BoolNegation { .. }
+        | PureExpr::BoolLogicalAnd { .. }
+        | PureExpr::BoolLogicalOr { .. }
         | PureExpr::Equals { .. }
         | PureExpr::LessThan { .. }
         | PureExpr::LessThanOrEqual { .. }
@@ -606,7 +597,7 @@ fn is_const(expr: &PureExpr) -> bool {
 /// expressions.
 fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
     match expr {
-        PureExpr::BooleanLiteral { value, .. } => PureExpr::BooleanLiteral {
+        PureExpr::BoolLiteral { value, .. } => PureExpr::BoolLiteral {
             value: *value,
             id: expr_ids.next(),
         },
@@ -622,13 +613,13 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
             value: *value,
             id: expr_ids.next(),
         },
-        PureExpr::EnumLiteral {
+        PureExpr::Enum {
             type_name,
             variant_name,
             fields,
             typ,
             ..
-        } => PureExpr::EnumLiteral {
+        } => PureExpr::Enum {
             type_name: type_name.clone(),
             variant_name: variant_name.clone(),
             fields: fields
@@ -638,12 +629,12 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
             typ: typ.clone(),
             id: expr_ids.next(),
         },
-        PureExpr::RecordLiteral {
+        PureExpr::Record {
             type_name,
             fields,
             typ,
             ..
-        } => PureExpr::RecordLiteral {
+        } => PureExpr::Record {
             type_name: type_name.clone(),
             fields: fields
                 .iter()
@@ -652,7 +643,7 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
             typ: typ.clone(),
             id: expr_ids.next(),
         },
-        PureExpr::TupleLiteral { elements, typ, .. } => PureExpr::TupleLiteral {
+        PureExpr::Tuple { elements, typ, .. } => PureExpr::Tuple {
             elements: elements
                 .iter()
                 .map(|element| instantiate(element, expr_ids))
@@ -660,7 +651,7 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
             typ: typ.clone(),
             id: expr_ids.next(),
         },
-        PureExpr::ArrayLiteral { elements, typ, .. } => PureExpr::ArrayLiteral {
+        PureExpr::Array { elements, typ, .. } => PureExpr::Array {
             elements: elements
                 .iter()
                 .map(|element| instantiate(element, expr_ids))
@@ -668,7 +659,7 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
             typ: typ.clone(),
             id: expr_ids.next(),
         },
-        PureExpr::OptionLiteral { value, typ, .. } => PureExpr::OptionLiteral {
+        PureExpr::Option { value, typ, .. } => PureExpr::Option {
             value: value
                 .as_ref()
                 .map(|inner| Box::new(instantiate(inner, expr_ids))),
@@ -685,15 +676,15 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
         | PureExpr::HtmlEscape { .. }
         | PureExpr::HtmlConcat { .. }
         | PureExpr::HtmlFor { .. }
-        | PureExpr::FunctionCall { .. }
+        | PureExpr::Call { .. }
         | PureExpr::StringConcat { .. }
         | PureExpr::NumericAdd { .. }
         | PureExpr::NumericSubtract { .. }
         | PureExpr::NumericMultiply { .. }
         | PureExpr::NumericNegation { .. }
-        | PureExpr::BooleanNegation { .. }
-        | PureExpr::BooleanLogicalAnd { .. }
-        | PureExpr::BooleanLogicalOr { .. }
+        | PureExpr::BoolNegation { .. }
+        | PureExpr::BoolLogicalAnd { .. }
+        | PureExpr::BoolLogicalOr { .. }
         | PureExpr::Equals { .. }
         | PureExpr::LessThan { .. }
         | PureExpr::LessThanOrEqual { .. }

@@ -78,7 +78,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
             });
         }
 
-        PureExpr::FunctionCall {
+        PureExpr::Call {
             function,
             args,
             typ,
@@ -130,22 +130,22 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
         }
 
         PureExpr::StringLiteral { .. }
-        | PureExpr::BooleanLiteral { .. }
+        | PureExpr::BoolLiteral { .. }
         | PureExpr::FloatLiteral { .. }
         | PureExpr::IntLiteral { .. }
-        | PureExpr::ArrayLiteral { .. }
-        | PureExpr::TupleLiteral { .. }
-        | PureExpr::RecordLiteral { .. }
-        | PureExpr::EnumLiteral { .. }
-        | PureExpr::OptionLiteral { .. }
+        | PureExpr::Array { .. }
+        | PureExpr::Tuple { .. }
+        | PureExpr::Record { .. }
+        | PureExpr::Enum { .. }
+        | PureExpr::Option { .. }
         | PureExpr::StringConcat { .. }
         | PureExpr::NumericAdd { .. }
         | PureExpr::NumericSubtract { .. }
         | PureExpr::NumericMultiply { .. }
         | PureExpr::NumericNegation { .. }
-        | PureExpr::BooleanNegation { .. }
-        | PureExpr::BooleanLogicalAnd { .. }
-        | PureExpr::BooleanLogicalOr { .. }
+        | PureExpr::BoolNegation { .. }
+        | PureExpr::BoolLogicalAnd { .. }
+        | PureExpr::BoolLogicalOr { .. }
         | PureExpr::Equals { .. }
         | PureExpr::LessThan { .. }
         | PureExpr::LessThanOrEqual { .. }
@@ -277,7 +277,7 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
             WriterExpr::HtmlLiteral { body }
         }
 
-        PureExpr::FunctionCall {
+        PureExpr::Call {
             function,
             args,
             typ: Type::Html,
@@ -295,12 +295,12 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
             }
         }
 
-        PureExpr::FunctionCall {
+        PureExpr::Call {
             function,
             args,
             typ,
             ..
-        } => WriterExpr::FunctionCall {
+        } => WriterExpr::Call {
             function,
             args: args
                 .into_iter()
@@ -344,18 +344,18 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
 
         PureExpr::StringLiteral { value, .. } => WriterExpr::StringLiteral { value },
 
-        PureExpr::BooleanLiteral { value, .. } => WriterExpr::BooleanLiteral { value },
+        PureExpr::BoolLiteral { value, .. } => WriterExpr::BoolLiteral { value },
 
         PureExpr::FloatLiteral { value, .. } => WriterExpr::FloatLiteral { value },
 
         PureExpr::IntLiteral { value, .. } => WriterExpr::IntLiteral { value },
 
-        PureExpr::ArrayLiteral { elements, typ, .. } => WriterExpr::ArrayLiteral {
+        PureExpr::Array { elements, typ, .. } => WriterExpr::Array {
             elements: elements.into_iter().map(lower_value).collect(),
             typ,
         },
 
-        PureExpr::TupleLiteral { elements, typ, .. } => WriterExpr::TupleLiteral {
+        PureExpr::Tuple { elements, typ, .. } => WriterExpr::Tuple {
             elements: elements.into_iter().map(lower_value).collect(),
             typ,
         },
@@ -368,12 +368,12 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
             typ,
         },
 
-        PureExpr::RecordLiteral {
+        PureExpr::Record {
             type_name,
             fields,
             typ,
             ..
-        } => WriterExpr::RecordLiteral {
+        } => WriterExpr::Record {
             type_name,
             fields: fields
                 .into_iter()
@@ -382,13 +382,13 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
             typ,
         },
 
-        PureExpr::EnumLiteral {
+        PureExpr::Enum {
             type_name,
             variant_name,
             fields,
             typ,
             ..
-        } => WriterExpr::EnumLiteral {
+        } => WriterExpr::Enum {
             type_name,
             variant_name,
             fields: fields
@@ -398,7 +398,7 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
             typ,
         },
 
-        PureExpr::OptionLiteral { value, typ, .. } => WriterExpr::OptionLiteral {
+        PureExpr::Option { value, typ, .. } => WriterExpr::Option {
             value: value.map(|v| Box::new(lower_value(*v))),
             typ,
         },
@@ -449,16 +449,16 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
             operand_type,
         },
 
-        PureExpr::BooleanNegation { operand, .. } => WriterExpr::BooleanNegation {
+        PureExpr::BoolNegation { operand, .. } => WriterExpr::BoolNegation {
             operand: Box::new(lower_value(*operand)),
         },
 
-        PureExpr::BooleanLogicalAnd { left, right, .. } => WriterExpr::BooleanLogicalAnd {
+        PureExpr::BoolLogicalAnd { left, right, .. } => WriterExpr::BoolLogicalAnd {
             left: Box::new(lower_value(*left)),
             right: Box::new(lower_value(*right)),
         },
 
-        PureExpr::BooleanLogicalOr { left, right, .. } => WriterExpr::BooleanLogicalOr {
+        PureExpr::BoolLogicalOr { left, right, .. } => WriterExpr::BoolLogicalOr {
             left: Box::new(lower_value(*left)),
             right: Box::new(lower_value(*right)),
         },

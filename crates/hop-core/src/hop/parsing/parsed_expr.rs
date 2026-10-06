@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
-use super::parsed_node::{ParsedLetBinding, ParsedNode, braced_doc};
+use super::parsed_markup::{ParsedMarkup, braced_doc};
+use super::parsed_type::ParsedType;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::uncooked_string::UncookedString;
 use crate::symbols::field_name::FieldName;
@@ -36,7 +37,7 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    BooleanLiteral {
+    BoolLiteral {
         value: bool,
         range: DocumentRange,
     },
@@ -55,17 +56,17 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    ArrayLiteral {
+    Array {
         elements: Vec<Self>,
         range: DocumentRange,
     },
 
-    TupleLiteral {
+    Tuple {
         elements: Vec<Self>,
         range: DocumentRange,
     },
 
-    RecordLiteral {
+    Record {
         type_name: TypeName,
         type_name_range: DocumentRange,
         fields: Vec<ParsedFieldInitializer>,
@@ -73,7 +74,7 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    EnumLiteral {
+    Enum {
         type_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
@@ -85,20 +86,16 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    BinaryOp {
+    Unary {
+        operator: ParsedUnaryOp,
+        operand: Box<Self>,
+        range: DocumentRange,
+    },
+
+    Binary {
         left: Box<Self>,
         operator: ParsedBinaryOp,
         right: Box<Self>,
-        range: DocumentRange,
-    },
-
-    BooleanNegation {
-        operand: Box<Self>,
-        range: DocumentRange,
-    },
-
-    NumericNegation {
-        operand: Box<Self>,
         range: DocumentRange,
     },
 
@@ -108,13 +105,6 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    /// A for expression.
-    ///
-    /// ```text
-    /// for user in users {
-    ///   <li>{user.name}</li>
-    /// }
-    /// ```
     For {
         /// The bound variable name, `None` when the variable is discarded
         /// using `_`.
@@ -125,12 +115,12 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    OptionLiteral {
+    Option {
         value: Option<Box<Self>>,
         range: DocumentRange,
     },
 
-    MacroInvocation {
+    Macro {
         /// The name of the macro, e.g. `join`.
         name: CheapString,
         /// The range of the function subject, e.g. `join!`.
@@ -146,10 +136,10 @@ pub enum ParsedExpr {
     },
 
     Markup {
-        node: Box<ParsedNode>,
+        markup: Box<ParsedMarkup>,
     },
 
-    FunctionCall {
+    Call {
         name: FunctionName,
         name_range: DocumentRange,
         args: ParsedArguments,
@@ -208,6 +198,26 @@ pub struct ParsedFieldInitializer {
     pub value: ParsedExpr,
 }
 
+/// A let binding in a block expression.
+///
+/// ```text
+/// let name: String = "World";
+///     ^^^^^^^^^^^^^^^^^^^^^^
+/// ```
+#[derive(Debug, Clone)]
+pub struct ParsedLetBinding {
+    pub var_name: VarName,
+    pub var_name_range: DocumentRange,
+    pub var_type: Option<ParsedType>,
+    pub value_expr: ParsedExpr,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParsedUnaryOp {
+    LogicalNot,
+    Minus,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParsedBinaryOp {
     Eq,
@@ -257,9 +267,9 @@ pub enum ParsedPattern {
     /// A binding pattern that matches anything and binds it to a name
     Binding { name: VarName, range: DocumentRange },
     /// A boolean true pattern
-    BooleanTrue { range: DocumentRange },
+    BoolTrue { range: DocumentRange },
     /// A boolean false pattern
-    BooleanFalse { range: DocumentRange },
+    BoolFalse { range: DocumentRange },
     /// An Option Some pattern, e.g. `Some(_)`
     OptionSome {
         inner: Box<ParsedPattern>,
@@ -303,8 +313,8 @@ impl ParsedPattern {
         match self {
             ParsedPattern::Wildcard { range }
             | ParsedPattern::Binding { range, .. }
-            | ParsedPattern::BooleanTrue { range }
-            | ParsedPattern::BooleanFalse { range }
+            | ParsedPattern::BoolTrue { range }
+            | ParsedPattern::BoolFalse { range }
             | ParsedPattern::OptionSome { range, .. }
             | ParsedPattern::OptionNone { range }
             | ParsedPattern::EnumVariant { range, .. }
@@ -317,8 +327,8 @@ impl ParsedPattern {
         let (base, fields) = match self {
             ParsedPattern::Wildcard { .. } => return BoxDoc::text("_"),
             ParsedPattern::Binding { name, .. } => return BoxDoc::text(name.as_str()),
-            ParsedPattern::BooleanTrue { .. } => return BoxDoc::text("true"),
-            ParsedPattern::BooleanFalse { .. } => return BoxDoc::text("false"),
+            ParsedPattern::BoolTrue { .. } => return BoxDoc::text("true"),
+            ParsedPattern::BoolFalse { .. } => return BoxDoc::text("false"),
             ParsedPattern::OptionNone { .. } => return BoxDoc::text("None"),
             ParsedPattern::OptionSome { inner, .. } => {
                 return BoxDoc::text("Some(")
@@ -383,6 +393,15 @@ impl std::fmt::Display for ParsedPattern {
     }
 }
 
+impl ParsedUnaryOp {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ParsedUnaryOp::LogicalNot => "!",
+            ParsedUnaryOp::Minus => "-",
+        }
+    }
+}
+
 impl ParsedBinaryOp {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -406,8 +425,7 @@ impl ParsedExpr {
     pub fn for_each_child<'a>(&'a self, f: &mut impl FnMut(&'a ParsedExpr)) {
         match self {
             ParsedExpr::FieldAccess { record: inner, .. }
-            | ParsedExpr::BooleanNegation { operand: inner, .. }
-            | ParsedExpr::NumericNegation { operand: inner, .. } => f(inner),
+            | ParsedExpr::Unary { operand: inner, .. } => f(inner),
 
             ParsedExpr::MethodCall { receiver, args, .. } => {
                 f(receiver);
@@ -416,18 +434,18 @@ impl ParsedExpr {
                 }
             }
 
-            ParsedExpr::BinaryOp { left, right, .. } => {
+            ParsedExpr::Binary { left, right, .. } => {
                 f(left);
                 f(right);
             }
-            ParsedExpr::ArrayLiteral { elements, .. }
-            | ParsedExpr::TupleLiteral { elements, .. }
-            | ParsedExpr::MacroInvocation { args: elements, .. } => {
+            ParsedExpr::Array { elements, .. }
+            | ParsedExpr::Tuple { elements, .. }
+            | ParsedExpr::Macro { args: elements, .. } => {
                 for element in elements {
                     f(element);
                 }
             }
-            ParsedExpr::FunctionCall { args, .. } => match args {
+            ParsedExpr::Call { args, .. } => match args {
                 ParsedArguments::Positional(values) => {
                     for value in values {
                         f(value);
@@ -439,7 +457,7 @@ impl ParsedExpr {
                     }
                 }
             },
-            ParsedExpr::RecordLiteral { fields, spread, .. } => {
+            ParsedExpr::Record { fields, spread, .. } => {
                 if let Some(spread) = spread {
                     f(spread);
                 }
@@ -447,7 +465,7 @@ impl ParsedExpr {
                     f(&field.value);
                 }
             }
-            ParsedExpr::EnumLiteral { fields, .. } => {
+            ParsedExpr::Enum { fields, .. } => {
                 for field in fields {
                     f(&field.value);
                 }
@@ -468,7 +486,7 @@ impl ParsedExpr {
                 }
                 f(body);
             }
-            ParsedExpr::OptionLiteral { value, .. } => {
+            ParsedExpr::Option { value, .. } => {
                 if let Some(value) = value {
                     f(value);
                 }
@@ -481,24 +499,24 @@ impl ParsedExpr {
             ParsedExpr::Markup { .. }
             | ParsedExpr::VariableReference { .. }
             | ParsedExpr::StringLiteral { .. }
-            | ParsedExpr::BooleanLiteral { .. }
+            | ParsedExpr::BoolLiteral { .. }
             | ParsedExpr::IntLiteral { .. }
             | ParsedExpr::FloatLiteral { .. } => {}
         }
     }
 
-    /// The nodes written in this expression, in source order.
-    pub fn nodes(&self) -> Vec<&ParsedNode> {
+    /// The markup written in this expression, in source order.
+    pub fn markup(&self) -> Vec<&ParsedMarkup> {
         let mut out = Vec::new();
-        self.collect_nodes(&mut out);
+        self.collect_markup(&mut out);
         out
     }
 
-    fn collect_nodes<'a>(&'a self, out: &mut Vec<&'a ParsedNode>) {
-        if let ParsedExpr::Markup { node } = self {
-            out.push(node);
+    fn collect_markup<'a>(&'a self, out: &mut Vec<&'a ParsedMarkup>) {
+        if let ParsedExpr::Markup { markup } = self {
+            out.push(markup);
         }
-        self.for_each_child(&mut |child| child.collect_nodes(out));
+        self.for_each_child(&mut |child| child.collect_markup(out));
     }
 
     /// Whether this expression is a constant, i.e. a value written out in full
@@ -507,35 +525,31 @@ impl ParsedExpr {
         match self {
             ParsedExpr::Let { .. } => false,
             ParsedExpr::StringLiteral { .. }
-            | ParsedExpr::BooleanLiteral { .. }
+            | ParsedExpr::BoolLiteral { .. }
             | ParsedExpr::IntLiteral { .. }
             | ParsedExpr::FloatLiteral { .. } => true,
-            ParsedExpr::Markup { node } => {
-                matches!(node.as_ref(), ParsedNode::Fragment { children, .. } if children.is_empty())
+            ParsedExpr::Markup { markup } => {
+                matches!(markup.as_ref(), ParsedMarkup::Fragment { children, .. } if children.is_empty())
             }
-            ParsedExpr::ArrayLiteral { elements, .. }
-            | ParsedExpr::TupleLiteral { elements, .. } => {
+            ParsedExpr::Array { elements, .. } | ParsedExpr::Tuple { elements, .. } => {
                 elements.iter().all(|element| element.is_constant())
             }
-            ParsedExpr::RecordLiteral { fields, spread, .. } => {
+            ParsedExpr::Record { fields, spread, .. } => {
                 spread.is_none() && fields.iter().all(|field| field.value.is_constant())
             }
-            ParsedExpr::EnumLiteral { fields, .. } => {
-                fields.iter().all(|field| field.value.is_constant())
-            }
-            ParsedExpr::OptionLiteral { value, .. } => {
+            ParsedExpr::Enum { fields, .. } => fields.iter().all(|field| field.value.is_constant()),
+            ParsedExpr::Option { value, .. } => {
                 value.as_ref().is_none_or(|value| value.is_constant())
             }
             ParsedExpr::VariableReference { .. }
             | ParsedExpr::FieldAccess { .. }
             | ParsedExpr::MethodCall { .. }
-            | ParsedExpr::BinaryOp { .. }
-            | ParsedExpr::BooleanNegation { .. }
-            | ParsedExpr::NumericNegation { .. }
+            | ParsedExpr::Unary { .. }
+            | ParsedExpr::Binary { .. }
             | ParsedExpr::Match { .. }
             | ParsedExpr::For { .. }
-            | ParsedExpr::MacroInvocation { .. }
-            | ParsedExpr::FunctionCall { .. } => false,
+            | ParsedExpr::Macro { .. }
+            | ParsedExpr::Call { .. } => false,
         }
     }
 
@@ -545,23 +559,22 @@ impl ParsedExpr {
             | ParsedExpr::FieldAccess { range, .. }
             | ParsedExpr::MethodCall { range, .. }
             | ParsedExpr::StringLiteral { range, .. }
-            | ParsedExpr::BooleanLiteral { range, .. }
+            | ParsedExpr::BoolLiteral { range, .. }
             | ParsedExpr::IntLiteral { range, .. }
             | ParsedExpr::FloatLiteral { range, .. }
-            | ParsedExpr::ArrayLiteral { range, .. }
-            | ParsedExpr::TupleLiteral { range, .. }
-            | ParsedExpr::RecordLiteral { range, .. }
-            | ParsedExpr::EnumLiteral { range, .. }
-            | ParsedExpr::BinaryOp { range, .. }
-            | ParsedExpr::BooleanNegation { range, .. }
-            | ParsedExpr::NumericNegation { range, .. }
+            | ParsedExpr::Array { range, .. }
+            | ParsedExpr::Tuple { range, .. }
+            | ParsedExpr::Record { range, .. }
+            | ParsedExpr::Enum { range, .. }
+            | ParsedExpr::Unary { range, .. }
+            | ParsedExpr::Binary { range, .. }
             | ParsedExpr::Match { range, .. }
             | ParsedExpr::For { range, .. }
-            | ParsedExpr::OptionLiteral { range, .. }
-            | ParsedExpr::MacroInvocation { range, .. }
-            | ParsedExpr::FunctionCall { range, .. }
+            | ParsedExpr::Option { range, .. }
+            | ParsedExpr::Macro { range, .. }
+            | ParsedExpr::Call { range, .. }
             | ParsedExpr::Let { range, .. } => range,
-            ParsedExpr::Markup { node } => node.range(),
+            ParsedExpr::Markup { markup } => markup.range(),
         }
     }
 
@@ -570,11 +583,9 @@ impl ParsedExpr {
 
     pub fn binding_power(&self) -> u8 {
         match self {
-            ParsedExpr::BinaryOp { operator, .. } => operator.binding_power().0,
-            ParsedExpr::BooleanNegation { .. } | ParsedExpr::NumericNegation { .. } => {
-                Self::PREFIX_BINDING_POWER
-            }
-            ParsedExpr::IntLiteral {
+            ParsedExpr::Binary { operator, .. } => operator.binding_power().0,
+            ParsedExpr::Unary { .. }
+            | ParsedExpr::IntLiteral {
                 minus_range: Some(_),
                 ..
             }
@@ -642,10 +653,10 @@ impl ParsedExpr {
                 }
             }
             ParsedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
-            ParsedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            ParsedExpr::BoolLiteral { value, .. } => BoxDoc::text(value.to_string()),
             ParsedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
             ParsedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            ParsedExpr::ArrayLiteral { elements, .. } => {
+            ParsedExpr::Array { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -664,7 +675,7 @@ impl ParsedExpr {
                         .append(BoxDoc::text("]"))
                 }
             }
-            ParsedExpr::TupleLiteral { elements, .. } => BoxDoc::text("(")
+            ParsedExpr::Tuple { elements, .. } => BoxDoc::text("(")
                 .append(
                     BoxDoc::line_()
                         .append(BoxDoc::intersperse(
@@ -681,7 +692,7 @@ impl ParsedExpr {
                         .group(),
                 )
                 .append(BoxDoc::text(")")),
-            ParsedExpr::RecordLiteral {
+            ParsedExpr::Record {
                 type_name,
                 fields,
                 spread,
@@ -715,7 +726,11 @@ impl ParsedExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            ParsedExpr::BinaryOp {
+            ParsedExpr::Unary {
+                operator, operand, ..
+            } => BoxDoc::text(operator.as_str())
+                .append(operand.to_doc_in_slot(Self::PREFIX_BINDING_POWER)),
+            ParsedExpr::Binary {
                 left,
                 operator,
                 right,
@@ -726,13 +741,7 @@ impl ParsedExpr {
                     .append(BoxDoc::text(format!(" {} ", operator)))
                     .append(right.to_doc_in_slot(right_power))
             }
-            ParsedExpr::BooleanNegation { operand, .. } => {
-                BoxDoc::text("!").append(operand.to_doc_in_slot(Self::PREFIX_BINDING_POWER))
-            }
-            ParsedExpr::NumericNegation { operand, .. } => {
-                BoxDoc::text("-").append(operand.to_doc_in_slot(Self::PREFIX_BINDING_POWER))
-            }
-            ParsedExpr::EnumLiteral {
+            ParsedExpr::Enum {
                 type_name,
                 variant_name,
                 fields,
@@ -835,13 +844,13 @@ impl ParsedExpr {
                     .append(BoxDoc::hardline())
                     .append(BoxDoc::text("}"))
             }
-            ParsedExpr::OptionLiteral { value, .. } => match value {
+            ParsedExpr::Option { value, .. } => match value {
                 Some(inner) => BoxDoc::text("Some(")
                     .append(inner.to_doc())
                     .append(BoxDoc::text(")")),
                 None => BoxDoc::text("None"),
             },
-            ParsedExpr::MacroInvocation { name, args, .. } => {
+            ParsedExpr::Macro { name, args, .. } => {
                 if args.is_empty() {
                     BoxDoc::text(name.as_str()).append(BoxDoc::text("!()"))
                 } else {
@@ -861,8 +870,8 @@ impl ParsedExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
-            ParsedExpr::Markup { node } => node.to_doc(),
-            ParsedExpr::FunctionCall { name, args, .. } => {
+            ParsedExpr::Markup { markup } => markup.to_doc(),
+            ParsedExpr::Call { name, args, .. } => {
                 let arg_docs: Vec<BoxDoc<'_>> = match args {
                     ParsedArguments::Positional(values) => {
                         values.iter().map(|value| value.to_doc()).collect()

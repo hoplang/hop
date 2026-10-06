@@ -96,7 +96,7 @@ pub fn assemble_page(
         params,
     } = page;
 
-    let mut head = fragment_nodes(head);
+    let mut head = html_parts(head);
     head.splice(0..0, create_meta_elements());
     if let Some(injection) = tailwind_injection {
         head.push(create_tailwind_element(injection));
@@ -112,7 +112,7 @@ pub fn assemble_page(
         HtmlElementKind::Html,
         vec![
             create_html_element(HtmlElementKind::Head, head),
-            create_html_element(HtmlElementKind::Body, fragment_nodes(body)),
+            create_html_element(HtmlElementKind::Body, html_parts(body)),
         ],
     );
 
@@ -120,26 +120,26 @@ pub fn assemble_page(
         name,
         params,
         body: TypedExpr::HtmlConcat {
-            nodes: vec![doctype, html],
+            parts: vec![doctype, html],
         },
     }
 }
 
-fn fragment_nodes(expr: TypedExpr) -> Vec<TypedExpr> {
+fn html_parts(expr: TypedExpr) -> Vec<TypedExpr> {
     match expr {
-        TypedExpr::HtmlConcat { nodes } => nodes,
+        TypedExpr::HtmlConcat { parts } => parts,
         other => vec![other],
     }
 }
 
 fn create_html_element(element: HtmlElementKind, children: Vec<TypedExpr>) -> TypedExpr {
-    TypedExpr::HtmlElement {
+    TypedExpr::Element {
         element,
         attrs: TypedAttrs {
             attributes: Vec::new(),
             spread: None,
         },
-        children: Box::new(TypedExpr::HtmlConcat { nodes: children }),
+        children: Box::new(TypedExpr::HtmlConcat { parts: children }),
     }
 }
 
@@ -154,15 +154,15 @@ fn create_attribute(name: &str, value: &str) -> TypedAttribute {
 
 fn create_meta_elements() -> Vec<TypedExpr> {
     vec![
-        TypedExpr::HtmlElement {
+        TypedExpr::Element {
             element: HtmlElementKind::Meta,
             attrs: TypedAttrs {
                 attributes: vec![create_attribute("charset", "utf-8")],
                 spread: None,
             },
-            children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
+            children: Box::new(TypedExpr::HtmlConcat { parts: vec![] }),
         },
-        TypedExpr::HtmlElement {
+        TypedExpr::Element {
             element: HtmlElementKind::Meta,
             attrs: TypedAttrs {
                 attributes: vec![
@@ -171,7 +171,7 @@ fn create_meta_elements() -> Vec<TypedExpr> {
                 ],
                 spread: None,
             },
-            children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
+            children: Box::new(TypedExpr::HtmlConcat { parts: vec![] }),
         },
     ]
 }
@@ -181,20 +181,20 @@ fn create_style_element(css_content: &str) -> TypedExpr {
         value: CheapString::new(css_content.to_string()),
     };
 
-    TypedExpr::HtmlElement {
+    TypedExpr::Element {
         element: HtmlElementKind::Style,
         attrs: TypedAttrs {
             attributes: Vec::new(),
             spread: None,
         },
         children: Box::new(TypedExpr::HtmlConcat {
-            nodes: vec![css_text],
+            parts: vec![css_text],
         }),
     }
 }
 
 fn create_link_element(href: &str) -> TypedExpr {
-    TypedExpr::HtmlElement {
+    TypedExpr::Element {
         element: HtmlElementKind::Link,
         attrs: TypedAttrs {
             attributes: vec![
@@ -203,7 +203,7 @@ fn create_link_element(href: &str) -> TypedExpr {
             ],
             spread: None,
         },
-        children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
+        children: Box::new(TypedExpr::HtmlConcat { parts: vec![] }),
     }
 }
 
@@ -215,7 +215,7 @@ fn create_tailwind_element(injection: TailwindInjection<'_>) -> TypedExpr {
 }
 
 fn create_script_element(src: &str) -> TypedExpr {
-    TypedExpr::HtmlElement {
+    TypedExpr::Element {
         element: HtmlElementKind::Script,
         attrs: TypedAttrs {
             attributes: vec![
@@ -224,7 +224,7 @@ fn create_script_element(src: &str) -> TypedExpr {
             ],
             spread: None,
         },
-        children: Box::new(TypedExpr::HtmlConcat { nodes: vec![] }),
+        children: Box::new(TypedExpr::HtmlConcat { parts: vec![] }),
     }
 }
 
@@ -240,30 +240,30 @@ mod tests {
     }
 
     fn element(tag_name: &str, children: Vec<TypedExpr>) -> TypedExpr {
-        TypedExpr::HtmlElement {
+        TypedExpr::Element {
             element: HtmlElementKind::parse(tag_name).expect("unrecognized tag name"),
             attrs: TypedAttrs {
                 attributes: Vec::new(),
                 spread: None,
             },
-            children: Box::new(TypedExpr::HtmlConcat { nodes: children }),
+            children: Box::new(TypedExpr::HtmlConcat { parts: children }),
         }
     }
 
     fn page(page_name: &str, head: Vec<TypedExpr>, body: Vec<TypedExpr>) -> TypedPageDeclaration {
         TypedPageDeclaration {
             name: TypeName::parse(page_name).unwrap(),
-            head: TypedExpr::HtmlConcat { nodes: head },
-            body: TypedExpr::HtmlConcat { nodes: body },
+            head: TypedExpr::HtmlConcat { parts: head },
+            body: TypedExpr::HtmlConcat { parts: body },
             params: Vec::new(),
         }
     }
 
     fn format_children(page: &AssembledPageDeclaration) -> String {
-        let TypedExpr::HtmlConcat { nodes } = &page.body else {
+        let TypedExpr::HtmlConcat { parts } = &page.body else {
             panic!("an assembled page body is a HtmlConcat expr");
         };
-        nodes
+        parts
             .iter()
             .map(|child| child.to_string())
             .collect::<Vec<_>>()

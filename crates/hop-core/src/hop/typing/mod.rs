@@ -10,11 +10,11 @@ mod typecheck;
 mod typecheck_call;
 mod typecheck_expr;
 mod typecheck_macro;
+mod typecheck_markup;
 mod typecheck_match;
-mod typecheck_node;
 mod typecheck_pattern;
-mod typed_ast;
 mod typed_expr;
+mod typed_module;
 mod typed_pattern;
 mod variable_scope;
 
@@ -25,9 +25,11 @@ pub use r#type::{ComparableType, EquatableType, NumericType, Type};
 pub use type_error::TypeError;
 pub use type_registry::{EnumVariant, ResolvedType, TypeRegistry};
 pub use typecheck::typecheck;
-pub use typed_ast::{TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter};
 pub use typed_expr::{
     TypedAttribute, TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField,
+};
+pub use typed_module::{
+    TypedFunctionDeclaration, TypedModule, TypedPageDeclaration, TypedParameter,
 };
 pub use typed_pattern::TypedPattern;
 

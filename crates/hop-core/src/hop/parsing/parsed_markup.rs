@@ -1,6 +1,5 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
-use crate::hop::parsing::ParsedType;
 use crate::hop::uncooked_string::UncookedString;
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
@@ -10,8 +9,8 @@ use std::borrow::Cow;
 use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
-pub enum ParsedNode {
-    /// A plain text node.
+pub enum ParsedMarkup {
+    /// Plain text.
     ///
     /// ```text
     /// <div>hello {user.name}</div>
@@ -35,35 +34,35 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// An HTML element.
+    /// An element.
     ///
     /// ```text
     /// <div class="hidden">
     ///   ...
     /// </div>
     /// ```
-    HtmlElement {
+    Element {
         kind: HtmlElementKind,
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
         attributes: Vec<ParsedAttribute>,
-        children: Vec<ParsedNode>,
+        children: Vec<ParsedMarkup>,
         range: DocumentRange,
     },
 
-    /// A function invoked as a tag.
+    /// A markup call.
     ///
     /// ```text
     /// <Foo x={10} y={20}>
     ///   ...
     /// </Foo>
     /// ```
-    FunctionInvocation {
+    Call {
         function_name: FunctionName,
         function_name_opening_range: DocumentRange,
         function_name_closing_range: Option<DocumentRange>,
         attributes: Vec<ParsedAttribute>,
-        children: Option<Vec<ParsedNode>>,
+        children: Option<Vec<ParsedMarkup>>,
         range: DocumentRange,
     },
 
@@ -73,7 +72,7 @@ pub enum ParsedNode {
     /// <>hello {name}</>
     /// ```
     Fragment {
-        children: Vec<ParsedNode>,
+        children: Vec<ParsedMarkup>,
         range: DocumentRange,
     },
 }
@@ -117,20 +116,6 @@ pub enum ParsedAttribute {
     ///      ^^^^^^^
     /// ```
     Spread { name: VarName, range: DocumentRange },
-}
-
-/// A single binding in a let statement.
-///
-/// ```text
-/// let name: String = "World";
-///     ^^^^^^^^^^^^^^^^^^^^^^
-/// ```
-#[derive(Debug, Clone)]
-pub struct ParsedLetBinding {
-    pub var_name: VarName,
-    pub var_name_range: DocumentRange,
-    pub var_type: Option<ParsedType>,
-    pub value_expr: ParsedExpr,
 }
 
 fn call_doc<'a>(name: impl Into<Cow<'a, str>>, args: Vec<BoxDoc<'a>>) -> BoxDoc<'a> {
@@ -216,51 +201,52 @@ impl ParsedAttribute {
     }
 }
 
-impl ParsedNode {
+impl ParsedMarkup {
     pub fn range(&self) -> &DocumentRange {
         match self {
-            ParsedNode::Text { range, .. }
-            | ParsedNode::Newline { range }
-            | ParsedNode::Interpolation { range, .. }
-            | ParsedNode::FunctionInvocation { range, .. }
-            | ParsedNode::Fragment { range, .. }
-            | ParsedNode::HtmlElement { range, .. } => range,
+            ParsedMarkup::Text { range, .. }
+            | ParsedMarkup::Newline { range }
+            | ParsedMarkup::Interpolation { range, .. }
+            | ParsedMarkup::Call { range, .. }
+            | ParsedMarkup::Fragment { range, .. }
+            | ParsedMarkup::Element { range, .. } => range,
         }
     }
 
-    /// The nodes written inside this node's tags, in source order.
+    /// The markup written inside the tags of this markup, in source order.
     pub fn children(&self) -> Vec<&Self> {
         match self {
-            ParsedNode::FunctionInvocation { children, .. } => children.iter().flatten().collect(),
-            ParsedNode::HtmlElement { children, .. } | ParsedNode::Fragment { children, .. } => {
+            ParsedMarkup::Call { children, .. } => children.iter().flatten().collect(),
+            ParsedMarkup::Element { children, .. } | ParsedMarkup::Fragment { children, .. } => {
                 children.iter().collect()
             }
-            ParsedNode::Text { .. }
-            | ParsedNode::Newline { .. }
-            | ParsedNode::Interpolation { .. } => Vec::new(),
+            ParsedMarkup::Text { .. }
+            | ParsedMarkup::Newline { .. }
+            | ParsedMarkup::Interpolation { .. } => Vec::new(),
         }
     }
-    /// The expressions this node contain.
+    /// The expressions this markup contains.
     pub fn expressions(&self) -> Vec<&ParsedExpr> {
         match self {
-            ParsedNode::Interpolation { expression, .. } => vec![expression],
-            ParsedNode::FunctionInvocation { attributes, .. }
-            | ParsedNode::HtmlElement { attributes, .. } => attributes
-                .iter()
-                .filter_map(|attribute| match attribute {
-                    ParsedAttribute::Expression { value, .. } => Some(value),
-                    ParsedAttribute::KeyOnly { .. }
-                    | ParsedAttribute::String { .. }
-                    | ParsedAttribute::Spread { .. } => None,
-                })
-                .collect(),
-            ParsedNode::Text { .. } | ParsedNode::Newline { .. } | ParsedNode::Fragment { .. } => {
-                Vec::new()
+            ParsedMarkup::Interpolation { expression, .. } => vec![expression],
+            ParsedMarkup::Call { attributes, .. } | ParsedMarkup::Element { attributes, .. } => {
+                attributes
+                    .iter()
+                    .filter_map(|attribute| match attribute {
+                        ParsedAttribute::Expression { value, .. } => Some(value),
+                        ParsedAttribute::KeyOnly { .. }
+                        | ParsedAttribute::String { .. }
+                        | ParsedAttribute::Spread { .. } => None,
+                    })
+                    .collect()
             }
+            ParsedMarkup::Text { .. }
+            | ParsedMarkup::Newline { .. }
+            | ParsedMarkup::Fragment { .. } => Vec::new(),
         }
     }
 
-    /// Get the range for the opening tag of a node.
+    /// Get the range for the opening tag of this markup.
     ///
     /// ```text
     /// <div>hello world</div>
@@ -268,16 +254,16 @@ impl ParsedNode {
     /// ```
     pub fn tag_name(&self) -> Option<&DocumentRange> {
         match self {
-            ParsedNode::FunctionInvocation {
+            ParsedMarkup::Call {
                 function_name_opening_range: tag_name,
                 ..
             } => Some(tag_name),
-            ParsedNode::HtmlElement { tag_name, .. } => Some(tag_name),
+            ParsedMarkup::Element { tag_name, .. } => Some(tag_name),
             _ => None,
         }
     }
 
-    /// Get the range for the closing tag of a node.
+    /// Get the range for the closing tag of this markup.
     ///
     /// ```text
     /// <div>hello world</div>
@@ -285,18 +271,18 @@ impl ParsedNode {
     /// ```
     pub fn closing_tag_name(&self) -> Option<&DocumentRange> {
         match self {
-            ParsedNode::FunctionInvocation {
+            ParsedMarkup::Call {
                 function_name_closing_range: closing_tag_name,
                 ..
             } => closing_tag_name.as_ref(),
-            ParsedNode::HtmlElement {
+            ParsedMarkup::Element {
                 closing_tag_name, ..
             } => closing_tag_name.as_ref(),
             _ => None,
         }
     }
 
-    /// Get the name ranges for the tags of a node.
+    /// Get the name ranges for the tags of this markup.
     ///
     /// ```text
     /// <div>hello world</div>
@@ -308,17 +294,17 @@ impl ParsedNode {
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedNode::Text { range } => {
+            ParsedMarkup::Text { range } => {
                 call_doc("text", vec![BoxDoc::text(format!("{:?}", range.as_str()))])
             }
-            ParsedNode::Newline { .. } => call_doc("newline", vec![]),
-            ParsedNode::Interpolation { expression, .. } => {
+            ParsedMarkup::Newline { .. } => call_doc("newline", vec![]),
+            ParsedMarkup::Interpolation { expression, .. } => {
                 call_doc("interpolate", vec![expression.to_doc()])
             }
-            ParsedNode::Fragment { children, .. } => {
+            ParsedMarkup::Fragment { children, .. } => {
                 call_doc("fragment", children.iter().map(|c| c.to_doc()).collect())
             }
-            ParsedNode::HtmlElement {
+            ParsedMarkup::Element {
                 kind,
                 tag_name,
                 attributes,
@@ -339,7 +325,7 @@ impl ParsedNode {
                 }
                 call_doc("html", args)
             }
-            ParsedNode::FunctionInvocation {
+            ParsedMarkup::Call {
                 function_name,
                 attributes,
                 children,
@@ -348,8 +334,8 @@ impl ParsedNode {
                 let mut args = vec![BoxDoc::text("attrs: ").append(bracketed_doc(
                     attributes.iter().map(|a| a.to_doc()).collect(),
                 ))];
-                // `None` is a self-closing invocation, `<Foo/>`; `Some` has an
-                // explicit closing tag, `<Foo></Foo>`, possibly with a body.
+                // `None` is a self-closing markup call, `<Foo/>`, and `Some` has
+                // an explicit closing tag, `<Foo></Foo>`, possibly with a body.
                 if let Some(children) = children {
                     args.push(
                         BoxDoc::text("children: ")
@@ -362,7 +348,7 @@ impl ParsedNode {
     }
 }
 
-impl Display for ParsedNode {
+impl Display for ParsedMarkup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(40))
     }

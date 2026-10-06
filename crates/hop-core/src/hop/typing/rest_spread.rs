@@ -11,7 +11,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use super::type_env::{FunctionSignature, ParamEntry, Tail};
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedNode};
+use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedMarkup};
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind};
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
@@ -60,14 +60,14 @@ fn named_attrs(attributes: &[ParsedAttribute]) -> Vec<CheapString> {
 
 /// Collect every `...name` spread in a body, in source order.
 pub fn collect_spreads(body: &ParsedExpr, out: &mut Vec<SpreadOccurrence>) {
-    for node in body.nodes() {
-        collect_spreads_in_node(node, out);
+    for markup in body.markup() {
+        collect_spreads_in_markup(markup, out);
     }
 }
 
-fn collect_spreads_in_node(node: &ParsedNode, out: &mut Vec<SpreadOccurrence>) {
-    match node {
-        ParsedNode::HtmlElement {
+fn collect_spreads_in_markup(markup: &ParsedMarkup, out: &mut Vec<SpreadOccurrence>) {
+    match markup {
+        ParsedMarkup::Element {
             kind: element,
             attributes,
             ..
@@ -85,7 +85,7 @@ fn collect_spreads_in_node(node: &ParsedNode, out: &mut Vec<SpreadOccurrence>) {
                 }
             }
         }
-        ParsedNode::FunctionInvocation {
+        ParsedMarkup::Call {
             function_name,
             attributes,
             children,
@@ -108,12 +108,12 @@ fn collect_spreads_in_node(node: &ParsedNode, out: &mut Vec<SpreadOccurrence>) {
         _ => {}
     }
 
-    for expr in node.expressions() {
+    for expr in markup.expressions() {
         collect_spreads(expr, out);
     }
 
-    for child in node.children() {
-        collect_spreads_in_node(child, out);
+    for child in markup.children() {
+        collect_spreads_in_markup(child, out);
     }
 }
 

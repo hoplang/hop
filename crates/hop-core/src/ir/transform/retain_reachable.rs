@@ -51,7 +51,7 @@ pub fn retain_reachable(module: PureModule) -> PureModule {
 }
 
 fn collect_callees(expr: &PureExpr, out: &mut HashSet<FunctionId>) {
-    if let PureExpr::FunctionCall { function, .. } = expr {
+    if let PureExpr::Call { function, .. } = expr {
         out.insert(function.id);
     }
     expr.for_each_child(&mut |child| collect_callees(child, out));

@@ -8,7 +8,7 @@ use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
 #[derive(Debug, Clone)]
-pub struct TypedAst {
+pub struct TypedModule {
     page_declarations: Vec<TypedPageDeclaration>,
     function_declarations: Vec<TypedFunctionDeclaration>,
 }
@@ -37,7 +37,7 @@ pub struct TypedFunctionDeclaration {
     pub body: TypedExpr,
 }
 
-impl TypedAst {
+impl TypedModule {
     pub fn new(
         page_declarations: Vec<TypedPageDeclaration>,
         function_declarations: Vec<TypedFunctionDeclaration>,
@@ -100,7 +100,7 @@ impl TypedPageDeclaration {
             .append(BoxDoc::text("{"));
 
         let mut blocks: Vec<BoxDoc<'_>> = Vec::new();
-        if !matches!(&self.head, TypedExpr::HtmlConcat { nodes } if nodes.is_empty()) {
+        if !matches!(&self.head, TypedExpr::HtmlConcat { parts } if parts.is_empty()) {
             blocks.push(
                 BoxDoc::text("fn head() -> Html {")
                     .append(
@@ -182,7 +182,7 @@ impl Display for TypedPageDeclaration {
     }
 }
 
-impl Display for TypedAst {
+impl Display for TypedModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(80))
     }

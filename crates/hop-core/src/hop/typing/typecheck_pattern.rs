@@ -74,17 +74,17 @@ pub fn typecheck_pattern(
             Some(TypedPattern::Binding { name: name.clone() })
         }
 
-        (ParsedPattern::BooleanTrue { .. }, Some(ResolvedType::Bool)) => {
+        (ParsedPattern::BoolTrue { .. }, Some(ResolvedType::Bool)) => {
             Some(TypedPattern::Constructor {
-                constructor: Constructor::BooleanTrue,
+                constructor: Constructor::BoolTrue,
                 args: Vec::new(),
                 fields: Vec::new(),
             })
         }
 
-        (ParsedPattern::BooleanFalse { .. }, Some(ResolvedType::Bool)) => {
+        (ParsedPattern::BoolFalse { .. }, Some(ResolvedType::Bool)) => {
             Some(TypedPattern::Constructor {
-                constructor: Constructor::BooleanFalse,
+                constructor: Constructor::BoolFalse,
                 args: Vec::new(),
                 fields: Vec::new(),
             })
@@ -620,7 +620,7 @@ mod tests {
         );
     }
     #[test]
-    fn rejects_validation_boolean_pattern_on_enum() {
+    fn rejects_validation_bool_pattern_on_enum() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
             "Color",

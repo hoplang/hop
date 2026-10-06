@@ -162,7 +162,7 @@ pub trait Transpiler {
     ) -> Doc<'a>;
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a>;
     fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStatement]) -> Doc<'a>;
-    fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a>;
+    fn transpile_bool_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a>;
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a>;
     fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i32) -> Doc<'a>;
     fn transpile_array_literal<'a>(
@@ -376,15 +376,13 @@ pub trait Transpiler {
             } => self.transpile_field_access(arena, object, field),
             WriterExpr::StringLiteral { value, .. } => self.transpile_string_literal(arena, value),
             WriterExpr::HtmlLiteral { body, .. } => self.transpile_html(arena, body),
-            WriterExpr::FunctionCall { function, args, .. } => {
+            WriterExpr::Call { function, args, .. } => {
                 self.transpile_function_call_expr(arena, function, args.as_slice())
             }
-            WriterExpr::BooleanLiteral { value, .. } => {
-                self.transpile_boolean_literal(arena, *value)
-            }
+            WriterExpr::BoolLiteral { value, .. } => self.transpile_bool_literal(arena, *value),
             WriterExpr::FloatLiteral { value, .. } => self.transpile_float_literal(arena, *value),
             WriterExpr::IntLiteral { value, .. } => self.transpile_int_literal(arena, *value),
-            WriterExpr::TupleLiteral { elements, typ, .. } => match typ {
+            WriterExpr::Tuple { elements, typ, .. } => match typ {
                 Type::Tuple(element_types) => {
                     self.transpile_tuple_literal(arena, elements, element_types)
                 }
@@ -393,17 +391,17 @@ pub trait Transpiler {
             WriterExpr::TupleIndex { tuple, index, .. } => {
                 self.transpile_tuple_index(arena, tuple, *index)
             }
-            WriterExpr::ArrayLiteral { elements, typ, .. } => match typ {
+            WriterExpr::Array { elements, typ, .. } => match typ {
                 Type::Array(elem_type) => self.transpile_array_literal(arena, elements, elem_type),
                 _ => {
                     unreachable!()
                 }
             },
-            WriterExpr::RecordLiteral {
+            WriterExpr::Record {
                 type_name, fields, ..
             } => self.transpile_record_literal(arena, type_name.as_str(), fields),
             WriterExpr::StringConcat { parts, .. } => self.transpile_string_concat(arena, parts),
-            WriterExpr::BooleanNegation { operand, .. } => self.transpile_not(arena, operand),
+            WriterExpr::BoolNegation { operand, .. } => self.transpile_not(arena, operand),
             WriterExpr::NumericNegation {
                 operand,
                 operand_type,
@@ -443,10 +441,10 @@ pub trait Transpiler {
                     self.transpile_float_less_than_or_equal(arena, left, right)
                 }
             },
-            WriterExpr::BooleanLogicalAnd { left, right, .. } => {
+            WriterExpr::BoolLogicalAnd { left, right, .. } => {
                 self.transpile_logical_and(arena, left, right)
             }
-            WriterExpr::BooleanLogicalOr { left, right, .. } => {
+            WriterExpr::BoolLogicalOr { left, right, .. } => {
                 self.transpile_logical_or(arena, left, right)
             }
             WriterExpr::NumericAdd {
@@ -476,7 +474,7 @@ pub trait Transpiler {
                 NumericType::Int => self.transpile_int_multiply(arena, left, right),
                 NumericType::Float => self.transpile_float_multiply(arena, left, right),
             },
-            WriterExpr::EnumLiteral {
+            WriterExpr::Enum {
                 type_name,
                 variant_name,
                 fields,
@@ -487,10 +485,10 @@ pub trait Transpiler {
                 variant_name.as_str(),
                 fields,
             ),
-            WriterExpr::OptionLiteral { value, typ, .. } => {
+            WriterExpr::Option { value, typ, .. } => {
                 let inner_type = match typ {
                     Type::Option(inner) => inner.as_ref(),
-                    _ => unreachable!("OptionLiteral must have Option type"),
+                    _ => unreachable!("Option expression must have Option type"),
                 };
                 self.transpile_option_literal(arena, value.as_ref().map(|v| v.as_ref()), inner_type)
             }

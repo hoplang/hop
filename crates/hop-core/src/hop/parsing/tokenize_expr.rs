@@ -152,7 +152,7 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
                 "Some" => LangToken::Some,
                 // Types
                 "Array" => LangToken::TypeArray,
-                "Bool" => LangToken::TypeBoolean,
+                "Bool" => LangToken::TypeBool,
                 "Float" => LangToken::TypeFloat,
                 "Html" => LangToken::TypeHtml,
                 "Int" => LangToken::TypeInt,
@@ -739,7 +739,7 @@ mod tests {
                 String Int Float Bool Html Array
                            ^^^^^
 
-                token: TypeBoolean
+                token: TypeBool
                 String Int Float Bool Html Array
                                  ^^^^
 

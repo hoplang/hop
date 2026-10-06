@@ -1,6 +1,6 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::hop::assembly::{self, AssembledPageDeclaration, TailwindInjection};
-use crate::hop::typing::TypedAst;
+use crate::hop::typing::TypedModule;
 use crate::ir::pure_module::PureModule;
 use crate::ir::{WriterModule, compile, lower_pure, optimize, retain_reachable};
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -23,23 +23,23 @@ pub struct OrchestrateOptions<'a> {
 }
 
 pub fn orchestrate(
-    typed_asts: &HashMap<RootContainedFilePath, TypedAst>,
+    typed_modules: &HashMap<RootContainedFilePath, TypedModule>,
     options: OrchestrateOptions<'_>,
 ) -> WriterModule {
-    lower_pure(orchestrate_pure(typed_asts, options))
+    lower_pure(orchestrate_pure(typed_modules, options))
 }
 
 pub fn orchestrate_pure(
-    typed_asts: &HashMap<RootContainedFilePath, TypedAst>,
+    typed_modules: &HashMap<RootContainedFilePath, TypedModule>,
     options: OrchestrateOptions<'_>,
 ) -> PureModule {
     // Take pages from all modules (sorted by module ID for deterministic order)
-    let mut document_ids: Vec<_> = typed_asts.keys().cloned().collect();
+    let mut document_ids: Vec<_> = typed_modules.keys().cloned().collect();
     document_ids.sort();
     let typed_pages: Vec<_> = document_ids
         .iter()
         .flat_map(|id| {
-            typed_asts[id]
+            typed_modules[id]
                 .page_declarations()
                 .iter()
                 .filter(|ep| match &options.page_filter {
@@ -65,7 +65,7 @@ pub fn orchestrate_pure(
     let functions: Vec<_> = document_ids
         .iter()
         .flat_map(|id| {
-            typed_asts[id]
+            typed_modules[id]
                 .function_declarations()
                 .iter()
                 .map(move |decl| (id, decl))

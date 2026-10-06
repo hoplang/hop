@@ -364,17 +364,17 @@ pub enum TypeMismatchContext {
     ForBody,
     /// The value of an element attribute.
     Attribute,
-    /// An element of an array literal, compared to the first element.
+    /// An element of an array expression, compared to the first element.
     ArrayElement,
     /// The operand of a boolean negation.
-    BooleanNegation,
+    BoolNegation,
     /// An operand of a logical and.
     LogicalAnd,
     /// An operand of a logical or.
     LogicalOr,
-    /// The value of a field in a record literal.
-    RecordLiteralField,
-    /// The value of a field in an enum variant literal.
+    /// The value of a field in a record expression.
+    RecordField,
+    /// The value of a field in an enum expression.
     EnumVariantField,
     /// The subject of a record spread.
     RecordSpread,

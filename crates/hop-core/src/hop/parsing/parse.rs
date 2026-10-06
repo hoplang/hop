@@ -1,9 +1,9 @@
 use super::parse_expr;
 use super::parse_helpers;
-use super::parsed_ast::{
-    ParsedAst, ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
-    ParsedFieldDeclaration, ParsedFunctionDeclaration, ParsedImportDeclaration,
-    ParsedPageDeclaration, ParsedRecordDeclaration,
+use super::parsed_module::{
+    ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant, ParsedFieldDeclaration,
+    ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedModule, ParsedPageDeclaration,
+    ParsedRecordDeclaration,
 };
 use super::tokenize_expr;
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
@@ -12,7 +12,7 @@ use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use crate::hop::parsing::parse_type::parse_type;
-use crate::hop::parsing::parsed_ast::ParsedParameter;
+use crate::hop::parsing::parsed_module::ParsedParameter;
 use crate::hop::parsing::token::LangToken;
 use crate::hop::parsing::token::LangTokenPair;
 use crate::symbols::field_name::FieldName;
@@ -22,7 +22,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::HashSet;
 
-pub fn parse(document: Document, errors: &mut Vec<ParseError>) -> ParsedAst {
+pub fn parse(document: Document, errors: &mut Vec<ParseError>) -> ParsedModule {
     let mut iter = document.cursor();
     let mut declarations = Vec::new();
     let mut comments = Vec::new();
@@ -72,7 +72,7 @@ pub fn parse(document: Document, errors: &mut Vec<ParseError>) -> ParsedAst {
 
     debug_assert!(iter.peek().is_none(), "parser stopped before end of input");
 
-    ParsedAst::new(declarations, comments)
+    ParsedModule::new(declarations, comments)
 }
 
 fn parse_import_declaration(
@@ -757,7 +757,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_as_match_subject() {
+    fn accepts_enum_expression_as_match_subject() {
         accept(
             indoc! {r#"
               fn f() -> Int {
@@ -775,7 +775,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_enum_literal_as_for_source() {
+    fn accepts_enum_expression_as_for_source() {
         accept(
             indoc! {r#"
               fn f() -> Int {
@@ -793,7 +793,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_braced_enum_literal_as_match_subject() {
+    fn rejects_braced_enum_expression_as_match_subject() {
         reject(
             indoc! {r#"
               fn f() -> Int {
@@ -804,7 +804,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: A record or enum literal is not allowed here: surround it with parentheses
+                error: A record or enum expression is not allowed here: surround it with parentheses
                 1 | fn f() -> Int {
                 2 |   match Point::XY { x: 1, y: 2 } {
                   |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -817,7 +817,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_with_spread_as_for_source() {
+    fn rejects_record_expression_with_spread_as_for_source() {
         reject(
             indoc! {r#"
               fn f(p: Point) -> Int {
@@ -828,7 +828,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: A record or enum literal is not allowed here: surround it with parentheses
+                error: A record or enum expression is not allowed here: surround it with parentheses
                 1 | fn f(p: Point) -> Int {
                 2 |   for x in Point { ...p } {
                   |            ^^^^^^^^^^^^^^
@@ -841,7 +841,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_record_literal_before_postfix_in_match_subject() {
+    fn rejects_record_expression_before_postfix_in_match_subject() {
         reject(
             indoc! {r#"
               fn f() -> Int {
@@ -852,7 +852,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: A record or enum literal is not allowed here: surround it with parentheses
+                error: A record or enum expression is not allowed here: surround it with parentheses
                 1 | fn f() -> Int {
                 2 |   match Point { x: 1 }.x {
                   |         ^^^^^^^^^^^^^^
@@ -865,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_each_record_literal_in_for_range_bounds() {
+    fn rejects_each_record_expression_in_for_range_bounds() {
         reject(
             indoc! {"
                 fn f() -> Int {
@@ -874,12 +874,12 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: A record or enum literal is not allowed here: surround it with parentheses
+                error: A record or enum expression is not allowed here: surround it with parentheses
                 1 | fn f() -> Int {
                 2 |   for x in Point { x: 1 }.x..=Point { x: 2 }.x { 1 }
                   |            ^^^^^^^^^^^^^^
 
-                error: A record or enum literal is not allowed here: surround it with parentheses
+                error: A record or enum expression is not allowed here: surround it with parentheses
                 1 | fn f() -> Int {
                 2 |   for x in Point { x: 1 }.x..=Point { x: 2 }.x { 1 }
                   |                               ^^^^^^^^^^^^^^
@@ -894,7 +894,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parenthesized_record_literal_as_match_subject() {
+    fn accepts_parenthesized_record_expression_as_match_subject() {
         accept(
             indoc! {r#"
               fn f() -> Int {
@@ -912,7 +912,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_record_literal_inside_call_in_match_subject() {
+    fn accepts_record_expression_inside_call_in_match_subject() {
         accept(
             indoc! {r#"
               fn f() -> Int {
@@ -944,7 +944,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: A record or enum literal is not allowed here: surround it with parentheses
+                error: A record or enum expression is not allowed here: surround it with parentheses
                 1 | fn f() -> Int {
                 2 |   match Point {
                   |         ^^^^^
@@ -954,7 +954,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unexpected_token_inside_nested_record_literals() {
+    fn rejects_unexpected_token_inside_nested_record_expressions() {
         reject(
             "fn f() -> Int { A { a: B { a: C { a: D { a: ] } } } } }",
             expect![[r#"
@@ -2721,7 +2721,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_invocations() {
+    fn accepts_markup_calls() {
         accept(
             indoc! {"
                 fn Main(p: String) -> Html {
@@ -2743,7 +2743,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_invocations_with_params() {
+    fn accepts_markup_calls_with_params() {
         accept(
             indoc! {r#"
                 import foo::Foo
@@ -4311,7 +4311,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_match_expression_with_enum_literal_subject() {
+    fn accepts_match_expression_with_enum_expression_subject() {
         accept(
             indoc! {r#"
                 enum Status { Active {name: String}, Inactive }
@@ -4589,7 +4589,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_page_with_function_invocation() {
+    fn accepts_page_with_markup_call() {
         accept(
             indoc! {"
                 fn Header(title: String) -> Html {
@@ -4721,7 +4721,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_function_invocation_with_invalid_character() {
+    fn rejects_markup_call_with_invalid_character() {
         reject(
             indoc! {"
                 fn Card() -> Html {
@@ -6217,7 +6217,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_markup_in_an_array_literal() {
+    fn accepts_markup_in_an_array_expression() {
         accept(
             indoc! {"
                 fn cards() -> Array[Html] {

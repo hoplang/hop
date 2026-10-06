@@ -3,7 +3,7 @@ mod definition;
 mod diagnostics;
 mod evaluate;
 mod evaluate_page_error;
-mod find_node;
+mod find_markup;
 mod format_error;
 mod hover;
 mod rename;

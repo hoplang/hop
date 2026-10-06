@@ -28,9 +28,9 @@ pub struct TypedField {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Constructor {
     /// A boolean true pattern
-    BooleanTrue,
+    BoolTrue,
     /// A boolean false pattern
-    BooleanFalse,
+    BoolFalse,
     /// An Option Some pattern, e.g. `Some(_)`
     OptionSome,
     /// An Option None pattern, e.g. `None`
@@ -55,8 +55,8 @@ impl Constructor {
             } => BoxDoc::text(type_name.as_str().to_string())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
-            Constructor::BooleanTrue => BoxDoc::text("true"),
-            Constructor::BooleanFalse => BoxDoc::text("false"),
+            Constructor::BoolTrue => BoxDoc::text("true"),
+            Constructor::BoolFalse => BoxDoc::text("false"),
             Constructor::OptionSome => BoxDoc::text("Some"),
             Constructor::OptionNone => BoxDoc::text("None"),
             Constructor::Record { type_name } => BoxDoc::text(type_name.as_str().to_string()),

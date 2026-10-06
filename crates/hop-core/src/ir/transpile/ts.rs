@@ -233,7 +233,7 @@ impl TsTranspiler {
         subject: &'a WriterExpr,
     ) -> Doc<'a> {
         match subject {
-            WriterExpr::BooleanLiteral { .. } => self.transpile_expr(arena, subject),
+            WriterExpr::BoolLiteral { .. } => self.transpile_expr(arena, subject),
             _ => arena
                 .text("(")
                 .append(self.transpile_expr(arena, subject))
@@ -1089,7 +1089,7 @@ impl Transpiler for TsTranspiler {
             .append(arena.text("})()"))
     }
 
-    fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {
+    fn transpile_bool_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {
         match value {
             true => arena.text("(true as boolean)"),
             false => arena.text("(false as boolean)"),

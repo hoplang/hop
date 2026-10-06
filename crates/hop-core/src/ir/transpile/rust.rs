@@ -160,24 +160,24 @@ impl RustTranspiler {
             }
             WriterExpr::FieldAccess { .. } | WriterExpr::TupleIndex { .. } => NaturalForm::Place,
             WriterExpr::HtmlLiteral { .. }
-            | WriterExpr::FunctionCall { .. }
-            | WriterExpr::BooleanLiteral { .. }
+            | WriterExpr::Call { .. }
+            | WriterExpr::BoolLiteral { .. }
             | WriterExpr::FloatLiteral { .. }
             | WriterExpr::IntLiteral { .. }
-            | WriterExpr::ArrayLiteral { .. }
-            | WriterExpr::TupleLiteral { .. }
-            | WriterExpr::RecordLiteral { .. }
-            | WriterExpr::EnumLiteral { .. }
-            | WriterExpr::OptionLiteral { .. }
+            | WriterExpr::Array { .. }
+            | WriterExpr::Tuple { .. }
+            | WriterExpr::Record { .. }
+            | WriterExpr::Enum { .. }
+            | WriterExpr::Option { .. }
             | WriterExpr::Match { .. }
             | WriterExpr::StringConcat { .. }
             | WriterExpr::NumericAdd { .. }
             | WriterExpr::NumericSubtract { .. }
             | WriterExpr::NumericMultiply { .. }
-            | WriterExpr::BooleanNegation { .. }
+            | WriterExpr::BoolNegation { .. }
             | WriterExpr::NumericNegation { .. }
-            | WriterExpr::BooleanLogicalAnd { .. }
-            | WriterExpr::BooleanLogicalOr { .. }
+            | WriterExpr::BoolLogicalAnd { .. }
+            | WriterExpr::BoolLogicalOr { .. }
             | WriterExpr::Equals { .. }
             | WriterExpr::LessThan { .. }
             | WriterExpr::LessThanOrEqual { .. }
@@ -1262,7 +1262,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         let boxed = self.field_access_is_boxed(object, field);
         let object_doc = match object {
-            WriterExpr::RecordLiteral { .. } => arena
+            WriterExpr::Record { .. } => arena
                 .text("(")
                 .append(self.transpile_expr_place(arena, object))
                 .append(arena.text(")")),
@@ -1270,24 +1270,24 @@ impl Transpiler for RustTranspiler {
             | WriterExpr::FieldAccess { .. }
             | WriterExpr::StringLiteral { .. }
             | WriterExpr::HtmlLiteral { .. }
-            | WriterExpr::FunctionCall { .. }
-            | WriterExpr::BooleanLiteral { .. }
+            | WriterExpr::Call { .. }
+            | WriterExpr::BoolLiteral { .. }
             | WriterExpr::FloatLiteral { .. }
             | WriterExpr::IntLiteral { .. }
-            | WriterExpr::ArrayLiteral { .. }
-            | WriterExpr::TupleLiteral { .. }
+            | WriterExpr::Array { .. }
+            | WriterExpr::Tuple { .. }
             | WriterExpr::TupleIndex { .. }
-            | WriterExpr::EnumLiteral { .. }
-            | WriterExpr::OptionLiteral { .. }
+            | WriterExpr::Enum { .. }
+            | WriterExpr::Option { .. }
             | WriterExpr::Match { .. }
             | WriterExpr::StringConcat { .. }
             | WriterExpr::NumericAdd { .. }
             | WriterExpr::NumericSubtract { .. }
             | WriterExpr::NumericMultiply { .. }
-            | WriterExpr::BooleanNegation { .. }
+            | WriterExpr::BoolNegation { .. }
             | WriterExpr::NumericNegation { .. }
-            | WriterExpr::BooleanLogicalAnd { .. }
-            | WriterExpr::BooleanLogicalOr { .. }
+            | WriterExpr::BoolLogicalAnd { .. }
+            | WriterExpr::BoolLogicalOr { .. }
             | WriterExpr::Equals { .. }
             | WriterExpr::LessThan { .. }
             | WriterExpr::LessThanOrEqual { .. }
@@ -1342,7 +1342,7 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("}"))
     }
 
-    fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {
+    fn transpile_bool_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {
         if value {
             arena.text("true")
         } else {

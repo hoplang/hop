@@ -265,12 +265,12 @@ pub enum ParseErrorKind {
     #[error("At most one rest parameter is allowed")]
     DuplicateRestParam,
 
-    #[error("At most one spread is allowed in a record literal")]
-    DuplicateSpreadInRecordLiteral,
+    #[error("At most one spread is allowed in a record expression")]
+    DuplicateSpreadInRecord,
 
-    #[error("Spread is not allowed in an enum variant literal")]
-    SpreadNotAllowedInEnumLiteral,
+    #[error("Spread is not allowed in an enum expression")]
+    SpreadNotAllowedInEnum,
 
-    #[error("A record or enum literal is not allowed here: surround it with parentheses")]
-    RecordLiteralNotAllowedHere,
+    #[error("A record or enum expression is not allowed here: surround it with parentheses")]
+    RecordNotAllowedHere,
 }

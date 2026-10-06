@@ -1,13 +1,13 @@
 use super::type_env::{ParamEntry, TypeEnv};
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
-use super::typecheck_node::typecheck_node;
+use super::typecheck_markup::typecheck_markup;
 use super::typed_expr::TypedExpr;
 use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::parsing::{ParsedExpr, ParsedNode};
+use crate::hop::parsing::{ParsedExpr, ParsedMarkup};
 use crate::hop::typing::TypedAttrs;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hover_annotation::HoverAnnotation;
@@ -24,7 +24,7 @@ pub enum Argument<'a> {
     Desugared(TypedExpr, DocumentRange),
     /// The content between the tags of a markup call, which is the
     /// `children` argument as a fragment.
-    Content(&'a [ParsedNode], DocumentRange),
+    Content(&'a [ParsedMarkup], DocumentRange),
     /// Supplied by the call site itself: a parameter the caller's rest
     /// carries.
     Implied(TypedExpr),
@@ -178,12 +178,12 @@ pub fn typecheck_call(
                 continue;
             }
             Argument::Desugared(value, range) => (value, range),
-            Argument::Content(nodes, range) => {
-                let nodes = nodes
+            Argument::Content(content, range) => {
+                let parts = content
                     .iter()
-                    .filter_map(|node| {
-                        typecheck_node(
-                            node,
+                    .filter_map(|markup| {
+                        typecheck_markup(
+                            markup,
                             forwarded_params,
                             registry,
                             errors,
@@ -195,7 +195,7 @@ pub fn typecheck_call(
                         )
                     })
                     .collect();
-                (TypedExpr::HtmlConcat { nodes }, range)
+                (TypedExpr::HtmlConcat { parts }, range)
             }
             Argument::Expression(expr) => {
                 let Some(value) = typecheck_expr(
@@ -261,7 +261,7 @@ pub fn typecheck_call(
         }
     };
 
-    Some(TypedExpr::FunctionCall {
+    Some(TypedExpr::Call {
         function_name: callee.clone(),
         module,
         args,

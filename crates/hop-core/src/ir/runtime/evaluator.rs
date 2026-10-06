@@ -185,7 +185,7 @@ fn evaluate_expr(
             Ok(Value::String(result))
         }
 
-        PureExpr::FunctionCall { function, args, .. } => {
+        PureExpr::Call { function, args, .. } => {
             let func = function_decls
                 .iter()
                 .find(|c| c.function.id == function.id)
@@ -227,17 +227,17 @@ fn evaluate_expr(
             evaluate_expr(&func.body, &mut callee_env, function_decls)
         }
 
-        PureExpr::BooleanLiteral { value: b, .. } => Ok(Value::Bool(*b)),
+        PureExpr::BoolLiteral { value: b, .. } => Ok(Value::Bool(*b)),
         PureExpr::FloatLiteral { value: f, .. } => Ok(Value::Float(*f)),
         PureExpr::IntLiteral { value: i, .. } => Ok(Value::Int(*i)),
-        PureExpr::ArrayLiteral { elements, .. } => {
+        PureExpr::Array { elements, .. } => {
             let mut array = Vec::new();
             for elem in elements {
                 array.push(evaluate_expr(elem, env, function_decls)?);
             }
             Ok(Value::Array(array))
         }
-        PureExpr::TupleLiteral { elements, .. } => {
+        PureExpr::Tuple { elements, .. } => {
             let mut tuple = Vec::new();
             for element in elements {
                 tuple.push(evaluate_expr(element, env, function_decls)?);
@@ -254,7 +254,7 @@ fn evaluate_expr(
                 .nth(*index)
                 .unwrap_or_else(|| panic!("Index {index} is out of range for the tuple")))
         }
-        PureExpr::RecordLiteral { fields, .. } => {
+        PureExpr::Record { fields, .. } => {
             let mut rec = HashMap::new();
             for (key, value) in fields {
                 rec.insert(key.clone(), evaluate_expr(value, env, function_decls)?);
@@ -271,7 +271,7 @@ fn evaluate_expr(
             }
             Ok(Value::String(result))
         }
-        PureExpr::BooleanNegation { operand, .. } => {
+        PureExpr::BoolNegation { operand, .. } => {
             let val = evaluate_expr(operand, env, function_decls)?;
             let bool_val = val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(!bool_val))
@@ -389,7 +389,7 @@ fn evaluate_expr(
             Ok(Value::Bool(result))
         }
 
-        PureExpr::BooleanLogicalAnd { left, right, .. } => {
+        PureExpr::BoolLogicalAnd { left, right, .. } => {
             let left_val = evaluate_expr(left, env, function_decls)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
             if !left_bool {
@@ -400,7 +400,7 @@ fn evaluate_expr(
             Ok(Value::Bool(right_bool))
         }
 
-        PureExpr::BooleanLogicalOr { left, right, .. } => {
+        PureExpr::BoolLogicalOr { left, right, .. } => {
             let left_val = evaluate_expr(left, env, function_decls)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
             if left_bool {
@@ -479,7 +479,7 @@ fn evaluate_expr(
                 }
             }
         }
-        PureExpr::EnumLiteral {
+        PureExpr::Enum {
             variant_name,
             fields,
             ..
@@ -494,7 +494,7 @@ fn evaluate_expr(
                 fields: field_values,
             })
         }
-        PureExpr::OptionLiteral { value, .. } => match value {
+        PureExpr::Option { value, .. } => match value {
             Some(inner) => Ok(Value::Some(Box::new(evaluate_expr(
                 inner,
                 env,

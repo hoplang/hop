@@ -9,7 +9,7 @@ use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::compile_match;
 use crate::hop::typing::type_registry::ResolvedType;
 use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
-use crate::hop::typing::typed_ast::TypedParameter;
+use crate::hop::typing::typed_module::TypedParameter;
 use crate::hop::typing::typed_pattern::Constructor;
 use crate::hop::typing::typed_pattern::TypedPattern;
 use crate::hop::typing::{TypedAttribute, TypedAttrs, TypedLoopSource, TypedRecordUpdateField};
@@ -101,7 +101,7 @@ impl TypedAstBuilder {
             name: TypeName::parse(page_name).unwrap(),
             params: self.params,
             body: TypedExpr::HtmlConcat {
-                nodes: self.children,
+                parts: self.children,
             },
         }
     }
@@ -164,8 +164,8 @@ impl TypedAstBuilder {
         }
     }
 
-    /// Build a record literal that supplies `fields` and reads the others
-    /// from `base`, e.g. User { ...user, name: "Jane" }.
+    /// Build a record expression that supplies `fields` and reads the others
+    /// from `base`, e.g. User {...user, name: "Jane"}.
     pub fn record_update(&self, base: TypedExpr, fields: Vec<(&str, TypedExpr)>) -> TypedExpr {
         let typ = base.typ();
         let Some(ResolvedType::Record {
@@ -221,15 +221,15 @@ impl TypedAstBuilder {
         });
     }
 
-    pub fn if_node<F>(&mut self, cond: TypedExpr, children_fn: F)
+    pub fn if_html<F>(&mut self, cond: TypedExpr, children_fn: F)
     where
         F: FnOnce(&mut Self),
     {
         assert_eq!(cond.typ(), Type::Bool, "{}", cond);
-        self.bool_match_node(cond, children_fn, |_| {});
+        self.bool_match_html(cond, children_fn, |_| {});
     }
 
-    pub fn for_node<F>(&mut self, var: &str, array: TypedExpr, body_fn: F)
+    pub fn for_html<F>(&mut self, var: &str, array: TypedExpr, body_fn: F)
     where
         F: FnOnce(&mut Self),
     {
@@ -251,7 +251,7 @@ impl TypedAstBuilder {
         self.children.push(TypedExpr::For {
             var_name: Some(VarName::try_from(var.to_string()).unwrap()),
             source: Box::new(TypedLoopSource::Array(array)),
-            body: Box::new(TypedExpr::HtmlConcat { nodes: children }),
+            body: Box::new(TypedExpr::HtmlConcat { parts: children }),
             typ: Type::Html,
         });
     }
@@ -275,7 +275,7 @@ impl TypedAstBuilder {
             })
             .collect();
 
-        self.children.push(TypedExpr::HtmlElement {
+        self.children.push(TypedExpr::Element {
             element: HtmlElementKind::parse(tag_name)
                 .expect("builder html() called with an unrecognized tag name"),
             attrs: TypedAttrs {
@@ -283,7 +283,7 @@ impl TypedAstBuilder {
                 spread: None,
             },
             children: Box::new(TypedExpr::HtmlConcat {
-                nodes: inner_builder.children,
+                parts: inner_builder.children,
             }),
         });
     }
@@ -320,7 +320,7 @@ impl TypedAstBuilder {
         }
     }
 
-    pub fn bool_match_node<FTrue, FFalse>(
+    pub fn bool_match_html<FTrue, FFalse>(
         &mut self,
         subject: TypedExpr,
         true_children_fn: FTrue,
@@ -334,7 +334,7 @@ impl TypedAstBuilder {
         let mut false_builder = self.new_scoped();
         false_children_fn(&mut false_builder);
 
-        let patterns: Vec<TypedPattern> = [Constructor::BooleanTrue, Constructor::BooleanFalse]
+        let patterns: Vec<TypedPattern> = [Constructor::BoolTrue, Constructor::BoolFalse]
             .into_iter()
             .map(|constructor| TypedPattern::Constructor {
                 constructor,
@@ -346,10 +346,10 @@ impl TypedAstBuilder {
             .expect("a match on true and false is exhaustive");
         let bodies = [
             TypedExpr::HtmlConcat {
-                nodes: true_builder.children,
+                parts: true_builder.children,
             },
             TypedExpr::HtmlConcat {
-                nodes: false_builder.children,
+                parts: false_builder.children,
             },
         ];
 
@@ -436,7 +436,7 @@ mod tests {
                 [("items", Type::Array(Box::new(Type::String)))],
                 |b| {
                     b.ul(vec![], |b| {
-                        b.for_node("item", b.var_expr("items"), |b| {
+                        b.for_html("item", b.var_expr("items"), |b| {
                             b.li(vec![], |b| {
                                 b.text_expr(b.var_expr("item"));
                             });
@@ -474,7 +474,7 @@ mod tests {
     fn if_conditional() {
         check(
             build_page("Toggle", [("visible", Type::Bool)], |b| {
-                b.if_node(b.var_expr("visible"), |b| {
+                b.if_html(b.var_expr("visible"), |b| {
                     b.div(vec![], |b| {
                         b.text("Shown");
                     });
@@ -516,7 +516,7 @@ mod tests {
             "Bad",
             [("items", Type::Array(Box::new(Type::String)))],
             |b| {
-                b.for_node("item", b.var_expr("items"), |_| {});
+                b.for_html("item", b.var_expr("items"), |_| {});
                 // item should not be accessible here
                 b.text_expr(b.var_expr("item"));
             },
