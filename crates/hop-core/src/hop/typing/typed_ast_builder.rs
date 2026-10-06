@@ -269,7 +269,7 @@ impl TypedAstBuilder {
             .map(|(name, value)| TypedAttribute {
                 name: AttributeName::new(CheapString::new(name.to_string()))
                     .expect("builder html() called with an invalid attribute name"),
-                value: Some(value),
+                value,
             })
             .collect();
 

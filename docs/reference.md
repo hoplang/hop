@@ -959,10 +959,9 @@ A markup call expression `<F …>…</F>` calls the
 [call expression](#call-expressions) in a
 [markup interpolation](#markup-interpolations): an [attribute](#attributes)
 `a={e}` is the named argument `a: e`, with `a` in quotes when it is not a
-`LowercaseIdentifier` or is a keyword or reserved word, `a` alone is `a: true`
-when `a` names a parameter of `F`, a spread `...rest` is the same spread, and
-the content between the tags, as a [fragment](#fragment-expressions), is the
-argument `children`. So
+`LowercaseIdentifier` or is a keyword or reserved word, a spread `...rest` is
+the same spread, and the content between the tags, as a
+[fragment](#fragment-expressions), is the argument `children`. So
 `<F a="x" ...rest>…</F>` is `<>{F(a: "x", ...rest, children: <>…</>)}</>`,
 even when the content is empty, and `<F a="x"/>` is `<>{F(a: "x")}</>`, which
 passes no `children`.
@@ -979,8 +978,7 @@ other type is a compile error.
 
 `F` accepts an attribute for each of its parameters, and an attribute that `F`
 does not accept is a compile error. With a [rest parameter](#rest-parameters),
-`F` also accepts the attributes the rest parameter collects. Such an attribute
-written as its name alone, as in `<F disabled/>`, has no call expression form.
+`F` also accepts the attributes the rest parameter collects.
 
 ```hop
 fn Badge(
@@ -1063,28 +1061,34 @@ let ok = <div>ok</div>;
 #### Attributes
 
 An attribute is written in the start tag of an element or markup call. It is a
-name alone, as in `disabled`, a name with a value, as in `id={e}`, or a spread
-`...rest` of a [rest parameter](#rest-parameters). A value is a
+name with a value, as in `id={e}`, or a spread `...rest` of a
+[rest parameter](#rest-parameters). A value is a
 [block](#block-expressions) or a [string literal](#literal-expressions), and
 `id="main"` is shorthand for `id={"main"}`.
 
 ```ebnf
-Attribute      ::= AttributeName ( "=" AttributeValue )?
+Attribute      ::= AttributeName "=" AttributeValue
                  | "..." LowercaseIdentifier
 AttributeName  ::= [A-Za-z] [A-Za-z0-9_:.-]*
 AttributeValue ::= BlockExpr | StringLiteral
 ```
 
-On an [element](#element-expressions), an attribute renders in the start tag.
-Its value must have type `String` and is [escaped](#escaping):
+On an [element](#element-expressions), an attribute renders in the start tag,
+and its value has the type of the attribute. A boolean attribute, such as
+`disabled` on a `<button>`, has type `Bool`: with `true` the element has the
+attribute without a value, and with `false` it does not have the attribute. Any
+other attribute has type `String`, and its value is [escaped](#escaping):
 
 ```hop
-<div id={1}></div>               // error: Expected String got Int
-<input disabled/>                // <input disabled>
-<input pattern="\\d+"/>          // <input pattern="\d+">
-<span title="say \"hi\""></span> // <span title="say &quot;hi&quot;"></span>
-<abbr title="R&D"></abbr>        // <abbr title="R&amp;D"></abbr>
-<abbr title="R&amp;D"></abbr>    // <abbr title="R&amp;amp;D"></abbr>
+<button disabled={true}></button> // <button disabled></button>
+<button disabled={false}></button> // <button></button>
+<button disabled="true"></button> // error: Expected Bool got String
+<div id={1}></div>                // error: Expected String got Int
+<div hidden={true}></div>         // error: Expected String got Bool
+<input pattern="\\d+"/>           // <input pattern="\d+">
+<span title="say \"hi\""></span>  // <span title="say &quot;hi&quot;"></span>
+<abbr title="R&D"></abbr>         // <abbr title="R&amp;D"></abbr>
+<abbr title="R&amp;D"></abbr>     // <abbr title="R&amp;amp;D"></abbr>
 ```
 
 An element defined by HTML, such as `div`, accepts the global attributes of
@@ -1093,13 +1097,21 @@ starts with `data-` or `aria-`. Any other attribute, such as `href` on a `div`,
 is a compile error. An SVG element, such as `path`, or a custom element accepts
 any attribute, except as follows.
 
+The boolean attributes are those that HTML defines as boolean attributes, such
+as `checked` and `required` on an `<input>`, and the global boolean attributes
+`autofocus`, `inert` and `itemscope`. Of these, an SVG element has only
+`autofocus`, and a custom element only the global ones. Every other attribute
+has type `String`, including `hidden`, any attribute whose name starts with
+`data-` or `aria-`, and attributes such as `draggable` whose value is the text
+`true` or `false`.
+
 For [XSS safety](#xss-safety), no element accepts an attribute whose name
 starts with `on`, such as `onclick`. Some attributes, such as the `src` of a
 `<script>`, accept only a string literal, written as `src="…"` or `src={"…"}`.
 
 On a [markup call](#markup-call-expressions), an attribute that names a
-parameter is a named argument, and a name alone is the argument `true`. Any
-other attribute goes to the [rest parameter](#rest-parameters) as written.
+parameter is a named argument. Any other attribute goes to the
+[rest parameter](#rest-parameters) as written.
 
 Attribute names are compared ignoring case, as HTML compares them. An
 attribute written more than once in a start tag, as in `<div id="a" id="b">` or
@@ -1135,10 +1147,10 @@ fn SecondaryButton(...rest) -> Html {
   Button(kind: "secondary", ...rest)
 }
 
-<Button kind="k" id="x" disabled/> // <button class="k" id="x" disabled>k</button>
-Button(kind: "k", id: "x")         // <button class="k" id="x">k</button>
-<PrimaryButton type="submit"/>     // <button class="primary" type="submit">primary</button>
-SecondaryButton(type: "submit")    // <button class="secondary" type="submit">secondary</button>
+<Button kind="k" id="x" disabled={true}/>  // <button class="k" id="x" disabled>k</button>
+Button(kind: "k", id: "x", disabled: true) // <button class="k" id="x" disabled>k</button>
+<PrimaryButton type="submit"/>             // <button class="primary" type="submit">primary</button>
+SecondaryButton(type: "submit")            // <button class="secondary" type="submit">secondary</button>
 ```
 
 Exactly once means once in the source text, not once per evaluation: a spread
@@ -1518,9 +1530,9 @@ For example, with the value of `v` [escaped](#escaping):
 ```hop
 let v = "R&D";
 
-<br/>                        // <br>
-<div></div>                  // <div></div>
-<input disabled value={v}/>  // <input disabled value="R&amp;D">
+<br/>                              // <br>
+<div></div>                        // <div></div>
+<input disabled={true} value={v}/> // <input disabled value="R&amp;D">
 ```
 
 <a id="xss-safety"></a>
@@ -1595,9 +1607,10 @@ let url = "/app.js";
 <script src={url}></script>
 ```
 
-Other attributes accept any `String`, escaped but otherwise unchecked. In
-particular, the scheme of a URL is not checked, so an `href`, `src`, `action`
-or `formaction` can hold a `javascript:` URL, and a `style` can hold any CSS:
+Any other attribute of type `String` accepts any `String`, escaped but otherwise
+unchecked. In particular, the scheme of a URL is not checked, so an `href`,
+`src`, `action` or `formaction` can hold a `javascript:` URL, and a `style` can
+hold any CSS:
 
 ```hop
 let url = "javascript:alert(1)";

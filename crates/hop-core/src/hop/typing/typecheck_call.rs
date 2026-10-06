@@ -9,7 +9,7 @@ use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::{ParsedExpr, ParsedMarkup};
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
-use crate::hop::typing::{TypedAttribute, TypedAttrs};
+use crate::hop::typing::{Type, TypedAttribute, TypedAttrs};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
@@ -22,8 +22,9 @@ pub enum Argument<'a> {
     Expression(&'a ParsedExpr),
     /// An attribute's quoted text, cooked.
     Text(CheapString, DocumentRange),
-    /// An attribute written as its name alone, which is `true` for a
-    /// parameter and an attribute without a value for the rest.
+    /// An attribute written as its name alone, which is a compile error. It is
+    /// kept until the parameter or attribute it names is known, so the error
+    /// can show a value of the right type.
     Bare(DocumentRange),
     /// The content between the tags of a markup call, which is the
     /// `children` argument as a fragment.
@@ -176,7 +177,7 @@ pub fn typecheck_call(
                 };
                 match (param, accepting_element, argument) {
                     (None, Some(element), Argument::Expression(value)) => {
-                        let value = typecheck_attribute_value(
+                        match typecheck_attribute_value(
                             element,
                             &name,
                             value,
@@ -188,17 +189,43 @@ pub fn typecheck_call(
                             annotations,
                             definition_links,
                             asset_references,
-                        );
-                        rest_attributes.push(TypedAttribute { name, value });
+                        ) {
+                            Some(value) => rest_attributes.push(TypedAttribute { name, value }),
+                            None => failed = true,
+                        }
+                    }
+                    (None, Some(element), Argument::Text(_, text_range))
+                        if element.is_boolean_attribute(name.as_str()) =>
+                    {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::TypeMismatch {
+                                context: TypeMismatchContext::Attribute,
+                                expected: Type::Bool,
+                                found: Type::String,
+                            },
+                            text_range,
+                        ));
+                        failed = true;
                     }
                     (None, Some(_), Argument::Text(value, _)) => {
                         rest_attributes.push(TypedAttribute {
                             name,
-                            value: Some(TypedExpr::StringLiteral { value }),
+                            value: TypedExpr::StringLiteral { value },
                         });
                     }
-                    (None, Some(_), Argument::Bare(_)) => {
-                        rest_attributes.push(TypedAttribute { name, value: None });
+                    (None, Some(element), Argument::Bare(bare_range)) => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::AttributeWithoutValue {
+                                attr: name.to_string(),
+                                expected: if element.is_boolean_attribute(name.as_str()) {
+                                    Type::Bool
+                                } else {
+                                    Type::String
+                                },
+                            },
+                            bare_range,
+                        ));
+                        failed = true;
                     }
                     // The content between the tags is the `children`
                     // argument, never an attribute.
@@ -264,7 +291,19 @@ pub fn typecheck_call(
                 continue;
             }
             Argument::Text(value, range) => (TypedExpr::StringLiteral { value }, range),
-            Argument::Bare(range) => (TypedExpr::BoolLiteral { value: true }, range),
+            // A name alone was supplied, so the parameter is not reported as
+            // missing, but it has no value.
+            Argument::Bare(range) => {
+                errors.push(TypeError::new(
+                    TypeErrorKind::AttributeWithoutValue {
+                        attr: param.name.as_str().to_string(),
+                        expected: param.typ.clone(),
+                    },
+                    range,
+                ));
+                failed = true;
+                continue;
+            }
             Argument::Content(content, range) => {
                 let parts = content
                     .iter()

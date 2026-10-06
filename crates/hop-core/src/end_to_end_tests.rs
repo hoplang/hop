@@ -1375,10 +1375,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn valueless_attribute_travels_through_rest() {
+    fn bool_attribute_is_present_when_true_and_absent_when_false() {
         check(
             indoc! {r#"
                 -- main.hop --
+                fn Field(required: Bool) -> Html {
+                  <input required={required}/>
+                }
+
                 fn Button(...rest) -> Html {
                   <button ...rest>
                   </button>
@@ -1386,11 +1390,16 @@ mod tests {
 
                 page Test() {
                   fn body() -> Html {
-                    <Button disabled/>
+                    <>
+                      <Field required={true}/>
+                      <Field required={false}/>
+                      <Button disabled={true}/>
+                      <Button disabled={false}/>
+                    </>
                   }
                 }
             "#},
-            r#"<button disabled></button>"#,
+            r#"<input required><input><button disabled></button><button></button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Button@f0(rest@v0: Html) -> Html {
@@ -1399,17 +1408,46 @@ mod tests {
                   write(">")
                   write("</button>")
                 }
+                fn Field@f1(required@v1: Bool) -> Html {
+                  write("<input")
+                  match v1 {
+                    true => {
+                      write(" required")
+                    }
+                    false => {
+                    }
+                  }
+                  write(">")
+                }
                 page Test() {
+                  call Field@f1(required = true)
+                  call Field@f1(required = false)
                   call Button@f0(rest = {
-                    write(" disabled")
+                    match true {
+                      true => {
+                        write(" disabled")
+                      }
+                      false => {
+                      }
+                    }
+                  })
+                  call Button@f0(rest = {
+                    match false {
+                      true => {
+                        write(" disabled")
+                      }
+                      false => {
+                      }
+                    }
                   })
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("<button disabled></button>")
+                  write("<input required><input><button disabled></button>")
+                  write("<button></button>")
                 }
                 -- expected output --
-                <button disabled></button>
+                <input required><input><button disabled></button><button></button>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

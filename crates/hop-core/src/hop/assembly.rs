@@ -148,9 +148,9 @@ fn create_attribute(name: &str, value: &str) -> TypedAttribute {
     TypedAttribute {
         name: AttributeName::new(CheapString::new(name.to_string()))
             .expect("assembly writes valid attribute names"),
-        value: Some(TypedExpr::StringLiteral {
+        value: TypedExpr::StringLiteral {
             value: CheapString::new(value.to_string()),
-        }),
+        },
     }
 }
 

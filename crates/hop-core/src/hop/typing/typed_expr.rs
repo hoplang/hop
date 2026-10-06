@@ -268,7 +268,8 @@ pub enum TypedLoopSource {
 #[derive(Debug, Clone)]
 pub struct TypedAttribute {
     pub name: AttributeName,
-    pub value: Option<TypedExpr>,
+    /// A `Bool` for a boolean attribute and a `String` for any other.
+    pub value: TypedExpr,
 }
 
 /// The attributes an element or a rest parameter receives: those written at
@@ -282,12 +283,17 @@ pub struct TypedAttrs {
 impl TypedAttribute {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let name_doc = BoxDoc::text(self.name.as_str());
-        match &self.value {
-            Some(value) => name_doc
+        // A Bool decides whether the attribute is present, and is not
+        // rendered as text.
+        if self.value.typ() == Type::Bool {
+            name_doc
+                .append(BoxDoc::text(": "))
+                .append(self.value.to_doc())
+        } else {
+            name_doc
                 .append(BoxDoc::text(": escape("))
-                .append(value.to_doc())
-                .append(BoxDoc::text(")")),
-            None => name_doc,
+                .append(self.value.to_doc())
+                .append(BoxDoc::text(")"))
         }
     }
 }

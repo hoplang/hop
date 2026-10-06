@@ -356,12 +356,18 @@ pub fn typecheck_attribute_value(
         asset_references,
         errors,
     )?;
-    if typed_expr.typ() != Type::String {
+    let expected = if element.is_boolean_attribute(name.as_str()) {
+        Type::Bool
+    } else {
+        Type::String
+    };
+    let found = typed_expr.typ();
+    if found != expected {
         errors.push(TypeError::new(
             TypeErrorKind::TypeMismatch {
                 context: TypeMismatchContext::Attribute,
-                expected: Type::String,
-                found: typed_expr.typ(),
+                expected,
+                found,
             },
             value.range().clone(),
         ));
@@ -402,7 +408,9 @@ fn typecheck_attributes(
     typed_attributes
 }
 
-/// Type-check a single HTML attribute: validate the name; expression values must be `String`.
+/// Type-check a single HTML attribute: validate the name, and check the value
+/// against the attribute's type, `Bool` for a boolean attribute and `String`
+/// for any other.
 fn typecheck_html_attribute(
     element: &HtmlElementKind,
     attribute: &ParsedAttribute,
@@ -426,8 +434,21 @@ fn typecheck_html_attribute(
         ));
         return None;
     }
+    if let ParsedAttribute::String { quoted_range, .. } = attribute {
+        if element.is_boolean_attribute(name.as_str()) {
+            errors.push(TypeError::new(
+                TypeErrorKind::TypeMismatch {
+                    context: TypeMismatchContext::Attribute,
+                    expected: Type::Bool,
+                    found: Type::String,
+                },
+                quoted_range.clone(),
+            ));
+            return None;
+        }
+    }
 
-    let typed_value = match attribute {
+    let value = match attribute {
         ParsedAttribute::Expression { value, .. } => typecheck_attribute_value(
             element,
             name,
@@ -440,8 +461,8 @@ fn typecheck_html_attribute(
             annotations,
             definition_links,
             asset_references,
-        ),
-        ParsedAttribute::String { value, .. } => Some(TypedExpr::StringLiteral {
+        )?,
+        ParsedAttribute::String { value, .. } => TypedExpr::StringLiteral {
             value: value
                 .cook(&mut |ch, range| {
                     errors.push(TypeError::new(
@@ -450,12 +471,27 @@ fn typecheck_html_attribute(
                     ));
                 })
                 .unwrap_or_else(|| CheapString::new(String::new())),
-        }),
-        ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => None,
+        },
+        ParsedAttribute::KeyOnly { .. } => {
+            errors.push(TypeError::new(
+                TypeErrorKind::AttributeWithoutValue {
+                    attr: name.to_string(),
+                    expected: if element.is_boolean_attribute(name.as_str()) {
+                        Type::Bool
+                    } else {
+                        Type::String
+                    },
+                },
+                name_range.clone(),
+            ));
+            return None;
+        }
+        // A spread has no name, so it returned above.
+        ParsedAttribute::Spread { .. } => return None,
     };
 
     Some(TypedAttribute {
         name: name.clone(),
-        value: typed_value,
+        value,
     })
 }

@@ -156,6 +156,16 @@ pub enum TypeErrorKind {
     #[error("<{element}> requires a string literal for attribute '{attr}'")]
     AttributeRequiresStringLiteral { element: String, attr: String },
 
+    #[error(
+        "Attribute '{attr}' needs a value{}",
+        match expected {
+            Type::Bool => format!(", such as {attr}={{true}}"),
+            Type::String => format!(", such as {attr}=\"\""),
+            _ => String::new(),
+        }
+    )]
+    AttributeWithoutValue { attr: String, expected: Type },
+
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: VarName },
 

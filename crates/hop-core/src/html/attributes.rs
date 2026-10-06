@@ -396,6 +396,70 @@ impl HtmlElementKind {
         }
         is_global_attribute(&name) || element_specific_attribute(self, &name)
     }
+
+    /// Return true if the attribute named `name` (case-insensitive) is one of
+    /// HTML's boolean attributes on this element, and so takes a `Bool`: the
+    /// attribute is present for `true` and absent for `false`. Every other
+    /// attribute takes a `String`, which includes any attribute of a custom or
+    /// SVG element that is not a global boolean attribute.
+    pub fn is_boolean_attribute(&self, name: &str) -> bool {
+        let name = name.to_ascii_lowercase();
+        // HTML defines `autofocus` for SVG elements as well.
+        if name == "autofocus" {
+            return true;
+        }
+        if self.is_svg() {
+            return false;
+        }
+        if matches!(name.as_str(), "inert" | "itemscope") {
+            return true;
+        }
+        match self {
+            HtmlElementKind::Audio => {
+                matches!(name.as_str(), "autoplay" | "controls" | "loop" | "muted")
+            }
+            HtmlElementKind::Button => matches!(name.as_str(), "disabled" | "formnovalidate"),
+            HtmlElementKind::Details | HtmlElementKind::Dialog => name == "open",
+            HtmlElementKind::Fieldset | HtmlElementKind::Link | HtmlElementKind::Optgroup => {
+                name == "disabled"
+            }
+            HtmlElementKind::Form => name == "novalidate",
+            HtmlElementKind::Iframe => name == "allowfullscreen",
+            HtmlElementKind::Img => name == "ismap",
+            HtmlElementKind::Input => matches!(
+                name.as_str(),
+                "alpha"
+                    | "checked"
+                    | "disabled"
+                    | "formnovalidate"
+                    | "multiple"
+                    | "readonly"
+                    | "required"
+            ),
+            HtmlElementKind::Ol => name == "reversed",
+            HtmlElementKind::Option => matches!(name.as_str(), "disabled" | "selected"),
+            HtmlElementKind::Script => matches!(name.as_str(), "async" | "defer" | "nomodule"),
+            HtmlElementKind::Select => {
+                matches!(name.as_str(), "disabled" | "multiple" | "required")
+            }
+            HtmlElementKind::Template => matches!(
+                name.as_str(),
+                "shadowrootclonable"
+                    | "shadowrootcustomelementregistry"
+                    | "shadowrootdelegatesfocus"
+                    | "shadowrootserializable"
+            ),
+            HtmlElementKind::Textarea => {
+                matches!(name.as_str(), "disabled" | "readonly" | "required")
+            }
+            HtmlElementKind::Track => name == "default",
+            HtmlElementKind::Video => matches!(
+                name.as_str(),
+                "autoplay" | "controls" | "loop" | "muted" | "playsinline"
+            ),
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -524,5 +588,24 @@ mod tests {
         // still accepted where it belongs
         let button = HtmlElementKind::parse("button").unwrap();
         assert!(button.accepts_attribute("form"));
+    }
+
+    #[test]
+    fn classifies_boolean_attributes_by_element_and_name() {
+        let button = HtmlElementKind::parse("button").unwrap();
+        let div = HtmlElementKind::parse("div").unwrap();
+        let custom = HtmlElementKind::parse("my-button").unwrap();
+        let path = HtmlElementKind::parse("path").unwrap();
+        assert!(button.is_boolean_attribute("disabled"));
+        assert!(button.is_boolean_attribute("DISABLED"));
+        assert!(!button.is_boolean_attribute("type"));
+        assert!(div.is_boolean_attribute("inert"));
+        assert!(!div.is_boolean_attribute("hidden"));
+        assert!(!div.is_boolean_attribute("draggable"));
+        assert!(!div.is_boolean_attribute("data-active"));
+        assert!(custom.is_boolean_attribute("itemscope"));
+        assert!(!custom.is_boolean_attribute("disabled"));
+        assert!(path.is_boolean_attribute("autofocus"));
+        assert!(!path.is_boolean_attribute("inert"));
     }
 }

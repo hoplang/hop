@@ -2175,7 +2175,7 @@ mod tests {
                     {Badge(label: name, children: <></>)}
                     <Dot/>
                     {Dot()}
-                    <Flag on/>
+                    <Flag on={true}/>
                     {Flag(on: true)}
                   </div>
                 }
@@ -2439,7 +2439,7 @@ mod tests {
 
                 fn Main() -> Html {
                   <div>
-                    <Badge label><b>!</b></Badge>
+                    <Badge label={true}><b>!</b></Badge>
                     {Badge(label: true, children: <><b>!</b></>)}
                     <Text>x</Text>
                     {Text(children: <>x</>)}
@@ -2452,14 +2452,14 @@ mod tests {
             "#},
             expect![[r#"
                 error: Expected String got Bool
-                  --> main.hop (line 17, col 12)
+                  --> main.hop (line 17, col 19)
                 16 |   <div>
-                17 |     <Badge label><b>!</b></Badge>
-                   |            ^^^^^
+                17 |     <Badge label={true}><b>!</b></Badge>
+                   |                   ^^^^
 
                 error: Expected String got Bool
                   --> main.hop (line 18, col 19)
-                17 |     <Badge label><b>!</b></Badge>
+                17 |     <Badge label={true}><b>!</b></Badge>
                 18 |     {Badge(label: true, children: <><b>!</b></>)}
                    |                   ^^^^
 
@@ -2498,6 +2498,88 @@ mod tests {
                 23 |     <Nope/>
                 24 |     {Nope()}
                    |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_attribute_without_value() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Toggle(on: Bool) -> String {
+                  match on {
+                    true => "on",
+                    false => "off",
+                  }
+                }
+
+                fn Label(text: String) -> String {
+                  text
+                }
+
+                fn Count(n: Int) -> String {
+                  n.to_string()
+                }
+
+                fn Button(...rest) -> Html {
+                  <button ...rest></button>
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    <input required/>
+                    <div hidden></div>
+                    <Toggle on/>
+                    <Label text/>
+                    <Count n/>
+                    <Button disabled/>
+                    <Button title/>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Attribute 'required' needs a value, such as required={true}
+                  --> main.hop (line 22, col 12)
+                21 |   <div>
+                22 |     <input required/>
+                   |            ^^^^^^^^
+
+                error: Attribute 'hidden' needs a value, such as hidden=""
+                  --> main.hop (line 23, col 10)
+                22 |     <input required/>
+                23 |     <div hidden></div>
+                   |          ^^^^^^
+
+                error: Attribute 'on' needs a value, such as on={true}
+                  --> main.hop (line 24, col 13)
+                23 |     <div hidden></div>
+                24 |     <Toggle on/>
+                   |             ^^
+
+                error: Attribute 'text' needs a value, such as text=""
+                  --> main.hop (line 25, col 12)
+                24 |     <Toggle on/>
+                25 |     <Label text/>
+                   |            ^^^^
+
+                error: Attribute 'n' needs a value
+                  --> main.hop (line 26, col 12)
+                25 |     <Label text/>
+                26 |     <Count n/>
+                   |            ^
+
+                error: Attribute 'disabled' needs a value, such as disabled={true}
+                  --> main.hop (line 27, col 13)
+                26 |     <Count n/>
+                27 |     <Button disabled/>
+                   |             ^^^^^^^^
+
+                error: Attribute 'title' needs a value, such as title=""
+                  --> main.hop (line 28, col 13)
+                27 |     <Button disabled/>
+                28 |     <Button title/>
+                   |             ^^^^^
             "#]],
         );
     }
@@ -7912,39 +7994,164 @@ mod tests {
     }
 
     #[test]
-    fn rejects_bool_expression_attribute() {
-        reject(
+    fn accepts_bool_values_for_boolean_attributes() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(is_required: Bool) -> Html {
-                  <input required={is_required}/>
+                  <input required={is_required} disabled={true} readonly={false}/>
                 }
             "#},
             expect![[r#"
-                error: Expected String got Bool
-                  --> main.hop (line 2, col 20)
-                1 | fn Main(is_required: Bool) -> Html {
-                2 |   <input required={is_required}/>
-                  |                    ^^^^^^^^^^^
+                -- main.hop --
+                fn Main(is_required: Bool) -> Html {
+                  html(
+                    tag: "input",
+                    attrs: [required: is_required, disabled: true, readonly: false],
+                  )
+                }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_bool_literal_attribute() {
+    fn rejects_string_for_boolean_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Html {
-                  <input required={true}/>
+                fn Main(kind: String) -> Html {
+                  <div>
+                    <input required="true"/>
+                    <input required={kind}/>
+                    <input required={1}/>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Expected Bool got String
+                  --> main.hop (line 3, col 21)
+                2 |   <div>
+                3 |     <input required="true"/>
+                  |                     ^^^^^^
+
+                error: Expected Bool got String
+                  --> main.hop (line 4, col 22)
+                3 |     <input required="true"/>
+                4 |     <input required={kind}/>
+                  |                      ^^^^
+
+                error: Expected Bool got Int
+                  --> main.hop (line 5, col 22)
+                4 |     <input required={kind}/>
+                5 |     <input required={1}/>
+                  |                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_bool_for_string_attribute() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(active: Bool) -> Html {
+                  <div>
+                    <div hidden={true}></div>
+                    <my-button disabled={true}></my-button>
+                    <div data-active={active}></div>
+                  </div>
                 }
             "#},
             expect![[r#"
                 error: Expected String got Bool
-                  --> main.hop (line 2, col 20)
-                1 | fn Main() -> Html {
-                2 |   <input required={true}/>
-                  |                    ^^^^
+                  --> main.hop (line 3, col 18)
+                2 |   <div>
+                3 |     <div hidden={true}></div>
+                  |                  ^^^^
+
+                error: Expected String got Bool
+                  --> main.hop (line 4, col 26)
+                3 |     <div hidden={true}></div>
+                4 |     <my-button disabled={true}></my-button>
+                  |                          ^^^^
+
+                error: Expected String got Bool
+                  --> main.hop (line 5, col 23)
+                4 |     <my-button disabled={true}></my-button>
+                5 |     <div data-active={active}></div>
+                  |                       ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_bool_for_boolean_attribute_forwarded_through_rest() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Button(...rest) -> Html {
+                  <button ...rest>
+                    Save
+                  </button>
+                }
+
+                fn Main(busy: Bool) -> Html {
+                  <div>
+                    <Button disabled={busy}/>
+                    {Button(disabled: true)}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Button(...rest) -> Html {
+                  html(tag: "button", attrs: [...rest], children: concat(raw("Save")))
+                }
+
+                fn Main(busy: Bool) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      Button(rest: [disabled: busy]),
+                      Button(rest: [disabled: true]),
+                    ),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_string_for_boolean_attribute_forwarded_through_rest() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Button(...rest) -> Html {
+                  <button ...rest>
+                    Save
+                  </button>
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    <Button disabled="true"/>
+                    {Button(disabled: "true")}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Expected Bool got String
+                  --> main.hop (line 9, col 22)
+                 8 |   <div>
+                 9 |     <Button disabled="true"/>
+                   |                      ^^^^^^
+
+                error: Expected Bool got String
+                  --> main.hop (line 10, col 23)
+                 9 |     <Button disabled="true"/>
+                10 |     {Button(disabled: "true")}
+                   |                       ^^^^^^
             "#]],
         );
     }
@@ -8418,7 +8625,7 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  <Btn disabled>click</Btn>
+                  <Btn disabled={true}>click</Btn>
                 }
             "#},
             expect![[r#"
@@ -8428,7 +8635,7 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  Btn(children: concat(raw("click")), rest: [disabled])
+                  Btn(children: concat(raw("click")), rest: [disabled: true])
                 }
             "#]],
         );
