@@ -16,7 +16,7 @@ use crate::symbols::var_name::VarName;
 pub fn typecheck_match(
     subject: &ParsedExpr,
     arms: &[ParsedMatchArm],
-    inferred_type: Option<&Type>,
+    expected_type: Option<&Type>,
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
     type_env: &TypeEnv,
@@ -96,7 +96,7 @@ pub fn typecheck_match(
         // the first arm's type when there is no expected type
         let typed_body = typecheck_expr(
             &arm.body,
-            inferred_type.or(result_type.as_ref()),
+            expected_type.or(result_type.as_ref()),
             forwarded_params,
             var_env,
             type_env,

@@ -23,11 +23,11 @@ use crate::symbols::var_name::VarName;
 
 /// Resolve a parsed Expr to a typed Expr.
 ///
-/// The optional `inferred_type` is used for bidirectional type checking, allowing
+/// The optional `expected_type` is used for bidirectional type checking, allowing
 /// empty array literals to infer their element type from context.
 pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
-    inferred_type: Option<&Type>,
+    expected_type: Option<&Type>,
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
     type_env: &TypeEnv,
@@ -436,7 +436,7 @@ pub fn typecheck_expr(
         ParsedExpr::ArrayLiteral { elements, range } => {
             if elements.is_empty() {
                 // Empty array: infer element type from expected type
-                let elem_type = match inferred_type {
+                let elem_type = match expected_type {
                     Some(Type::Array(elem)) => elem.clone(),
                     _ => {
                         errors.push(TypeError::new(
@@ -452,7 +452,7 @@ pub fn typecheck_expr(
                 })
             } else {
                 // Determine expected element type from context if available
-                let expected_elem_type: Option<Type> = match inferred_type {
+                let expected_elem_type: Option<Type> = match expected_type {
                     Some(Type::Array(elem)) => Some(elem.as_ref().clone()),
                     _ => None,
                 };
@@ -521,7 +521,7 @@ pub fn typecheck_expr(
         }
         ParsedExpr::TupleLiteral { elements, .. } => {
             // Determine expected element types from context if available
-            let expected_element_types: Option<&[Type]> = match inferred_type {
+            let expected_element_types: Option<&[Type]> = match expected_type {
                 Some(Type::Tuple(element_types)) if element_types.len() == elements.len() => {
                     Some(element_types)
                 }
@@ -653,7 +653,7 @@ pub fn typecheck_expr(
 
             for field in fields {
                 // Check if this field exists in the record
-                let Some(expected_type) = expected_fields.get(&field.name) else {
+                let Some(field_type) = expected_fields.get(&field.name) else {
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordUnknownField {
                             field_name: field.name.clone(),
@@ -678,7 +678,7 @@ pub fn typecheck_expr(
                 // Type check the field value with expected type for bidirectional checking
                 let Some(typed_value) = typecheck_expr(
                     &field.value,
-                    Some(expected_type),
+                    Some(field_type),
                     forwarded_params,
                     var_env,
                     type_env,
@@ -693,11 +693,11 @@ pub fn typecheck_expr(
                 let actual_type = typed_value.typ();
 
                 // Check that the types match
-                if actual_type != *expected_type {
+                if actual_type != *field_type {
                     errors.push(TypeError::new(
                         TypeErrorKind::TypeMismatch {
                             context: TypeMismatchContext::RecordLiteralField,
-                            expected: expected_type.clone(),
+                            expected: field_type.clone(),
                             found: actual_type,
                         },
                         field.value.range().clone(),
@@ -925,7 +925,7 @@ pub fn typecheck_expr(
             match value {
                 Some(inner_expr) => {
                     // Some(value): determine expected inner type from context if available
-                    let expected_inner_type: Option<Type> = match inferred_type {
+                    let expected_inner_type: Option<Type> = match expected_type {
                         Some(Type::Option(elem)) => Some(elem.as_ref().clone()),
                         _ => None,
                     };
@@ -951,7 +951,7 @@ pub fn typecheck_expr(
                 }
                 None => {
                     // None: infer element type from expected type
-                    let elem_type = match inferred_type {
+                    let elem_type = match expected_type {
                         Some(Type::Option(elem)) => elem.clone(),
                         _ => {
                             errors.push(TypeError::new(
@@ -1034,7 +1034,7 @@ pub fn typecheck_expr(
             }
             let typed_body = typecheck_expr(
                 body,
-                inferred_type,
+                expected_type,
                 forwarded_params,
                 var_env,
                 type_env,
@@ -1066,7 +1066,7 @@ pub fn typecheck_expr(
         ParsedExpr::Match { subject, arms, .. } => typecheck_match(
             subject,
             arms,
-            inferred_type,
+            expected_type,
             forwarded_params,
             var_env,
             type_env,
