@@ -3,15 +3,11 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::hop::parsing::ParsedAst;
-use crate::hop::parsing::ParsedDeclaration;
-use crate::hop::parsing::ParsedNode;
-use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::{
-    ParsedEnumDeclaration, ParsedFunctionDeclaration, ParsedImportDeclaration,
-    ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
+    ParsedAst, ParsedDeclaration, ParsedEnumDeclaration, ParsedExpr, ParsedFunctionDeclaration,
+    ParsedImportDeclaration, ParsedNode, ParsedPageDeclaration, ParsedParameter, ParsedPattern,
+    ParsedRecordDeclaration, ParsedType,
 };
-use crate::hop::parsing::{ParsedExpr, ParsedPattern};
 use crate::hop::typing::export::Export;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::rest_spread::{
