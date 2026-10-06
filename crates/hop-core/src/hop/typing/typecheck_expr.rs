@@ -380,9 +380,7 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             )?;
-            let operand_type = typed_operand.typ();
-
-            if operand_type != Type::Bool {
+            if typed_operand.typ() != Type::Bool {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeMismatch {
                         context: TypeMismatchContext::BooleanNegation,
@@ -393,7 +391,6 @@ pub fn typecheck_expr(
                 ));
                 return None;
             }
-
             Some(TypedExpr::BooleanNegation {
                 operand: Box::new(typed_operand),
             })
@@ -411,9 +408,7 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             )?;
-            let operand_type = typed_operand.typ();
-
-            match operand_type {
+            match typed_operand.typ() {
                 Type::Int => Some(TypedExpr::NumericNegation {
                     operand: Box::new(typed_operand),
                     operand_type: NumericType::Int,
@@ -435,7 +430,6 @@ pub fn typecheck_expr(
         }
         ParsedExpr::ArrayLiteral { elements, range } => {
             if elements.is_empty() {
-                // Empty array: infer element type from expected type
                 let elem_type = match expected_type {
                     Some(Type::Array(elem)) => elem.clone(),
                     _ => {
@@ -451,14 +445,11 @@ pub fn typecheck_expr(
                     typ: Type::Array(elem_type),
                 })
             } else {
-                // Determine expected element type from context if available
                 let expected_elem_type: Option<Type> = match expected_type {
                     Some(Type::Array(elem)) => Some(elem.as_ref().clone()),
                     _ => None,
                 };
-
                 let mut typed_elements = Vec::with_capacity(elements.len());
-
                 let first_typed = typecheck_expr(
                     &elements[0],
                     expected_elem_type.as_ref(),
@@ -473,7 +464,6 @@ pub fn typecheck_expr(
                 );
                 let first_type = first_typed.as_ref().map(|typed| typed.typ());
                 typed_elements.extend(first_typed);
-
                 // Check that all elements have the same type
                 // Use first element's type as context for subsequent elements
                 let elem_context = expected_elem_type.as_ref().or(first_type.as_ref());
@@ -508,11 +498,9 @@ pub fn typecheck_expr(
                     }
                     typed_elements.push(typed_element);
                 }
-
                 if typed_elements.len() != elements.len() {
                     return None;
                 }
-
                 Some(TypedExpr::ArrayLiteral {
                     elements: typed_elements,
                     typ: Type::Array(Box::new(first_type?)),
@@ -520,14 +508,12 @@ pub fn typecheck_expr(
             }
         }
         ParsedExpr::TupleLiteral { elements, .. } => {
-            // Determine expected element types from context if available
             let expected_element_types: Option<&[Type]> = match expected_type {
                 Some(Type::Tuple(element_types)) if element_types.len() == elements.len() => {
                     Some(element_types)
                 }
                 _ => None,
             };
-
             let mut typed_elements = Vec::with_capacity(elements.len());
             for (index, element) in elements.iter().enumerate() {
                 let Some(typed_element) = typecheck_expr(
@@ -546,11 +532,9 @@ pub fn typecheck_expr(
                 };
                 typed_elements.push(typed_element);
             }
-
             if typed_elements.len() != elements.len() {
                 return None;
             }
-
             let typ = Type::Tuple(typed_elements.iter().map(|e| e.typ()).collect());
             Some(TypedExpr::TupleLiteral {
                 elements: typed_elements,
@@ -564,7 +548,6 @@ pub fn typecheck_expr(
             spread,
             range,
         } => {
-            // Check if the record type is defined
             let Some(Name {
                 kind: NameKind::Type(record_type),
                 definition_range: def_range,
@@ -582,7 +565,6 @@ pub fn typecheck_expr(
             let def_range = def_range.clone();
             let record_type = record_type.clone();
 
-            // Add type annotation and definition link for the record name
             annotations.push(HoverAnnotation::TypeName {
                 range: type_name_range.clone(),
                 typ: record_type.clone(),
@@ -593,7 +575,6 @@ pub fn typecheck_expr(
                 definition_range: def_range,
             });
 
-            // Extract fields from the record type
             let Some(ResolvedType::Record {
                 fields: record_fields,
                 ..
@@ -608,7 +589,6 @@ pub fn typecheck_expr(
                 return None;
             };
 
-            // Build a map of expected fields from the record type
             let expected_fields = record_fields
                 .iter()
                 .map(|field| (field.name.clone(), field.typ.clone()))
@@ -652,7 +632,6 @@ pub fn typecheck_expr(
             let mut provided_fields = HashSet::new();
 
             for field in fields {
-                // Check if this field exists in the record
                 let Some(field_type) = expected_fields.get(&field.name) else {
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordUnknownField {
@@ -675,7 +654,6 @@ pub fn typecheck_expr(
                     continue;
                 }
 
-                // Type check the field value with expected type for bidirectional checking
                 let Some(typed_value) = typecheck_expr(
                     &field.value,
                     Some(field_type),
@@ -692,7 +670,6 @@ pub fn typecheck_expr(
                 };
                 let actual_type = typed_value.typ();
 
-                // Check that the types match
                 if actual_type != *field_type {
                     errors.push(TypeError::new(
                         TypeErrorKind::TypeMismatch {
@@ -714,7 +691,6 @@ pub fn typecheck_expr(
             }
 
             let Some(typed_spread) = typed_spread else {
-                // Check for missing fields
                 let missing_fields = record_fields
                     .iter()
                     .filter(|field| !provided_fields.contains(&field.name))
@@ -767,7 +743,6 @@ pub fn typecheck_expr(
             type_name_range,
             range,
         } => {
-            // Look up the enum type in the type environment
             let Some(Name {
                 kind: NameKind::Type(enum_type),
                 definition_range: def_range,
@@ -785,7 +760,6 @@ pub fn typecheck_expr(
             let def_range = def_range.clone();
             let enum_type = enum_type.clone();
 
-            // Add type annotation and definition link for the constructor
             annotations.push(HoverAnnotation::TypeName {
                 range: constructor_range.clone(),
                 typ: enum_type.clone(),
@@ -796,7 +770,6 @@ pub fn typecheck_expr(
                 definition_range: def_range,
             });
 
-            // Verify it's actually an enum type and get the variant's fields
             let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(&enum_type) else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedType {
@@ -823,7 +796,6 @@ pub fn typecheck_expr(
                 }
             };
 
-            // Validate fields
             let typed_fields = {
                 let mut typed_fields = Vec::new();
                 let mut provided_field_names: HashSet<FieldName> = HashSet::new();
@@ -921,53 +893,47 @@ pub fn typecheck_expr(
                 typ: enum_type,
             })
         }
-        ParsedExpr::OptionLiteral { value, range } => {
-            match value {
-                Some(inner_expr) => {
-                    // Some(value): determine expected inner type from context if available
-                    let expected_inner_type: Option<Type> = match expected_type {
-                        Some(Type::Option(elem)) => Some(elem.as_ref().clone()),
-                        _ => None,
-                    };
-
-                    // Type check the inner value
-                    let typed_inner = typecheck_expr(
-                        inner_expr,
-                        expected_inner_type.as_ref(),
-                        forwarded_params,
-                        var_env,
-                        type_env,
-                        registry,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                        errors,
-                    )?;
-                    let inner_type = typed_inner.typ();
-                    Some(TypedExpr::OptionLiteral {
-                        value: Some(Box::new(typed_inner)),
-                        typ: Type::Option(Box::new(inner_type)),
-                    })
-                }
-                None => {
-                    // None: infer element type from expected type
-                    let elem_type = match expected_type {
-                        Some(Type::Option(elem)) => elem.clone(),
-                        _ => {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::CannotInferNoneType {},
-                                range.clone(),
-                            ));
-                            return None;
-                        }
-                    };
-                    Some(TypedExpr::OptionLiteral {
-                        value: None,
-                        typ: Type::Option(elem_type),
-                    })
-                }
+        ParsedExpr::OptionLiteral { value, range } => match value {
+            Some(inner_expr) => {
+                let expected_inner_type: Option<Type> = match expected_type {
+                    Some(Type::Option(elem)) => Some(elem.as_ref().clone()),
+                    _ => None,
+                };
+                let typed_inner = typecheck_expr(
+                    inner_expr,
+                    expected_inner_type.as_ref(),
+                    forwarded_params,
+                    var_env,
+                    type_env,
+                    registry,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                    errors,
+                )?;
+                let inner_type = typed_inner.typ();
+                Some(TypedExpr::OptionLiteral {
+                    value: Some(Box::new(typed_inner)),
+                    typ: Type::Option(Box::new(inner_type)),
+                })
             }
-        }
+            None => {
+                let elem_type = match expected_type {
+                    Some(Type::Option(elem)) => elem.clone(),
+                    _ => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::CannotInferNoneType {},
+                            range.clone(),
+                        ));
+                        return None;
+                    }
+                };
+                Some(TypedExpr::OptionLiteral {
+                    value: None,
+                    typ: Type::Option(elem_type),
+                })
+            }
+        },
         ParsedExpr::Let { binding, body, .. } => {
             let declared_type = match &binding.var_type {
                 Some(parsed_type) => Some(resolve_type(
@@ -1166,7 +1132,6 @@ pub fn typecheck_expr(
                     )
                 }
             };
-
             // The loop variable is only bound when it is not discarded by `_`.
             let pushed = if let (Some(var_name), Some(var_name_range)) = (var_name, var_name_range)
             {
@@ -1196,7 +1161,6 @@ pub fn typecheck_expr(
             } else {
                 false
             };
-
             let typed_body = typecheck_expr(
                 body,
                 Some(&Type::Html),
@@ -1209,7 +1173,6 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             );
-
             if pushed {
                 let (name, entry) = var_env.pop();
                 if !entry.accessed {
@@ -1219,7 +1182,6 @@ pub fn typecheck_expr(
                     ));
                 }
             }
-
             let typed_body = typed_body?;
             let body_type = typed_body.typ();
             if body_type != Type::Html {
@@ -1233,7 +1195,6 @@ pub fn typecheck_expr(
                 ));
                 return None;
             }
-
             Some(TypedExpr::For {
                 var_name: var_name.clone(),
                 source: Box::new(typed_source),
@@ -1319,7 +1280,6 @@ pub fn typecheck_expr(
                 errors,
             )?;
             let receiver_type = typed_receiver.typ();
-
             let (arity, arg_type) = match (&receiver_type, method.as_str()) {
                 (Type::Option(inner), "unwrap_or") => (1, Some(inner.as_ref())),
                 _ => (0, None),
@@ -1339,7 +1299,6 @@ pub fn typecheck_expr(
                     errors,
                 ));
             }
-
             let (annotation, typed) = match (&receiver_type, method.as_str()) {
                 (Type::Array(_), "len") => (
                     HoverAnnotation::ArrayLength {
