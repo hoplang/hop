@@ -1128,7 +1128,10 @@ mod tests {
         check(
             build_page_no_params("MainComp", |t| {
                 t.div(
-                    vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
+                    vec![
+                        ("class", t.string_literal("base")),
+                        ("id", t.string_literal("test")),
+                    ],
                     |t| {
                         t.text("Content");
                     },
@@ -1175,8 +1178,8 @@ mod tests {
             build_page("MainComp", [("cls", Type::String)], |t| {
                 t.div(
                     vec![
-                        ("class", t.attr_str("base")),
-                        ("data-value", t.attr_expr(t.var_expr("cls"))),
+                        ("class", t.string_literal("base")),
+                        ("data-value", t.var_expr("cls")),
                     ],
                     |t| {
                         t.text("Content");

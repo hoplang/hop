@@ -3,10 +3,11 @@ use crate::hop::parsing::{
     ParsedArguments, ParsedAttribute, ParsedDeclaration, ParsedEnumDeclaration,
     ParsedEnumDeclarationVariant, ParsedExpr, ParsedFieldDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource, ParsedMarkup, ParsedMatchArm,
-    ParsedModule, ParsedPageDeclaration, ParsedParameter, ParsedPattern, ParsedRecordDeclaration,
-    ParsedType,
+    ParsedModule, ParsedNamedArgument, ParsedPageDeclaration, ParsedParameter, ParsedPattern,
+    ParsedRecordDeclaration, ParsedType,
 };
 use crate::html::HtmlElementKind;
+use crate::symbols::var_name::VarName;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;
 
@@ -491,14 +492,16 @@ fn format_attribute<'a>(
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match item {
-        ParsedAttribute::KeyOnly { name } => arena.text(name.as_str()),
-        ParsedAttribute::Expression { name, value } if matches!(value, ParsedExpr::Let { .. }) => {
+        ParsedAttribute::KeyOnly { name, .. } => arena.text(name.as_str()),
+        ParsedAttribute::Expression { name, value, .. }
+            if matches!(value, ParsedExpr::Let { .. }) =>
+        {
             arena
                 .text(name.as_str())
                 .append(arena.text("="))
                 .append(format_expr(arena, value, comments))
         }
-        ParsedAttribute::Expression { name, value } => arena
+        ParsedAttribute::Expression { name, value, .. } => arena
             .text(name.as_str())
             .append(arena.text("={"))
             .append(
@@ -1335,10 +1338,22 @@ fn format_expr<'a>(
                             if i > 0 {
                                 args_doc = args_doc.append(arena.text(",")).append(arena.line());
                             }
-                            args_doc = args_doc
-                                .append(arena.text(arg.name.as_str()))
-                                .append(arena.text(": "))
-                                .append(format_expr(arena, &arg.value, comments));
+                            args_doc = args_doc.append(match arg {
+                                ParsedNamedArgument::Value { name, value, .. } => {
+                                    // A name is quoted only when it cannot be
+                                    // written bare, so `"id": x` becomes `id: x`.
+                                    let name = if VarName::validate(name.as_str()).is_ok() {
+                                        arena.text(name.as_str())
+                                    } else {
+                                        arena.text(format!("\"{}\"", name.as_str()))
+                                    };
+                                    name.append(arena.text(": "))
+                                        .append(format_expr(arena, value, comments))
+                                }
+                                ParsedNamedArgument::Spread { name, .. } => {
+                                    arena.text(format!("...{}", name.as_str()))
+                                }
+                            });
                         }
                     }
                 }
@@ -1628,6 +1643,80 @@ mod tests {
                       {label(count: 2, prefix: "n")}
                       {label("a", 1)}
                     </div>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn spread_call_argument() {
+        check(
+            indoc! {r#"
+                fn Button(kind: String, ...rest) -> Html {
+                  <button class={kind} ...rest>{kind}</button>
+                }
+
+                fn Primary(...rest) -> Html {
+                  Button(kind: "primary", ...rest)
+                }
+
+                fn Wide(...rest) -> Html {
+                  Button(...rest, kind: "a very long kind that does not fit", "aria-label": "Wide")
+                }
+            "#},
+            expect![[r#"
+                fn Button(
+                  kind: String,
+                  ...rest,
+                ) -> Html {
+                  <button class={kind} ...rest>
+                    {kind}
+                  </button>
+                }
+
+                fn Primary(...rest) -> Html {
+                  Button(kind: "primary", ...rest)
+                }
+
+                fn Wide(...rest) -> Html {
+                  Button(
+                    ...rest,
+                    kind: "a very long kind that does not fit",
+                    "aria-label": "Wide",
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn quoted_call_argument_names() {
+        check(
+            indoc! {r#"
+                fn Button(kind: String, ...rest) -> Html {
+                  <button class={kind} ...rest>{kind}</button>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    Button("kind": "k", "aria-label": "Save", "for": "x")
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Button(
+                  kind: String,
+                  ...rest,
+                ) -> Html {
+                  <button class={kind} ...rest>
+                    {kind}
+                  </button>
+                }
+
+                page Test {
+                  fn body() -> Html {
+                    Button(kind: "k", "aria-label": "Save", "for": "x")
                   }
                 }
             "#]],

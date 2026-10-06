@@ -13,11 +13,12 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::{
-    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource, ParsedUnaryOp,
+    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource, ParsedNamedArgument,
+    ParsedUnaryOp,
 };
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
-use crate::hop::typing::{TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField};
+use crate::hop::typing::{TypedExpr, TypedLoopSource, TypedRecordUpdateField};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
@@ -1426,22 +1427,27 @@ pub fn typecheck_expr(
             range,
             match args {
                 ParsedArguments::Positional(values) => CallArguments::Positional(values),
-                ParsedArguments::Named(named) => CallArguments::Named(
-                    named
+                ParsedArguments::Named(named) => CallArguments::Named {
+                    arguments: named
                         .iter()
-                        .map(|arg| NamedArgument {
-                            name: arg.name.to_cheap_string(),
-                            range: arg.name_range.clone(),
-                            argument: Argument::Expression(&arg.value),
+                        .filter_map(|arg| match arg {
+                            ParsedNamedArgument::Value {
+                                name,
+                                name_range,
+                                value,
+                            } => Some(NamedArgument {
+                                name: name.clone(),
+                                range: name_range.clone(),
+                                argument: Argument::Expression(value),
+                            }),
+                            ParsedNamedArgument::Spread { .. } => None,
                         })
                         .collect(),
-                ),
-            },
-            // A call expression writes no attributes, so a callee that
-            // declares a rest receives an empty one, as `<F/>` passes.
-            TypedAttrs {
-                attributes: Vec::new(),
-                spread: None,
+                    spread: named.iter().find_map(|arg| match arg {
+                        ParsedNamedArgument::Spread { name, .. } => Some(name.clone()),
+                        ParsedNamedArgument::Value { .. } => None,
+                    }),
+                },
             },
             forwarded_params,
             var_env,

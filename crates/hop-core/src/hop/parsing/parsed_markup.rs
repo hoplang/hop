@@ -2,6 +2,7 @@ use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::uncooked_string::UncookedString;
 use crate::html::HtmlElementKind;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -86,7 +87,10 @@ pub enum ParsedAttribute {
     /// <input required/>
     ///        ^^^^^^^^
     /// ```
-    KeyOnly { name: DocumentRange },
+    KeyOnly {
+        name: AttributeName,
+        name_range: DocumentRange,
+    },
     /// An attribute containing an expression.
     ///
     /// ```text
@@ -94,7 +98,8 @@ pub enum ParsedAttribute {
     ///         ^^^^^^^^^^^^
     /// ```
     Expression {
-        name: DocumentRange,
+        name: AttributeName,
+        name_range: DocumentRange,
         value: ParsedExpr,
     },
     /// An attribute containing a string literal.
@@ -104,7 +109,8 @@ pub enum ParsedAttribute {
     ///      ^^^^^^^^^^^^^^
     /// ```
     String {
-        name: DocumentRange,
+        name: AttributeName,
+        name_range: DocumentRange,
         value: UncookedString,
         /// Range of the whole value including the surrounding quotes, e.g. `"bar"`.
         quoted_range: DocumentRange,
@@ -177,20 +183,30 @@ pub(super) fn braced_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
 }
 
 impl ParsedAttribute {
-    /// The range of the attribute name, or `None` for a spread.
-    pub fn name_range(&self) -> Option<&DocumentRange> {
+    /// The attribute name, or `None` for a spread.
+    pub fn name(&self) -> Option<&AttributeName> {
         match self {
-            ParsedAttribute::KeyOnly { name }
+            ParsedAttribute::KeyOnly { name, .. }
             | ParsedAttribute::Expression { name, .. }
             | ParsedAttribute::String { name, .. } => Some(name),
             ParsedAttribute::Spread { .. } => None,
         }
     }
 
+    /// The range of the attribute name, or `None` for a spread.
+    pub fn name_range(&self) -> Option<&DocumentRange> {
+        match self {
+            ParsedAttribute::KeyOnly { name_range, .. }
+            | ParsedAttribute::Expression { name_range, .. }
+            | ParsedAttribute::String { name_range, .. } => Some(name_range),
+            ParsedAttribute::Spread { .. } => None,
+        }
+    }
+
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedAttribute::KeyOnly { name } => BoxDoc::text(name.as_str()),
-            ParsedAttribute::Expression { name, value } => BoxDoc::text(name.as_str())
+            ParsedAttribute::KeyOnly { name, .. } => BoxDoc::text(name.as_str()),
+            ParsedAttribute::Expression { name, value, .. } => BoxDoc::text(name.as_str())
                 .append(": ")
                 .append(value.to_doc()),
             ParsedAttribute::String { name, value, .. } => BoxDoc::text(name.as_str())

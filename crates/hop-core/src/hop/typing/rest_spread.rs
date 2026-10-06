@@ -11,9 +11,12 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use super::type_env::{FunctionSignature, ParamEntry, Tail};
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedMarkup};
+use crate::hop::parsing::{
+    ParsedArguments, ParsedAttribute, ParsedExpr, ParsedMarkup, ParsedNamedArgument,
+};
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind};
 use crate::html::HtmlElementKind;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
@@ -23,12 +26,12 @@ use crate::symbols::var_name::VarName;
 pub enum RestSpreadTarget {
     Element {
         element: HtmlElementKind,
-        supplied_attrs: Vec<CheapString>,
+        supplied_attrs: Vec<AttributeName>,
         spread_range: DocumentRange,
     },
     Function {
         callee: FunctionName,
-        supplied_attrs: Vec<CheapString>,
+        supplied_attrs: Vec<AttributeName>,
         has_children: bool,
         spread_range: DocumentRange,
     },
@@ -51,18 +54,51 @@ pub struct SpreadOccurrence {
 
 /// The named attributes written at a spread's site, which the rest cannot
 /// supply a second time.
-fn named_attrs(attributes: &[ParsedAttribute]) -> Vec<CheapString> {
+fn named_attrs(attributes: &[ParsedAttribute]) -> Vec<AttributeName> {
     attributes
         .iter()
-        .filter_map(|a| a.name_range().map(|name| name.to_cheap_string()))
+        .filter_map(|a| a.name().cloned())
         .collect()
 }
 
-/// Collect every `...name` spread in a body, in source order.
-pub fn collect_spreads(body: &ParsedExpr, out: &mut Vec<SpreadOccurrence>) {
-    for markup in body.markup() {
-        collect_spreads_in_markup(markup, out);
+/// Collect every `...name` spread in an expression, in source order.
+pub fn collect_spreads(expr: &ParsedExpr, out: &mut Vec<SpreadOccurrence>) {
+    match expr {
+        ParsedExpr::Markup { markup } => collect_spreads_in_markup(markup, out),
+        ParsedExpr::Call {
+            name,
+            args: ParsedArguments::Named(arguments),
+            ..
+        } => {
+            for argument in arguments {
+                if let ParsedNamedArgument::Spread {
+                    name: spread,
+                    range,
+                } = argument
+                {
+                    out.push(SpreadOccurrence {
+                        spread_name: spread.clone(),
+                        target: RestSpreadTarget::Function {
+                            callee: name.clone(),
+                            // A `children` argument is named like any other,
+                            // so it is among the supplied attributes.
+                            supplied_attrs: arguments
+                                .iter()
+                                .filter_map(|argument| match argument {
+                                    ParsedNamedArgument::Value { name, .. } => Some(name.clone()),
+                                    ParsedNamedArgument::Spread { .. } => None,
+                                })
+                                .collect(),
+                            has_children: false,
+                            spread_range: range.clone(),
+                        },
+                    });
+                }
+            }
+        }
+        _ => {}
     }
+    expr.for_each_child(&mut |child| collect_spreads(child, out));
 }
 
 fn collect_spreads_in_markup(markup: &ParsedMarkup, out: &mut Vec<SpreadOccurrence>) {
@@ -175,8 +211,8 @@ pub fn pair_rest_spread(
 /// while their rests run down a perfectly straight line to an element, and that
 /// line is what decides the tail.
 ///
-/// Returns the settled signature per function: the declared parameters
-/// followed by the forwarded ones.
+/// Returns the settled signature per function, with the parameters its rest
+/// carries.
 pub fn resolve_rest_targets(
     rest_targets: &HashMap<CheapString, Option<RestSpreadTarget>>,
     declared: &HashMap<CheapString, FunctionSignature>,
@@ -226,12 +262,11 @@ pub fn resolve_rest_targets(
                 rest_target_signature(rest_target.as_ref(), &provisional.params, &settled)
             };
 
-            let mut params = provisional.params.clone();
-            params.extend(forwarded);
             settled.insert(
                 name.clone(),
                 FunctionSignature {
-                    params,
+                    params: provisional.params.clone(),
+                    forwarded,
                     return_type: provisional.return_type.clone(),
                     tail,
                     rest_param: provisional.rest_param.clone(),
@@ -276,12 +311,15 @@ fn rest_target_signature(
                         element,
                         mut reserved,
                     } => {
-                        let callee_param_names: HashSet<&str> =
-                            callee_sig.params.iter().map(|p| p.name.as_str()).collect();
+                        let callee_param_names: HashSet<&str> = callee_sig
+                            .params
+                            .iter()
+                            .chain(&callee_sig.forwarded)
+                            .map(|p| p.name.as_str())
+                            .collect();
                         for attr in supplied_attrs {
-                            let a = attr.as_str();
-                            if !callee_param_names.contains(a)
-                                && !reserved.iter().any(|r| r.as_str() == a)
+                            if !callee_param_names.contains(attr.as_str())
+                                && !reserved.contains(attr)
                             {
                                 reserved.push(attr.clone());
                             }
@@ -298,6 +336,7 @@ fn rest_target_signature(
                 let forwarded = callee_sig
                     .params
                     .iter()
+                    .chain(&callee_sig.forwarded)
                     .filter(|p| covered_by_rest(p))
                     .cloned()
                     .collect::<Vec<_>>();

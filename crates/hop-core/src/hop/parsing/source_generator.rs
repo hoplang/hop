@@ -439,14 +439,27 @@ fn primary(
             out.push_str(u.choose(TYPE_NAMES)?);
         }
         P::Call => {
-            out.push_str(u.choose(VAR_NAMES)?);
+            out.push_str(u.choose(FUNCTION_NAMES)?);
             out.push('(');
-            let named = u.arbitrary()?;
+            let named: bool = u.arbitrary()?;
             list(u, 0..=3, out, |u, _, out| {
-                if named {
-                    out.push_str(u.choose(VAR_NAMES)?);
-                    out.push_str(": ");
+                if !named {
+                    return expr(u, depth - 1, inner, out);
                 }
+                match u.int_in_range(0..=2)? {
+                    0 => {
+                        out.push_str("...");
+                        out.push_str(u.choose(VAR_NAMES)?);
+                        return Ok(());
+                    }
+                    1 => {
+                        out.push('"');
+                        out.push_str(u.choose(ATTRIBUTE_NAMES)?);
+                        out.push('"');
+                    }
+                    _ => out.push_str(u.choose(VAR_NAMES)?),
+                }
+                out.push_str(": ");
                 expr(u, depth - 1, inner, out)
             })?;
             out.push(')');

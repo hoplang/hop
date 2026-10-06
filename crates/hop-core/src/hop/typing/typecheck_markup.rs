@@ -3,7 +3,7 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedMarkup};
-use crate::hop::typing::type_env::{FunctionSignature, Tail, TypeEnv};
+use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, CallArguments, NamedArgument, typecheck_call};
@@ -12,6 +12,7 @@ use crate::hop::typing::variable_scope::VariableScope;
 use crate::hop::typing::{TypedAttribute, TypedAttrs};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::var_name::VarName;
 
 pub fn typecheck_markup(
@@ -57,72 +58,25 @@ pub fn typecheck_markup(
             children,
             range: _,
         } => {
-            // The signature decides which attributes are arguments and which
-            // the rest parameter collects. An undefined function has no
-            // signature, and the call reports it, so every attribute is an
-            // argument then.
-            let signature = type_env.functions.get(function_name.as_str());
-            let spread = attributes.iter().find_map(|attribute| match attribute {
-                ParsedAttribute::Spread { name, .. } => Some(name.clone()),
-                ParsedAttribute::KeyOnly { .. }
-                | ParsedAttribute::Expression { .. }
-                | ParsedAttribute::String { .. } => None,
-            });
-
             let mut arguments: Vec<NamedArgument<'_>> = Vec::new();
-            let mut rest_attributes: Vec<TypedAttribute> = Vec::new();
+            let mut spread = None;
             for attribute in attributes {
-                let Some(name_range) = attribute.name_range() else {
-                    continue;
-                };
-                let name = name_range.as_str();
-
-                // An attribute that names no parameter goes to the rest
-                // parameter when the element it lands on accepts it. Any
-                // other attribute is an argument, and the call rejects the
-                // ones that name no parameter.
-                let accepting_element = match signature {
-                    Some(FunctionSignature {
-                        params,
-                        tail: Tail::Html { element, reserved },
-                        ..
-                    }) if !params.iter().any(|param| param.name.as_str() == name)
-                        && element.accepts_attribute(name)
-                        && !reserved.iter().any(|reserved| reserved.as_str() == name) =>
-                    {
-                        Some(element)
-                    }
-                    _ => None,
-                };
-                if let Some(element) = accepting_element {
-                    let value = typecheck_attribute_value(
-                        element,
-                        attribute,
-                        forwarded_params,
-                        registry,
-                        errors,
-                        var_env,
-                        type_env,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                    );
-                    rest_attributes.push(TypedAttribute {
-                        name: name_range.to_cheap_string(),
+                let (name, name_range, argument) = match attribute {
+                    ParsedAttribute::Expression {
+                        name,
+                        name_range,
                         value,
-                    });
-                    continue;
-                }
-
-                let argument = match attribute {
-                    ParsedAttribute::Expression { value, .. } => Argument::Expression(value),
+                    } => (name, name_range, Argument::Expression(value)),
                     ParsedAttribute::String {
+                        name,
+                        name_range,
                         value,
                         quoted_range,
-                        ..
-                    } => Argument::Desugared(
-                        TypedExpr::StringLiteral {
-                            value: value
+                    } => (
+                        name,
+                        name_range,
+                        Argument::Text(
+                            value
                                 .cook(&mut |ch, range| {
                                     errors.push(TypeError::new(
                                         TypeErrorKind::InvalidEscapeSequence { ch },
@@ -130,21 +84,19 @@ pub fn typecheck_markup(
                                     ));
                                 })
                                 .unwrap_or_else(|| CheapString::new(String::new())),
-                        },
-                        quoted_range.clone(),
+                            quoted_range.clone(),
+                        ),
                     ),
-                    ParsedAttribute::KeyOnly { .. } => Argument::Desugared(
-                        TypedExpr::BoolLiteral { value: true },
-                        name_range.clone(),
-                    ),
-                    // A spread has no attribute name, so the `name_range()`
-                    // guard at the top of the loop skipped it long before here.
-                    ParsedAttribute::Spread { .. } => {
-                        unreachable!("a spread has no attribute name")
+                    ParsedAttribute::KeyOnly { name, name_range } => {
+                        (name, name_range, Argument::Bare(name_range.clone()))
+                    }
+                    ParsedAttribute::Spread { name, .. } => {
+                        spread = Some(name.clone());
+                        continue;
                     }
                 };
                 arguments.push(NamedArgument {
-                    name: name_range.to_cheap_string(),
+                    name: name.clone(),
                     range: name_range.clone(),
                     argument,
                 });
@@ -161,45 +113,18 @@ pub fn typecheck_markup(
                     (_, _, None) => function_name_opening_range.clone(),
                 };
                 arguments.push(NamedArgument {
-                    name: CheapString::new("children".to_string()),
+                    name: AttributeName::new(CheapString::new("children".to_string()))
+                        .expect("children is an attribute name"),
                     range: range.clone(),
                     argument: Argument::Content(content, range),
                 });
-            }
-
-            // A parameter the rest carries is read from the enclosing
-            // function, whose signature was extended with it for exactly this
-            // purpose.
-            if let Some(signature) = signature
-                && spread.is_some()
-            {
-                for param in &signature.params {
-                    if forwarded_params.contains(&param.name)
-                        && !arguments
-                            .iter()
-                            .any(|argument| argument.name.as_str() == param.name.as_str())
-                    {
-                        arguments.push(NamedArgument {
-                            name: param.name.to_cheap_string(),
-                            range: function_name_opening_range.clone(),
-                            argument: Argument::Implied(TypedExpr::Var {
-                                value: param.name.clone(),
-                                typ: param.typ.clone(),
-                            }),
-                        });
-                    }
-                }
             }
 
             let call = typecheck_call(
                 function_name,
                 function_name_opening_range,
                 function_name_opening_range,
-                CallArguments::Named(arguments),
-                TypedAttrs {
-                    attributes: rest_attributes,
-                    spread,
-                },
+                CallArguments::Named { arguments, spread },
                 forwarded_params,
                 var_env,
                 type_env,
@@ -208,9 +133,13 @@ pub fn typecheck_markup(
                 definition_links,
                 asset_references,
                 errors,
-            )?;
+            );
 
-            if let Some(closing_range) = function_name_closing_range {
+            // The end tag names the function as much as the start tag does,
+            // so it links to the declaration even when the call fails.
+            if let Some(closing_range) = function_name_closing_range
+                && type_env.functions.contains_key(function_name.as_str())
+            {
                 definition_links.push(DefinitionLink {
                     use_range: closing_range.clone(),
                     definition_range: type_env.names[function_name.as_str()]
@@ -218,6 +147,7 @@ pub fn typecheck_markup(
                         .clone(),
                 });
             }
+            let call = call?;
 
             // A markup call is inserted like an interpolation of the call, so
             // the value is used as is when it is Html and escaped when it is a
@@ -375,9 +305,12 @@ pub fn typecheck_markup(
     }
 }
 
-fn typecheck_attribute_value(
+/// Check the expression `value` of the attribute `name` on `element`, which
+/// is written on the element or reaches it through a rest.
+pub fn typecheck_attribute_value(
     element: &HtmlElementKind,
-    attribute: &ParsedAttribute,
+    name: &AttributeName,
+    value: &ParsedExpr,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -387,69 +320,53 @@ fn typecheck_attribute_value(
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedExpr> {
-    match attribute {
-        ParsedAttribute::Expression { name, value } => {
-            // These attributes load script or documents, or animate other
-            // attributes. Escaping does not make a value safe there, so their
-            // value must be written in the source.
-            let attr = name.as_str().to_ascii_lowercase();
-            let literal_only = match element {
-                HtmlElementKind::Script => attr == "src",
-                HtmlElementKind::Iframe => attr == "srcdoc",
-                HtmlElementKind::Animate | HtmlElementKind::Set => {
-                    matches!(
-                        attr.as_str(),
-                        "attributename" | "by" | "from" | "to" | "values"
-                    )
-                }
-                _ => false,
-            };
-            if literal_only && !matches!(value, ParsedExpr::StringLiteral { .. }) {
-                errors.push(TypeError::new(
-                    TypeErrorKind::AttributeRequiresStringLiteral {
-                        element: element.as_str().to_string(),
-                        attr: name.as_str().to_string(),
-                    },
-                    value.range().clone(),
-                ));
-            }
-            let typed_expr = typecheck_expr(
-                value,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            )?;
-            if typed_expr.typ() != Type::String {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeMismatch {
-                        context: TypeMismatchContext::Attribute,
-                        expected: Type::String,
-                        found: typed_expr.typ(),
-                    },
-                    value.range().clone(),
-                ));
-            }
-            Some(typed_expr)
+    // These attributes load script or documents, or animate other
+    // attributes. Escaping does not make a value safe there, so their
+    // value must be written in the source.
+    let attr = name.as_str().to_ascii_lowercase();
+    let literal_only = match element {
+        HtmlElementKind::Script => attr == "src",
+        HtmlElementKind::Iframe => attr == "srcdoc",
+        HtmlElementKind::Animate | HtmlElementKind::Set => {
+            matches!(
+                attr.as_str(),
+                "attributename" | "by" | "from" | "to" | "values"
+            )
         }
-        ParsedAttribute::String { value, .. } => {
-            let value = value
-                .cook(&mut |ch, range| {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::InvalidEscapeSequence { ch },
-                        range,
-                    ));
-                })
-                .unwrap_or_else(|| CheapString::new(String::new()));
-            Some(TypedExpr::StringLiteral { value })
-        }
-        ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => None,
+        _ => false,
+    };
+    if literal_only && !matches!(value, ParsedExpr::StringLiteral { .. }) {
+        errors.push(TypeError::new(
+            TypeErrorKind::AttributeRequiresStringLiteral {
+                element: element.as_str().to_string(),
+                attr: name.to_string(),
+            },
+            value.range().clone(),
+        ));
     }
+    let typed_expr = typecheck_expr(
+        value,
+        None,
+        forwarded_params,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    )?;
+    if typed_expr.typ() != Type::String {
+        errors.push(TypeError::new(
+            TypeErrorKind::TypeMismatch {
+                context: TypeMismatchContext::Attribute,
+                expected: Type::String,
+                found: typed_expr.typ(),
+            },
+            value.range().clone(),
+        ));
+    }
+    Some(typed_expr)
 }
 
 fn typecheck_attributes(
@@ -498,33 +415,47 @@ fn typecheck_html_attribute(
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttribute> {
-    let name = attribute.name_range()?;
+    let (name, name_range) = (attribute.name()?, attribute.name_range()?);
     if !element.accepts_attribute(name.as_str()) {
         errors.push(TypeError::new(
             TypeErrorKind::ElementDoesNotAcceptAttribute {
                 element: element.as_str().to_string(),
                 attr: name.as_str().to_string(),
             },
-            name.clone(),
+            name_range.clone(),
         ));
         return None;
     }
 
-    let typed_value = typecheck_attribute_value(
-        element,
-        attribute,
-        forwarded_params,
-        registry,
-        errors,
-        var_env,
-        type_env,
-        annotations,
-        definition_links,
-        asset_references,
-    );
+    let typed_value = match attribute {
+        ParsedAttribute::Expression { value, .. } => typecheck_attribute_value(
+            element,
+            name,
+            value,
+            forwarded_params,
+            registry,
+            errors,
+            var_env,
+            type_env,
+            annotations,
+            definition_links,
+            asset_references,
+        ),
+        ParsedAttribute::String { value, .. } => Some(TypedExpr::StringLiteral {
+            value: value
+                .cook(&mut |ch, range| {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::InvalidEscapeSequence { ch },
+                        range,
+                    ));
+                })
+                .unwrap_or_else(|| CheapString::new(String::new())),
+        }),
+        ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => None,
+    };
 
     Some(TypedAttribute {
-        name: name.to_cheap_string(),
+        name: name.clone(),
         value: typed_value,
     })
 }

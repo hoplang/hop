@@ -797,6 +797,7 @@ fn create_function_signature<'a>(
         typed_params,
         signature: FunctionSignature {
             params: declared_params,
+            forwarded: Vec::new(),
             return_type,
             tail: Tail::Closed,
             rest_param: function.rest_param.as_ref().map(|(name, _)| name.clone()),
@@ -837,12 +838,12 @@ fn typecheck_function_body(
         );
     }
 
-    // The settled signature is the declared parameters followed by the
-    // forwarded ones. A function that lost its name to an earlier declaration
-    // has no settled signature of its own.
+    // The settled signature holds the parameters the rest carries. A function
+    // that lost its name to an earlier declaration has no settled signature of
+    // its own.
     let forwarded: &[ParamEntry] = match type_env.functions.get(name.as_str()) {
         Some(settled) if type_env.names[name.as_str()].definition_range == *name_range => {
-            &settled.params[signature.params.len()..]
+            &settled.forwarded
         }
         _ => &[],
     };
@@ -2497,6 +2498,464 @@ mod tests {
                 23 |     <Nope/>
                 24 |     {Nope()}
                    |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_rest_attributes_as_call_expression_arguments() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Button(
+                  kind: String,
+                  ...rest,
+                ) -> Html {
+                  <button class={kind} ...rest>
+                    {kind}
+                  </button>
+                }
+
+                fn Card(title: String) -> Html {
+                  <div>{title}</div>
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  <Card ...rest/>
+                }
+
+                fn Main(name: String) -> Html {
+                  <div>
+                    <Button kind="k" id="x" type={name}/>
+                    {Button(kind: "k", id: "x", type: name)}
+                    <Button kind="k" aria-label="Save" data-id={name}/>
+                    {Button("kind": "k", "aria-label": "Save", "data-id": name)}
+                    <Wrapper title="hi"/>
+                    {Wrapper(title: "hi")}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Button(kind: String, ...rest) -> Html {
+                  html(
+                    tag: "button",
+                    attrs: [class: escape(kind), ...rest],
+                    children: concat(escape(kind)),
+                  )
+                }
+
+                fn Card(title: String) -> Html {
+                  html(tag: "div", attrs: [], children: concat(escape(title)))
+                }
+
+                fn Main(name: String) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      Button(kind: "k", rest: [id: escape("x"), type: escape(name)]),
+                      Button(kind: "k", rest: [id: escape("x"), type: escape(name)]),
+                      Button(
+                        kind: "k",
+                        rest: [aria-label: escape("Save"), data-id: escape(name)],
+                      ),
+                      Button(
+                        kind: "k",
+                        rest: [aria-label: escape("Save"), data-id: escape(name)],
+                      ),
+                      Wrapper(title: "hi", rest: []),
+                      Wrapper(title: "hi", rest: []),
+                    ),
+                  )
+                }
+
+                fn Wrapper(title: String, ...rest) -> Html {
+                  Card(title: title)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_attributes_and_call_expression_arguments_alike() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Button(
+                  kind: String,
+                  ...rest,
+                ) -> Html {
+                  <button class={kind} ...rest>
+                    {kind}
+                  </button>
+                }
+
+                fn Script(...rest) -> Html {
+                  <script ...rest></script>
+                }
+
+                fn Main(url: String) -> Html {
+                  <div>
+                    <Button kind="k" href="/"/>
+                    {Button(kind: "k", href: "/")}
+                    <Button kind="k" class="c"/>
+                    {Button(kind: "k", class: "c")}
+                    <Button kind="k" id={1}/>
+                    {Button(kind: "k", id: 1)}
+                    <Script src={url}/>
+                    {Script(src: url)}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Function Button does not accept argument 'href'
+                  --> main.hop (line 16, col 22)
+                15 |   <div>
+                16 |     <Button kind="k" href="/"/>
+                   |                      ^^^^
+
+                error: Function Button does not accept argument 'href'
+                  --> main.hop (line 17, col 24)
+                16 |     <Button kind="k" href="/"/>
+                17 |     {Button(kind: "k", href: "/")}
+                   |                        ^^^^
+
+                error: Function Button does not accept argument 'class'
+                  --> main.hop (line 18, col 22)
+                17 |     {Button(kind: "k", href: "/")}
+                18 |     <Button kind="k" class="c"/>
+                   |                      ^^^^^
+
+                error: Function Button does not accept argument 'class'
+                  --> main.hop (line 19, col 24)
+                18 |     <Button kind="k" class="c"/>
+                19 |     {Button(kind: "k", class: "c")}
+                   |                        ^^^^^
+
+                error: Expected String got Int
+                  --> main.hop (line 20, col 26)
+                19 |     {Button(kind: "k", class: "c")}
+                20 |     <Button kind="k" id={1}/>
+                   |                          ^
+
+                error: Expected String got Int
+                  --> main.hop (line 21, col 28)
+                20 |     <Button kind="k" id={1}/>
+                21 |     {Button(kind: "k", id: 1)}
+                   |                            ^
+
+                error: <script> requires a string literal for attribute 'src'
+                  --> main.hop (line 22, col 18)
+                21 |     {Button(kind: "k", id: 1)}
+                22 |     <Script src={url}/>
+                   |                  ^^^
+
+                error: <script> requires a string literal for attribute 'src'
+                  --> main.hop (line 23, col 18)
+                22 |     <Script src={url}/>
+                23 |     {Script(src: url)}
+                   |                  ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_attribute_names_that_differ_only_in_case() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Button(
+                  kind: String,
+                  ...rest,
+                ) -> Html {
+                  <button class={kind} ...rest>
+                    {kind}
+                  </button>
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    {Button(kind: "k", id: "a", "ID": "b")}
+                    <Button kind="k" Class="c"/>
+                    {Button(kind: "k", "Class": "c")}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Argument 'ID' is supplied more than once
+                  --> main.hop (line 12, col 33)
+                11 |   <div>
+                12 |     {Button(kind: "k", id: "a", "ID": "b")}
+                   |                                 ^^^^
+
+                error: Function Button does not accept argument 'Class'
+                  --> main.hop (line 13, col 22)
+                12 |     {Button(kind: "k", id: "a", "ID": "b")}
+                13 |     <Button kind="k" Class="c"/>
+                   |                      ^^^^^
+
+                error: Function Button does not accept argument 'Class'
+                  --> main.hop (line 14, col 24)
+                13 |     <Button kind="k" Class="c"/>
+                14 |     {Button(kind: "k", "Class": "c")}
+                   |                        ^^^^^^^
+            "#]],
+        );
+    }
+
+    // A rest spread into a call expression forwards the rest as the spread
+    // into a markup call does. Primary and Secondary typecheck to the same
+    // body, apart from the kind.
+    #[test]
+    fn accepts_rest_spread_as_call_expression_argument() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Button(
+                  kind: String,
+                  ...rest,
+                ) -> Html {
+                  <button class={kind} ...rest>
+                    {kind}
+                  </button>
+                }
+
+                fn Primary(...rest) -> Html {
+                  <Button kind="primary" ...rest/>
+                }
+
+                fn Secondary(...rest) -> Html {
+                  Button(kind: "secondary", ...rest)
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    <Primary type="submit"/>
+                    {Secondary(type: "submit")}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Button(kind: String, ...rest) -> Html {
+                  html(
+                    tag: "button",
+                    attrs: [class: escape(kind), ...rest],
+                    children: concat(escape(kind)),
+                  )
+                }
+
+                fn Main() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      Primary(rest: [type: escape("submit")]),
+                      Secondary(rest: [type: escape("submit")]),
+                    ),
+                  )
+                }
+
+                fn Primary(...rest) -> Html {
+                  Button(kind: "primary", rest: [...rest])
+                }
+
+                fn Secondary(...rest) -> Html {
+                  Button(kind: "secondary", rest: [...rest])
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_required_arg_forwarded_through_rest_spread_in_call_expression() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String) -> Html {
+                  <div>{title}</div>
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  Card(...rest)
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    <Wrapper title="hi"/>
+                    {Wrapper(title: "hi")}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Card(title: String) -> Html {
+                  html(tag: "div", attrs: [], children: concat(escape(title)))
+                }
+
+                fn Main() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      Wrapper(title: "hi", rest: []),
+                      Wrapper(title: "hi", rest: []),
+                    ),
+                  )
+                }
+
+                fn Wrapper(title: String, ...rest) -> Html {
+                  Card(title: title)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_spread_in_call_expression() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String) -> Html {
+                  <div>{title}</div>
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  Card(...rest)
+                }
+
+                fn Script(...rest) -> Html {
+                  <script ...rest></script>
+                }
+
+                fn Loader(...rest) -> Html {
+                  Script(...rest)
+                }
+
+                fn Twice(...rest) -> Html {
+                  <div>
+                    {Card(...rest)}
+                    <Card ...rest/>
+                  </div>
+                }
+
+                fn Main(url: String) -> Html {
+                  <div>
+                    <Wrapper/>
+                    {Wrapper()}
+                    <Loader src={url}/>
+                    {Loader(src: url)}
+                  </div>
+                }
+
+                page Home() {
+                  fn body() -> Html {
+                    Card(...rest)
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Rest parameter 'rest' is spread more than once
+                  --> main.hop (line 20, col 11)
+                19 |     {Card(...rest)}
+                20 |     <Card ...rest/>
+                   |           ^^^^^^^
+
+                error: Function Wrapper requires arguments: title
+                  --> main.hop (line 26, col 6)
+                25 |   <div>
+                26 |     <Wrapper/>
+                   |      ^^^^^^^
+
+                error: Function Wrapper requires arguments: title
+                  --> main.hop (line 27, col 6)
+                26 |     <Wrapper/>
+                27 |     {Wrapper()}
+                   |      ^^^^^^^^^
+
+                error: <script> requires a string literal for attribute 'src'
+                  --> main.hop (line 28, col 18)
+                27 |     {Wrapper()}
+                28 |     <Loader src={url}/>
+                   |                  ^^^
+
+                error: <script> requires a string literal for attribute 'src'
+                  --> main.hop (line 29, col 18)
+                28 |     <Loader src={url}/>
+                29 |     {Loader(src: url)}
+                   |                  ^^^
+
+                error: Function Card requires arguments: title
+                  --> main.hop (line 35, col 5)
+                34 |   fn body() -> Html {
+                35 |     Card(...rest)
+                   |     ^^^^^^^^^^^^^
+
+                error: Spread '...rest' does not refer to a declared rest parameter
+                  --> main.hop (line 35, col 10)
+                34 |   fn body() -> Html {
+                35 |     Card(...rest)
+                   |          ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_positional_argument_for_a_parameter_the_rest_carries() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String) -> Html {
+                  <div>{title}</div>
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  <Card ...rest/>
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    {Wrapper(title: "hi")}
+                    {Wrapper("hi")}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Function Wrapper expects 0 argument(s), got 1
+                  --> main.hop (line 12, col 6)
+                11 |     {Wrapper(title: "hi")}
+                12 |     {Wrapper("hi")}
+                   |      ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_spread_cycle_through_call_expressions() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn A(...rest) -> Html {
+                  B(...rest)
+                }
+
+                fn B(...rest) -> Html {
+                  <A ...rest/>
+                }
+            "#},
+            expect![[r#"
+                error: Rest spread of A forms a cycle and never reaches an element
+                  --> main.hop (line 2, col 5)
+                1 | fn A(...rest) -> Html {
+                2 |   B(...rest)
+                  |     ^^^^^^^
+
+                error: Rest spread of B forms a cycle and never reaches an element
+                  --> main.hop (line 6, col 6)
+                5 | fn B(...rest) -> Html {
+                6 |   <A ...rest/>
+                  |      ^^^^^^^
             "#]],
         );
     }

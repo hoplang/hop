@@ -3,6 +3,7 @@ use crate::hop::typing::{
     TypedAttribute, TypedAttrs, TypedExpr, TypedPageDeclaration, TypedParameter,
 };
 use crate::html::HtmlElementKind;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 use pretty::BoxDoc;
 use std::fmt;
@@ -145,7 +146,8 @@ fn create_html_element(element: HtmlElementKind, children: Vec<TypedExpr>) -> Ty
 
 fn create_attribute(name: &str, value: &str) -> TypedAttribute {
     TypedAttribute {
-        name: CheapString::new(name.to_string()),
+        name: AttributeName::new(CheapString::new(name.to_string()))
+            .expect("assembly writes valid attribute names"),
         value: Some(TypedExpr::StringLiteral {
             value: CheapString::new(value.to_string()),
         }),

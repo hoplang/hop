@@ -30,6 +30,7 @@
 (macro_invocation macro: (identifier) @function.macro)
 
 (string_literal) @string
+(named_argument name: (string_literal) @variable.parameter)
 (escape_sequence) @constant.character.escape
 (integer_literal) @constant.numeric.integer
 (float_literal) @constant.numeric.float

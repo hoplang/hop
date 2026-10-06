@@ -2533,6 +2533,27 @@ mod tests {
     }
 
     #[test]
+    fn rejects_duplicate_attribute_written_in_another_case() {
+        reject(
+            r#"fn Main() -> Html {<div id="a" ID="b"></div>}"#,
+            expect![[r#"
+                -- errors --
+                error: Duplicate attribute 'ID'
+                1 | fn Main() -> Html {<div id="a" ID="b"></div>}
+                  |                                ^^
+                -- ast --
+                fn Main() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [id: "a"],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_spread_without_a_name() {
         reject(
             "fn Main() -> Html {<div ...>text</div>}",

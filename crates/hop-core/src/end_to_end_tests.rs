@@ -1827,6 +1827,82 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn call_expression_forwards_rest_attributes_and_spread() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Button(
+                  kind: String,
+                  ...rest,
+                ) -> Html {
+                  <button class={kind} ...rest>
+                    {kind}
+                  </button>
+                }
+
+                fn Secondary(...rest) -> Html {
+                  Button(kind: "secondary", ...rest)
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    Secondary(id: "save", "aria-label": "Save")
+                  }
+                }
+            "#},
+            r#"<button class="secondary" id="save" aria-label="Save">secondary</button>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Button@f0(kind@v0: String, rest@v1: Html) -> Html {
+                  write("<button")
+                  write(" class=\"")
+                  write_string(v0)
+                  write("\"")
+                  write_html(v1)
+                  write(">")
+                  write_string(v0)
+                  write("</button>")
+                }
+                fn Secondary@f1(rest@v2: Html) -> Html {
+                  call Button@f0(kind = "secondary", rest = {
+                    write_html(v2)
+                  })
+                }
+                page Test() {
+                  call Secondary@f1(rest = {
+                    write(" id=\"")
+                    write_string("save")
+                    write("\"")
+                    write(" aria-label=\"")
+                    write_string("Save")
+                    write("\"")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<button class=\"secondary\" id=\"save\" aria-label=\"Save\">")
+                  write("secondary</button>")
+                }
+                -- expected output --
+                <button class="secondary" id="save" aria-label="Save">secondary</button>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn accepts_extra_attrs_when_rest_reaches_html() {
         check(
             indoc! {r#"

@@ -6,6 +6,7 @@ use crate::hop::typing::typed_pattern::TypedPattern;
 use crate::html::HtmlElementKind;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
@@ -266,7 +267,7 @@ pub enum TypedLoopSource {
 
 #[derive(Debug, Clone)]
 pub struct TypedAttribute {
-    pub name: CheapString,
+    pub name: AttributeName,
     pub value: Option<TypedExpr>,
 }
 

@@ -224,6 +224,7 @@ impl TypeRegistryBuilder {
                         .collect();
                     let signature = FunctionSignature {
                         params,
+                        forwarded: Vec::new(),
                         return_type: types.resolve(&return_type),
                         tail: Tail::Closed,
                         rest_param: None,

@@ -316,6 +316,39 @@ mod tests {
     }
 
     #[test]
+    fn should_find_rename_locations_from_markup_call_with_an_argument_error() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String, children: Html) -> Html {
+                  <div>{title}{children}</div>
+                }
+
+                fn Main() -> Html {
+                  <Card title={1}>x</Card>
+                   ^
+                }
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 1, col 4)
+                1 | fn Card(title: String, children: Html) -> Html {
+                  |    ^^^^
+
+                Rename
+                  --> main.hop (line 6, col 4)
+                6 |   <Card title={1}>x</Card>
+                  |    ^^^^
+
+                Rename
+                  --> main.hop (line 6, col 22)
+                6 |   <Card title={1}>x</Card>
+                  |                      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_find_rename_locations_from_function_definition() {
         check_rename_locations(
             indoc! {r#"

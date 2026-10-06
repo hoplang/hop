@@ -4,11 +4,16 @@ use super::r#type::Type;
 use super::typed_expr::TypedExpr;
 use crate::document::{CheapString, DocumentRange};
 use crate::html::HtmlElementKind;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::var_name::VarName;
 
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
+    /// The parameters the function declares.
     pub params: Vec<ParamEntry>,
+    /// The parameters of a callee that the function's rest carries, which a
+    /// caller passes by name only.
+    pub forwarded: Vec<ParamEntry>,
     pub return_type: Type,
     pub tail: Tail,
     pub rest_param: Option<VarName>,
@@ -26,7 +31,7 @@ pub enum Tail {
     Closed,
     Html {
         element: HtmlElementKind,
-        reserved: Vec<CheapString>,
+        reserved: Vec<AttributeName>,
     },
 }
 

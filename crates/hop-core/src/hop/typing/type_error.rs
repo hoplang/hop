@@ -3,6 +3,7 @@ use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::typing::{Type, TypedPattern};
 use crate::root_relative_path::RootRelativePathError;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
@@ -346,7 +347,7 @@ pub enum TypeErrorKind {
     },
 
     #[error("Argument '{argument}' is supplied more than once")]
-    DuplicateArgument { argument: VarName },
+    DuplicateArgument { argument: AttributeName },
 }
 
 /// Where a [`TypeErrorKind::TypeMismatch`] was found.

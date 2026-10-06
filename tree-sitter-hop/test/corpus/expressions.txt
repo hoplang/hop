@@ -201,6 +201,65 @@ fn f() -> Int {
             (integer_literal)))))))
 
 ================================================================================
+call with quoted argument names
+================================================================================
+
+fn f() -> Html {
+  Button("aria-label": "Save", "for": x, "y")
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (call_expression
+        (type_identifier)
+        (arguments
+          (named_argument
+            (string_literal
+              (string_content))
+            (string_literal
+              (string_content)))
+          (named_argument
+            (string_literal
+              (string_content))
+            (identifier))
+          (string_literal
+            (string_content)))))))
+
+================================================================================
+call with a rest spread
+================================================================================
+
+fn F(...rest) -> Html {
+  Button(kind: "k", ...rest)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (type_identifier)
+    (parameters
+      (rest_parameter
+        (identifier)))
+    (type_identifier)
+    (block
+      (call_expression
+        (type_identifier)
+        (arguments
+          (named_argument
+            (identifier)
+            (string_literal
+              (string_content)))
+          (spread_argument
+            (identifier)))))))
+
+================================================================================
 tuple expressions and a parenthesized expression
 ================================================================================
 

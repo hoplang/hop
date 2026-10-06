@@ -4,6 +4,7 @@ use super::parsed_markup::{ParsedMarkup, braced_doc};
 use super::parsed_type::ParsedType;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::uncooked_string::UncookedString;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
@@ -154,10 +155,27 @@ pub enum ParsedArguments {
 }
 
 #[derive(Debug, Clone)]
-pub struct ParsedNamedArgument {
-    pub name: VarName,
-    pub name_range: DocumentRange,
-    pub value: ParsedExpr,
+pub enum ParsedNamedArgument {
+    /// An argument with a name.
+    ///
+    /// ```text
+    /// Button(kind: "k", "aria-label": "Save")
+    ///        ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+    /// ```
+    Value {
+        /// The name without quotes.
+        name: AttributeName,
+        /// The range of the name as written, with its quotes if it has any.
+        name_range: DocumentRange,
+        value: ParsedExpr,
+    },
+    /// A spread of the caller's rest.
+    ///
+    /// ```text
+    /// Button(kind: "k", ...rest)
+    ///                   ^^^^^^^
+    /// ```
+    Spread { name: VarName, range: DocumentRange },
 }
 
 /// The source of iteration in a for loop.
@@ -453,7 +471,10 @@ impl ParsedExpr {
                 }
                 ParsedArguments::Named(named) => {
                     for arg in named {
-                        f(&arg.value);
+                        match arg {
+                            ParsedNamedArgument::Value { value, .. } => f(value),
+                            ParsedNamedArgument::Spread { .. } => {}
+                        }
                     }
                 }
             },
@@ -878,10 +899,15 @@ impl ParsedExpr {
                     }
                     ParsedArguments::Named(named) => named
                         .iter()
-                        .map(|arg| {
-                            BoxDoc::text(arg.name.as_str())
+                        .map(|arg| match arg {
+                            ParsedNamedArgument::Value {
+                                name_range, value, ..
+                            } => BoxDoc::text(name_range.as_str())
                                 .append(BoxDoc::text(": "))
-                                .append(arg.value.to_doc())
+                                .append(value.to_doc()),
+                            ParsedNamedArgument::Spread { name, .. } => {
+                                BoxDoc::text(format!("...{}", name.as_str()))
+                            }
                         })
                         .collect(),
                 };

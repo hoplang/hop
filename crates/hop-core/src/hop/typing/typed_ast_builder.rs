@@ -14,6 +14,7 @@ use crate::hop::typing::typed_pattern::Constructor;
 use crate::hop::typing::typed_pattern::TypedPattern;
 use crate::hop::typing::{TypedAttribute, TypedAttrs, TypedLoopSource, TypedRecordUpdateField};
 use crate::html::HtmlElementKind;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -256,12 +257,8 @@ impl TypedAstBuilder {
         });
     }
 
-    pub fn html<F>(
-        &mut self,
-        tag_name: &str,
-        attributes: Vec<(&str, TypedAttribute)>,
-        children_fn: F,
-    ) where
+    pub fn html<F>(&mut self, tag_name: &str, attributes: Vec<(&str, TypedExpr)>, children_fn: F)
+    where
         F: FnOnce(&mut Self),
     {
         let mut inner_builder = self.new_scoped();
@@ -269,9 +266,10 @@ impl TypedAstBuilder {
 
         let attrs: Vec<TypedAttribute> = attributes
             .into_iter()
-            .map(|(k, mut v)| {
-                v.name = CheapString::new(k.to_string());
-                v
+            .map(|(name, value)| TypedAttribute {
+                name: AttributeName::new(CheapString::new(name.to_string()))
+                    .expect("builder html() called with an invalid attribute name"),
+                value: Some(value),
             })
             .collect();
 
@@ -288,36 +286,25 @@ impl TypedAstBuilder {
         });
     }
 
-    pub fn div<F>(&mut self, attributes: Vec<(&str, TypedAttribute)>, children_fn: F)
+    pub fn div<F>(&mut self, attributes: Vec<(&str, TypedExpr)>, children_fn: F)
     where
         F: FnOnce(&mut Self),
     {
         self.html("div", attributes, children_fn);
     }
 
-    pub fn ul<F>(&mut self, attributes: Vec<(&str, TypedAttribute)>, children_fn: F)
+    pub fn ul<F>(&mut self, attributes: Vec<(&str, TypedExpr)>, children_fn: F)
     where
         F: FnOnce(&mut Self),
     {
         self.html("ul", attributes, children_fn);
     }
 
-    pub fn li<F>(&mut self, attributes: Vec<(&str, TypedAttribute)>, children_fn: F)
+    pub fn li<F>(&mut self, attributes: Vec<(&str, TypedExpr)>, children_fn: F)
     where
         F: FnOnce(&mut Self),
     {
         self.html("li", attributes, children_fn);
-    }
-
-    pub fn attr_str(&self, value: &str) -> TypedAttribute {
-        self.attr_expr(self.string_literal(value))
-    }
-
-    pub fn attr_expr(&self, expr: TypedExpr) -> TypedAttribute {
-        TypedAttribute {
-            name: CheapString::new(String::new()),
-            value: Some(expr),
-        }
     }
 
     pub fn bool_match_html<FTrue, FFalse>(
@@ -391,7 +378,7 @@ mod tests {
     fn html_with_attributes() {
         check(
             build_page_no_params("Card", |b| {
-                b.div(vec![("class", b.attr_str("container"))], |b| {
+                b.div(vec![("class", b.string_literal("container"))], |b| {
                     b.text("Content");
                 });
             }),

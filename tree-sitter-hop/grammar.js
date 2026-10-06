@@ -272,10 +272,21 @@ module.exports = grammar({
       seq(field("macro", $.identifier), "!", field("arguments", $.arguments)),
 
     arguments: ($) =>
-      seq("(", commaSep(choice($.named_argument, $._expression)), ")"),
+      seq(
+        "(",
+        commaSep(choice($.named_argument, $.spread_argument, $._expression)),
+        ")",
+      ),
 
+    // A name that is not an identifier, e.g. `"aria-label": x`, is quoted.
     named_argument: ($) =>
-      seq(field("name", $.identifier), ":", field("value", $._expression)),
+      seq(
+        field("name", choice($.identifier, $.string_literal)),
+        ":",
+        field("value", $._expression),
+      ),
+
+    spread_argument: ($) => seq("...", field("name", $.identifier)),
 
     match_expression: ($) =>
       seq("match", field("value", $._expression), field("body", $.match_block)),

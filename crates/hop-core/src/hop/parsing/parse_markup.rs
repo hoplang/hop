@@ -10,6 +10,7 @@ use super::whitespace;
 
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::html::{HtmlElementKind, is_raw_content_tag};
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
@@ -343,24 +344,44 @@ fn parse_opening_tag(
                 break;
             }
 
-            TagToken::Attribute { name, value } => {
+            TagToken::Attribute {
+                name: name_range,
+                value,
+            } => {
+                let Ok(name) =
+                    AttributeName::new(name_range.to_cheap_string()).or_emit(errors, &name_range)
+                else {
+                    continue;
+                };
                 let attribute = match value {
                     Some(value) => ParsedAttribute::String {
                         name,
+                        name_range,
                         value: value.value,
                         quoted_range: value.quoted_range,
                     },
-                    None => ParsedAttribute::KeyOnly { name },
+                    None => ParsedAttribute::KeyOnly { name, name_range },
                 };
                 push_attribute(&mut attributes, attribute, errors);
             }
 
-            TagToken::AttributeExpressionStart { name, left_brace } => {
-                if let Ok((value, _)) = parse_expr::parse_block(iter, comments, errors, &left_brace)
-                {
+            TagToken::AttributeExpressionStart {
+                name: name_range,
+                left_brace,
+            } => {
+                let name =
+                    AttributeName::new(name_range.to_cheap_string()).or_emit(errors, &name_range);
+                if let (Ok(name), Ok((value, _))) = (
+                    name,
+                    parse_expr::parse_block(iter, comments, errors, &left_brace),
+                ) {
                     push_attribute(
                         &mut attributes,
-                        ParsedAttribute::Expression { name, value },
+                        ParsedAttribute::Expression {
+                            name,
+                            name_range,
+                            value,
+                        },
                         errors,
                     );
                 }
@@ -492,18 +513,14 @@ fn push_attribute(
     attribute: ParsedAttribute,
     errors: &mut Vec<ParseError>,
 ) {
-    if let Some(name) = attribute.name_range()
-        && attributes.iter().any(|existing| {
-            existing
-                .name_range()
-                .is_some_and(|existing| existing.as_str() == name.as_str())
-        })
+    if let (Some(name), Some(name_range)) = (attribute.name(), attribute.name_range())
+        && attributes
+            .iter()
+            .any(|existing| existing.name() == Some(name))
     {
         let _ = errors.emit(
-            ParseErrorKind::DuplicateAttribute {
-                name: name.to_cheap_string(),
-            },
-            name.clone(),
+            ParseErrorKind::DuplicateAttribute { name: name.clone() },
+            name_range.clone(),
         );
         return;
     }

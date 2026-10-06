@@ -1,5 +1,6 @@
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
@@ -17,7 +18,7 @@ use super::parsed_expr::{
     ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument, ParsedPattern, ParsedUnaryOp,
 };
 use super::token::LangToken;
-use super::tokenize_expr::{peek, peek2, peek3};
+use super::tokenize_expr::{next, peek, peek2, peek3};
 
 /// Restrictions on an expression that follow from where it sits. Compare
 /// `Restrictions` in rustc and rust-analyzer.
@@ -475,6 +476,12 @@ fn parse_call(
     name_range: DocumentRange,
     left_paren: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
+    /// An argument as written, before the first one decides whether the
+    /// call passes its arguments by position or by name.
+    enum WrittenArgument {
+        Positional(ParsedExpr),
+        Named(ParsedNamedArgument),
+    }
     let (args, parens) = parse_delimited_list(
         iter,
         comments,
@@ -483,36 +490,64 @@ fn parse_call(
         &left_paren,
         &[],
         |iter, comments, errors| {
-            let name = if matches!(peek(iter), Some((LangToken::Identifier(_), _)))
-                && matches!(peek2(iter), Some((LangToken::Colon, _)))
-            {
+            if let Some(dots) = next_if_eq(iter, comments, errors, LangToken::DotDotDot) {
                 let (name, name_range) = expect_identifier(iter, comments, errors)?;
                 let name = VarName::new(name).or_emit(errors, &name_range)?;
-                expect_token(iter, comments, errors, &LangToken::Colon)?;
-                Some((name, name_range))
-            } else {
-                None
+                return Ok(WrittenArgument::Named(ParsedNamedArgument::Spread {
+                    name,
+                    range: dots.to(name_range),
+                }));
+            }
+            let name = match (peek(iter), peek2(iter)) {
+                (Some((LangToken::Identifier(_), _)), Some((LangToken::Colon, _))) => {
+                    let (name, name_range) = expect_identifier(iter, comments, errors)?;
+                    let name = VarName::new(name).or_emit(errors, &name_range)?;
+                    expect_token(iter, comments, errors, &LangToken::Colon)?;
+                    Some((AttributeName::from(name), name_range))
+                }
+                // A name that is not a variable name, such as `aria-label`,
+                // is quoted, and must be an attribute name.
+                (
+                    Some((LangToken::StringLiteral(value), name_range)),
+                    Some((LangToken::Colon, _)),
+                ) => {
+                    next(iter, comments, errors);
+                    let name = AttributeName::new(CheapString::new(value.as_raw_str().to_string()))
+                        .or_emit(errors, &name_range)?;
+                    expect_token(iter, comments, errors, &LangToken::Colon)?;
+                    Some((name, name_range))
+                }
+                _ => None,
             };
-            Ok((name, parse_expr(iter, comments, errors)?))
+            let value = parse_expr(iter, comments, errors)?;
+            Ok(match name {
+                Some((name, name_range)) => WrittenArgument::Named(ParsedNamedArgument::Value {
+                    name,
+                    name_range,
+                    value,
+                }),
+                None => WrittenArgument::Positional(value),
+            })
         },
     )?;
-    let is_named = args.first().is_some_and(|(name, _)| name.is_some());
+    let is_named = matches!(args.first(), Some(WrittenArgument::Named(_)));
     let mut positional = Vec::new();
     let mut named = Vec::new();
-    for (name, value) in args {
-        match (is_named, name) {
-            (false, None) => positional.push(value),
-            (true, Some((name, name_range))) => named.push(ParsedNamedArgument {
-                name,
-                name_range,
-                value,
-            }),
-            (_, name) => {
+    for arg in args {
+        match (is_named, arg) {
+            (false, WrittenArgument::Positional(value)) => positional.push(value),
+            (true, WrittenArgument::Named(arg)) => named.push(arg),
+            (_, arg) => {
                 let _ = errors.emit(
                     ParseErrorKind::MixedNamedAndPositionalArguments {},
-                    match name {
-                        Some((_, name_range)) => name_range.to(value.range().clone()),
-                        None => value.range().clone(),
+                    match arg {
+                        WrittenArgument::Positional(value) => value.range().clone(),
+                        WrittenArgument::Named(ParsedNamedArgument::Value {
+                            name_range,
+                            value,
+                            ..
+                        }) => name_range.to(value.range().clone()),
+                        WrittenArgument::Named(ParsedNamedArgument::Spread { range, .. }) => range,
                     },
                 );
             }
@@ -1763,6 +1798,156 @@ mod tests {
             "Foo()",
             expect![[r#"
                 Foo()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_quoted_argument_names() {
+        accept(
+            r#"Foo(id: "x", "aria-label": "Save", "for": "email", "xlink:href": "/a")"#,
+            expect![[r#"
+                Foo(
+                  id: "x",
+                  "aria-label": "Save",
+                  "for": "email",
+                  "xlink:href": "/a",
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_string_literal_as_positional_argument() {
+        accept(
+            r#"Foo("x", "y")"#,
+            expect![[r#"
+                Foo("x", "y")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_quoted_argument_name_that_is_not_an_attribute_name() {
+        reject(
+            r#"Foo("my label": "x")"#,
+            expect![[r#"
+                -- errors --
+                error: Attribute name contains invalid character: ' '
+                Foo("my label": "x")
+                    ^^^^^^^^^^
+                -- ast --
+                Foo()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_empty_quoted_argument_name() {
+        reject(
+            r#"Foo("": "x")"#,
+            expect![[r#"
+                -- errors --
+                error: Attribute name cannot be empty
+                Foo("": "x")
+                    ^^
+                -- ast --
+                Foo()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_quoted_argument_name_with_an_escape_sequence() {
+        reject(
+            r#"Foo("a\"b": "x")"#,
+            expect![[r#"
+                -- errors --
+                error: Attribute name contains invalid character: '\'
+                Foo("a\"b": "x")
+                    ^^^^^^
+                -- ast --
+                Foo()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_spread_among_named_arguments() {
+        accept(
+            r#"Foo(kind: "k", ...rest, id: "x")"#,
+            expect![[r#"
+                Foo(kind: "k", ...rest, id: "x")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_spread_as_the_only_argument() {
+        accept(
+            "Foo(...rest)",
+            expect![[r#"
+            Foo(...rest)
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_mixing_positional_arguments_and_spread() {
+        reject(
+            "Foo(1, ...rest)",
+            expect![[r#"
+            -- errors --
+            error: Arguments must either all be named or all be positional
+            Foo(1, ...rest)
+                   ^^^^^^^
+            -- ast --
+            Foo(1)
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_mixing_spread_and_positional_arguments() {
+        reject(
+            "Foo(...rest, 1)",
+            expect![[r#"
+            -- errors --
+            error: Arguments must either all be named or all be positional
+            Foo(...rest, 1)
+                         ^
+            -- ast --
+            Foo(...rest)
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_argument_without_a_name() {
+        reject(
+            "Foo(...)",
+            expect![[r#"
+            -- errors --
+            error: Expected identifier but got ')'
+            Foo(...)
+                   ^
+            -- ast --
+            Foo()
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_mixing_positional_and_quoted_named_arguments() {
+        reject(
+            r#"Foo(1, "aria-label": "x")"#,
+            expect![[r#"
+                -- errors --
+                error: Arguments must either all be named or all be positional
+                Foo(1, "aria-label": "x")
+                       ^^^^^^^^^^^^^^^^^
+                -- ast --
+                Foo(1)
             "#]],
         );
     }

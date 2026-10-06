@@ -17,7 +17,7 @@ pub use parse::parse;
 pub use parse_error::ParseError;
 pub use parsed_expr::{
     ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLetBinding, ParsedLoopSource,
-    ParsedMatchArm, ParsedPattern, ParsedUnaryOp,
+    ParsedMatchArm, ParsedNamedArgument, ParsedPattern, ParsedUnaryOp,
 };
 pub use parsed_markup::{ParsedAttribute, ParsedMarkup};
 pub use parsed_module::{

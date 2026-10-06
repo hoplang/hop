@@ -371,16 +371,29 @@ A call expression `f(…)` evaluates to the value that the function `f` returns
 for its arguments, and has the return type of `f`.
 
 ```ebnf
-CallExpr  ::= ( LowercaseIdentifier | UppercaseIdentifier ) "(" Arguments? ")"
-Arguments ::= Expr ( "," Expr )* ","?
-            | LowercaseIdentifier ":" Expr ( "," LowercaseIdentifier ":" Expr )* ","?
+CallExpr      ::= ( LowercaseIdentifier | UppercaseIdentifier ) "(" Arguments? ")"
+Arguments     ::= Expr ( "," Expr )* ","?
+                | NamedArgument ( "," NamedArgument )* ","?
+NamedArgument ::= ArgumentName ":" Expr
+                | "..." LowercaseIdentifier
+ArgumentName  ::= LowercaseIdentifier | '"' AttributeName '"'
 ```
 
 `f(a, b)` passes its arguments by position, and `f(x: a, y: b)` by name. A call
 that mixes the two is a compile error. So is an argument that does not have the
-type of its parameter, more arguments than `f` has parameters, a name that is
-not a parameter of `f`, a parameter given an argument twice, and leaving out a
-parameter that has no default value.
+type of its parameter, more arguments than `f` has parameters, a name given
+twice, ignoring case, and leaving out a parameter that has no default value. A
+rest parameter is not counted here, since it receives arguments by name only.
+
+A name that is not a parameter of `f` is a compile error, unless the
+[rest parameter](#rest-parameters) of `f` collects it as an attribute. A name
+that is not a `LowercaseIdentifier`, such as `aria-label` or `for`, is written
+in quotes, as in `f("aria-label": a)`, and a quoted name is the same name as the
+one without quotes.
+
+A spread `...rest` among the arguments by name passes on what the
+[rest parameter](#rest-parameters) `rest` of the calling function collects, as
+in `f(x: a, ...rest)`.
 
 A function with an uppercase name can also be called by a
 [markup call](#markup-call-expressions).
@@ -942,12 +955,13 @@ A markup call expression `<F …>…</F>` calls the
 [function](#function-declarations) `F`. It is shorthand for a
 [call expression](#call-expressions) in a
 [markup interpolation](#markup-interpolations): an [attribute](#attributes)
-`a={e}` that names a parameter of `F` is the named argument `a: e`, `a` alone
-is `a: true`, and the content between the tags, as a
-[fragment](#fragment-expressions), is the argument `children`. So
-`<F a="x">…</F>` is `<>{F(a: "x", children: <>…</>)}</>`, even when the
-content is empty, and `<F a="x"/>` is `<>{F(a: "x")}</>`, which passes no
-`children`.
+`a={e}` is the named argument `a: e`, with `a` in quotes when it is not a
+`LowercaseIdentifier`, `a` alone is `a: true` when `a` names a parameter of
+`F`, a spread `...rest` is the same spread, and the content between the tags,
+as a [fragment](#fragment-expressions), is the argument `children`. So
+`<F a="x" ...rest>…</F>` is `<>{F(a: "x", ...rest, children: <>…</>)}</>`,
+even when the content is empty, and `<F a="x"/>` is `<>{F(a: "x")}</>`, which
+passes no `children`.
 
 ```ebnf
 MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupContent "</" UppercaseIdentifier ">"
@@ -961,8 +975,8 @@ other type is a compile error.
 
 `F` accepts an attribute for each of its parameters, and an attribute that `F`
 does not accept is a compile error. With a [rest parameter](#rest-parameters),
-`F` also accepts the attributes the rest parameter collects, and a spread
-`...rest`. These have no call expression form.
+`F` also accepts the attributes the rest parameter collects. Such an attribute
+written as its name alone, as in `<F disabled/>`, has no call expression form.
 
 ```hop
 fn Badge(
@@ -1083,17 +1097,20 @@ On a [markup call](#markup-call-expressions), an attribute that names a
 parameter is a named argument, and a name alone is the argument `true`. Any
 other attribute goes to the [rest parameter](#rest-parameters) as written.
 
-An attribute written more than once in a start tag, as in
-`<div id="a" id="b">`, is a compile error.
+Attribute names are compared ignoring case, as HTML compares them. An
+attribute written more than once in a start tag, as in `<div id="a" id="b">` or
+`<div id="a" ID="b">`, is a compile error.
 
 <a id="rest-parameters"></a>
 
 #### Rest parameters
 
 A rest parameter `...rest` is the last parameter, and collects the attributes a
-caller passes that are not parameters of the function. The body spreads it, as
-`...rest`, in the start tag of an element or markup call, where the collected
-attributes are placed as if written there. A rest parameter that is not the
+caller passes that are not parameters of the function, written on a markup call
+or as named arguments of a call expression. The body spreads it, as
+`...rest`, in the start tag of an element or markup call, or in the arguments
+of a call expression, where the collected attributes are placed as if written
+there. A rest parameter that is not the
 last parameter, or that the body does not spread exactly once, is a compile
 error. For example:
 
@@ -1111,8 +1128,14 @@ fn PrimaryButton(...rest) -> Html {
   <Button kind="primary" ...rest/>
 }
 
+fn SecondaryButton(...rest) -> Html {
+  Button(kind: "secondary", ...rest)
+}
+
 <Button kind="k" id="x" disabled/> // <button class="k" id="x" disabled>k</button>
+Button(kind: "k", id: "x")         // <button class="k" id="x">k</button>
 <PrimaryButton type="submit"/>     // <button class="primary" type="submit">primary</button>
+SecondaryButton(type: "submit")    // <button class="secondary" type="submit">secondary</button>
 ```
 
 Exactly once means once in the source text, not once per evaluation: a spread
