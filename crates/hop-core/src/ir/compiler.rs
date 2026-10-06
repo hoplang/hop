@@ -5,7 +5,7 @@ use crate::document::CheapString;
 use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::{
     CaseVar, Decision, Type, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
-    TypedMatchPattern, TypedRecordUpdateField,
+    TypedPattern, TypedRecordUpdateField,
 };
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::function_id::FunctionIdCounter;
@@ -182,7 +182,7 @@ impl<'a> Compiler<'a> {
     fn compile_decision(
         &mut self,
         decision: &Decision,
-        arms: &[(TypedMatchPattern, TypedExpr)],
+        arms: &[(TypedPattern, TypedExpr)],
         typ: &Type,
         used: &HashSet<CaseVar>,
         case_vars: &mut HashMap<CaseVar, IrVar>,

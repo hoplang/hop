@@ -1,7 +1,7 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::typing::{Type, TypedMatchPattern};
+use crate::hop::typing::{Type, TypedPattern};
 use crate::root_relative_path::RootRelativePathError;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
@@ -156,7 +156,7 @@ pub enum TypeErrorKind {
     NumericNegationTypeMismatch { found: Type },
 
     #[error("Pattern does not match type {expected}")]
-    MatchPatternTypeMismatch { expected: Type },
+    PatternTypeMismatch { expected: Type },
 
     #[error("<{element}> does not accept attribute '{attr}'")]
     ElementDoesNotAcceptAttribute { element: String, attr: String },
@@ -258,7 +258,7 @@ pub enum TypeErrorKind {
     MatchMissingPattern { patterns: Vec<String> },
 
     #[error("Unreachable pattern {pattern}")]
-    MatchUnreachablePattern { pattern: Box<TypedMatchPattern> },
+    MatchUnreachablePattern { pattern: Box<TypedPattern> },
 
     #[error("Match expression must have at least one arm")]
     MatchNoArms,

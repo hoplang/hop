@@ -4,7 +4,7 @@ use crate::hop::parsing::ParsedPattern;
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::hop::typing::typed_match_pattern::{Constructor, TypedField, TypedMatchPattern};
+use crate::hop::typing::typed_pattern::{Constructor, TypedField, TypedPattern};
 use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::symbols::var_name::VarName;
 
@@ -19,7 +19,7 @@ pub fn typecheck_pattern(
     bindings: &mut Vec<(VarName, Type, DocumentRange)>,
     definition_links: &mut Vec<DefinitionLink>,
     errors: &mut Vec<TypeError>,
-) -> Option<TypedMatchPattern> {
+) -> Option<TypedPattern> {
     if let ParsedPattern::EnumVariant {
         type_name,
         type_name_range,
@@ -51,7 +51,7 @@ pub fn typecheck_pattern(
         });
         if pattern_type != subject_type {
             errors.push(TypeError::new(
-                TypeErrorKind::MatchPatternTypeMismatch {
+                TypeErrorKind::PatternTypeMismatch {
                     expected: subject_type.clone(),
                 },
                 parsed.range().clone(),
@@ -60,7 +60,7 @@ pub fn typecheck_pattern(
         }
     }
     match (parsed, registry.resolve(subject_type)) {
-        (ParsedPattern::Wildcard { .. }, _) => Some(TypedMatchPattern::Wildcard),
+        (ParsedPattern::Wildcard { .. }, _) => Some(TypedPattern::Wildcard),
 
         (ParsedPattern::Binding { name, range }, _) => {
             if bindings.iter().any(|(bound, _, _)| bound == name) {
@@ -71,11 +71,11 @@ pub fn typecheck_pattern(
                 return None;
             }
             bindings.push((name.clone(), subject_type.clone(), range.clone()));
-            Some(TypedMatchPattern::Binding { name: name.clone() })
+            Some(TypedPattern::Binding { name: name.clone() })
         }
 
         (ParsedPattern::BooleanTrue { .. }, Some(ResolvedType::Bool)) => {
-            Some(TypedMatchPattern::Constructor {
+            Some(TypedPattern::Constructor {
                 constructor: Constructor::BooleanTrue,
                 args: Vec::new(),
                 fields: Vec::new(),
@@ -83,7 +83,7 @@ pub fn typecheck_pattern(
         }
 
         (ParsedPattern::BooleanFalse { .. }, Some(ResolvedType::Bool)) => {
-            Some(TypedMatchPattern::Constructor {
+            Some(TypedPattern::Constructor {
                 constructor: Constructor::BooleanFalse,
                 args: Vec::new(),
                 fields: Vec::new(),
@@ -100,7 +100,7 @@ pub fn typecheck_pattern(
                 definition_links,
                 errors,
             )?;
-            Some(TypedMatchPattern::Constructor {
+            Some(TypedPattern::Constructor {
                 constructor: Constructor::OptionSome,
                 args: vec![typed_inner],
                 fields: Vec::new(),
@@ -108,7 +108,7 @@ pub fn typecheck_pattern(
         }
 
         (ParsedPattern::OptionNone { .. }, Some(ResolvedType::Option(_))) => {
-            Some(TypedMatchPattern::Constructor {
+            Some(TypedPattern::Constructor {
                 constructor: Constructor::OptionNone,
                 args: Vec::new(),
                 fields: Vec::new(),
@@ -206,7 +206,7 @@ pub fn typecheck_pattern(
                 return None;
             }
 
-            Some(TypedMatchPattern::Constructor {
+            Some(TypedPattern::Constructor {
                 constructor: Constructor::EnumVariant {
                     type_name: type_name.clone(),
                     variant_name: variant_name.clone(),
@@ -290,7 +290,7 @@ pub fn typecheck_pattern(
                 return None;
             }
 
-            Some(TypedMatchPattern::Constructor {
+            Some(TypedPattern::Constructor {
                 constructor: Constructor::Record {
                     type_name: type_name.clone(),
                 },
@@ -317,7 +317,7 @@ pub fn typecheck_pattern(
                     )
                 })
                 .collect::<Option<Vec<_>>>()?;
-            Some(TypedMatchPattern::Constructor {
+            Some(TypedPattern::Constructor {
                 constructor: Constructor::Tuple,
                 args: typed_args,
                 fields: Vec::new(),
@@ -326,7 +326,7 @@ pub fn typecheck_pattern(
 
         _ => {
             errors.push(TypeError::new(
-                TypeErrorKind::MatchPatternTypeMismatch {
+                TypeErrorKind::PatternTypeMismatch {
                     expected: subject_type.clone(),
                 },
                 parsed.range().clone(),

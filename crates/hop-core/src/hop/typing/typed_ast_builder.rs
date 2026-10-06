@@ -11,7 +11,7 @@ use crate::hop::typing::compile_match::compile_match;
 use crate::hop::typing::type_registry::ResolvedType;
 use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::hop::typing::typed_ast::TypedParameter;
-use crate::hop::typing::typed_match_pattern::TypedMatchPattern;
+use crate::hop::typing::typed_pattern::TypedPattern;
 use crate::hop::typing::{TypedAttribute, TypedAttrs, TypedLoopSource, TypedRecordUpdateField};
 use crate::html::HtmlElementKind;
 use crate::symbols::field_name::FieldName;
@@ -334,15 +334,14 @@ impl TypedAstBuilder {
         let mut false_builder = self.new_scoped();
         false_children_fn(&mut false_builder);
 
-        let patterns: Vec<TypedMatchPattern> =
-            [Constructor::BooleanTrue, Constructor::BooleanFalse]
-                .into_iter()
-                .map(|constructor| TypedMatchPattern::Constructor {
-                    constructor,
-                    args: Vec::new(),
-                    fields: Vec::new(),
-                })
-                .collect();
+        let patterns: Vec<TypedPattern> = [Constructor::BooleanTrue, Constructor::BooleanFalse]
+            .into_iter()
+            .map(|constructor| TypedPattern::Constructor {
+                constructor,
+                args: Vec::new(),
+                fields: Vec::new(),
+            })
+            .collect();
         let decision = compile_match(self.types.registry(), &patterns, Type::Bool)
             .expect("a match on true and false is exhaustive");
         let bodies = [

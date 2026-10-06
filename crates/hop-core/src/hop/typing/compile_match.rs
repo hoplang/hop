@@ -16,7 +16,7 @@ use crate::hop::typing::Constructor;
 use crate::hop::typing::TypeErrorKind;
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::hop::typing::typed_match_pattern::{TypedField, TypedMatchPattern};
+use crate::hop::typing::typed_pattern::{TypedField, TypedPattern};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -81,7 +81,7 @@ impl Row {
 #[derive(Clone, Debug)]
 struct Column {
     variable: Variable,
-    pattern: TypedMatchPattern,
+    pattern: TypedPattern,
 }
 
 /// A case for boolean pattern matching - no bindings possible.
@@ -241,11 +241,11 @@ struct VarInfo {
 /// Checks if a pattern introduces no bindings and requires no runtime discrimination.
 /// This is true for wildcards and for record and tuple patterns where all fields or
 /// elements are free from bindings (since records and tuples have only one constructor).
-fn is_free_from_bindings(pattern: &TypedMatchPattern) -> bool {
+fn is_free_from_bindings(pattern: &TypedPattern) -> bool {
     match pattern {
-        TypedMatchPattern::Wildcard => true,
-        TypedMatchPattern::Binding { .. } => false,
-        TypedMatchPattern::Constructor {
+        TypedPattern::Wildcard => true,
+        TypedPattern::Binding { .. } => false,
+        TypedPattern::Constructor {
             constructor,
             args,
             fields,
@@ -300,7 +300,7 @@ pub enum MatchErrorSite {
 /// Compile a collection of patterns into a decision tree.
 pub fn compile_match(
     registry: &TypeRegistry,
-    patterns: &[TypedMatchPattern],
+    patterns: &[TypedPattern],
     subject_type: Type,
 ) -> Result<Decision, MatchError> {
     if patterns.is_empty() {
@@ -384,7 +384,7 @@ fn compile_rows(
     next_case: &mut usize,
     registry: &TypeRegistry,
     reachable: &mut Vec<usize>,
-    missing_patterns: &mut Vec<TypedMatchPattern>,
+    missing_patterns: &mut Vec<TypedPattern>,
     var_info: &mut HashMap<CaseVar, VarInfo>,
     mut rows: Vec<Row>,
 ) -> Option<Decision> {
@@ -396,15 +396,15 @@ fn compile_rows(
     for row in &mut rows {
         // Remove wildcards and move binding patterns into the body
         row.columns.retain(|col| match &col.pattern {
-            TypedMatchPattern::Wildcard => false,
-            TypedMatchPattern::Binding { name } => {
+            TypedPattern::Wildcard => false,
+            TypedPattern::Binding { name } => {
                 row.body.bindings.push(Binding {
                     name: name.clone(),
                     source: col.variable.id,
                 });
                 false
             }
-            TypedMatchPattern::Constructor { .. } => !is_free_from_bindings(&col.pattern),
+            TypedPattern::Constructor { .. } => !is_free_from_bindings(&col.pattern),
         });
     }
 
@@ -519,7 +519,7 @@ fn compile_rows(
     // assign the correct sub matches to these constructors.
     for mut row in rows {
         if let Some(col) = row.remove_column(&branch_var) {
-            if let TypedMatchPattern::Constructor {
+            if let TypedPattern::Constructor {
                 constructor: cons,
                 args,
                 fields,
@@ -714,9 +714,9 @@ fn fresh_var(next_case: &mut usize, typ: Type) -> Variable {
 /// Starting from the root variable, it traverses `var_info` to reconstruct the
 /// pattern that would be needed to make the match exhaustive. A variable that
 /// no switch has tested is a wildcard.
-fn witness_for_var(var_info: &HashMap<CaseVar, VarInfo>, var: CaseVar) -> TypedMatchPattern {
+fn witness_for_var(var_info: &HashMap<CaseVar, VarInfo>, var: CaseVar) -> TypedPattern {
     let Some(info) = var_info.get(&var) else {
-        return TypedMatchPattern::Wildcard;
+        return TypedPattern::Wildcard;
     };
     let mut args = Vec::new();
     let mut fields = Vec::new();
@@ -731,7 +731,7 @@ fn witness_for_var(var_info: &HashMap<CaseVar, VarInfo>, var: CaseVar) -> TypedM
             None => args.push(pattern),
         }
     }
-    TypedMatchPattern::Constructor {
+    TypedPattern::Constructor {
         constructor: info.constructor.clone(),
         args,
         fields,

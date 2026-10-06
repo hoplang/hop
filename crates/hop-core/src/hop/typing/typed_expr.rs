@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 
 use crate::document::CheapString;
 use crate::hop::typing::compile_match::Decision;
-use crate::hop::typing::typed_match_pattern::TypedMatchPattern;
+use crate::hop::typing::typed_pattern::TypedPattern;
 use crate::html::HtmlElementKind;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
@@ -82,7 +82,7 @@ pub enum TypedExpr {
         subject: Box<Self>,
         /// The arms in source order. `Body::value` in the decision indexes
         /// into these.
-        arms: Vec<(TypedMatchPattern, Self)>,
+        arms: Vec<(TypedPattern, Self)>,
         decision: Decision,
         typ: Type,
     },

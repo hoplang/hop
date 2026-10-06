@@ -4,6 +4,26 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
+#[derive(Debug, Clone)]
+pub enum TypedPattern {
+    Wildcard,
+    Binding {
+        name: VarName,
+    },
+    Constructor {
+        constructor: Constructor,
+        args: Vec<TypedPattern>,
+        fields: Vec<TypedField>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedField {
+    pub name: FieldName,
+    pub index: usize,
+    pub pattern: TypedPattern,
+}
+
 /// A constructor pattern (non-wildcard pattern that matches a specific value)
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Constructor {
@@ -45,23 +65,10 @@ impl Constructor {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum TypedMatchPattern {
-    Wildcard,
-    Binding {
-        name: VarName,
-    },
-    Constructor {
-        constructor: Constructor,
-        args: Vec<TypedMatchPattern>,
-        fields: Vec<TypedField>,
-    },
-}
-
-impl TypedMatchPattern {
+impl TypedPattern {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            TypedMatchPattern::Constructor {
+            TypedPattern::Constructor {
                 constructor,
                 args,
                 fields,
@@ -84,7 +91,7 @@ impl TypedMatchPattern {
                     // Record pattern: User {name: x, age: y}
                     let fields_doc = BoxDoc::intersperse(
                         fields.iter().map(|field| {
-                            if let TypedMatchPattern::Binding { name: var_name } = &field.pattern {
+                            if let TypedPattern::Binding { name: var_name } = &field.pattern {
                                 if var_name.as_str() == field.name.as_str() {
                                     return BoxDoc::text(field.name.as_str());
                                 }
@@ -109,21 +116,14 @@ impl TypedMatchPattern {
                         .append(BoxDoc::text(")"))
                 }
             }
-            TypedMatchPattern::Wildcard => BoxDoc::text("_"),
-            TypedMatchPattern::Binding { name } => BoxDoc::text(name.as_str()),
+            TypedPattern::Wildcard => BoxDoc::text("_"),
+            TypedPattern::Binding { name } => BoxDoc::text(name.as_str()),
         }
     }
 }
 
-impl std::fmt::Display for TypedMatchPattern {
+impl std::fmt::Display for TypedPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.to_doc().pretty(80))
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedField {
-    pub name: FieldName,
-    pub index: usize,
-    pub pattern: TypedMatchPattern,
 }

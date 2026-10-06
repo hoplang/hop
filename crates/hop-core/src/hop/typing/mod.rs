@@ -14,7 +14,7 @@ mod typecheck_node;
 mod typecheck_pattern;
 mod typed_ast;
 mod typed_expr;
-mod typed_match_pattern;
+mod typed_pattern;
 mod variable_scope;
 
 pub use compile_match::CaseVar;
@@ -29,7 +29,7 @@ pub use typed_ast::{TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, Ty
 pub use typed_expr::{
     TypedAttribute, TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField,
 };
-pub use typed_match_pattern::{Constructor, TypedMatchPattern};
+pub use typed_pattern::{Constructor, TypedPattern};
 
 #[cfg(test)]
 mod type_registry_builder;
