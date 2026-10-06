@@ -8,7 +8,7 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::ParsedExpr;
-use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
+use crate::hop::typing::type_error::{Target, TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{Type, TypedAttribute, TypedAttrs};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::attribute_name::AttributeName;
@@ -146,7 +146,10 @@ pub fn typecheck_call(
                 // attribute for the rest.
                 if written.contains(&name) {
                     errors.push(TypeError::new(
-                        TypeErrorKind::DuplicateArgument { argument: name },
+                        TypeErrorKind::DuplicateName {
+                            target: Target::Function(callee.clone()),
+                            name,
+                        },
                         range,
                     ));
                     failed = true;
@@ -226,9 +229,9 @@ pub fn typecheck_call(
                     }
                     (None, _, _) => {
                         errors.push(TypeError::new(
-                            TypeErrorKind::FunctionDoesNotAcceptArgument {
-                                name: callee.clone(),
-                                argument: name.as_str().to_string(),
+                            TypeErrorKind::DoesNotAccept {
+                                target: Target::Function(callee.clone()),
+                                name,
                             },
                             range,
                         ));

@@ -2,7 +2,7 @@ use super::token::LangToken;
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
-use crate::symbols::attribute_name::{AttributeName, InvalidAttributeNameError};
+use crate::symbols::attribute_name::InvalidAttributeNameError;
 use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::function_name::InvalidFunctionNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
@@ -79,9 +79,6 @@ pub enum ParseErrorKind {
 
     #[error("Function '{name}' has an empty body: a function body must be a single expression")]
     EmptyFunctionBody { name: CheapString },
-
-    #[error("Duplicate attribute '{name}'")]
-    DuplicateAttribute { name: AttributeName },
 
     #[error("Unmatched {ch}")]
     UnmatchedCharacter { ch: char },

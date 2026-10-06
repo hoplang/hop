@@ -12371,6 +12371,49 @@ mod tests {
     }
 
     #[test]
+    fn rejects_attribute_written_twice_on_element() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    <>
+                      <div class="foo" class="bar"></div>
+                      <div id="a" ID="b"></div>
+                      <div bogus="a" bogus="b"></div>
+                    </>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Duplicate attribute 'class'
+                  --> main.hop (line 4, col 24)
+                3 |     <>
+                4 |       <div class="foo" class="bar"></div>
+                  |                        ^^^^^
+
+                error: Duplicate attribute 'ID'
+                  --> main.hop (line 5, col 19)
+                4 |       <div class="foo" class="bar"></div>
+                5 |       <div id="a" ID="b"></div>
+                  |                   ^^
+
+                error: <div> does not accept attribute 'bogus'
+                  --> main.hop (line 6, col 12)
+                5 |       <div id="a" ID="b"></div>
+                6 |       <div bogus="a" bogus="b"></div>
+                  |            ^^^^^
+
+                error: Duplicate attribute 'bogus'
+                  --> main.hop (line 6, col 22)
+                5 |       <div id="a" ID="b"></div>
+                6 |       <div bogus="a" bogus="b"></div>
+                  |                      ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_named_call_missing_an_argument() {
         reject(
             indoc! {r#"

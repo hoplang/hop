@@ -2,6 +2,7 @@ use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::typing::{Type, TypedPattern};
+use crate::html::HtmlElementKind;
 use crate::root_relative_path::RootRelativePathError;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
@@ -149,9 +150,6 @@ pub enum TypeErrorKind {
 
     #[error("Pattern does not match type {expected}")]
     PatternTypeMismatch { expected: Type },
-
-    #[error("<{element}> does not accept attribute '{attr}'")]
-    ElementDoesNotAcceptAttribute { element: String, attr: String },
 
     #[error("<{element}> requires a string literal for attribute '{attr}'")]
     AttributeRequiresStringLiteral { element: String, attr: String },
@@ -350,14 +348,35 @@ pub enum TypeErrorKind {
         found: usize,
     },
 
-    #[error("Function {name} does not accept argument '{argument}'")]
-    FunctionDoesNotAcceptArgument {
-        name: FunctionName,
-        argument: String,
-    },
+    #[error(
+        "{}",
+        match target {
+            Target::Element(element) => {
+                format!("<{}> does not accept attribute '{name}'", element.as_str())
+            }
+            Target::Function(function) => {
+                format!("Function {function} does not accept argument '{name}'")
+            }
+        }
+    )]
+    DoesNotAccept { target: Target, name: AttributeName },
 
-    #[error("Argument '{argument}' is supplied more than once")]
-    DuplicateArgument { argument: AttributeName },
+    #[error(
+        "{}",
+        match target {
+            Target::Element(_) => format!("Duplicate attribute '{name}'"),
+            Target::Function(_) => format!("Argument '{name}' is supplied more than once"),
+        }
+    )]
+    DuplicateName { target: Target, name: AttributeName },
+}
+
+/// What a name is supplied to: an element takes it as an attribute and a
+/// function as an argument.
+#[derive(Debug, Clone)]
+pub enum Target {
+    Element(HtmlElementKind),
+    Function(FunctionName),
 }
 
 /// Where a [`TypeErrorKind::TypeMismatch`] was found.

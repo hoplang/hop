@@ -4,7 +4,7 @@ use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedMarkup};
 use crate::hop::typing::type_env::TypeEnv;
-use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
+use crate::hop::typing::type_error::{Target, TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, CallArguments, NamedArgument, typecheck_call};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
@@ -402,7 +402,23 @@ fn typecheck_attributes(
     asset_references: &mut Vec<AssetReference>,
 ) -> Vec<TypedAttribute> {
     let mut typed_attributes = Vec::new();
+    let mut written: Vec<&AttributeName> = Vec::new();
     for attr in attributes {
+        // A name is written once, as at a call, whether or not the element
+        // accepts it.
+        if let (Some(name), Some(name_range)) = (attr.name(), attr.name_range()) {
+            if written.contains(&name) {
+                errors.push(TypeError::new(
+                    TypeErrorKind::DuplicateName {
+                        target: Target::Element(element.clone()),
+                        name: name.clone(),
+                    },
+                    name_range.clone(),
+                ));
+                continue;
+            }
+            written.push(name);
+        }
         if let Some(typed) = typecheck_html_attribute(
             element,
             attr,
@@ -440,9 +456,9 @@ fn typecheck_html_attribute(
     let (name, name_range) = (attribute.name()?, attribute.name_range()?);
     if !element.accepts_attribute(name.as_str()) {
         errors.push(TypeError::new(
-            TypeErrorKind::ElementDoesNotAcceptAttribute {
-                element: element.as_str().to_string(),
-                attr: name.as_str().to_string(),
+            TypeErrorKind::DoesNotAccept {
+                target: Target::Element(element.clone()),
+                name: name.clone(),
             },
             name_range.clone(),
         ));
