@@ -97,27 +97,26 @@ pub fn typecheck_pattern(
 
         (
             ParsedPattern::EnumVariant {
-                type_name: pattern_type_name,
-                variant_name: pattern_variant_name,
+                type_name,
+                variant_name,
                 fields,
                 constructor_range,
-                range,
                 ..
             },
             Some(ResolvedType::Enum { variants, .. }),
         ) if pattern_type == Some(&subject_type) => {
             let variant_fields = variants
                 .iter()
-                .find(|variant| variant.name.as_str() == pattern_variant_name.as_str())
+                .find(|variant| variant.name.as_str() == variant_name.as_str())
                 .map(|variant| variant.fields.as_slice());
 
             let Some(variant_fields) = variant_fields else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedEnumVariant {
-                        enum_name: pattern_type_name.clone(),
-                        variant_name: pattern_variant_name.clone(),
+                        type_name: type_name.clone(),
+                        variant_name: variant_name.clone(),
                     },
-                    range.clone(),
+                    constructor_range.clone(),
                 ));
                 return None;
             };
@@ -133,8 +132,8 @@ pub fn typecheck_pattern(
                     Some(_) if typed_fields.iter().any(|f| &f.name == field_name) => {
                         errors.push(TypeError::new(
                             TypeErrorKind::EnumVariantDuplicateField {
-                                enum_name: pattern_type_name.clone(),
-                                variant_name: pattern_variant_name.clone(),
+                                type_name: type_name.clone(),
+                                variant_name: variant_name.clone(),
                                 field_name: field_name.clone(),
                             },
                             field_name_range.clone(),
@@ -158,8 +157,8 @@ pub fn typecheck_pattern(
                     None => {
                         errors.push(TypeError::new(
                             TypeErrorKind::EnumVariantUnknownField {
-                                enum_name: pattern_type_name.clone(),
-                                variant_name: pattern_variant_name.clone(),
+                                type_name: type_name.clone(),
+                                variant_name: variant_name.clone(),
                                 field_name: field_name.clone(),
                             },
                             field_name_range.clone(),
@@ -178,8 +177,8 @@ pub fn typecheck_pattern(
                     .collect::<Vec<_>>();
                 errors.push(TypeError::new(
                     TypeErrorKind::EnumVariantMissingFields {
-                        enum_name: pattern_type_name.clone(),
-                        variant_name: pattern_variant_name.clone(),
+                        type_name: type_name.clone(),
+                        variant_name: variant_name.clone(),
                         missing_fields,
                     },
                     constructor_range.clone(),
@@ -189,8 +188,8 @@ pub fn typecheck_pattern(
 
             Some(TypedMatchPattern::Constructor {
                 constructor: Constructor::EnumVariant {
-                    enum_name: pattern_type_name.clone(),
-                    variant_name: pattern_variant_name.clone(),
+                    type_name: type_name.clone(),
+                    variant_name: variant_name.clone(),
                 },
                 args: Vec::new(),
                 fields: typed_fields,
@@ -199,7 +198,7 @@ pub fn typecheck_pattern(
 
         (
             ParsedPattern::Record {
-                type_name: pattern_type_name,
+                type_name,
                 type_name_range,
                 fields,
                 ..
@@ -221,7 +220,7 @@ pub fn typecheck_pattern(
                         errors.push(TypeError::new(
                             TypeErrorKind::RecordDuplicateField {
                                 field_name: field_name.clone(),
-                                record_name: pattern_type_name.clone(),
+                                type_name: type_name.clone(),
                             },
                             field_name_range.clone(),
                         ));
@@ -245,7 +244,7 @@ pub fn typecheck_pattern(
                         errors.push(TypeError::new(
                             TypeErrorKind::RecordUnknownField {
                                 field_name: field_name.clone(),
-                                record_name: pattern_type_name.clone(),
+                                type_name: type_name.clone(),
                             },
                             field_name_range.clone(),
                         ));
@@ -264,7 +263,7 @@ pub fn typecheck_pattern(
                     .collect::<Vec<_>>();
                 errors.push(TypeError::new(
                     TypeErrorKind::RecordMissingFields {
-                        record_name: pattern_type_name.clone(),
+                        type_name: type_name.clone(),
                         missing_fields,
                     },
                     type_name_range.clone(),
@@ -274,7 +273,7 @@ pub fn typecheck_pattern(
 
             Some(TypedMatchPattern::Constructor {
                 constructor: Constructor::Record {
-                    type_name: pattern_type_name.clone(),
+                    type_name: type_name.clone(),
                 },
                 args: Vec::new(),
                 fields: typed_fields,
@@ -497,6 +496,19 @@ mod tests {
                 error: Variant 'Blue' is not defined in enum 'Color'
                 Color::Blue
                 ^^^^^^^^^^^
+            "#]],
+        );
+    }
+    #[test]
+    fn rejects_undefined_enum_variant_with_fields() {
+        reject(
+            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
+            "Point",
+            "Point::XYZ{x: a, y: b}",
+            expect![[r#"
+                error: Variant 'XYZ' is not defined in enum 'Point'
+                Point::XYZ{x: a, y: b}
+                ^^^^^^^^^^
             "#]],
         );
     }

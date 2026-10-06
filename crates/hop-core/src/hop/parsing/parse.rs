@@ -143,8 +143,8 @@ fn parse_record_declaration(
     let left_brace = parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
     let (fields, braces) = parse_field_declarations(iter, comments, errors, &left_brace)?;
     Ok(ParsedRecordDeclaration {
-        name: TypeName::new(name).or_emit(errors, &name_range)?,
-        name_range,
+        type_name: TypeName::new(name).or_emit(errors, &name_range)?,
+        type_name_range: name_range,
         range: pub_range.clone().unwrap_or(keyword_range).to(braces),
         fields,
         pub_range,
@@ -189,8 +189,8 @@ fn parse_enum_declaration(
         },
     )?;
     Ok(ParsedEnumDeclaration {
-        name: TypeName::new(name).or_emit(errors, &name_range)?,
-        name_range,
+        type_name: TypeName::new(name).or_emit(errors, &name_range)?,
+        type_name_range: name_range,
         range: pub_range.clone().unwrap_or(keyword_range).to(braces),
         variants,
         pub_range,

@@ -235,14 +235,14 @@ pub enum WriterExpr {
 
     /// A RecordLiteral expression.
     RecordLiteral {
-        record_name: TypeName,
+        type_name: TypeName,
         fields: Vec<(FieldName, WriterExpr)>,
         typ: Type,
     },
 
     /// An EnumLiteral expression.
     EnumLiteral {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, WriterExpr)>,
@@ -541,11 +541,11 @@ impl WriterStatement {
                             .map(|arm| {
                                 let pattern = match &arm.pattern {
                                     EnumPattern::Variant {
-                                        enum_name,
+                                        type_name,
                                         variant_name,
                                     } => {
                                         if arm.bindings.is_empty() {
-                                            format!("{}::{}", enum_name, variant_name)
+                                            format!("{}::{}", type_name, variant_name)
                                         } else {
                                             let bindings_str: Vec<String> = arm
                                                 .bindings
@@ -554,7 +554,7 @@ impl WriterStatement {
                                                 .collect();
                                             format!(
                                                 "{}::{}({})",
-                                                enum_name,
+                                                type_name,
                                                 variant_name,
                                                 bindings_str.join(", ")
                                             )
@@ -737,14 +737,12 @@ impl WriterExpr {
                 }
             }
             WriterExpr::RecordLiteral {
-                record_name,
-                fields,
-                ..
+                type_name, fields, ..
             } => {
                 if fields.is_empty() {
-                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text(" {}"))
+                    BoxDoc::text(type_name.as_str()).append(BoxDoc::text(" {}"))
                 } else {
-                    BoxDoc::text(record_name.as_str())
+                    BoxDoc::text(type_name.as_str())
                         .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
@@ -830,12 +828,12 @@ impl WriterExpr {
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
             WriterExpr::EnumLiteral {
-                enum_name,
+                type_name,
                 variant_name,
                 fields,
                 ..
             } => {
-                let base = BoxDoc::text(enum_name.as_str())
+                let base = BoxDoc::text(type_name.as_str())
                     .append(BoxDoc::text("::"))
                     .append(BoxDoc::text(variant_name.as_str()));
                 if fields.is_empty() {
@@ -906,10 +904,10 @@ impl WriterExpr {
                                 .map(|arm| {
                                     let pattern_doc = match &arm.pattern {
                                         EnumPattern::Variant {
-                                            enum_name,
+                                            type_name,
                                             variant_name,
                                         } => {
-                                            let base = BoxDoc::text(enum_name.as_str())
+                                            let base = BoxDoc::text(type_name.as_str())
                                                 .append(BoxDoc::text("::"))
                                                 .append(BoxDoc::text(variant_name.as_str()));
                                             if arm.bindings.is_empty() {

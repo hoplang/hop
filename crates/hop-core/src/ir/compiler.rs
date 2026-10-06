@@ -281,7 +281,7 @@ impl<'a> Compiler<'a> {
                             .collect();
                         EnumMatchArm {
                             pattern: EnumPattern::Variant {
-                                enum_name: case.enum_name.clone(),
+                                type_name: case.type_name.clone(),
                                 variant_name: case.variant_name.clone(),
                             },
                             bindings,
@@ -443,12 +443,12 @@ impl<'a> Compiler<'a> {
                 id: expr_id,
             },
             TypedExpr::RecordLiteral {
-                record_name,
+                type_name,
                 fields,
                 typ,
                 ..
             } => PureExpr::RecordLiteral {
-                record_name: record_name.clone(),
+                type_name: type_name.clone(),
                 fields: fields
                     .iter()
                     .map(|(k, v)| (k.clone(), self.compile_expr(v)))
@@ -457,7 +457,7 @@ impl<'a> Compiler<'a> {
                 id: expr_id,
             },
             TypedExpr::RecordUpdate {
-                record_name,
+                type_name,
                 base,
                 fields,
                 typ,
@@ -466,7 +466,7 @@ impl<'a> Compiler<'a> {
                 let base_var = IrVar::new(self.next_var_id());
                 let literal_id = self.next_expr_id();
                 let literal = PureExpr::RecordLiteral {
-                    record_name: record_name.clone(),
+                    type_name: type_name.clone(),
                     fields: fields
                         .iter()
                         .map(|(name, field)| {
@@ -648,12 +648,12 @@ impl<'a> Compiler<'a> {
                 id: expr_id,
             },
             TypedExpr::EnumLiteral {
-                enum_name,
+                type_name,
                 variant_name,
                 fields,
                 typ,
             } => PureExpr::EnumLiteral {
-                enum_name: enum_name.clone(),
+                type_name: type_name.clone(),
                 variant_name: variant_name.clone(),
                 fields: fields
                     .iter()

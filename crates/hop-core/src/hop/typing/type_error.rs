@@ -167,10 +167,10 @@ pub enum TypeErrorKind {
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: VarName },
 
-    #[error("Field '{field}' not found in record '{record_name}'")]
+    #[error("Field '{field}' not found in record '{type_name}'")]
     FieldNotFoundInRecord {
         field: FieldName,
-        record_name: TypeName,
+        type_name: TypeName,
     },
 
     #[error("{typ} can not be used as a record")]
@@ -206,47 +206,47 @@ pub enum TypeErrorKind {
     #[error("'{name}' is a page and cannot be used as a type")]
     PageUsedAsType { name: TypeName },
 
-    #[error("Record '{record_name}' is missing fields: {}", missing_fields.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "))]
+    #[error("Record '{type_name}' is missing fields: {}", missing_fields.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "))]
     RecordMissingFields {
-        record_name: TypeName,
+        type_name: TypeName,
         missing_fields: Vec<FieldName>,
     },
 
-    #[error("Unknown field '{field_name}' in record '{record_name}'")]
+    #[error("Unknown field '{field_name}' in record '{type_name}'")]
     RecordUnknownField {
         field_name: FieldName,
-        record_name: TypeName,
+        type_name: TypeName,
     },
 
-    #[error("Duplicate field '{field_name}' in record '{record_name}'")]
+    #[error("Duplicate field '{field_name}' in record '{type_name}'")]
     RecordDuplicateField {
         field_name: FieldName,
-        record_name: TypeName,
+        type_name: TypeName,
     },
 
-    #[error("Variant '{variant_name}' is not defined in enum '{enum_name}'")]
+    #[error("Variant '{variant_name}' is not defined in enum '{type_name}'")]
     UndefinedEnumVariant {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
     },
 
-    #[error("Enum variant '{enum_name}::{variant_name}' is missing fields: {}", missing_fields.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "))]
+    #[error("Enum variant '{type_name}::{variant_name}' is missing fields: {}", missing_fields.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "))]
     EnumVariantMissingFields {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
         missing_fields: Vec<FieldName>,
     },
 
-    #[error("Unknown field '{field_name}' in enum variant '{enum_name}::{variant_name}'")]
+    #[error("Unknown field '{field_name}' in enum variant '{type_name}::{variant_name}'")]
     EnumVariantUnknownField {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
         field_name: FieldName,
     },
 
-    #[error("Duplicate field '{field_name}' in enum variant '{enum_name}::{variant_name}'")]
+    #[error("Duplicate field '{field_name}' in enum variant '{type_name}::{variant_name}'")]
     EnumVariantDuplicateField {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
         field_name: FieldName,
     },

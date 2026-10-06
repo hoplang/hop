@@ -46,7 +46,7 @@ pub enum TypedExpr {
 
     /// A record literal expression, e.g. User(name: "John", age: 30)
     RecordLiteral {
-        record_name: TypeName,
+        type_name: TypeName,
         fields: Vec<(FieldName, Self)>,
         typ: Type,
     },
@@ -55,7 +55,7 @@ pub enum TypedExpr {
     /// `base`, e.g. User { ...user, name: "John" }. The fields are in
     /// declaration order.
     RecordUpdate {
-        record_name: TypeName,
+        type_name: TypeName,
         base: Box<Self>,
         fields: Vec<(FieldName, TypedRecordUpdateField)>,
         typ: Type,
@@ -63,7 +63,7 @@ pub enum TypedExpr {
 
     /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
     EnumLiteral {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, Self)>,
@@ -443,10 +443,8 @@ impl TypedExpr {
                 )
                 .append(BoxDoc::text(")")),
             TypedExpr::RecordLiteral {
-                record_name,
-                fields,
-                ..
-            } => BoxDoc::text(record_name.as_str())
+                type_name, fields, ..
+            } => BoxDoc::text(type_name.as_str())
                 .append(BoxDoc::text(" {"))
                 .append(
                     BoxDoc::line_()
@@ -465,7 +463,7 @@ impl TypedExpr {
                 )
                 .append(BoxDoc::text("}")),
             TypedExpr::RecordUpdate {
-                record_name,
+                type_name,
                 base,
                 fields,
                 ..
@@ -480,7 +478,7 @@ impl TypedExpr {
                         TypedRecordUpdateField::FromBase(_) => None,
                     }),
                 );
-                BoxDoc::text(record_name.as_str())
+                BoxDoc::text(type_name.as_str())
                     .append(BoxDoc::text(" {"))
                     .append(
                         BoxDoc::line_()
@@ -579,12 +577,12 @@ impl TypedExpr {
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
             TypedExpr::EnumLiteral {
-                enum_name,
+                type_name,
                 variant_name,
                 fields,
                 ..
             } => {
-                let base = BoxDoc::text(enum_name.as_str())
+                let base = BoxDoc::text(type_name.as_str())
                     .append(BoxDoc::text("::"))
                     .append(BoxDoc::text(variant_name.as_str()));
                 if fields.is_empty() {

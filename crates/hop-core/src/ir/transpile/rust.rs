@@ -390,7 +390,7 @@ impl RustTranspiler {
         field: &FieldName,
     ) -> Binding {
         let EnumPattern::Variant {
-            enum_name,
+            type_name,
             variant_name,
         } = pattern;
         let field_type = variants
@@ -398,7 +398,7 @@ impl RustTranspiler {
             .find(|v| v.name == *variant_name)
             .and_then(|v| v.fields.iter().find(|f| f.name == *field))
             .map(|f| &f.typ);
-        if field_type.is_some_and(|t| self.field_type_is_boxed(t, enum_name.as_str())) {
+        if field_type.is_some_and(|t| self.field_type_is_boxed(t, type_name.as_str())) {
             Binding::BorrowedBoxed
         } else {
             Binding::Borrowed
@@ -1082,7 +1082,7 @@ impl Transpiler for RustTranspiler {
                     arms.iter().map(|arm| {
                         let pattern = match &arm.pattern {
                             EnumPattern::Variant {
-                                enum_name,
+                                type_name,
                                 variant_name,
                             } => {
                                 if arm.bindings.is_empty() {
@@ -1094,9 +1094,9 @@ impl Transpiler for RustTranspiler {
                                         .unwrap_or(false);
 
                                     if has_fields {
-                                        format!("{}::{} {{ .. }}", enum_name, variant_name)
+                                        format!("{}::{} {{ .. }}", type_name, variant_name)
                                     } else {
-                                        format!("{}::{}", enum_name, variant_name)
+                                        format!("{}::{}", type_name, variant_name)
                                     }
                                 } else {
                                     let bindings: Vec<String> = arm
@@ -1122,7 +1122,7 @@ impl Transpiler for RustTranspiler {
                                     };
                                     format!(
                                         "{}::{} {{ {}{} }}",
-                                        enum_name,
+                                        type_name,
                                         variant_name,
                                         bindings.join(", "),
                                         rest,
@@ -1850,7 +1850,7 @@ impl Transpiler for RustTranspiler {
                 for (i, arm) in arms.iter().enumerate() {
                     let pattern = match &arm.pattern {
                         EnumPattern::Variant {
-                            enum_name,
+                            type_name,
                             variant_name,
                         } => {
                             if arm.bindings.is_empty() {
@@ -1862,9 +1862,9 @@ impl Transpiler for RustTranspiler {
                                     .unwrap_or(false);
 
                                 if has_fields {
-                                    format!("{}::{} {{ .. }}", enum_name, variant_name)
+                                    format!("{}::{} {{ .. }}", type_name, variant_name)
                                 } else {
-                                    format!("{}::{}", enum_name, variant_name)
+                                    format!("{}::{}", type_name, variant_name)
                                 }
                             } else {
                                 let bindings: Vec<String> = arm
@@ -1890,7 +1890,7 @@ impl Transpiler for RustTranspiler {
                                 };
                                 format!(
                                     "{}::{} {{ {}{} }}",
-                                    enum_name,
+                                    type_name,
                                     variant_name,
                                     bindings.join(", "),
                                     rest,

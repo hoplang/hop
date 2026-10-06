@@ -553,8 +553,8 @@ fn parse_record_literal(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    name: TypeName,
-    name_range: DocumentRange,
+    type_name: TypeName,
+    type_name_range: DocumentRange,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     enum Entry {
@@ -568,7 +568,10 @@ fn parse_record_literal(
         None if restrictions.forbid_record_literals
             && matches!(peek(iter), Some((LangToken::LeftBrace, _))) =>
         {
-            return Err(errors.emit(ParseErrorKind::RecordLiteralNotAllowedHere {}, name_range));
+            return Err(errors.emit(
+                ParseErrorKind::RecordLiteralNotAllowedHere {},
+                type_name_range,
+            ));
         }
         None => expect_token(iter, comments, errors, &LangToken::LeftBrace)?,
     };
@@ -609,7 +612,7 @@ fn parse_record_literal(
             }
         }
     }
-    let range = name_range.clone().to(braces);
+    let range = type_name_range.clone().to(braces);
     if restrictions.forbid_record_literals {
         let _ = errors.emit(
             ParseErrorKind::RecordLiteralNotAllowedHere {},
@@ -617,8 +620,8 @@ fn parse_record_literal(
         );
     }
     Ok(ParsedExpr::RecordLiteral {
-        record_name: name,
-        record_name_range: name_range,
+        type_name,
+        type_name_range,
         fields,
         spread,
         range,
@@ -629,8 +632,8 @@ fn parse_enum_literal(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    enum_name: TypeName,
-    enum_name_range: DocumentRange,
+    type_name: TypeName,
+    type_name_range: DocumentRange,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let (variant_name, variant_range) = expect_identifier(iter, comments, errors)?;
@@ -664,7 +667,7 @@ fn parse_enum_literal(
         if restrictions.forbid_record_literals {
             let _ = errors.emit(
                 ParseErrorKind::RecordLiteralNotAllowedHere {},
-                enum_name_range.clone().to(braces.clone()),
+                type_name_range.clone().to(braces.clone()),
             );
         }
         (fields, braces)
@@ -672,12 +675,12 @@ fn parse_enum_literal(
         (Vec::new(), variant_range.clone())
     };
     Ok(ParsedExpr::EnumLiteral {
-        enum_name,
+        type_name,
         variant_name: TypeName::new(variant_name).or_emit(errors, &variant_range)?,
         fields,
-        constructor_range: enum_name_range.clone().to(variant_range.clone()),
-        enum_name_range: enum_name_range.clone(),
-        range: enum_name_range.to(end_range),
+        constructor_range: type_name_range.clone().to(variant_range.clone()),
+        type_name_range: type_name_range.clone(),
+        range: type_name_range.to(end_range),
     })
 }
 

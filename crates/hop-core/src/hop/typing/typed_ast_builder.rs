@@ -201,7 +201,7 @@ impl TypedAstBuilder {
             explicit.keys().collect::<Vec<_>>()
         );
         TypedExpr::RecordUpdate {
-            record_name: record_name.clone(),
+            type_name: record_name.clone(),
             base: Box::new(base),
             fields: all_fields,
             typ,

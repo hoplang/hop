@@ -131,7 +131,7 @@ pub fn typecheck_expr(
                         errors.push(TypeError::new(
                             TypeErrorKind::FieldNotFoundInRecord {
                                 field: field.clone(),
-                                record_name: record_name.clone(),
+                                type_name: record_name.clone(),
                             },
                             range.clone(),
                         ));
@@ -558,8 +558,8 @@ pub fn typecheck_expr(
             })
         }
         ParsedExpr::RecordLiteral {
-            record_name,
-            record_name_range,
+            type_name,
+            type_name_range,
             fields,
             spread,
             range,
@@ -569,13 +569,13 @@ pub fn typecheck_expr(
                 kind: NameKind::Type(record_type),
                 definition_range: def_range,
                 ..
-            }) = type_env.names.get(record_name.as_str())
+            }) = type_env.names.get(type_name.as_str())
             else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedType {
-                        type_name: record_name.clone(),
+                        type_name: type_name.clone(),
                     },
-                    range.clone(),
+                    type_name_range.clone(),
                 ));
                 return None;
             };
@@ -584,12 +584,12 @@ pub fn typecheck_expr(
 
             // Add type annotation and definition link for the record name
             annotations.push(HoverAnnotation::TypeForTypeName {
-                range: record_name_range.clone(),
+                range: type_name_range.clone(),
                 typ: record_type.clone(),
-                type_name: record_name.clone(),
+                type_name: type_name.clone(),
             });
             definition_links.push(DefinitionLink {
-                use_range: record_name_range.clone(),
+                use_range: type_name_range.clone(),
                 definition_range: def_range,
             });
 
@@ -601,9 +601,9 @@ pub fn typecheck_expr(
             else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedType {
-                        type_name: record_name.clone(),
+                        type_name: type_name.clone(),
                     },
-                    range.clone(),
+                    type_name_range.clone(),
                 ));
                 return None;
             };
@@ -657,7 +657,7 @@ pub fn typecheck_expr(
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordUnknownField {
                             field_name: field.name.clone(),
-                            record_name: record_name.clone(),
+                            type_name: type_name.clone(),
                         },
                         field.name_range.clone(),
                     ));
@@ -668,7 +668,7 @@ pub fn typecheck_expr(
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordDuplicateField {
                             field_name: field.name.clone(),
-                            record_name: record_name.clone(),
+                            type_name: type_name.clone(),
                         },
                         field.name_range.clone(),
                     ));
@@ -723,7 +723,7 @@ pub fn typecheck_expr(
                 if !missing_fields.is_empty() {
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordMissingFields {
-                            record_name: record_name.clone(),
+                            type_name: type_name.clone(),
                             missing_fields,
                         },
                         range.clone(),
@@ -732,7 +732,7 @@ pub fn typecheck_expr(
                 }
 
                 return Some(TypedExpr::RecordLiteral {
-                    record_name: record_name.clone(),
+                    type_name: type_name.clone(),
                     fields: typed_fields,
                     typ: record_type,
                 });
@@ -753,18 +753,18 @@ pub fn typecheck_expr(
                 .collect();
 
             Some(TypedExpr::RecordUpdate {
-                record_name: record_name.clone(),
+                type_name: type_name.clone(),
                 base: Box::new(typed_spread),
                 fields: all_fields,
                 typ: record_type,
             })
         }
         ParsedExpr::EnumLiteral {
-            enum_name,
+            type_name,
             variant_name,
             fields,
             constructor_range,
-            enum_name_range,
+            type_name_range,
             range,
         } => {
             // Look up the enum type in the type environment
@@ -772,13 +772,13 @@ pub fn typecheck_expr(
                 kind: NameKind::Type(enum_type),
                 definition_range: def_range,
                 ..
-            }) = type_env.names.get(enum_name.as_str())
+            }) = type_env.names.get(type_name.as_str())
             else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedType {
-                        type_name: enum_name.clone(),
+                        type_name: type_name.clone(),
                     },
-                    range.clone(),
+                    type_name_range.clone(),
                 ));
                 return None;
             };
@@ -789,10 +789,10 @@ pub fn typecheck_expr(
             annotations.push(HoverAnnotation::TypeForTypeName {
                 range: constructor_range.clone(),
                 typ: enum_type.clone(),
-                type_name: enum_name.clone(),
+                type_name: type_name.clone(),
             });
             definition_links.push(DefinitionLink {
-                use_range: enum_name_range.clone(),
+                use_range: type_name_range.clone(),
                 definition_range: def_range,
             });
 
@@ -800,9 +800,9 @@ pub fn typecheck_expr(
             let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(&enum_type) else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedType {
-                        type_name: enum_name.clone(),
+                        type_name: type_name.clone(),
                     },
-                    range.clone(),
+                    type_name_range.clone(),
                 ));
                 return None;
             };
@@ -814,7 +814,7 @@ pub fn typecheck_expr(
                 None => {
                     errors.push(TypeError::new(
                         TypeErrorKind::UndefinedEnumVariant {
-                            enum_name: enum_name.clone(),
+                            type_name: type_name.clone(),
                             variant_name: variant_name.clone(),
                         },
                         range.clone(),
@@ -838,7 +838,7 @@ pub fn typecheck_expr(
                             if !provided_field_names.insert(field.name.clone()) {
                                 errors.push(TypeError::new(
                                     TypeErrorKind::EnumVariantDuplicateField {
-                                        enum_name: enum_name.clone(),
+                                        type_name: type_name.clone(),
                                         variant_name: variant_name.clone(),
                                         field_name: field.name.clone(),
                                     },
@@ -880,7 +880,7 @@ pub fn typecheck_expr(
                         None => {
                             errors.push(TypeError::new(
                                 TypeErrorKind::EnumVariantUnknownField {
-                                    enum_name: enum_name.clone(),
+                                    type_name: type_name.clone(),
                                     variant_name: variant_name.clone(),
                                     field_name: field.name.clone(),
                                 },
@@ -902,7 +902,7 @@ pub fn typecheck_expr(
                 if !missing_fields.is_empty() {
                     errors.push(TypeError::new(
                         TypeErrorKind::EnumVariantMissingFields {
-                            enum_name: enum_name.clone(),
+                            type_name: type_name.clone(),
                             variant_name: variant_name.clone(),
                             missing_fields,
                         },
@@ -915,7 +915,7 @@ pub fn typecheck_expr(
             };
 
             Some(TypedExpr::EnumLiteral {
-                enum_name: enum_name.clone(),
+                type_name: type_name.clone(),
                 variant_name: variant_name.clone(),
                 fields: typed_fields,
                 typ: enum_type,
@@ -2785,7 +2785,21 @@ mod tests {
             expect![[r#"
                 error: Type 'User' is not defined
                 User {name: "John"}
-                ^^^^^^^^^^^^^^^^^^^
+                ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_naming_an_enum() {
+        reject(
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
+            &[],
+            r#"Color {name: "John"}"#,
+            expect![[r#"
+                error: Type 'Color' is not defined
+                Color {name: "John"}
+                ^^^^^
             "#]],
         );
     }
@@ -3295,7 +3309,21 @@ mod tests {
             expect![[r#"
                 error: Type 'Missing' is not defined
                 Missing::Red
-                ^^^^^^^^^^^^
+                ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_enum_literal_naming_a_record() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
+            &[],
+            "User::Admin",
+            expect![[r#"
+                error: Type 'User' is not defined
+                User::Admin
+                ^^^^
             "#]],
         );
     }

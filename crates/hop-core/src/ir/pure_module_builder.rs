@@ -632,7 +632,7 @@ impl PureBuilder {
         );
 
         PureExpr::RecordLiteral {
-            record_name: name,
+            type_name: name,
             fields: fields
                 .into_iter()
                 .map(|(k, v)| (FieldName::parse(k).unwrap(), v))
@@ -707,7 +707,7 @@ impl PureBuilder {
         );
 
         PureExpr::EnumLiteral {
-            enum_name: name,
+            type_name: name,
             variant_name: TypeName::parse(variant_name).unwrap(),
             fields: field_values
                 .into_iter()
@@ -749,17 +749,17 @@ impl PureBuilder {
         else {
             panic!("Match subject must be an enum type")
         };
-        let (enum_name, variants) = (name.clone(), variants.to_vec());
+        let (type_name, variants) = (name.clone(), variants.to_vec());
 
         let mut arms = EnumMatchExprArms {
             builder: self,
-            enum_name,
+            type_name,
             variants,
             arms: Vec::new(),
             result_type: None,
         };
         arms_fn(&mut arms);
-        assert_exhaustive(&arms.enum_name, &arms.variants, &arms.arms);
+        assert_exhaustive(&arms.type_name, &arms.variants, &arms.arms);
         let typ = arms
             .result_type
             .expect("enum_match_expr requires at least one arm");
@@ -1165,7 +1165,7 @@ impl PureBuilder {
 
 pub struct EnumMatchExprArms<'a> {
     builder: &'a PureBuilder,
-    enum_name: TypeName,
+    type_name: TypeName,
     variants: Vec<EnumVariant>,
     arms: Vec<EnumMatchArm<PureExpr>>,
     result_type: Option<Type>,
@@ -1192,7 +1192,7 @@ impl EnumMatchExprArms<'_> {
     {
         let (bindings, scoped_vars) = resolve_arm_bindings(
             self.builder,
-            &self.enum_name,
+            &self.type_name,
             &self.variants,
             variant,
             field_bindings,
@@ -1209,7 +1209,7 @@ impl EnumMatchExprArms<'_> {
         }
         self.arms.push(EnumMatchArm {
             pattern: EnumPattern::Variant {
-                enum_name: self.enum_name.clone(),
+                type_name: self.type_name.clone(),
                 variant_name: TypeName::parse(variant).unwrap(),
             },
             bindings,

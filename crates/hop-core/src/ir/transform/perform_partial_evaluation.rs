@@ -130,7 +130,7 @@ fn eval(
                 let subject = eval(*subject, env, expr_ids);
                 match subject {
                     PureExpr::EnumLiteral {
-                        enum_name,
+                        type_name,
                         variant_name,
                         fields,
                         ..
@@ -145,7 +145,7 @@ fn eval(
                                 arm_variant.as_str() == variant_name.as_str()
                             })
                             .unwrap_or_else(|| {
-                                panic!("no match arm for variant {enum_name}::{variant_name}")
+                                panic!("no match arm for variant {type_name}::{variant_name}")
                             });
                         // Turn the arm's field bindings into ordinary lets
                         // around the arm body.
@@ -154,7 +154,7 @@ fn eval(
                         for (field_name, var) in arm.bindings.into_iter().rev() {
                             let value = field_values.remove(&field_name).unwrap_or_else(|| {
                                 panic!(
-                                    "variant {enum_name}::{variant_name} has no field {}",
+                                    "variant {type_name}::{variant_name} has no field {}",
                                     field_name.as_str()
                                 )
                             });
@@ -317,14 +317,12 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             id,
         } => match *record {
             PureExpr::RecordLiteral {
-                record_name,
-                fields,
-                ..
+                type_name, fields, ..
             } => fields
                 .into_iter()
                 .find(|(name, _)| name.as_str() == field.as_str())
                 .map(|(_, value)| value)
-                .unwrap_or_else(|| panic!("record {record_name} has no field {}", field.as_str())),
+                .unwrap_or_else(|| panic!("record {type_name} has no field {}", field.as_str())),
             record => PureExpr::FieldAccess {
                 record: Box::new(record),
                 field,
@@ -625,13 +623,13 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
             id: expr_ids.next(),
         },
         PureExpr::EnumLiteral {
-            enum_name,
+            type_name,
             variant_name,
             fields,
             typ,
             ..
         } => PureExpr::EnumLiteral {
-            enum_name: enum_name.clone(),
+            type_name: type_name.clone(),
             variant_name: variant_name.clone(),
             fields: fields
                 .iter()
@@ -641,12 +639,12 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
             id: expr_ids.next(),
         },
         PureExpr::RecordLiteral {
-            record_name,
+            type_name,
             fields,
             typ,
             ..
         } => PureExpr::RecordLiteral {
-            record_name: record_name.clone(),
+            type_name: type_name.clone(),
             fields: fields
                 .iter()
                 .map(|(name, value)| (name.clone(), instantiate(value, expr_ids)))

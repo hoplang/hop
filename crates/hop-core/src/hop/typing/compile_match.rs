@@ -107,7 +107,7 @@ pub struct OptionNoneCase {
 /// A case for an enum variant - may have multiple field bindings.
 #[derive(Clone, Debug)]
 pub struct EnumCase {
-    pub enum_name: TypeName,
+    pub type_name: TypeName,
     pub variant_name: TypeName,
     /// Bindings for each field in the variant.
     pub bindings: Vec<FieldBinding>,
@@ -457,7 +457,7 @@ fn compile_rows(
                     .collect();
                 (
                     Constructor::EnumVariant {
-                        enum_name: name.clone(),
+                        type_name: name.clone(),
                         variant_name: variant.name.clone(),
                     },
                     field_vars,
@@ -637,7 +637,7 @@ fn compile_rows(
                         })
                         .collect();
                     EnumCase {
-                        enum_name: name.clone(),
+                        type_name: name.clone(),
                         variant_name,
                         bindings,
                         body: body.unwrap(),
@@ -893,7 +893,7 @@ mod tests {
                     };
                     out.push_str(&format!(
                         "{}{} is {}::{}{}\n",
-                        pad, variable.id, case.enum_name, case.variant_name, args
+                        pad, variable.id, case.type_name, case.variant_name, args
                     ));
                     out.push_str(&format_decision(&case.body, indent + 1));
                 }

@@ -970,7 +970,7 @@ impl Transpiler for TsTranspiler {
                     .iter()
                     .map(|arm| match &arm.pattern {
                         EnumPattern::Variant {
-                            enum_name: _,
+                            type_name: _,
                             variant_name,
                         } => {
                             // Generate binding destructuring if there are bindings
@@ -1518,7 +1518,7 @@ impl Transpiler for TsTranspiler {
                     arms.iter()
                         .map(|arm| match &arm.pattern {
                             EnumPattern::Variant {
-                                enum_name: _,
+                                type_name: _,
                                 variant_name,
                             } => {
                                 if arm.bindings.is_empty() {

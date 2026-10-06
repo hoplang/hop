@@ -112,8 +112,8 @@ pub struct ParsedImportDeclaration {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedRecordDeclaration {
-    pub name: TypeName,
-    pub name_range: DocumentRange,
+    pub type_name: TypeName,
+    pub type_name_range: DocumentRange,
     pub range: DocumentRange,
     pub fields: Vec<ParsedFieldDeclaration>,
     pub pub_range: Option<DocumentRange>,
@@ -129,8 +129,8 @@ pub struct ParsedRecordDeclaration {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedEnumDeclaration {
-    pub name: TypeName,
-    pub name_range: DocumentRange,
+    pub type_name: TypeName,
+    pub type_name_range: DocumentRange,
     pub range: DocumentRange,
     pub variants: Vec<ParsedEnumDeclarationVariant>,
     pub pub_range: Option<DocumentRange>,
@@ -234,7 +234,8 @@ impl ParsedAst {
 
     /// Finds a record declaration by name.
     pub fn find_record_declaration(&self, name: &str) -> Option<&ParsedRecordDeclaration> {
-        self.record_declarations().find(|r| r.name() == name)
+        self.record_declarations()
+            .find(|r| r.type_name.as_str() == name)
     }
 
     /// Returns an iterator over all import declarations in the AST.
@@ -255,7 +256,8 @@ impl ParsedAst {
 
     /// Finds an enum declaration by name.
     pub fn find_enum_declaration(&self, name: &str) -> Option<&ParsedEnumDeclaration> {
-        self.enum_declarations().find(|e| e.name() == name)
+        self.enum_declarations()
+            .find(|e| e.type_name.as_str() == name)
     }
 
     /// Returns an iterator over all enum declarations in the AST.
@@ -332,10 +334,6 @@ impl ParsedFieldDeclaration {
 }
 
 impl ParsedRecordDeclaration {
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let pub_prefix = if self.pub_range.is_some() {
             BoxDoc::text("pub").append(BoxDoc::space())
@@ -345,7 +343,7 @@ impl ParsedRecordDeclaration {
         pub_prefix
             .append(BoxDoc::text("record"))
             .append(BoxDoc::space())
-            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::text(self.type_name.as_str()))
             .append(BoxDoc::space())
             .append(BoxDoc::text("{"))
             .append(if self.fields.is_empty() {
@@ -385,10 +383,6 @@ impl ParsedEnumDeclarationVariant {
 }
 
 impl ParsedEnumDeclaration {
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let pub_prefix = if self.pub_range.is_some() {
             BoxDoc::text("pub").append(BoxDoc::space())
@@ -398,7 +392,7 @@ impl ParsedEnumDeclaration {
         pub_prefix
             .append(BoxDoc::text("enum"))
             .append(BoxDoc::space())
-            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::text(self.type_name.as_str()))
             .append(BoxDoc::space())
             .append(BoxDoc::text("{"))
             .append(if self.variants.is_empty() {

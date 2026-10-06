@@ -181,25 +181,25 @@ fn typecheck_module(
                 continue;
             }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
-                name,
-                name_range,
+                type_name,
+                type_name_range,
                 pub_range,
                 ..
             })
             | ParsedDeclaration::Enum(ParsedEnumDeclaration {
-                name,
-                name_range,
+                type_name,
+                type_name_range,
                 pub_range,
                 ..
             }) => (
-                name.to_cheap_string(),
-                name_range,
+                type_name.to_cheap_string(),
+                type_name_range,
                 NameKind::Type(Type::Named {
                     module: document_id.clone(),
-                    name: name.clone(),
+                    name: type_name.clone(),
                 }),
                 Some(Export::Type {
-                    definition_range: name_range.clone(),
+                    definition_range: type_name_range.clone(),
                     is_pub: pub_range.is_some(),
                 }),
             ),
@@ -399,8 +399,8 @@ fn typecheck_record_declaration(
     definition_links: &mut Vec<DefinitionLink>,
 ) {
     let ParsedRecordDeclaration {
-        name: record_name,
-        name_range: record_name_range,
+        type_name,
+        type_name_range,
         fields,
         ..
     } = record;
@@ -422,15 +422,15 @@ fn typecheck_record_declaration(
 
     registry.insert(
         document_id.clone(),
-        record_name.clone(),
+        type_name.clone(),
         TypeDef::Record {
             fields: typed_fields,
         },
     );
 
     definition_links.push(DefinitionLink {
-        use_range: record_name_range.clone(),
-        definition_range: record_name_range.clone(),
+        use_range: type_name_range.clone(),
+        definition_range: type_name_range.clone(),
     });
 }
 
@@ -443,8 +443,8 @@ fn typecheck_enum_declaration(
     definition_links: &mut Vec<DefinitionLink>,
 ) {
     let ParsedEnumDeclaration {
-        name: enum_name,
-        name_range: enum_name_range,
+        type_name,
+        type_name_range,
         variants,
         ..
     } = enum_decl;
@@ -479,15 +479,15 @@ fn typecheck_enum_declaration(
 
     registry.insert(
         document_id.clone(),
-        enum_name.clone(),
+        type_name.clone(),
         TypeDef::Enum {
             variants: typed_variants,
         },
     );
 
     definition_links.push(DefinitionLink {
-        use_range: enum_name_range.clone(),
-        definition_range: enum_name_range.clone(),
+        use_range: type_name_range.clone(),
+        definition_range: type_name_range.clone(),
     });
 }
 
@@ -1052,11 +1052,8 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
 
 fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
     match expr {
-        ParsedExpr::RecordLiteral { record_name, .. } => {
-            out.insert(record_name.to_cheap_string());
-        }
-        ParsedExpr::EnumLiteral { enum_name, .. } => {
-            out.insert(enum_name.to_cheap_string());
+        ParsedExpr::RecordLiteral { type_name, .. } | ParsedExpr::EnumLiteral { type_name, .. } => {
+            out.insert(type_name.to_cheap_string());
         }
         ParsedExpr::Match { arms, .. } => {
             for arm in arms {

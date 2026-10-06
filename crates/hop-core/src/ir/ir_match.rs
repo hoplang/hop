@@ -8,7 +8,7 @@ use crate::symbols::type_name::TypeName;
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumPattern {
     Variant {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
     },
 }

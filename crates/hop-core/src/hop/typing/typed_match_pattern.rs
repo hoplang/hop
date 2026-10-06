@@ -17,7 +17,7 @@ pub enum Constructor {
     OptionNone,
     /// An enum variant pattern, e.g. `Color::Red`
     EnumVariant {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
     },
     /// A record pattern, e.g. `User {name: x, age: y}`
@@ -30,9 +30,9 @@ impl Constructor {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             Constructor::EnumVariant {
-                enum_name,
+                type_name,
                 variant_name,
-            } => BoxDoc::text(enum_name.as_str().to_string())
+            } => BoxDoc::text(type_name.as_str().to_string())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
             Constructor::BooleanTrue => BoxDoc::text("true"),

@@ -400,10 +400,8 @@ pub trait Transpiler {
                 }
             },
             WriterExpr::RecordLiteral {
-                record_name,
-                fields,
-                ..
-            } => self.transpile_record_literal(arena, record_name.as_str(), fields),
+                type_name, fields, ..
+            } => self.transpile_record_literal(arena, type_name.as_str(), fields),
             WriterExpr::StringConcat { parts, .. } => self.transpile_string_concat(arena, parts),
             WriterExpr::BooleanNegation { operand, .. } => self.transpile_not(arena, operand),
             WriterExpr::NumericNegation {
@@ -479,13 +477,13 @@ pub trait Transpiler {
                 NumericType::Float => self.transpile_float_multiply(arena, left, right),
             },
             WriterExpr::EnumLiteral {
-                enum_name,
+                type_name,
                 variant_name,
                 fields,
                 ..
             } => self.transpile_enum_literal(
                 arena,
-                enum_name.as_str(),
+                type_name.as_str(),
                 variant_name.as_str(),
                 fields,
             ),

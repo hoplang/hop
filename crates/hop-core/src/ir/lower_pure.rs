@@ -369,12 +369,12 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
         },
 
         PureExpr::RecordLiteral {
-            record_name,
+            type_name,
             fields,
             typ,
             ..
         } => WriterExpr::RecordLiteral {
-            record_name,
+            type_name,
             fields: fields
                 .into_iter()
                 .map(|(name, value)| (name, lower_value(value)))
@@ -383,13 +383,13 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
         },
 
         PureExpr::EnumLiteral {
-            enum_name,
+            type_name,
             variant_name,
             fields,
             typ,
             ..
         } => WriterExpr::EnumLiteral {
-            enum_name,
+            type_name,
             variant_name,
             fields: fields
                 .into_iter()

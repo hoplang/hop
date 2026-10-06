@@ -11,15 +11,15 @@ impl Program {
 
         // Check if cursor is on a record declaration name
         for record in ast.record_declarations() {
-            if record.name_range.contains_position(position) {
-                return Some(self.collect_record_rename_locations(&record.name, document_id));
+            if record.type_name_range.contains_position(position) {
+                return Some(self.collect_record_rename_locations(&record.type_name, document_id));
             }
         }
 
         // Check if cursor is on an enum declaration name
         for enum_decl in ast.enum_declarations() {
-            if enum_decl.name_range.contains_position(position) {
-                return Some(self.collect_enum_rename_locations(&enum_decl.name, document_id));
+            if enum_decl.type_name_range.contains_position(position) {
+                return Some(self.collect_enum_rename_locations(&enum_decl.type_name, document_id));
             }
         }
 
@@ -62,8 +62,8 @@ impl Program {
 
         let mut declaration_names = ast
             .record_declarations()
-            .map(|record| &record.name_range)
-            .chain(ast.enum_declarations().map(|e| &e.name_range))
+            .map(|record| &record.type_name_range)
+            .chain(ast.enum_declarations().map(|e| &e.type_name_range))
             .chain(ast.function_declarations().map(|f| &f.name_range));
 
         let range = match declaration_names.find(|r| r.contains_position(position)) {
@@ -109,7 +109,7 @@ impl Program {
             .parsed_asts
             .get(definition_module)
             .and_then(|module| module.find_record_declaration(record_name.as_str()))
-            .map(|decl| &decl.name_range);
+            .map(|decl| &decl.type_name_range);
 
         let Some(definition_range) = definition_range else {
             return Vec::new();
@@ -139,7 +139,7 @@ impl Program {
             .parsed_asts
             .get(definition_module)
             .and_then(|module| module.find_enum_declaration(enum_name.as_str()))
-            .map(|decl| &decl.name_range);
+            .map(|decl| &decl.type_name_range);
 
         let Some(definition_range) = definition_range else {
             return Vec::new();

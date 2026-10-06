@@ -188,7 +188,7 @@ pub enum PureExpr {
 
     /// A RecordLiteral expression.
     RecordLiteral {
-        record_name: TypeName,
+        type_name: TypeName,
         fields: Vec<(FieldName, PureExpr)>,
         typ: Type,
         id: ExprId,
@@ -196,7 +196,7 @@ pub enum PureExpr {
 
     /// An EnumLiteral expression.
     EnumLiteral {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, PureExpr)>,
@@ -738,12 +738,12 @@ impl PureExpr {
             },
 
             PureExpr::RecordLiteral {
-                record_name,
+                type_name,
                 fields,
                 typ,
                 id,
             } => PureExpr::RecordLiteral {
-                record_name,
+                type_name,
                 fields: fields
                     .into_iter()
                     .map(|(name, value)| (name, f(value)))
@@ -753,13 +753,13 @@ impl PureExpr {
             },
 
             PureExpr::EnumLiteral {
-                enum_name,
+                type_name,
                 variant_name,
                 fields,
                 typ,
                 id,
             } => PureExpr::EnumLiteral {
-                enum_name,
+                type_name,
                 variant_name,
                 fields: fields
                     .into_iter()
@@ -1098,14 +1098,12 @@ impl PureExpr {
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(index.to_string())),
             PureExpr::RecordLiteral {
-                record_name,
-                fields,
-                ..
+                type_name, fields, ..
             } => {
                 if fields.is_empty() {
-                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text(" {}"))
+                    BoxDoc::text(type_name.as_str()).append(BoxDoc::text(" {}"))
                 } else {
-                    BoxDoc::text(record_name.as_str())
+                    BoxDoc::text(type_name.as_str())
                         .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
@@ -1191,12 +1189,12 @@ impl PureExpr {
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
             PureExpr::EnumLiteral {
-                enum_name,
+                type_name,
                 variant_name,
                 fields,
                 ..
             } => {
-                let base = BoxDoc::text(enum_name.as_str())
+                let base = BoxDoc::text(type_name.as_str())
                     .append(BoxDoc::text("::"))
                     .append(BoxDoc::text(variant_name.as_str()));
                 if fields.is_empty() {
@@ -1266,10 +1264,10 @@ impl PureExpr {
                                 .map(|arm| {
                                     let pattern_doc = match &arm.pattern {
                                         EnumPattern::Variant {
-                                            enum_name,
+                                            type_name,
                                             variant_name,
                                         } => {
-                                            let base = BoxDoc::text(enum_name.as_str())
+                                            let base = BoxDoc::text(type_name.as_str())
                                                 .append(BoxDoc::text("::"))
                                                 .append(BoxDoc::text(variant_name.as_str()));
                                             if arm.bindings.is_empty() {

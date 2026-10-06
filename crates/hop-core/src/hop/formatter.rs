@@ -166,7 +166,7 @@ fn format_record_declaration<'a>(
     record: &'a ParsedRecordDeclaration,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    let leading_comments = drain_comments_before(arena, comments, record.name_range.start());
+    let leading_comments = drain_comments_before(arena, comments, record.type_name_range.start());
     let pub_prefix = if record.pub_range.is_some() {
         arena.text("pub ")
     } else {
@@ -176,7 +176,7 @@ fn format_record_declaration<'a>(
         .append(pub_prefix)
         .append(arena.text("record"))
         .append(arena.space())
-        .append(arena.text(record.name.as_str()))
+        .append(arena.text(record.type_name.as_str()))
         .append(arena.space())
         .append(arena.text("{"))
         .append(format_braced_list(
@@ -212,7 +212,7 @@ fn format_enum_declaration<'a>(
     e: &'a ParsedEnumDeclaration,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    let leading_comments = drain_comments_before(arena, comments, e.name_range.start());
+    let leading_comments = drain_comments_before(arena, comments, e.type_name_range.start());
     let pub_prefix = if e.pub_range.is_some() {
         arena.text("pub ")
     } else {
@@ -222,7 +222,7 @@ fn format_enum_declaration<'a>(
         .append(pub_prefix)
         .append(arena.text("enum"))
         .append(arena.space())
-        .append(arena.text(e.name.as_str()))
+        .append(arena.text(e.type_name.as_str()))
         .append(arena.space())
         .append(arena.text("{"))
         .append(format_braced_list(
@@ -1076,13 +1076,13 @@ fn format_expr<'a>(
             }
         }
         ParsedExpr::RecordLiteral {
-            record_name,
+            type_name,
             fields,
             spread,
             ..
         } => {
             if fields.is_empty() && spread.is_none() {
-                arena.text(record_name.as_str()).append(arena.text(" {}"))
+                arena.text(type_name.as_str()).append(arena.text(" {}"))
             } else {
                 // The spread is canonicalized to first position.
                 let mut fields_doc = arena.nil();
@@ -1101,7 +1101,7 @@ fn format_expr<'a>(
                         .append(format_expr(arena, &field.value, comments));
                 }
                 arena
-                    .text(record_name.as_str())
+                    .text(type_name.as_str())
                     .append(arena.text(" {"))
                     .append(soft_block(arena, fields_doc))
                     .append(arena.text("}"))
@@ -1133,13 +1133,13 @@ fn format_expr<'a>(
             comments,
         )),
         ParsedExpr::EnumLiteral {
-            enum_name,
+            type_name,
             variant_name,
             fields,
             ..
         } => {
             let base = arena
-                .text(enum_name.as_str())
+                .text(type_name.as_str())
                 .append(arena.text("::"))
                 .append(arena.text(variant_name.as_str()));
             if fields.is_empty() {

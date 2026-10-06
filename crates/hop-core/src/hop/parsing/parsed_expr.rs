@@ -65,22 +65,22 @@ pub enum ParsedExpr {
     },
 
     RecordLiteral {
-        record_name: TypeName,
-        record_name_range: DocumentRange,
+        type_name: TypeName,
+        type_name_range: DocumentRange,
         fields: Vec<ParsedFieldInitializer>,
         spread: Option<Box<Self>>,
         range: DocumentRange,
     },
 
     EnumLiteral {
-        enum_name: TypeName,
+        type_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<ParsedFieldInitializer>,
         /// Range of just the constructor (e.g., `Point::XY` without the field values)
         constructor_range: DocumentRange,
-        /// Range of just the enum name (e.g., `Point` in `Point::XY`)
-        enum_name_range: DocumentRange,
+        /// Range of just the type name (e.g., `Point` in `Point::XY`)
+        type_name_range: DocumentRange,
         range: DocumentRange,
     },
 
@@ -681,13 +681,13 @@ impl ParsedExpr {
                 )
                 .append(BoxDoc::text(")")),
             ParsedExpr::RecordLiteral {
-                record_name,
+                type_name,
                 fields,
                 spread,
                 ..
             } => {
                 if fields.is_empty() && spread.is_none() {
-                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text(" {}"))
+                    BoxDoc::text(type_name.as_str()).append(BoxDoc::text(" {}"))
                 } else {
                     // The spread is canonicalized to first position.
                     let entries = spread
@@ -698,7 +698,7 @@ impl ParsedExpr {
                                 .append(BoxDoc::text(": "))
                                 .append(field.value.to_doc())
                         }));
-                    BoxDoc::text(record_name.as_str())
+                    BoxDoc::text(type_name.as_str())
                         .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
@@ -732,12 +732,12 @@ impl ParsedExpr {
                 BoxDoc::text("-").append(operand.to_doc_in_slot(Self::PREFIX_BINDING_POWER))
             }
             ParsedExpr::EnumLiteral {
-                enum_name,
+                type_name,
                 variant_name,
                 fields,
                 ..
             } => {
-                let base = BoxDoc::text(enum_name.as_str())
+                let base = BoxDoc::text(type_name.as_str())
                     .append(BoxDoc::text("::"))
                     .append(BoxDoc::text(variant_name.as_str()));
                 if fields.is_empty() {
