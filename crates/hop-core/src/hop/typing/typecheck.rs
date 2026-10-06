@@ -11044,6 +11044,48 @@ mod tests {
         );
     }
 
+    // A parameter written where the rest is spread is written once, so the
+    // rest does not take the same name as an attribute for the callee's
+    // element either.
+    #[test]
+    fn rejects_rest_attribute_named_like_a_parameter_written_where_the_rest_is_spread() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String, ...rest) -> Html {
+                    <div ...rest>{title}</div>
+                }
+                fn Wrapper(...rest) -> Html {
+                    <Card title="w" ...rest/>
+                }
+                fn CallWrapper(...rest) -> Html {
+                    Card(title: "w", ...rest)
+                }
+                page Main() {
+                  fn body() -> Html {
+                      <>
+                        <Wrapper title="x"/>
+                        <CallWrapper Title="x"/>
+                      </>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Function Wrapper does not accept argument 'title'
+                  --> main.hop (line 13, col 18)
+                12 |       <>
+                13 |         <Wrapper title="x"/>
+                   |                  ^^^^^
+
+                error: Function CallWrapper does not accept argument 'Title'
+                  --> main.hop (line 14, col 22)
+                13 |         <Wrapper title="x"/>
+                14 |         <CallWrapper Title="x"/>
+                   |                      ^^^^^
+            "#]],
+        );
+    }
+
     #[test]
     fn accepts_forwarded_attr_distinct_from_pinned() {
         accept(

@@ -311,13 +311,11 @@ fn rest_target_signature(
                         element,
                         mut reserved,
                     } => {
+                        // A name written at the spread is not supplied again by
+                        // the rest, whether it passes a parameter of the callee
+                        // or an attribute, as at a spread into an element.
                         for attr in supplied_attrs {
-                            let names_callee_param = callee_sig
-                                .params
-                                .iter()
-                                .chain(&callee_sig.forwarded)
-                                .any(|p| p.name.as_str().eq_ignore_ascii_case(attr.as_str()));
-                            if !names_callee_param && !reserved.contains(attr) {
+                            if !reserved.contains(attr) {
                                 reserved.push(attr.clone());
                             }
                         }

@@ -388,8 +388,8 @@ not counted here, since it receives arguments by name only.
 An argument by name goes to the parameter of that name, compared ignoring case,
 so `f("Label": a)` passes `a` as the parameter `label`. A name that is not a
 parameter of `f` is a compile error, unless the
-[rest parameter](#rest-parameters) of `f` collects it as an attribute. A name
-that is not a `LowercaseIdentifier`, such as `aria-label`, or that is a
+[rest parameter](#rest-parameters) of `f` collects it. A name that is not a
+`LowercaseIdentifier`, such as `aria-label`, or that is a
 [keyword or reserved word](#keywords), such as `for`, is written in quotes, as
 in `f("aria-label": a)`, and a quoted name is the same name as the one without
 quotes.
@@ -1109,14 +1109,13 @@ attribute written more than once in a start tag, as in `<div id="a" id="b">` or
 
 #### Rest parameters
 
-A rest parameter `...rest` is the last parameter, and collects the attributes a
-caller passes that are not parameters of the function, written on a markup call
-or as named arguments of a call expression. The body spreads it, as
+A rest parameter `...rest` is the last parameter, and collects the arguments a
+caller passes by name that are not parameters of the function, whether written
+as attributes of a markup call or in a call expression. The body spreads it, as
 `...rest`, in the start tag of an element or markup call, or in the arguments
-of a call expression, where the collected attributes are placed as if written
-there. A rest parameter that is not the
-last parameter, or that the body does not spread exactly once, is a compile
-error. For example:
+of a call expression, where the collected arguments are placed as if written
+there. A rest parameter that is not the last parameter, or that the body does
+not spread exactly once, is a compile error. For example:
 
 ```hop
 fn Button(
@@ -1146,7 +1145,7 @@ Exactly once means once in the source text, not once per evaluation: a spread
 in each arm of a `match` is a compile error, while a single spread inside a
 `for` body is allowed, and adds the attributes on every iteration.
 
-A rest parameter accepts the attributes that the [element](#attributes) or
+A rest parameter accepts the names that the [element](#attributes) or
 [function](#markup-call-expressions) it is spread into accepts, except those
 written in the same start tag or call expression. For example, `class` is
 written on the `<button>` where `Button` spreads `rest`, so `Button` does not
@@ -1163,6 +1162,60 @@ fn Button(
 }
 
 <Button kind="k" class="c"/> // error: Function Button does not accept argument 'class'
+```
+
+Spread into a function, a rest parameter carries the parameters of that
+function that are not written in the same start tag or call expression, each
+with its type, and required if it is required there. In the example below,
+`title` is a parameter of `Card` that `Panel` carries, while `id` goes on to the
+`<div>` through the rest parameter of `Card`:
+
+```hop
+fn Card(
+  title: String,
+  ...rest,
+) -> Html {
+  <div ...rest>
+    {title}
+  </div>
+}
+
+fn Panel(...rest) -> Html {
+  <section>
+    <Card ...rest/>
+  </section>
+}
+
+<Panel title="Home" id="p"/> // <section><div id="p">Home</div></section>
+Panel(title: "Home")         // <section><div>Home</div></section>
+<Panel title={1}/>           // error: Expected String got Int
+<Panel id="p"/>              // error: Function Panel requires arguments: title
+```
+
+The parameter `children` is carried in the same way, unless the spread is in a
+markup call with an end tag, which passes `children` itself, even when it has
+no content:
+
+```hop
+fn Callout(children: Html) -> Html {
+  <aside>
+    {children}
+  </aside>
+}
+
+fn Tip(...rest) -> Html {
+  <Callout ...rest/>
+}
+
+fn Warning(...rest) -> Html {
+  <Callout ...rest>
+    <b>Warning</b>
+  </Callout>
+}
+
+<Tip><b>x</b></Tip> // <aside><b>x</b></aside>
+<Warning/>          // <aside><b>Warning</b></aside>
+<Warning></Warning> // error: Function Warning does not accept argument 'children'
 ```
 
 Spreading rest parameters in a cycle is a compile error:
