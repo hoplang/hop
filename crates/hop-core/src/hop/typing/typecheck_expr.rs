@@ -54,7 +54,7 @@ pub fn typecheck_expr(
             value: var_name, ..
         } => {
             if let Some(entry) = var_env.lookup(var_name) {
-                annotations.push(HoverAnnotation::TypeForVarName {
+                annotations.push(HoverAnnotation::VarName {
                     range: parsed_expr.range().clone(),
                     typ: entry.typ.clone(),
                     var_name: var_name.clone(),
@@ -583,7 +583,7 @@ pub fn typecheck_expr(
             let record_type = record_type.clone();
 
             // Add type annotation and definition link for the record name
-            annotations.push(HoverAnnotation::TypeForTypeName {
+            annotations.push(HoverAnnotation::TypeName {
                 range: type_name_range.clone(),
                 typ: record_type.clone(),
                 type_name: type_name.clone(),
@@ -786,7 +786,7 @@ pub fn typecheck_expr(
             let enum_type = enum_type.clone();
 
             // Add type annotation and definition link for the constructor
-            annotations.push(HoverAnnotation::TypeForTypeName {
+            annotations.push(HoverAnnotation::TypeName {
                 range: constructor_range.clone(),
                 typ: enum_type.clone(),
                 type_name: type_name.clone(),
@@ -1006,7 +1006,7 @@ pub fn typecheck_expr(
                 )
                 .is_ok();
             if pushed {
-                annotations.push(HoverAnnotation::TypeForVarName {
+                annotations.push(HoverAnnotation::VarName {
                     range: binding.var_name_range.clone(),
                     typ: binding_type,
                     var_name: binding.var_name.clone(),
@@ -1176,7 +1176,7 @@ pub fn typecheck_expr(
                     var_name_range.clone(),
                 ) {
                     Ok(_) => {
-                        annotations.push(HoverAnnotation::TypeForVarName {
+                        annotations.push(HoverAnnotation::VarName {
                             range: var_name_range.clone(),
                             typ: element_type,
                             var_name: var_name.clone(),

@@ -75,7 +75,7 @@ pub fn typecheck_match(
         for (name, typ, range) in bindings {
             match var_env.push(name.clone(), typ.clone(), range.clone()) {
                 Ok(_) => {
-                    annotations.push(HoverAnnotation::TypeForVarName {
+                    annotations.push(HoverAnnotation::VarName {
                         range,
                         typ,
                         var_name: name,

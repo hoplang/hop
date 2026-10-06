@@ -649,7 +649,7 @@ fn typecheck_page_declaration(
             ));
         }
 
-        annotations.push(HoverAnnotation::TypeForVarName {
+        annotations.push(HoverAnnotation::VarName {
             range: param.var_name_range.clone(),
             typ: param_type.clone(),
             var_name: param.var_name.clone(),
@@ -774,7 +774,7 @@ fn create_function_signature<'a>(
             asset_references,
         );
 
-        annotations.push(HoverAnnotation::TypeForVarName {
+        annotations.push(HoverAnnotation::VarName {
             range: param.var_name_range.clone(),
             typ: param_type.clone(),
             var_name: param.var_name.clone(),

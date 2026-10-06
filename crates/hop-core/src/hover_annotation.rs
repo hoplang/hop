@@ -6,12 +6,12 @@ use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
 pub enum HoverAnnotation {
-    TypeForTypeName {
+    TypeName {
         typ: Type,
         type_name: TypeName,
         range: DocumentRange,
     },
-    TypeForVarName {
+    VarName {
         typ: Type,
         var_name: VarName,
         range: DocumentRange,
@@ -27,8 +27,8 @@ impl HoverAnnotation {
     pub fn range(&self) -> &DocumentRange {
         match self {
             HoverAnnotation::Description { range, .. } => range,
-            HoverAnnotation::TypeForVarName { range, .. } => range,
-            HoverAnnotation::TypeForTypeName { range, .. } => range,
+            HoverAnnotation::VarName { range, .. } => range,
+            HoverAnnotation::TypeName { range, .. } => range,
         }
     }
 }
@@ -40,14 +40,14 @@ impl Display for HoverAnnotation {
             // | ```
             // | var_name : type
             // | ```
-            HoverAnnotation::TypeForVarName { var_name, typ, .. } => {
+            HoverAnnotation::VarName { var_name, typ, .. } => {
                 write!(f, "```\n{} : {}\n```", var_name, typ)
             }
             // Render as:
             // | ```
             // | type_name : type
             // | ```
-            HoverAnnotation::TypeForTypeName { type_name, typ, .. } => {
+            HoverAnnotation::TypeName { type_name, typ, .. } => {
                 write!(f, "```\n{} : {}\n```", type_name, typ)
             }
             // Render as:
