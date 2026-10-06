@@ -4,6 +4,7 @@ use super::parsed_node::{ParsedLetBinding, ParsedNode, braced_doc};
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::uncooked_string::UncookedString;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -149,7 +150,7 @@ pub enum ParsedExpr {
     },
 
     FunctionCall {
-        name: VarName,
+        name: FunctionName,
         name_range: DocumentRange,
         args: ParsedArguments,
         range: DocumentRange,

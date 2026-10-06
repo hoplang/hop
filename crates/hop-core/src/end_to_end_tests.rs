@@ -1776,6 +1776,57 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn call_expression_passes_empty_rest() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn A(...rest) -> Html {
+                  <div ...rest>
+                  </div>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    {A()}
+                  }
+                }
+            "#},
+            r#"<div></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn A@f0(rest@v0: Html) -> Html {
+                  write("<div")
+                  write_html(v0)
+                  write(">")
+                  write("</div>")
+                }
+                page Test() {
+                  call A@f0(rest = {})
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div></div>")
+                }
+                -- expected output --
+                <div></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn accepts_extra_attrs_when_rest_reaches_html() {
         check(
             indoc! {r#"

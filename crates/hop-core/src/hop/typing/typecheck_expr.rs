@@ -15,10 +15,9 @@ use crate::document::CheapString;
 use crate::hop::parsing::{ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource};
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
-use crate::hop::typing::{TypedExpr, TypedLoopSource, TypedRecordUpdateField};
+use crate::hop::typing::{TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
-use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
 /// Resolve a parsed Expr to a typed Expr.
@@ -1429,7 +1428,7 @@ pub fn typecheck_expr(
             args,
             range,
         } => {
-            let callee = FunctionName::from(name.clone());
+            let callee = name.clone();
             let Some(signature) = type_env.functions.get(name.as_str()) else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedFunction {
@@ -1525,11 +1524,23 @@ pub fn typecheck_expr(
                 return None;
             }
 
+            // A call expression writes no attributes, so a callee that
+            // declares a rest receives an empty one, as `<F/>` passes.
+            let rest = signature.rest_param.clone().map(|rest_param| {
+                (
+                    rest_param,
+                    TypedAttrs {
+                        attributes: Vec::new(),
+                        spread: None,
+                    },
+                )
+            });
+
             Some(TypedExpr::FunctionCall {
                 function_name: callee,
                 module: callee_module,
                 args: typed_args?,
-                rest: None,
+                rest,
                 typ: signature.return_type.clone(),
             })
         }

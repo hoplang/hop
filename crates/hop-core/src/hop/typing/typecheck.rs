@@ -1990,6 +1990,132 @@ mod tests {
     }
 
     #[test]
+    fn accepts_call_of_uppercase_function_with_named_arguments() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Label(name: String) -> String {
+                  name + "!"
+                }
+
+                fn Main() -> Html {
+                  <p>{Label(name: "a < b")}</p>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Label(name: String) -> String {
+                  (name + "!")
+                }
+
+                fn Main() -> Html {
+                  html(tag: "p", attrs: [], children: concat(escape(Label(name: "a < b"))))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_call_of_uppercase_function_with_positional_arguments() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Count(a: Int, b: Int) -> Int {
+                  a + b
+                }
+
+                fn Main() -> Html {
+                  <p>{Count(1, 2).to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Count(a: Int, b: Int) -> Int {
+                  (a + b)
+                }
+
+                fn Main() -> Html {
+                  html(
+                    tag: "p",
+                    attrs: [],
+                    children: concat(escape(Count(a: 1, b: 2).to_string())),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_call_of_uppercase_function_returning_html() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(children: Html) -> Html {
+                  <div>{children}</div>
+                }
+
+                fn Main() -> Html {
+                  Card(children: <p>hi</p>)
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Card(children: Html) -> Html {
+                  html(tag: "div", attrs: [], children: concat(children))
+                }
+
+                fn Main() -> Html {
+                  Card(children: html(tag: "p", attrs: [], children: concat(raw("hi"))))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_of_undefined_uppercase_function() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+
+                fn Main() -> Html {
+                  <p>{User(name: "x")}</p>
+                }
+            "#},
+            expect![[r#"
+                error: Function User is not defined
+                  --> main.hop (line 4, col 7)
+                3 | fn Main() -> Html {
+                4 |   <p>{User(name: "x")}</p>
+                  |       ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_of_uppercase_function_with_wrong_argument_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Label(name: String) -> String {
+                  name
+                }
+
+                fn Main() -> Html {
+                  <p>{Label(name: 1)}</p>
+                }
+            "#},
+            expect![[r#"
+                error: Expected String got Int
+                  --> main.hop (line 6, col 19)
+                5 | fn Main() -> Html {
+                6 |   <p>{Label(name: 1)}</p>
+                  |                   ^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_markup_call_of_function_returning_int() {
         reject(
             indoc! {r#"

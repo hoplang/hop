@@ -371,7 +371,7 @@ A call expression `f(…)` evaluates to the value that the function `f` returns
 for its arguments, and has the return type of `f`.
 
 ```ebnf
-CallExpr  ::= LowercaseIdentifier "(" Arguments? ")"
+CallExpr  ::= ( LowercaseIdentifier | UppercaseIdentifier ) "(" Arguments? ")"
 Arguments ::= Expr ( "," Expr )* ","?
             | LowercaseIdentifier ":" Expr ( "," LowercaseIdentifier ":" Expr )* ","?
 ```
@@ -380,8 +380,8 @@ Arguments ::= Expr ( "," Expr )* ","?
 that mixes the two is a compile error, and so is leaving out a parameter that
 has no default value.
 
-Only functions with lowercase names can be called this way. Functions with
-uppercase names are called by [markup calls](#markup-call-expressions).
+A function with an uppercase name can also be called by a
+[markup call](#markup-call-expressions).
 
 <a id="macro-expressions"></a>
 
@@ -1271,9 +1271,9 @@ Variant  ::= UppercaseIdentifier ( "{" ( FieldDecl ( "," FieldDecl )* ","? )? "}
 
 ### Function declarations
 
-A function declaration `fn f(…) -> T { … }` declares the function `f`. A
-lowercase function is [called as `f(…)`](#call-expressions), and an uppercase
-function is [called by a markup call](#markup-call-expressions).
+A function declaration `fn f(…) -> T { … }` declares the function `f`, which
+is [called as `f(…)`](#call-expressions). A function with an uppercase name can
+also be [called by a markup call](#markup-call-expressions).
 
 ```ebnf
 FunctionDecl ::= "pub"? "fn" ( LowercaseIdentifier | UppercaseIdentifier ) "(" ( Param ( "," Param )* ","? )? ")" "->" Type BlockExpr

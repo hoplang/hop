@@ -175,6 +175,32 @@ fn f() -> Int {
               (string_content))))))))
 
 ================================================================================
+call of an uppercase function
+================================================================================
+
+fn f() -> Int {
+  Count(a: 1, b: 2)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (call_expression
+        (type_identifier)
+        (arguments
+          (named_argument
+            (identifier)
+            (integer_literal))
+          (named_argument
+            (identifier)
+            (integer_literal)))))))
+
+================================================================================
 tuple expressions and a parenthesized expression
 ================================================================================
 

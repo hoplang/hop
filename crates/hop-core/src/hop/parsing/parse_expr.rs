@@ -1,6 +1,7 @@
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -302,11 +303,15 @@ pub fn parse_primary(
     } else if let Some((name, name_range)) =
         next_if_map(iter, comments, errors, LangToken::uppercase_identifier)
     {
-        let type_name = TypeName::new(name).or_emit(errors, &name_range)?;
-        if next_if_eq(iter, comments, errors, LangToken::ColonColon).is_some() {
-            parse_enum_literal(iter, comments, errors, type_name, name_range, restrictions)?
+        if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
+            parse_function_call(iter, comments, errors, name, name_range, left_paren)?
         } else {
-            parse_record_literal(iter, comments, errors, type_name, name_range, restrictions)?
+            let type_name = TypeName::new(name).or_emit(errors, &name_range)?;
+            if next_if_eq(iter, comments, errors, LangToken::ColonColon).is_some() {
+                parse_enum_literal(iter, comments, errors, type_name, name_range, restrictions)?
+            } else {
+                parse_record_literal(iter, comments, errors, type_name, name_range, restrictions)?
+            }
         }
     } else if let Some((value, lit_range)) =
         next_if_map(iter, comments, errors, |token| match token {
@@ -513,7 +518,7 @@ fn parse_function_call(
         }
     }
     Ok(ParsedExpr::FunctionCall {
-        name: VarName::new(name).or_emit(errors, &name_range)?,
+        name: FunctionName::new(name).or_emit(errors, &name_range)?,
         name_range: name_range.clone(),
         args: if is_named {
             ParsedArguments::Named(named)
@@ -1737,6 +1742,36 @@ mod tests {
             "foo(x: 1, y: bar)",
             expect![[r#"
                 foo(x: 1, y: bar)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_positional_call_of_uppercase_function() {
+        accept(
+            "Foo(1, x)",
+            expect![[r#"
+                Foo(1, x)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_named_call_of_uppercase_function() {
+        accept(
+            "Foo(x: 1, y: bar)",
+            expect![[r#"
+                Foo(x: 1, y: bar)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_call_of_uppercase_function_without_arguments() {
+        accept(
+            "Foo()",
+            expect![[r#"
+                Foo()
             "#]],
         );
     }
