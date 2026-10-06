@@ -1344,24 +1344,6 @@ fn Tree(item: Item) -> Html {
 
 An implementation does not check that recursion terminates.
 
-A markup call inserts the value of the function as a
-[markup interpolation](#markup-interpolations) does, so an uppercase function
-called by a markup call returns `Html` or `String`. Calling an uppercase
-function that returns another type by a markup call is a compile error:
-
-```hop
-fn Label() -> String {
-  "a < b"
-}
-
-fn Count() -> Int {
-  1
-}
-
-<Label/>  // a &lt; b
-<Count/>  // error: Expected String or Html got Int
-```
-
 <a id="page-declarations"></a>
 
 ### Page declarations
