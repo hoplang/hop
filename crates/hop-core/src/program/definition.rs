@@ -209,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_component_definition_opening_tag() {
+    fn should_find_definition_from_uppercase_function_definition_name() {
         check(
             indoc! {r#"
                 -- main.hop --

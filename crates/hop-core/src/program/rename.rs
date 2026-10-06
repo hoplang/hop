@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_rename_locations_from_component_definition() {
+    fn should_find_rename_locations_from_function_definition() {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
@@ -321,7 +321,7 @@ mod tests {
     // the same name as a module in some other function, the module in
     // the other function is left unchanged.
     #[test]
-    fn should_scope_rename_locations_to_component_definition_module() {
+    fn should_scope_rename_locations_to_function_definition_module() {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
@@ -745,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_renameable_symbol_from_component_definition() {
+    fn should_find_renameable_symbol_from_function_definition() {
         check_renameable_symbol(
             indoc! {r#"
                 -- main.hop --

@@ -102,7 +102,8 @@ module.exports = grammar({
       seq(
         optional($.visibility_modifier),
         "fn",
-        // Capitalised function names are components, e.g. `fn Card(...)`.
+        // A function with a capitalised name, e.g. `fn Card(...)`, can also be
+        // called from markup.
         field("name", choice($.identifier, $.type_identifier)),
         field("parameters", $.parameters),
         // Permissive: the parser requires a return type.
@@ -367,10 +368,10 @@ module.exports = grammar({
     fragment_start: (_) => seq("<", ">"),
     fragment_end: (_) => seq("</", ">"),
 
-    // A capitalised tag names a component, and is highlighted like a call to
+    // A capitalised tag names a function, and is highlighted like a call to
     // one rather than like a type.
     _tag_name: ($) =>
-      choice($.tag_name, alias($.type_identifier, $.component_name)),
+      choice($.tag_name, alias($.type_identifier, $.function_name)),
 
     _markup_child: ($) =>
       choice(

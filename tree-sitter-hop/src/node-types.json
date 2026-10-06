@@ -204,7 +204,7 @@
     "named": true,
     "subtypes": [
       {
-        "type": "component_name",
+        "type": "function_name",
         "named": true
       },
       {
@@ -1693,10 +1693,6 @@
     "extra": true
   },
   {
-    "type": "component_name",
-    "named": true
-  },
-  {
     "type": "enum",
     "named": false
   },
@@ -1723,6 +1719,10 @@
   {
     "type": "for",
     "named": false
+  },
+  {
+    "type": "function_name",
+    "named": true
   },
   {
     "type": "identifier",

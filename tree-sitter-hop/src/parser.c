@@ -155,8 +155,8 @@ enum ts_symbol_identifiers {
   aux_sym_element_repeat1 = 133,
   aux_sym_start_tag_repeat1 = 134,
   aux_sym_string_literal_repeat1 = 135,
-  alias_sym_component_name = 136,
-  alias_sym_field_identifier = 137,
+  alias_sym_field_identifier = 136,
+  alias_sym_function_name = 137,
   alias_sym_interpolation = 138,
 };
 
@@ -297,8 +297,8 @@ static const char * const ts_symbol_names[] = {
   [aux_sym_element_repeat1] = "element_repeat1",
   [aux_sym_start_tag_repeat1] = "start_tag_repeat1",
   [aux_sym_string_literal_repeat1] = "string_literal_repeat1",
-  [alias_sym_component_name] = "component_name",
   [alias_sym_field_identifier] = "field_identifier",
+  [alias_sym_function_name] = "function_name",
   [alias_sym_interpolation] = "interpolation",
 };
 
@@ -439,8 +439,8 @@ static const TSSymbol ts_symbol_map[] = {
   [aux_sym_element_repeat1] = aux_sym_element_repeat1,
   [aux_sym_start_tag_repeat1] = aux_sym_start_tag_repeat1,
   [aux_sym_string_literal_repeat1] = aux_sym_string_literal_repeat1,
-  [alias_sym_component_name] = alias_sym_component_name,
   [alias_sym_field_identifier] = alias_sym_field_identifier,
+  [alias_sym_function_name] = alias_sym_function_name,
   [alias_sym_interpolation] = alias_sym_interpolation,
 };
 
@@ -997,11 +997,11 @@ static const TSSymbolMetadata ts_symbol_metadata[] = {
     .visible = false,
     .named = false,
   },
-  [alias_sym_component_name] = {
+  [alias_sym_field_identifier] = {
     .visible = true,
     .named = true,
   },
-  [alias_sym_field_identifier] = {
+  [alias_sym_function_name] = {
     .visible = true,
     .named = true,
   },
@@ -1191,7 +1191,7 @@ static const TSSymbol ts_alias_sequences[PRODUCTION_ID_COUNT][MAX_ALIAS_SEQUENCE
     [0] = alias_sym_field_identifier,
   },
   [11] = {
-    [0] = alias_sym_component_name,
+    [0] = alias_sym_function_name,
   },
   [13] = {
     [0] = alias_sym_interpolation,
@@ -1670,7 +1670,7 @@ static const TSSymbol ts_supertype_map_entries[] = {
     sym_variant_pattern,
     sym_wildcard_pattern,
   [41] =
-    alias_sym_component_name,
+    alias_sym_function_name,
     sym_tag_name,
   [43] =
     sym_generic_type,

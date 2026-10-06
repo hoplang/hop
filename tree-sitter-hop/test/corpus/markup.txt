@@ -1,5 +1,5 @@
 ================================================================================
-elements, components, void elements and fragments
+elements, markup calls, void elements and fragments
 ================================================================================
 
 fn f() -> Html {
@@ -39,7 +39,7 @@ fn f() -> Html {
         (text)
         (element
           (self_closing_tag
-            (component_name)))
+            (function_name)))
         (text)
         (fragment
           (fragment_start)

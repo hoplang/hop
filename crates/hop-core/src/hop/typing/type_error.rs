@@ -23,7 +23,7 @@ impl TypeError {
 
     pub fn import_cycle(
         importer_module: &str,
-        imported_component: &str,
+        imported_module: &str,
         cycle: &[String],
         range: DocumentRange,
     ) -> Self {
@@ -36,7 +36,7 @@ impl TypeError {
         TypeError::new(
             TypeErrorKind::ImportCycle {
                 importer_module: importer_module.to_string(),
-                imported_component: imported_component.to_string(),
+                imported_module: imported_module.to_string(),
                 cycle_display,
             },
             range,
@@ -89,11 +89,11 @@ pub enum TypeErrorKind {
     UnusedImport { import_name: CheapString },
 
     #[error(
-        "Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}"
+        "Import cycle: {importer_module} imports from {imported_module} which creates a dependency cycle: {cycle_display}"
     )]
     ImportCycle {
         importer_module: String,
-        imported_component: String,
+        imported_module: String,
         cycle_display: String,
     },
 

@@ -38,7 +38,7 @@
 
 (tag_name) @tag
 
-(component_name) @constructor
+(function_name) @constructor
 
 (attribute "=" @punctuation.delimiter)
 

@@ -8899,16 +8899,16 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   fn body() -> Html {
-                    <UndefinedComponent />
+                    <UndefinedFunction />
                   }
                 }
             "#},
             expect![[r#"
-                error: Function UndefinedComponent is not defined
+                error: Function UndefinedFunction is not defined
                   --> main.hop (line 3, col 6)
                 2 |   fn body() -> Html {
-                3 |     <UndefinedComponent />
-                  |      ^^^^^^^^^^^^^^^^^^
+                3 |     <UndefinedFunction />
+                  |      ^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -11192,7 +11192,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Index() -> Html {
-                    <div>Component</div>
+                    <div>Function</div>
                 }
 
                 page Index() {

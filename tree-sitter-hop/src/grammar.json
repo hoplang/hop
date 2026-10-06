@@ -2526,7 +2526,7 @@
             "name": "type_identifier"
           },
           "named": true,
-          "value": "component_name"
+          "value": "function_name"
         }
       ]
     },
