@@ -1115,7 +1115,6 @@ fn collect_names_in_pattern(pattern: &ParsedPattern, out: &mut HashSet<CheapStri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagnosticSeverity;
     use crate::Document;
     use crate::DocumentAnnotator;
     use crate::RootContainedFilePath;
@@ -1128,11 +1127,7 @@ mod tests {
     fn run_check(archive_str: &str) -> (String, bool) {
         let archive = Archive::from(archive_str);
         let mut ast_output = Vec::new();
-        let mut error_annotator = DocumentAnnotator::new()
-            .with_severity_label()
-            .with_lines_before(1)
-            .with_location();
-        let mut warning_annotator = DocumentAnnotator::new()
+        let mut annotator = DocumentAnnotator::new()
             .with_severity_label()
             .with_lines_before(1)
             .with_location();
@@ -1177,28 +1172,13 @@ mod tests {
             );
 
             if let Some(module_errors) = type_errors.get(&document_id) {
-                if !module_errors.is_empty() {
-                    let (real_errors, real_warnings): (Vec<_>, Vec<_>) = module_errors
-                        .iter()
-                        .partition(|e| e.severity() == DiagnosticSeverity::Error);
-
-                    if !real_errors.is_empty() {
-                        error_annotator.annotate(real_errors.iter().map(|e| e.to_diagnostic()));
-                    }
-                    if !real_warnings.is_empty() {
-                        warning_annotator.annotate(real_warnings.iter().map(|e| e.to_diagnostic()));
-                    }
-                }
+                annotator.annotate(module_errors.iter().map(|e| e.to_diagnostic()));
             }
         }
 
-        let has_diagnostics = !error_annotator.is_empty() || !warning_annotator.is_empty();
+        let has_diagnostics = !annotator.is_empty();
         let actual = if has_diagnostics {
-            let parts: Vec<String> = [error_annotator.render(), warning_annotator.render()]
-                .into_iter()
-                .filter(|s| !s.is_empty())
-                .collect();
-            parts.join("\n")
+            annotator.render()
         } else {
             for document_id in &document_ids {
                 if let Some(typed_module) = typed_modules.get(document_id) {
@@ -5659,15 +5639,15 @@ mod tests {
                 fn Baz() -> Html {<></>}
             "#},
             expect![[r#"
-                error: Module bar does not declare User
-                  --> baz.hop (line 1, col 13)
-                1 | import bar::User
-                  |             ^^^^
-
                 warning: Unused import 'User'
                   --> bar.hop (line 1, col 1)
                 1 | import foo::User
                   | ^^^^^^^^^^^^^^^^
+
+                error: Module bar does not declare User
+                  --> baz.hop (line 1, col 13)
+                1 | import bar::User
+                  |             ^^^^
             "#]],
         );
     }
@@ -5856,12 +5836,6 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Type 'Str' is not defined
-                  --> main.hop (line 5, col 7)
-                4 | record Page {
-                5 |   id: Str
-                  |       ^^^
-
                 warning: Unused import 'Button'
                   --> main.hop (line 1, col 1)
                 1 | import hop::button::Button
@@ -5872,6 +5846,12 @@ mod tests {
                 1 | import hop::button::Button
                 2 | import hop::input::Input
                   | ^^^^^^^^^^^^^^^^^^^^^^^^
+
+                error: Type 'Str' is not defined
+                  --> main.hop (line 5, col 7)
+                4 | record Page {
+                5 |   id: Str
+                  |       ^^^
             "#]],
         );
     }
@@ -6582,17 +6562,17 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Fallback values must be constant
-                  --> main.hop (line 4, col 24)
-                3 | }
-                4 | fn Main(msg?: String = greeting()) -> Html {
-                  |                        ^^^^^^^^^^
-
                 warning: Unused variable msg
                   --> main.hop (line 4, col 9)
                 3 | }
                 4 | fn Main(msg?: String = greeting()) -> Html {
                   |         ^^^
+
+                error: Fallback values must be constant
+                  --> main.hop (line 4, col 24)
+                3 | }
+                4 | fn Main(msg?: String = greeting()) -> Html {
+                  |                        ^^^^^^^^^^
             "#]],
         );
     }
@@ -6607,15 +6587,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Fallback values must be constant
-                  --> main.hop (line 1, col 24)
-                1 | fn Main(msg?: String = other) -> Html {
-                  |                        ^^^^^
-
                 warning: Unused variable msg
                   --> main.hop (line 1, col 9)
                 1 | fn Main(msg?: String = other) -> Html {
                   |         ^^^
+
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(msg?: String = other) -> Html {
+                  |                        ^^^^^
             "#]],
         );
     }
@@ -6630,11 +6610,6 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Fallback values must be constant
-                  --> main.hop (line 1, col 33)
-                1 | fn Main(a: String, b?: String = a) -> Html {
-                  |                                 ^
-
                 warning: Unused variable a
                   --> main.hop (line 1, col 9)
                 1 | fn Main(a: String, b?: String = a) -> Html {
@@ -6644,6 +6619,11 @@ mod tests {
                   --> main.hop (line 1, col 20)
                 1 | fn Main(a: String, b?: String = a) -> Html {
                   |                    ^
+
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 33)
+                1 | fn Main(a: String, b?: String = a) -> Html {
+                  |                                 ^
             "#]],
         );
     }
@@ -6658,15 +6638,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Fallback values must be constant
-                  --> main.hop (line 1, col 24)
-                1 | fn Main(msg?: String = "hi".to_uppercase()) -> Html {
-                  |                        ^^^^^^^^^^^^^^^^^^^
-
                 warning: Unused variable msg
                   --> main.hop (line 1, col 9)
                 1 | fn Main(msg?: String = "hi".to_uppercase()) -> Html {
                   |         ^^^
+
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(msg?: String = "hi".to_uppercase()) -> Html {
+                  |                        ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -6681,15 +6661,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Fallback values must be constant
-                  --> main.hop (line 1, col 24)
-                1 | fn Main(count?: Int = (1 + 2)) -> Html {
-                  |                        ^^^^^
-
                 warning: Unused variable count
                   --> main.hop (line 1, col 9)
                 1 | fn Main(count?: Int = (1 + 2)) -> Html {
                   |         ^^^^^
+
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(count?: Int = (1 + 2)) -> Html {
+                  |                        ^^^^^
             "#]],
         );
     }
@@ -6704,15 +6684,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Fallback values must be constant
-                  --> main.hop (line 1, col 24)
-                1 | fn Main(src?: String = asset!("/logo.png")) -> Html {
-                  |                        ^^^^^^^^^^^^^^^^^^^
-
                 warning: Unused variable src
                   --> main.hop (line 1, col 9)
                 1 | fn Main(src?: String = asset!("/logo.png")) -> Html {
                   |         ^^^
+
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(src?: String = asset!("/logo.png")) -> Html {
+                  |                        ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -6727,15 +6707,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Fallback values must be constant
-                  --> main.hop (line 1, col 24)
-                1 | fn Main(msg?: String = match true { true => "y", false => "n" }) -> Html {
-                  |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
                 warning: Unused variable msg
                   --> main.hop (line 1, col 9)
                 1 | fn Main(msg?: String = match true { true => "y", false => "n" }) -> Html {
                   |         ^^^
+
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(msg?: String = match true { true => "y", false => "n" }) -> Html {
+                  |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -6751,17 +6731,17 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Fallback values must be constant
-                  --> main.hop (line 2, col 27)
-                1 | record Config { name: String }
-                2 | fn Main(config?: Config = Config{...base, name: "x"}) -> Html {
-                  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-
                 warning: Unused variable config
                   --> main.hop (line 2, col 9)
                 1 | record Config { name: String }
                 2 | fn Main(config?: Config = Config{...base, name: "x"}) -> Html {
                   |         ^^^^^^
+
+                error: Fallback values must be constant
+                  --> main.hop (line 2, col 27)
+                1 | record Config { name: String }
+                2 | fn Main(config?: Config = Config{...base, name: "x"}) -> Html {
+                  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -6776,15 +6756,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Fallback values must be constant
-                  --> main.hop (line 1, col 33)
-                1 | fn Main(names?: Array[String] = ["a", other]) -> Html {
-                  |                                 ^^^^^^^^^^^^
-
                 warning: Unused variable names
                   --> main.hop (line 1, col 9)
                 1 | fn Main(names?: Array[String] = ["a", other]) -> Html {
                   |         ^^^^^
+
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 33)
+                1 | fn Main(names?: Array[String] = ["a", other]) -> Html {
+                  |                                 ^^^^^^^^^^^^
             "#]],
         );
     }
@@ -7389,6 +7369,12 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                warning: Unused variable unused
+                  --> main.hop (line 3, col 14)
+                2 |     match x {
+                3 |         Some(unused) => <>{missing}</>,
+                  |              ^^^^^^
+
                 error: Undefined variable: missing
                   --> main.hop (line 3, col 28)
                 2 |     match x {
@@ -7400,12 +7386,6 @@ mod tests {
                 3 |         Some(unused) => <>{missing}</>,
                 4 |         Colour::Red => <>red</>,
                   |         ^^^^^^
-
-                warning: Unused variable unused
-                  --> main.hop (line 3, col 14)
-                2 |     match x {
-                3 |         Some(unused) => <>{missing}</>,
-                  |              ^^^^^^
             "#]],
         );
     }
@@ -11950,16 +11930,16 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                warning: Unused import 'User'
+                  --> main.hop (line 1, col 1)
+                1 | import other::User
+                  | ^^^^^^^^^^^^^^^^^^
+
                 error: User is already defined
                   --> main.hop (line 3, col 8)
                 2 | 
                 3 | record User {
                   |        ^^^^
-
-                warning: Unused import 'User'
-                  --> main.hop (line 1, col 1)
-                1 | import other::User
-                  | ^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -12037,16 +12017,16 @@ mod tests {
                 enum Color {Red, Green, Blue}
             "#},
             expect![[r#"
+                warning: Unused import 'Color'
+                  --> main.hop (line 1, col 1)
+                1 | import other::Color
+                  | ^^^^^^^^^^^^^^^^^^^
+
                 error: Color is already defined
                   --> main.hop (line 3, col 6)
                 2 | 
                 3 | enum Color {Red, Green, Blue}
                   |      ^^^^^
-
-                warning: Unused import 'Color'
-                  --> main.hop (line 1, col 1)
-                1 | import other::Color
-                  | ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
