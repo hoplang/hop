@@ -1,14 +1,14 @@
-use super::{ParamEntry, Tail, Type, TypedExpr};
+use super::{Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedNode};
-use crate::hop::typing::type_env::TypeEnv;
+use crate::hop::typing::type_env::{ParamEntry, Tail, TypeEnv};
+use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{Argument, typecheck_call_arguments};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::variable_scope::VariableScope;
-use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{TypedAttribute, TypedAttrs};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;

@@ -3,9 +3,9 @@ use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedPattern;
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
+use crate::hop::typing::type_error::{TypeError, TypeErrorKind};
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::hop::typing::typed_pattern::{Constructor, TypedField, TypedPattern};
-use crate::hop::typing::{TypeError, TypeErrorKind};
 use crate::symbols::var_name::VarName;
 
 /// Typecheck a pattern against the type of the value it matches. Every

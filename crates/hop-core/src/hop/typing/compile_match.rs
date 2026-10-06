@@ -12,10 +12,10 @@
 //! introducing new match subjects.
 use std::collections::{HashMap, HashSet};
 
-use crate::hop::typing::Constructor;
-use crate::hop::typing::TypeErrorKind;
 use crate::hop::typing::r#type::Type;
+use crate::hop::typing::type_error::TypeErrorKind;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::typed_pattern::Constructor;
 use crate::hop::typing::typed_pattern::{TypedField, TypedPattern};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;

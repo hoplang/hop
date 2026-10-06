@@ -12,7 +12,7 @@ use super::type_env::{FunctionSignature, ParamEntry, Tail};
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedNode};
-use crate::hop::typing::{TypeError, TypeErrorKind};
+use crate::hop::typing::type_error::{TypeError, TypeErrorKind};
 use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;

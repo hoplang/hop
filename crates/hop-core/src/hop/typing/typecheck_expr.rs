@@ -14,7 +14,7 @@ use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::{ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource};
 use crate::hop::typing::type_env::TypeEnv;
-use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
+use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{TypedExpr, TypedLoopSource, TypedRecordUpdateField};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;

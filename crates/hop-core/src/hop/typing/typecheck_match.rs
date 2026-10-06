@@ -9,7 +9,7 @@ use crate::hop::parsing::{ParsedExpr, ParsedMatchArm};
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::{MatchErrorSite, compile_match};
 use crate::hop::typing::type_env::TypeEnv;
-use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
+use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::var_name::VarName;
 

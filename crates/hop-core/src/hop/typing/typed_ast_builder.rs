@@ -4,13 +4,13 @@ use std::rc::Rc;
 
 use crate::document::CheapString;
 use crate::hop::assembly::AssembledPageDeclaration;
-use crate::hop::typing::Constructor;
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::compile_match;
 use crate::hop::typing::type_registry::ResolvedType;
 use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::hop::typing::typed_ast::TypedParameter;
+use crate::hop::typing::typed_pattern::Constructor;
 use crate::hop::typing::typed_pattern::TypedPattern;
 use crate::hop::typing::{TypedAttribute, TypedAttrs, TypedLoopSource, TypedRecordUpdateField};
 use crate::html::HtmlElementKind;

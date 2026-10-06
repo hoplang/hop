@@ -7,7 +7,7 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
-use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
+use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;

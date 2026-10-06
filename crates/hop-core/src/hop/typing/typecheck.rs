@@ -1,4 +1,4 @@
-use super::{FunctionSignature, ParamEntry, Tail, Type, TypedExpr};
+use super::{Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
@@ -17,7 +17,8 @@ use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::rest_spread::{
     RestSpreadTarget, collect_spreads, pair_rest_spread, resolve_rest_targets,
 };
-use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
+use crate::hop::typing::type_env::{FunctionSignature, Name, NameKind, ParamEntry, Tail, TypeEnv};
+use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::type_registry::{
     EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
 };
@@ -26,7 +27,6 @@ use crate::hop::typing::typed_ast::{
     TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
 };
 use crate::hop::typing::variable_scope::VariableScope;
-use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hover_annotation::HoverAnnotation;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
