@@ -113,8 +113,8 @@ impl Program {
 
     /// Collects all locations where a function should be renamed, including:
     /// - The function definition
-    /// - All calls and tag invocations of the function (opening and closing
-    ///   tags)
+    /// - All call expressions and markup calls of the function (opening and
+    ///   closing tags)
     /// - All import statements that import the function
     fn collect_function_rename_locations(
         &self,
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_rename_locations_from_function_invocation() {
+    fn should_find_rename_locations_from_markup_call() {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_rename_locations_from_function_invocation_in_same_module() {
+    fn should_find_rename_locations_from_markup_call_in_same_module() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --

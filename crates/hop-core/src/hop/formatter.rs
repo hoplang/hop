@@ -4518,7 +4518,7 @@ mod tests {
     }
 
     #[test]
-    fn function_invocation_with_single_long_attribute() {
+    fn markup_call_with_single_long_attribute() {
         check(
             indoc! {r#"
                 fn Main() -> Html {
@@ -5366,7 +5366,7 @@ mod tests {
     }
 
     #[test]
-    fn html_comment_in_function_invocation_content() {
+    fn html_comment_in_markup_call_content() {
         check(
             indoc! {"
                 page Test() {
@@ -5406,7 +5406,7 @@ mod tests {
     }
 
     #[test]
-    fn spread_attribute_on_function_invocation_formats_correctly() {
+    fn spread_attribute_on_markup_call_formats_correctly() {
         check(
             indoc! {"
                 fn Bar(...rest) -> Html {

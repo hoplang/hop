@@ -2502,7 +2502,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_function_invoked_without_children() {
+    fn rejects_markup_call_without_children() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2759,7 +2759,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_an_undefined_function_is_invoked() {
+    fn rejects_markup_call_of_undefined_function() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2782,7 +2782,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_when_a_function_invokes_itself() {
+    fn accepts_when_a_function_calls_itself() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -8873,7 +8873,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_page_invoking_function() {
+    fn accepts_page_calling_function() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -10728,7 +10728,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_page_invoking_later_function() {
+    fn accepts_page_calling_later_function() {
         accept(
             indoc! {r#"
                 -- main.hop --

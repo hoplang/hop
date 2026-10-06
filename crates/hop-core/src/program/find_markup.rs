@@ -150,7 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_function_invocation() {
+    fn should_find_markup_call() {
         check_find_markup_at_position(
             indoc! {"
                 fn Main() -> Html {

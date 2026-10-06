@@ -57,7 +57,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_function_invocation_opening_tag() {
+    fn should_find_definition_from_markup_call_opening_tag() {
         check(
             indoc! {r#"
                 -- hop/components.hop --
@@ -83,7 +83,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_function_invocation_closing_tag() {
+    fn should_find_definition_from_markup_call_closing_tag() {
         check(
             indoc! {r#"
                 -- hop/components.hop --
@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_function_call() {
+    fn should_find_definition_from_call_expression() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_function_invocation_in_same_module_simple() {
+    fn should_find_definition_from_markup_call_in_same_module_simple() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_function_invocation_inside_match() {
+    fn should_find_definition_from_markup_call_inside_match() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -321,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_function_invocation_inside_page() {
+    fn should_find_definition_from_markup_call_inside_page() {
         check(
             indoc! {r#"
                 -- main.hop --

@@ -81,7 +81,7 @@ impl OpenElement {
 enum ElementHeader {
     /// A `<>`, which carries nothing at all.
     Fragment,
-    /// An uppercase tag, naming a function to invoke.
+    /// An uppercase tag, naming the function of a markup call.
     Function {
         name: Result<FunctionName, ErrorEmitted>,
         attributes: Vec<ParsedAttribute>,
@@ -435,8 +435,7 @@ fn parse_opening_tag(
         }
     }
 
-    // An uppercase tag names a function to invoke, anything else an HTML
-    // element.
+    // An uppercase tag starts a markup call, anything else an HTML element.
     let header = match tag_name_range.as_str() {
         name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
             ElementHeader::Function {

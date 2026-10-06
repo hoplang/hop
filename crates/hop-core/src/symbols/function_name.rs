@@ -18,8 +18,8 @@ pub enum InvalidFunctionNameError {
 /// A FunctionName represents a validated function name.
 ///
 /// A function name is either a `TypeName` (PascalCase) or a `VarName`
-/// (snake_case). Only the former can be invoked as a tag, since a lowercase
-/// tag is an HTML element.
+/// (snake_case). Only the former can be called by a markup call, since a
+/// lowercase tag is an HTML element.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct FunctionName {
     value: CheapString,
