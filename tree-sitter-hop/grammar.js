@@ -124,9 +124,10 @@ module.exports = grammar({
     parameter: ($) =>
       seq(
         field("name", $.identifier),
+        optional("?"),
         ":",
         field("type", $._type),
-        optional(seq("=", field("default", $._expression))),
+        optional(seq("=", field("fallback", $._expression))),
       ),
 
     rest_parameter: ($) => seq("...", field("name", $.identifier)),

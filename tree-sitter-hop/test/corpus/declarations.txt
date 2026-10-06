@@ -38,10 +38,10 @@ enum Color { Red, Rgb { r: Int } }
             (type_identifier)))))))
 
 ================================================================================
-function with default, rest parameter and tuple type
+function with optional parameter, rest parameter and tuple type
 ================================================================================
 
-pub fn label(prefix: String, count: Int = 2, ...rest) -> (String, Int) {
+pub fn label(prefix: String, count?: Int = 2, ...rest) -> (String, Int) {
   let x: Int = 1;
   prefix
 }

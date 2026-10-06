@@ -382,8 +382,8 @@ ArgumentName  ::= LowercaseIdentifier | '"' AttributeName '"'
 `f(a, b)` passes its arguments by position, and `f(x: a, y: b)` by name. A call
 that mixes the two is a compile error. So is an argument that does not have the
 type of its parameter, more arguments than `f` has parameters, a name given
-twice, ignoring case, and leaving out a parameter that has no default value. A
-rest parameter is not counted here, since it receives arguments by name only.
+twice, ignoring case, and leaving out a required parameter. A rest parameter is
+not counted here, since it receives arguments by name only.
 
 A name that is not a parameter of `f` is a compile error, unless the
 [rest parameter](#rest-parameters) of `f` collects it as an attribute. A name
@@ -1314,16 +1314,17 @@ also be [called by a markup call](#markup-call-expressions).
 
 ```ebnf
 FunctionDecl ::= "pub"? "fn" ( LowercaseIdentifier | UppercaseIdentifier ) "(" ( Param ( "," Param )* ","? )? ")" "->" Type BlockExpr
-Param        ::= LowercaseIdentifier ":" Type ( "=" Expr )?
+Param        ::= LowercaseIdentifier ":" Type
+               | LowercaseIdentifier "?" ":" Type "=" Expr
                | "..." LowercaseIdentifier
 ```
 
 A parameter has one of these forms:
 
 ```
-x: T       a parameter of type T
-x: T = v   a parameter with the default value v
-...x       a rest parameter
+x: T        a required parameter of type T
+x?: T = v   an optional parameter with the fallback value v
+...x        a rest parameter
 ```
 
 A function body that does not have the declared return type is a compile error:
@@ -1334,13 +1335,27 @@ fn answer() -> Int {
 }
 ```
 
-A default value that is not constant is a compile error. A constant is a
-literal, a numeric literal preceded by `-`, `<></>`, or an array, tuple, record,
-enum or option built from constants, without a `...` spread:
+A [call](#call-expressions) that leaves out an optional parameter passes its
+fallback value in its place:
 
 ```hop
-// error: Default values must be constant
-fn double(x: Int = 1 + 1) -> Int {
+fn greet(name?: String = "World") -> String {
+  format!("Hello, {}!", name)
+}
+
+greet()        // "Hello, World!"
+greet("Alice") // "Hello, Alice!"
+```
+
+A fallback value takes its context from the type of its parameter, as with a
+type annotation, and a fallback value of a different type is a compile error.
+So is a fallback value that is not constant. A constant is a literal, a numeric
+literal preceded by `-`, `<></>`, or an array, tuple, record, enum or option
+built from constants, without a `...` spread:
+
+```hop
+// error: Fallback values must be constant
+fn double(x?: Int = 1 + 1) -> Int {
   x * 2
 }
 ```
@@ -1373,8 +1388,8 @@ An implementation does not check that recursion terminates.
 
 A page declaration `page P(…) { … }` declares the page `P`. Its parameters are
 in scope in `head` and `body`, and [rendering](#rendering) the page produces an
-HTML document. A default value for a page parameter is a compile error, and so
-is a rest parameter.
+HTML document. An optional parameter on a page is a compile error, and so is a
+rest parameter.
 
 ```ebnf
 PageDecl   ::= "pub"? "page" UppercaseIdentifier ( "(" ( PageParam ( "," PageParam )* ","? )? ")" )? "{" PageMember* "}"

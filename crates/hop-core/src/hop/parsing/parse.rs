@@ -258,12 +258,21 @@ fn parse_page_declaration(
         let mut params = Vec::new();
         for item in items {
             match item {
-                ParameterItem::Parameter(parameter) => {
-                    if let Some(value) = &parameter.default_value {
-                        let _ = errors.emit(
-                            ParseErrorKind::DefaultValueNotAllowedOnPage {},
-                            value.range().clone(),
-                        );
+                ParameterItem::Parameter {
+                    parameter,
+                    optional,
+                } => {
+                    // A fallback written without `?` is an optional parameter
+                    // all the same.
+                    let marker = optional.or_else(|| {
+                        parameter
+                            .fallback_value
+                            .as_ref()
+                            .map(|value| value.range().clone())
+                    });
+                    if let Some(marker) = marker {
+                        let _ =
+                            errors.emit(ParseErrorKind::OptionalParamNotAllowedOnPage {}, marker);
                     }
                     params.push(*parameter);
                 }
@@ -474,12 +483,34 @@ fn build_function_parameters(
     let count = items.len();
     for (index, item) in items.into_iter().enumerate() {
         match item {
-            ParameterItem::Parameter(parameter) => {
+            ParameterItem::Parameter {
+                parameter,
+                optional,
+            } => {
                 if let Some(examples_range) = &parameter.examples_range {
                     let _ = errors.emit(
                         ParseErrorKind::ExamplesNotAllowedOnFunction {},
                         examples_range.clone(),
                     );
+                }
+                match (optional, &parameter.fallback_value) {
+                    (Some(optional), None) => {
+                        let _ = errors.emit(
+                            ParseErrorKind::OptionalParamWithoutFallback {
+                                name: parameter.var_name.clone(),
+                            },
+                            optional,
+                        );
+                    }
+                    (None, Some(_)) => {
+                        let _ = errors.emit(
+                            ParseErrorKind::FallbackOnRequiredParam {
+                                name: parameter.var_name.clone(),
+                            },
+                            parameter.var_name_range.clone(),
+                        );
+                    }
+                    _ => {}
                 }
                 params.push(*parameter);
             }
@@ -503,7 +534,11 @@ fn build_function_parameters(
 /// list is parsed the same way; the declaration then rejects the items it
 /// does not take.
 enum ParameterItem {
-    Parameter(Box<ParsedParameter>),
+    Parameter {
+        parameter: Box<ParsedParameter>,
+        /// The range of `name?`, when the parameter is written optional.
+        optional: Option<DocumentRange>,
+    },
     /// A `...name` rest parameter.
     Rest {
         var_name: VarName,
@@ -546,22 +581,27 @@ fn parse_parameters(
                     .unzip();
             let (var_name, var_name_range) =
                 parse_helpers::expect_identifier(iter, comments, errors)?;
+            let optional = parse_helpers::next_if_eq(iter, comments, errors, LangToken::Question)
+                .map(|question| var_name_range.clone().to(question));
             parse_helpers::expect_token(iter, comments, errors, &LangToken::Colon)?;
             let var_type = parse_type(iter, comments, errors)?;
-            let default_value =
+            let fallback_value =
                 if parse_helpers::next_if_eq(iter, comments, errors, LangToken::Assign).is_some() {
                     Some(parse_expr::parse_expr(iter, comments, errors)?)
                 } else {
                     None
                 };
-            Ok(ParameterItem::Parameter(Box::new(ParsedParameter {
-                var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
-                var_name_range,
-                var_type,
-                default_value,
-                examples,
-                examples_range,
-            })))
+            Ok(ParameterItem::Parameter {
+                parameter: Box::new(ParsedParameter {
+                    var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
+                    var_name_range,
+                    var_type,
+                    fallback_value,
+                    examples,
+                    examples_range,
+                }),
+                optional,
+            })
         },
     )
     .map(|(items, _)| items)
@@ -1322,14 +1362,14 @@ mod tests {
                   // The button label
                   label: String,
                   // Whether the button is disabled
-                  disabled: Bool = false,
+                  disabled?: Bool = false,
                   // More params to come
                 ) -> Html {
                   <>{label}</>
                 }
             "#},
             expect![[r#"
-                fn Button(label: String, disabled: Bool = false) -> Html {
+                fn Button(label: String, disabled?: Bool = false) -> Html {
                   fragment(interpolate(label))
                 }
             "#]],
@@ -3988,15 +4028,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_string_value() {
+    fn accepts_optional_parameter_with_string_fallback() {
         accept(
             indoc! {r#"
-                fn Main(name: String = "World") -> Html {
+                fn Main(name?: String = "World") -> Html {
                     <div>{name}</div>
                 }
             "#},
             expect![[r#"
-                fn Main(name: String = "World") -> Html {
+                fn Main(name?: String = "World") -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4008,15 +4048,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_int_value() {
+    fn accepts_optional_parameter_with_int_fallback() {
         accept(
             indoc! {"
-                fn Main(count: Int = 42) -> Html {
+                fn Main(count?: Int = 42) -> Html {
                     <span>{count}</span>
                 }
             "},
             expect![[r#"
-                fn Main(count: Int = 42) -> Html {
+                fn Main(count?: Int = 42) -> Html {
                   html(
                     tag: "span",
                     attrs: [],
@@ -4028,15 +4068,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_bool_value() {
+    fn accepts_optional_parameter_with_bool_fallback() {
         accept(
             indoc! {"
-                fn Main(enabled: Bool = true) -> Html {
+                fn Main(enabled?: Bool = true) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
-                fn Main(enabled: Bool = true) -> Html {
+                fn Main(enabled?: Bool = true) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4048,15 +4088,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_mixed_required_and_default_parameters() {
+    fn accepts_mixed_required_and_optional_parameters() {
         accept(
             indoc! {r#"
-                fn Main(name: String, role: String = "user", active: Bool = true) -> Html {
+                fn Main(name: String, role?: String = "user", active?: Bool = true) -> Html {
                     <div>{name}</div>
                 }
             "#},
             expect![[r#"
-                fn Main(name: String, role: String = "user", active: Bool = true) -> Html {
+                fn Main(name: String, role?: String = "user", active?: Bool = true) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4068,15 +4108,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_array_value() {
+    fn accepts_optional_parameter_with_array_fallback() {
         accept(
             indoc! {r#"
-                fn Main(items: Array[String] = ["a", "b"]) -> Html {
+                fn Main(items?: Array[String] = ["a", "b"]) -> Html {
                     for item in items { <>{item}</> }
                 }
             "#},
             expect![[r#"
-                fn Main(items: Array[String] = [
+                fn Main(items?: Array[String] = [
                   "a",
                   "b",
                 ]) -> Html {
@@ -4089,11 +4129,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_record_value() {
+    fn accepts_optional_parameter_with_record_fallback() {
         accept(
             indoc! {r#"
                 record Config { debug: Bool, timeout: Int }
-                fn Main(config: Config = Config {debug: false, timeout: 30}) -> Html {
+                fn Main(config?: Config = Config {debug: false, timeout: 30}) -> Html {
                     <div></div>
                 }
             "#},
@@ -4103,7 +4143,7 @@ mod tests {
                   timeout: Int,
                 }
 
-                fn Main(config: Config = Config {
+                fn Main(config?: Config = Config {
                   debug: false,
                   timeout: 30,
                 }) -> Html {
@@ -4118,11 +4158,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_enum_value() {
+    fn accepts_optional_parameter_with_enum_fallback() {
         accept(
             indoc! {"
                 enum Status { Active, Inactive, Pending }
-                fn Main(status: Status = Status::Active) -> Html {
+                fn Main(status?: Status = Status::Active) -> Html {
                     <div></div>
                 }
             "},
@@ -4133,7 +4173,7 @@ mod tests {
                   Pending,
                 }
 
-                fn Main(status: Status = Status::Active) -> Html {
+                fn Main(status?: Status = Status::Active) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4165,15 +4205,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_none_value() {
+    fn accepts_optional_parameter_with_none_fallback() {
         accept(
             indoc! {"
-                fn Main(name: Option[String] = None) -> Html {
+                fn Main(name?: Option[String] = None) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
-                fn Main(name: Option[String] = None) -> Html {
+                fn Main(name?: Option[String] = None) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4185,15 +4225,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_some_value() {
+    fn accepts_optional_parameter_with_some_fallback() {
         accept(
             indoc! {r#"
-                fn Main(name: Option[String] = Some("default")) -> Html {
+                fn Main(name?: Option[String] = Some("default")) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                fn Main(name: Option[String] = Some("default")) -> Html {
+                fn Main(name?: Option[String] = Some("default")) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4205,15 +4245,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_int_array() {
+    fn accepts_optional_parameter_with_int_array_fallback() {
         accept(
             indoc! {"
-                fn Main(offsets: Array[Int] = [1, 2]) -> Html {
+                fn Main(offsets?: Array[Int] = [1, 2]) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
-                fn Main(offsets: Array[Int] = [
+                fn Main(offsets?: Array[Int] = [
                   1,
                   2,
                 ]) -> Html {
@@ -4228,15 +4268,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_empty_fragment() {
+    fn accepts_optional_parameter_with_empty_fragment_fallback() {
         accept(
             indoc! {"
-                fn Main(children: Html = <></>) -> Html {
+                fn Main(children?: Html = <></>) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
-                fn Main(children: Html = fragment()) -> Html {
+                fn Main(children?: Html = fragment()) -> Html {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4248,18 +4288,18 @@ mod tests {
     }
 
     #[test]
-    fn rejects_parameter_with_malformed_default_value() {
+    fn rejects_parameter_with_malformed_fallback_value() {
         reject(
             indoc! {"
-                fn Main(x: Int = = 1, y: Int) -> Html {
+                fn Main(x?: Int = = 1, y: Int) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
                 -- errors --
                 error: Unexpected token '='
-                1 | fn Main(x: Int = = 1, y: Int) -> Html {
-                  |                  ^
+                1 | fn Main(x?: Int = = 1, y: Int) -> Html {
+                  |                   ^
                 -- ast --
                 fn Main(y: Int) -> Html {
                   html(
@@ -4781,10 +4821,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_page_with_default_parameter() {
+    fn rejects_page_with_optional_parameter() {
         reject(
             indoc! {r#"
-                page Index(name: String = "World") {
+                page Index(name?: String = "World") {
                   fn body() -> Html {
                       <div>Hello {name}</div>
                   }
@@ -4792,11 +4832,11 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Default values are not allowed on page parameters
-                1 | page Index(name: String = "World") {
-                  |                           ^^^^^^^
+                error: Optional parameters are not allowed on pages
+                1 | page Index(name?: String = "World") {
+                  |            ^^^^^
                 -- ast --
-                page Index(name: String = "World") {
+                page Index(name?: String = "World") {
                   fn body() -> Html {
                     html(
                       tag: "div",
@@ -5532,10 +5572,74 @@ mod tests {
     }
 
     #[test]
-    fn rejects_page_with_multiple_params_mixed_defaults() {
+    fn rejects_page_with_optional_parameter_without_fallback_value() {
         reject(
             indoc! {r#"
-                page Index(required: String, optional: Int = 42) {
+                page Index(name?: String) {
+                  fn body() -> Html {
+                      <div>Hello {name}</div>
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Optional parameters are not allowed on pages
+                1 | page Index(name?: String) {
+                  |            ^^^^^
+                -- ast --
+                page Index(name: String) {
+                  fn body() -> Html {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_with_fallback_value_on_required_parameter() {
+        reject(
+            indoc! {r#"
+                page Index(name: String = "World") {
+                  fn body() -> Html {
+                      <div>Hello {name}</div>
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Optional parameters are not allowed on pages
+                1 | page Index(name: String = "World") {
+                  |                           ^^^^^^^
+                -- ast --
+                page Index(name?: String = "World") {
+                  fn body() -> Html {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_with_multiple_params_mixed_optional() {
+        reject(
+            indoc! {r#"
+                page Index(required: String, optional?: Int = 42) {
                   fn body() -> Html {
                       <div>{required}: {optional}</div>
                   }
@@ -5543,11 +5647,11 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Default values are not allowed on page parameters
-                1 | page Index(required: String, optional: Int = 42) {
-                  |                                              ^^
+                error: Optional parameters are not allowed on pages
+                1 | page Index(required: String, optional?: Int = 42) {
+                  |                              ^^^^^^^^^
                 -- ast --
-                page Index(required: String, optional: Int = 42) {
+                page Index(required: String, optional?: Int = 42) {
                   fn body() -> Html {
                     html(
                       tag: "div",
@@ -5983,15 +6087,57 @@ mod tests {
     }
 
     #[test]
-    fn accepts_default_value_on_function_parameter() {
+    fn accepts_fallback_value_on_function_parameter() {
         accept(
+            indoc! {"
+                fn foo(x?: Int = 1) -> Int {
+                  x
+                }
+            "},
+            expect![[r#"
+                fn foo(x?: Int = 1) -> Int {
+                  x
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_optional_parameter_without_fallback_value() {
+        reject(
+            indoc! {"
+                fn foo(x?: Int) -> Int {
+                  x
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Optional parameter 'x' requires a fallback value
+                1 | fn foo(x?: Int) -> Int {
+                  |        ^^
+                -- ast --
+                fn foo(x: Int) -> Int {
+                  x
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_fallback_value_on_required_parameter() {
+        reject(
             indoc! {"
                 fn foo(x: Int = 1) -> Int {
                   x
                 }
             "},
             expect![[r#"
-                fn foo(x: Int = 1) -> Int {
+                -- errors --
+                error: Parameter 'x' has a fallback value and must be optional: write 'x?'
+                1 | fn foo(x: Int = 1) -> Int {
+                  |        ^
+                -- ast --
+                fn foo(x?: Int = 1) -> Int {
                   x
                 }
             "#]],

@@ -219,7 +219,7 @@ impl TypeRegistryBuilder {
                         .map(|(p, t)| ParamEntry {
                             name: var_name(p),
                             typ: types.resolve(t),
-                            default: None,
+                            fallback: None,
                         })
                         .collect();
                     let signature = FunctionSignature {

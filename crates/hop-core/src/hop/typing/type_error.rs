@@ -116,8 +116,8 @@ pub enum TypeErrorKind {
     #[error("Spread '...{name}' does not refer to a declared rest parameter")]
     SpreadNotDeclaredRest { name: VarName },
 
-    #[error("Default values must be constant")]
-    DefaultValueMustBeConstant,
+    #[error("Fallback values must be constant")]
+    FallbackValueMustBeConstant,
 
     #[error("Html is not allowed in page parameters")]
     HtmlInPageParameter,
@@ -353,8 +353,8 @@ pub enum TypeErrorKind {
 /// Where a [`TypeErrorKind::TypeMismatch`] was found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeMismatchContext {
-    /// The default value of a parameter.
-    DefaultValue,
+    /// The fallback value of an optional parameter.
+    FallbackValue,
     /// The value of a let binding with a declared type.
     LetBinding,
     /// The body of a match arm, compared to the earlier arms.

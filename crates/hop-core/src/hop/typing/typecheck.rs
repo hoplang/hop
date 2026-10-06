@@ -487,7 +487,7 @@ fn typecheck_enum_declaration(
     });
 }
 
-fn typecheck_default_value(
+fn typecheck_fallback_value(
     param: &ParsedParameter,
     param_type: &Type,
     type_env: &TypeEnv,
@@ -497,19 +497,19 @@ fn typecheck_default_value(
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedExpr> {
-    let default_expr = param.default_value.as_ref()?;
-    if !default_expr.is_constant() {
+    let fallback_expr = param.fallback_value.as_ref()?;
+    if !fallback_expr.is_constant() {
         errors.push(TypeError::new(
-            TypeErrorKind::DefaultValueMustBeConstant {},
-            default_expr.range().clone(),
+            TypeErrorKind::FallbackValueMustBeConstant {},
+            fallback_expr.range().clone(),
         ));
         return None;
     }
-    let typed_default = typecheck_expr(
-        default_expr,
+    let typed_fallback = typecheck_expr(
+        fallback_expr,
         Some(param_type),
         &[],
-        // Use a fresh variable scope, default values are constant and can't
+        // Use a fresh variable scope, fallback values are constant and can't
         // reference anything from the environment.
         &mut VariableScope::new(),
         type_env,
@@ -519,19 +519,19 @@ fn typecheck_default_value(
         asset_references,
         errors,
     )?;
-    let default_type = typed_default.typ();
-    if default_type != *param_type {
+    let fallback_type = typed_fallback.typ();
+    if fallback_type != *param_type {
         errors.push(TypeError::new(
             TypeErrorKind::TypeMismatch {
-                context: TypeMismatchContext::DefaultValue,
+                context: TypeMismatchContext::FallbackValue,
                 expected: param_type.clone(),
-                found: default_type,
+                found: fallback_type,
             },
-            default_expr.range().clone(),
+            fallback_expr.range().clone(),
         ));
         return None;
     }
-    Some(typed_default)
+    Some(typed_fallback)
 }
 
 /// A declaration body is what the declaration renders, so it has to be a
@@ -759,7 +759,7 @@ fn create_function_signature<'a>(
             continue;
         };
 
-        let typed_default_value = typecheck_default_value(
+        let typed_fallback_value = typecheck_fallback_value(
             param,
             &param_type,
             &type_env,
@@ -780,7 +780,7 @@ fn create_function_signature<'a>(
         declared_params.push(ParamEntry {
             name: param.var_name.clone(),
             typ: param_type.clone(),
-            default: typed_default_value,
+            fallback: typed_fallback_value,
         });
         typed_params.push(TypedParameter {
             var_name: param.var_name.clone(),
@@ -1014,8 +1014,8 @@ fn referenced_names(parsed_module: &ParsedModule) -> HashSet<CheapString> {
             ParsedDeclaration::Function(function) => {
                 for param in &function.params {
                     collect_names_in_type(&param.var_type, &mut names);
-                    if let Some(default) = &param.default_value {
-                        collect_names_in_expr(default, &mut names);
+                    if let Some(fallback) = &param.fallback_value {
+                        collect_names_in_expr(fallback, &mut names);
                     }
                 }
                 collect_names_in_type(&function.return_type, &mut names);
@@ -2337,7 +2337,7 @@ mod tests {
         );
     }
 
-    // The attribute shorthands and a defaulted `children` desugar the same
+    // The attribute shorthands and an optional `children` desugar the same
     // way. Each pair below typechecks to the same expression.
     #[test]
     fn accepts_attribute_shorthands_as_call_expression_arguments() {
@@ -2354,7 +2354,7 @@ mod tests {
                   </span>
                 }
 
-                fn Card(children: Html = <></>) -> Html {
+                fn Card(children?: Html = <></>) -> Html {
                   <div>
                     {children}
                   </div>
@@ -2984,11 +2984,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_both_tag_forms_for_defaulted_children() {
+    fn accepts_both_tag_forms_for_optional_children() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Html = <></>) -> Html {
+                fn Card(children?: Html = <></>) -> Html {
                     <div>{children}</div>
                 }
 
@@ -3713,11 +3713,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_with_default_tuple_parameter() {
+    fn accepts_function_with_optional_tuple_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Cell(pair: (String, Int) = ("a", 1)) -> Html {
+                fn Cell(pair?: (String, Int) = ("a", 1)) -> Html {
                   match pair {
                     (label, _) => <>{label}</>,
                   }
@@ -6229,11 +6229,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_with_default_parameter_when_argument_omitted() {
+    fn accepts_function_with_optional_parameter_when_argument_omitted() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: String = "World") -> Html {
+                fn Greeting(name?: String = "World") -> Html {
                   <>
                     Hello, {name}!
                   </>
@@ -6256,11 +6256,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_with_default_parameter_when_argument_provided() {
+    fn accepts_function_with_optional_parameter_when_argument_provided() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: String = "World") -> Html {
+                fn Greeting(name?: String = "World") -> Html {
                   <>
                     Hello, {name}!
                   </>
@@ -6283,11 +6283,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_function_with_mixed_required_and_default_parameters() {
+    fn accepts_function_with_mixed_required_and_optional_parameters() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn UserCard(name: String, role: String = "user") -> Html {
+                fn UserCard(name: String, role?: String = "user") -> Html {
                   <>
                     {name} ({role})
                   </>
@@ -6310,11 +6310,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_negative_numeric_literals_as_default_values() {
+    fn accepts_negative_numeric_literals_as_fallback_values() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Offset(dx: Int = -1, scale: Float = - 1.5) -> Html {
+                fn Offset(dx?: Int = -1, scale?: Float = - 1.5) -> Html {
                   <>
                     {dx.to_string()} {scale.to_int().to_string()}
                   </>
@@ -6337,11 +6337,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_required_param_is_missing_but_default_param_is_provided() {
+    fn rejects_when_required_param_is_missing_but_optional_param_is_provided() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn UserCard(name: String, role: String = "user") -> Html {
+                fn UserCard(name: String, role?: String = "user") -> Html {
                   <>
                     {name} ({role})
                   </>
@@ -6361,11 +6361,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_default_value_type_does_not_match_parameter_type() {
+    fn rejects_when_fallback_value_type_does_not_match_parameter_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: String = 42) -> Html {
+                fn Greeting(name?: String = 42) -> Html {
                   <>
                     Hello, {name}!
                   </>
@@ -6376,9 +6376,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Expected String got Int
-                  --> main.hop (line 1, col 28)
-                1 | fn Greeting(name: String = 42) -> Html {
-                  |                            ^^
+                  --> main.hop (line 1, col 29)
+                1 | fn Greeting(name?: String = 42) -> Html {
+                  |                             ^^
 
                 error: Function Greeting requires arguments: name
                   --> main.hop (line 7, col 4)
@@ -6390,231 +6390,231 @@ mod tests {
     }
 
     #[test]
-    fn rejects_parameter_with_default_function_call() {
+    fn rejects_parameter_with_fallback_function_call() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn greeting() -> String {
                     "hi"
                 }
-                fn Main(msg: String = greeting()) -> Html {
+                fn Main(msg?: String = greeting()) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 4, col 23)
+                error: Fallback values must be constant
+                  --> main.hop (line 4, col 24)
                 3 | }
-                4 | fn Main(msg: String = greeting()) -> Html {
-                  |                       ^^^^^^^^^^
+                4 | fn Main(msg?: String = greeting()) -> Html {
+                  |                        ^^^^^^^^^^
 
                 warning: Unused variable msg
                   --> main.hop (line 4, col 9)
                 3 | }
-                4 | fn Main(msg: String = greeting()) -> Html {
+                4 | fn Main(msg?: String = greeting()) -> Html {
                   |         ^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_parameter_with_default_variable() {
+    fn rejects_parameter_with_fallback_variable() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(msg: String = other) -> Html {
+                fn Main(msg?: String = other) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 1, col 23)
-                1 | fn Main(msg: String = other) -> Html {
-                  |                       ^^^^^
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(msg?: String = other) -> Html {
+                  |                        ^^^^^
 
                 warning: Unused variable msg
                   --> main.hop (line 1, col 9)
-                1 | fn Main(msg: String = other) -> Html {
+                1 | fn Main(msg?: String = other) -> Html {
                   |         ^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_parameter_with_default_referencing_another_parameter() {
+    fn rejects_parameter_with_fallback_referencing_another_parameter() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(a: String, b: String = a) -> Html {
+                fn Main(a: String, b?: String = a) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 1, col 32)
-                1 | fn Main(a: String, b: String = a) -> Html {
-                  |                                ^
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 33)
+                1 | fn Main(a: String, b?: String = a) -> Html {
+                  |                                 ^
 
                 warning: Unused variable a
                   --> main.hop (line 1, col 9)
-                1 | fn Main(a: String, b: String = a) -> Html {
+                1 | fn Main(a: String, b?: String = a) -> Html {
                   |         ^
 
                 warning: Unused variable b
                   --> main.hop (line 1, col 20)
-                1 | fn Main(a: String, b: String = a) -> Html {
+                1 | fn Main(a: String, b?: String = a) -> Html {
                   |                    ^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_parameter_with_default_method_call() {
+    fn rejects_parameter_with_fallback_method_call() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(msg: String = "hi".to_uppercase()) -> Html {
+                fn Main(msg?: String = "hi".to_uppercase()) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 1, col 23)
-                1 | fn Main(msg: String = "hi".to_uppercase()) -> Html {
-                  |                       ^^^^^^^^^^^^^^^^^^^
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(msg?: String = "hi".to_uppercase()) -> Html {
+                  |                        ^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable msg
                   --> main.hop (line 1, col 9)
-                1 | fn Main(msg: String = "hi".to_uppercase()) -> Html {
+                1 | fn Main(msg?: String = "hi".to_uppercase()) -> Html {
                   |         ^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_parameter_with_default_binary_operation() {
+    fn rejects_parameter_with_fallback_binary_operation() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(count: Int = (1 + 2)) -> Html {
+                fn Main(count?: Int = (1 + 2)) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 1, col 23)
-                1 | fn Main(count: Int = (1 + 2)) -> Html {
-                  |                       ^^^^^
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(count?: Int = (1 + 2)) -> Html {
+                  |                        ^^^^^
 
                 warning: Unused variable count
                   --> main.hop (line 1, col 9)
-                1 | fn Main(count: Int = (1 + 2)) -> Html {
+                1 | fn Main(count?: Int = (1 + 2)) -> Html {
                   |         ^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_parameter_with_default_macro_call() {
+    fn rejects_parameter_with_fallback_macro_call() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(src: String = asset!("/logo.png")) -> Html {
+                fn Main(src?: String = asset!("/logo.png")) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 1, col 23)
-                1 | fn Main(src: String = asset!("/logo.png")) -> Html {
-                  |                       ^^^^^^^^^^^^^^^^^^^
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(src?: String = asset!("/logo.png")) -> Html {
+                  |                        ^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable src
                   --> main.hop (line 1, col 9)
-                1 | fn Main(src: String = asset!("/logo.png")) -> Html {
+                1 | fn Main(src?: String = asset!("/logo.png")) -> Html {
                   |         ^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_parameter_with_default_match_expression() {
+    fn rejects_parameter_with_fallback_match_expression() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(msg: String = match true { true => "y", false => "n" }) -> Html {
+                fn Main(msg?: String = match true { true => "y", false => "n" }) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 1, col 23)
-                1 | fn Main(msg: String = match true { true => "y", false => "n" }) -> Html {
-                  |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 24)
+                1 | fn Main(msg?: String = match true { true => "y", false => "n" }) -> Html {
+                  |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable msg
                   --> main.hop (line 1, col 9)
-                1 | fn Main(msg: String = match true { true => "y", false => "n" }) -> Html {
+                1 | fn Main(msg?: String = match true { true => "y", false => "n" }) -> Html {
                   |         ^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_parameter_with_default_record_spread() {
+    fn rejects_parameter_with_fallback_record_spread() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 record Config { name: String }
-                fn Main(config: Config = Config{...base, name: "x"}) -> Html {
+                fn Main(config?: Config = Config{...base, name: "x"}) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 2, col 26)
+                error: Fallback values must be constant
+                  --> main.hop (line 2, col 27)
                 1 | record Config { name: String }
-                2 | fn Main(config: Config = Config{...base, name: "x"}) -> Html {
-                  |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                2 | fn Main(config?: Config = Config{...base, name: "x"}) -> Html {
+                  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 warning: Unused variable config
                   --> main.hop (line 2, col 9)
                 1 | record Config { name: String }
-                2 | fn Main(config: Config = Config{...base, name: "x"}) -> Html {
+                2 | fn Main(config?: Config = Config{...base, name: "x"}) -> Html {
                   |         ^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_parameter_with_default_non_literal_nested_in_literal() {
+    fn rejects_parameter_with_fallback_non_literal_nested_in_literal() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(names: Array[String] = ["a", other]) -> Html {
+                fn Main(names?: Array[String] = ["a", other]) -> Html {
                     <div></div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 1, col 32)
-                1 | fn Main(names: Array[String] = ["a", other]) -> Html {
-                  |                                ^^^^^^^^^^^^
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 33)
+                1 | fn Main(names?: Array[String] = ["a", other]) -> Html {
+                  |                                 ^^^^^^^^^^^^
 
                 warning: Unused variable names
                   --> main.hop (line 1, col 9)
-                1 | fn Main(names: Array[String] = ["a", other]) -> Html {
+                1 | fn Main(names?: Array[String] = ["a", other]) -> Html {
                   |         ^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_when_default_params_are_unused() {
+    fn rejects_when_optional_params_are_unused() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Config(debug: Bool = false, timeout: Int = 30) -> Html {<></>}
+                fn Config(debug?: Bool = false, timeout?: Int = 30) -> Html {<></>}
                 fn Main() -> Html {
                   <Config />
                 }
@@ -6622,23 +6622,23 @@ mod tests {
             expect![[r#"
                 warning: Unused variable debug
                   --> main.hop (line 1, col 11)
-                1 | fn Config(debug: Bool = false, timeout: Int = 30) -> Html {<></>}
+                1 | fn Config(debug?: Bool = false, timeout?: Int = 30) -> Html {<></>}
                   |           ^^^^^
 
                 warning: Unused variable timeout
-                  --> main.hop (line 1, col 32)
-                1 | fn Config(debug: Bool = false, timeout: Int = 30) -> Html {<></>}
-                  |                                ^^^^^^^
+                  --> main.hop (line 1, col 33)
+                1 | fn Config(debug?: Bool = false, timeout?: Int = 30) -> Html {<></>}
+                  |                                 ^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_default_empty_array_parameter() {
+    fn accepts_empty_array_fallback_value() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn ItemList(items: Array[String] = []) -> Html {
+                fn ItemList(items?: Array[String] = []) -> Html {
                   for item in items {
                     <>{item}</>
                   }
@@ -6663,11 +6663,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_default_empty_fragment_parameter() {
+    fn accepts_empty_fragment_fallback_value() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Html = <></>) -> Html {
+                fn Card(children?: Html = <></>) -> Html {
                   <div>
                     {children}
                   </div>
@@ -6690,32 +6690,32 @@ mod tests {
     }
 
     #[test]
-    fn rejects_default_non_empty_fragment_parameter() {
+    fn rejects_non_empty_fragment_fallback_value() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Card(children: Html = <div></div>) -> Html {
+                fn Card(children?: Html = <div></div>) -> Html {
                   <div>
                     {children}
                   </div>
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 1, col 26)
-                1 | fn Card(children: Html = <div></div>) -> Html {
-                  |                          ^^^^^^^^^^^
+                error: Fallback values must be constant
+                  --> main.hop (line 1, col 27)
+                1 | fn Card(children?: Html = <div></div>) -> Html {
+                  |                           ^^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_default_record_parameter() {
+    fn accepts_record_fallback_value() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 record Config { name: String, enabled: Bool }
-                fn Settings(config: Config = Config{name: "default", enabled: true}) -> Html {
+                fn Settings(config?: Config = Config{name: "default", enabled: true}) -> Html {
                   <>
                     {config.name}
                   </>
@@ -6744,12 +6744,12 @@ mod tests {
     }
 
     #[test]
-    fn accepts_default_enum_parameter() {
+    fn accepts_enum_fallback_value() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 enum Status { Active{since: Int}, Inactive, Pending }
-                fn Badge(status: Status = Status::Active{since: 2000}) -> Html {
+                fn Badge(status?: Status = Status::Active{since: 2000}) -> Html {
                   <>
                     {match status {
                       Status::Active{since: _} => "active",
@@ -6837,11 +6837,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_option_parameter_with_default_none() {
+    fn accepts_option_parameter_with_fallback_none() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: Option[String] = None) -> Html {
+                fn Greeting(name?: Option[String] = None) -> Html {
                   match name.is_none() {true => <></>, false => <></>,}
                 }
                 fn Main() -> Html {
@@ -6862,11 +6862,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_option_parameter_with_default_some() {
+    fn accepts_option_parameter_with_fallback_some() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Greeting(name: Option[String] = Some("World")) -> Html {
+                fn Greeting(name?: Option[String] = Some("World")) -> Html {
                   match name.is_none() {true => <></>, false => <></>,}
                 }
                 fn Main() -> Html {
@@ -8387,7 +8387,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Separator(children: Option[Html] = None) -> Html {
+                fn Separator(children?: Option[Html] = None) -> Html {
                   <li>separator</li>
                 }
                 fn Main() -> Html {
@@ -8397,7 +8397,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable children
                   --> main.hop (line 1, col 14)
-                1 | fn Separator(children: Option[Html] = None) -> Html {
+                1 | fn Separator(children?: Option[Html] = None) -> Html {
                   |              ^^^^^^^^
             "#]],
         );
@@ -10620,11 +10620,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_param_reserved_out_of_rest_when_callee_has_default() {
+    fn accepts_param_reserved_out_of_rest_when_callee_param_is_optional() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(class: String = "x", ...rest) -> Html {
+                fn Inner(class?: String = "x", ...rest) -> Html {
                     <span class={class} ...rest></span>
                 }
                 fn Outer(class: String, ...rest) -> Html {
@@ -10671,7 +10671,7 @@ mod tests {
                         {children}
                     </div>
                 }
-                fn Button(children: Html, class: String = "", ...rest) -> Html {
+                fn Button(children: Html, class?: String = "", ...rest) -> Html {
                     <Foo class={class} ...rest>
                         {children}
                     </Foo>
@@ -10710,7 +10710,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Inner(class: String = "x", ...rest) -> Html {
+                fn Inner(class?: String = "x", ...rest) -> Html {
                     <span class={class} ...rest></span>
                 }
                 fn Wrapper(...rest) -> Html {
@@ -10742,14 +10742,14 @@ mod tests {
     }
 
     #[test]
-    fn accepts_optional_default_chain_with_caller_value() {
+    fn accepts_optional_param_chain_with_caller_value() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn A(class: String = "", ...rest) -> Html {
+                fn A(class?: String = "", ...rest) -> Html {
                     <div class={class} ...rest></div>
                 }
-                fn B(class: String = "", ...rest) -> Html {
+                fn B(class?: String = "", ...rest) -> Html {
                     <A class={class} ...rest/>
                 }
                 page Main() {
@@ -10778,14 +10778,14 @@ mod tests {
     }
 
     #[test]
-    fn accepts_optional_default_chain_uses_outer_default() {
+    fn accepts_optional_param_chain_uses_outer_fallback() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn A(class: String = "a", ...rest) -> Html {
+                fn A(class?: String = "a", ...rest) -> Html {
                     <div class={class} ...rest></div>
                 }
-                fn B(class: String = "b", ...rest) -> Html {
+                fn B(class?: String = "b", ...rest) -> Html {
                     <A class={class} ...rest/>
                 }
                 page Main() {
@@ -10814,11 +10814,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_forwarded_optional_default_through_rest() {
+    fn accepts_forwarded_optional_param_through_rest() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn A(label: String = "x", ...rest) -> Html {
+                fn A(label?: String = "x", ...rest) -> Html {
                     <span ...rest>{label}</span>
                 }
                 fn B(...rest) -> Html {
@@ -10850,11 +10850,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_forwarded_default_materialized_once_in_chain() {
+    fn accepts_forwarded_fallback_materialized_once_in_chain() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Leaf(label: String = "x", ...rest) -> Html {
+                fn Leaf(label?: String = "x", ...rest) -> Html {
                     <span ...rest>{label}</span>
                 }
                 fn Mid(...rest) -> Html {
@@ -11292,14 +11292,14 @@ mod tests {
     }
 
     #[test]
-    fn accepts_rest_forwarded_into_a_cycle_member_with_a_default() {
+    fn accepts_rest_forwarded_into_a_cycle_member_with_an_optional_param() {
         // First and Second call each other, but their rests run straight down
         // to Leaf's div, so both tails are known. Second's signature gains
         // `title` from Leaf and First's gains it from Second.
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Leaf(title: String = "d") -> Html {
+                fn Leaf(title?: String = "d") -> Html {
                     <div>{title}</div>
                 }
                 fn First(...rest) -> Html {
@@ -11949,11 +11949,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_named_call_omitting_a_defaulted_argument() {
+    fn accepts_named_call_omitting_an_optional_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn label(prefix: String, count: Int = 1) -> String {
+                fn label(prefix: String, count?: Int = 1) -> String {
                   prefix + count.to_string()
                 }
 
@@ -11983,11 +11983,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_named_call_overriding_a_defaulted_argument() {
+    fn accepts_named_call_overriding_an_optional_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn label(prefix: String, count: Int = 1) -> String {
+                fn label(prefix: String, count?: Int = 1) -> String {
                   prefix + count.to_string()
                 }
 
@@ -12017,11 +12017,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_named_call_omitting_every_defaulted_argument() {
+    fn accepts_named_call_omitting_every_optional_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn label(prefix: String = "n", count: Int = 1) -> String {
+                fn label(prefix?: String = "n", count?: Int = 1) -> String {
                   prefix + count.to_string()
                 }
 
@@ -12051,11 +12051,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_positional_call_omitting_a_trailing_defaulted_argument() {
+    fn accepts_positional_call_omitting_a_trailing_optional_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn label(prefix: String, count: Int = 1) -> String {
+                fn label(prefix: String, count?: Int = 1) -> String {
                   prefix + count.to_string()
                 }
 
@@ -12089,7 +12089,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn label(prefix: String = "x", count: Int = 1) -> String {
+                fn label(prefix?: String = "x", count?: Int = 1) -> String {
                   prefix + count.to_string()
                 }
 
@@ -12110,11 +12110,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_positional_call_omitting_a_default_that_precedes_a_required_param() {
+    fn rejects_positional_call_omitting_an_optional_param_that_precedes_a_required_param() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn label(count: Int = 1, prefix: String) -> String {
+                fn label(count?: Int = 1, prefix: String) -> String {
                   prefix + count.to_string()
                 }
 
@@ -12141,11 +12141,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_function_default_value_with_wrong_type() {
+    fn rejects_function_fallback_value_with_wrong_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn label(count: Int = "one") -> String {
+                fn label(count?: Int = "one") -> String {
                   count.to_string()
                 }
 
@@ -12157,15 +12157,15 @@ mod tests {
             "#},
             expect![[r#"
                 error: Expected Int got String
-                  --> main.hop (line 1, col 23)
-                1 | fn label(count: Int = "one") -> String {
-                  |                       ^^^^^
+                  --> main.hop (line 1, col 24)
+                1 | fn label(count?: Int = "one") -> String {
+                  |                        ^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_function_default_value_that_is_not_constant() {
+    fn rejects_function_fallback_value_that_is_not_constant() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -12173,7 +12173,7 @@ mod tests {
                   1
                 }
 
-                fn label(count: Int = one()) -> String {
+                fn label(count?: Int = one()) -> String {
                   count.to_string()
                 }
 
@@ -12184,11 +12184,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Default values must be constant
-                  --> main.hop (line 5, col 23)
+                error: Fallback values must be constant
+                  --> main.hop (line 5, col 24)
                  4 | 
-                 5 | fn label(count: Int = one()) -> String {
-                   |                       ^^^^^
+                 5 | fn label(count?: Int = one()) -> String {
+                   |                        ^^^^^
             "#]],
         );
     }

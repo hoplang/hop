@@ -150,9 +150,13 @@ fn declaration(u: &mut Unstructured<'_>, out: &mut String) -> Result<()> {
                     out.push_str(", ");
                 }
                 out.push_str(u.choose(VAR_NAMES)?);
+                let optional = u.arbitrary()?;
+                if optional {
+                    out.push('?');
+                }
                 out.push_str(": ");
                 type_(u, 2, out)?;
-                if u.arbitrary()? {
+                if optional {
                     out.push_str(" = ");
                     expr(u, DEPTH, ANYWHERE, out)?;
                 }

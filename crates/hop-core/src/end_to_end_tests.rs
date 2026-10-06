@@ -1102,7 +1102,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Leaf(title: String = "d") -> Html {
+                fn Leaf(title?: String = "d") -> Html {
                   <div>
                     {title}
                   </div>
@@ -2709,12 +2709,12 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn accepts_param_reserved_out_of_rest_when_callee_has_default() {
+    fn accepts_param_reserved_out_of_rest_when_callee_param_is_optional() {
         check(
             indoc! {r#"
                 -- main.hop --
                 fn Inner(
-                  class: String = "x",
+                  class?: String = "x",
                   ...rest,
                 ) -> Html {
                   <span class={class} ...rest>
@@ -2802,7 +2802,7 @@ mod tests {
 
                 fn Button(
                   children: Html,
-                  class: String = "",
+                  class?: String = "",
                   ...rest,
                 ) -> Html {
                   <Foo class={class} ...rest>
@@ -2880,7 +2880,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Inner(
-                  class: String = "x",
+                  class?: String = "x",
                   ...rest,
                 ) -> Html {
                   <span class={class} ...rest>
@@ -2941,12 +2941,12 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn accepts_optional_default_chain_with_caller_value() {
+    fn accepts_optional_param_chain_with_caller_value() {
         check(
             indoc! {r#"
                 -- main.hop --
                 fn A(
-                  class: String = "",
+                  class?: String = "",
                   ...rest,
                 ) -> Html {
                   <div class={class} ...rest>
@@ -2954,7 +2954,7 @@ mod tests {
                 }
 
                 fn B(
-                  class: String = "",
+                  class?: String = "",
                   ...rest,
                 ) -> Html {
                   <A class={class} ...rest/>
@@ -3010,12 +3010,12 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn accepts_optional_default_chain_uses_outer_default() {
+    fn accepts_optional_param_chain_uses_outer_fallback() {
         check(
             indoc! {r#"
                 -- main.hop --
                 fn A(
-                  class: String = "a",
+                  class?: String = "a",
                   ...rest,
                 ) -> Html {
                   <div class={class} ...rest>
@@ -3023,7 +3023,7 @@ mod tests {
                 }
 
                 fn B(
-                  class: String = "b",
+                  class?: String = "b",
                   ...rest,
                 ) -> Html {
                   <A class={class} ...rest/>
@@ -3079,12 +3079,12 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn accepts_forwarded_optional_default_through_rest() {
+    fn accepts_forwarded_optional_param_through_rest() {
         check(
             indoc! {r#"
                 -- main.hop --
                 fn A(
-                  label: String = "x",
+                  label?: String = "x",
                   ...rest,
                 ) -> Html {
                   <span ...rest>
@@ -3144,12 +3144,12 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn accepts_forwarded_default_materialized_once_in_chain() {
+    fn accepts_forwarded_fallback_materialized_once_in_chain() {
         check(
             indoc! {r#"
                 -- main.hop --
                 fn Leaf(
-                  label: String = "x",
+                  label?: String = "x",
                   ...rest,
                 ) -> Html {
                   <span ...rest>
@@ -13262,11 +13262,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn function_with_default_parameter() {
+    fn function_with_optional_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String = "New card") -> Html {
+                fn Card(title?: String = "New card") -> Html {
                   <div>
                     {title}
                   </div>
@@ -13314,11 +13314,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn function_with_negative_default_parameters() {
+    fn function_with_negative_fallback_values() {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Offset(dx: Int = -1, scale: Float = -2.5) -> Html {
+                fn Offset(dx?: Int = -1, scale?: Float = -2.5) -> Html {
                   <div>
                     {(dx * 3).to_string()} {(scale * 2.0).to_int().to_string()}
                   </div>
@@ -13368,11 +13368,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn function_with_default_parameter_overridden() {
+    fn function_with_optional_parameter_overridden() {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn Card(title: String = "New card") -> Html {
+                fn Card(title?: String = "New card") -> Html {
                   <div>
                     {title}
                   </div>
@@ -13420,13 +13420,13 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn function_with_mixed_default_and_required_parameters() {
+    fn function_with_mixed_optional_and_required_parameters() {
         check(
             indoc! {r#"
                 -- main.hop --
                 fn Card(
                   title: String,
-                  subtitle: String = "No subtitle",
+                  subtitle?: String = "No subtitle",
                 ) -> Html {
                   <div>
                     {title} - {subtitle}
@@ -13477,13 +13477,13 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn function_with_mixed_default_and_required_parameters_all_provided() {
+    fn function_with_mixed_optional_and_required_parameters_all_provided() {
         check(
             indoc! {r#"
                 -- main.hop --
                 fn Card(
                   title: String,
-                  subtitle: String = "No subtitle",
+                  subtitle?: String = "No subtitle",
                 ) -> Html {
                   <div>
                     {title} - {subtitle}
@@ -13534,14 +13534,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn function_with_multiple_default_parameters() {
+    fn function_with_multiple_optional_parameters() {
         check(
             indoc! {r#"
                 -- main.hop --
                 fn Card(
-                  title: String = "Default",
-                  subtitle: String = "Sub",
-                  footer: String = "End",
+                  title?: String = "Default",
+                  subtitle?: String = "Sub",
+                  footer?: String = "End",
                 ) -> Html {
                   <div>
                     {title} - {subtitle} - {footer}
@@ -13604,7 +13604,7 @@ mod tests {
                 -- main.hop --
                 fn Card(
                   title: String,
-                  children: Html = <></>,
+                  children?: Html = <></>,
                 ) -> Html {
                   <div class="card">
                     <h2>
@@ -13669,7 +13669,7 @@ mod tests {
                 -- main.hop --
                 fn Card(
                   title: String,
-                  children: Html = <></>,
+                  children?: Html = <></>,
                 ) -> Html {
                   <div class="card">
                     <h2>
@@ -17124,7 +17124,7 @@ mod tests {
                   }
                 }
                 -- other.hop --
-                pub fn label(prefix: String, count: Int = 1) -> String {
+                pub fn label(prefix: String, count?: Int = 1) -> String {
                   prefix + count.to_string()
                 }
             "#},
@@ -17164,11 +17164,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn function_with_omitted_default_parameter() {
+    fn function_with_omitted_optional_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
-                fn label(prefix: String = "x", count: Int = 1) -> String {
+                fn label(prefix?: String = "x", count?: Int = 1) -> String {
                   prefix + count.to_string()
                 }
 

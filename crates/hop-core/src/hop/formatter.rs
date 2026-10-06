@@ -473,15 +473,16 @@ fn format_parameter<'a>(
     } else {
         leading_comments
     };
-    let base = arena
-        .text(param.var_name.as_str())
-        .append(arena.text(": "))
-        .append(format_type(arena, &param.var_type));
-    let param_doc = match &param.default_value {
-        Some(default) => base
+    let name = arena.text(param.var_name.as_str());
+    let param_doc = match &param.fallback_value {
+        Some(fallback) => name
+            .append(arena.text("?: "))
+            .append(format_type(arena, &param.var_type))
             .append(arena.text(" = "))
-            .append(format_expr(arena, default, comments)),
-        None => base,
+            .append(format_expr(arena, fallback, comments)),
+        None => name
+            .append(arena.text(": "))
+            .append(format_type(arena, &param.var_type)),
     };
     prefix.append(param_doc)
 }
@@ -3046,15 +3047,15 @@ mod tests {
     }
 
     #[test]
-    fn function_with_default_string_parameter() {
+    fn function_with_optional_string_parameter() {
         check(
             indoc! {r#"
-                fn Greeting(name: String = "World") -> Html {
+                fn Greeting(name?: String = "World") -> Html {
                   <>Hello, {name}!</>
                 }
             "#},
             expect![[r#"
-                fn Greeting(name: String = "World") -> Html {
+                fn Greeting(name?: String = "World") -> Html {
                   <>
                     Hello,
                     {" "}
@@ -3067,17 +3068,17 @@ mod tests {
     }
 
     #[test]
-    fn function_with_default_int_parameter() {
+    fn function_with_optional_int_parameter() {
         check(
             indoc! {"
-                fn Counter(count: Int = 0) -> Html {
+                fn Counter(count?: Int = 0) -> Html {
                   <>
                     {count}
                   </>
                 }
             "},
             expect![[r#"
-                fn Counter(count: Int = 0) -> Html {
+                fn Counter(count?: Int = 0) -> Html {
                   <>
                     {count}
                   </>
@@ -3087,13 +3088,13 @@ mod tests {
     }
 
     #[test]
-    fn function_with_default_bool_parameter() {
+    fn function_with_optional_bool_parameter() {
         check(
             indoc! {"
-                fn Toggle(enabled: Bool = true) -> Html {<></>}
+                fn Toggle(enabled?: Bool = true) -> Html {<></>}
             "},
             expect![[r#"
-                fn Toggle(enabled: Bool = true) -> Html {
+                fn Toggle(enabled?: Bool = true) -> Html {
                   <></>
                 }
             "#]],
@@ -3101,10 +3102,10 @@ mod tests {
     }
 
     #[test]
-    fn function_with_mixed_required_and_default_parameters() {
+    fn function_with_mixed_required_and_optional_parameters() {
         check(
             indoc! {r#"
-                fn UserCard(name: String, role: String = "user", active: Bool = true) -> Html {
+                fn UserCard(name: String, role?: String = "user", active?: Bool = true) -> Html {
                   <>
                     {name}
                   </>
@@ -3113,8 +3114,8 @@ mod tests {
             expect![[r#"
                 fn UserCard(
                   name: String,
-                  role: String = "user",
-                  active: Bool = true,
+                  role?: String = "user",
+                  active?: Bool = true,
                 ) -> Html {
                   <>
                     {name}
@@ -3277,13 +3278,13 @@ mod tests {
     }
 
     #[test]
-    fn function_with_default_tuple_parameter() {
+    fn function_with_optional_tuple_parameter() {
         check(
             indoc! {"
-                fn Point(xy: (Int, Int) = (0,0)) -> Html {<></>}
+                fn Point(xy?: (Int, Int) = (0,0)) -> Html {<></>}
             "},
             expect![[r#"
-                fn Point(xy: (Int, Int) = (0, 0)) -> Html {
+                fn Point(xy?: (Int, Int) = (0, 0)) -> Html {
                   <></>
                 }
             "#]],
@@ -3291,62 +3292,14 @@ mod tests {
     }
 
     #[test]
-    fn function_with_default_array_parameter() {
+    fn function_with_optional_array_parameter() {
         check(
             indoc! {r#"
-                fn ItemList(items: Array[String] = ["one", "two"]) -> Html {<></>}
+                fn ItemList(items?: Array[String] = ["one", "two"]) -> Html {<></>}
             "#},
             expect![[r#"
-                fn ItemList(items: Array[String] = ["one", "two"]) -> Html {
-                  <></>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn function_with_default_empty_array_parameter() {
-        check(
-            indoc! {"
-                fn ItemList(items: Array[String] = []) -> Html {<></>}
-            "},
-            expect![[r#"
-                fn ItemList(items: Array[String] = []) -> Html {
-                  <></>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn function_with_default_empty_fragment_parameter() {
-        check(
-            indoc! {"
-                fn Card(children: Html = <></>) -> Html {<></>}
-            "},
-            expect![[r#"
-                fn Card(children: Html = <></>) -> Html {
-                  <></>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn function_with_default_record_parameter() {
-        check(
-            indoc! {r#"
-                record Config { debug: Bool, timeout: Int }
-                fn Settings(config: Config = Config {debug: false, timeout: 30}) -> Html {<></>}
-            "#},
-            expect![[r#"
-                record Config {
-                  debug: Bool,
-                  timeout: Int,
-                }
-
-                fn Settings(
-                  config: Config = Config {debug: false, timeout: 30},
+                fn ItemList(
+                  items?: Array[String] = ["one", "two"],
                 ) -> Html {
                   <></>
                 }
@@ -3355,11 +3308,61 @@ mod tests {
     }
 
     #[test]
-    fn function_with_default_enum_parameter() {
+    fn function_with_optional_empty_array_parameter() {
+        check(
+            indoc! {"
+                fn ItemList(items?: Array[String] = []) -> Html {<></>}
+            "},
+            expect![[r#"
+                fn ItemList(items?: Array[String] = []) -> Html {
+                  <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_optional_empty_fragment_parameter() {
+        check(
+            indoc! {"
+                fn Card(children?: Html = <></>) -> Html {<></>}
+            "},
+            expect![[r#"
+                fn Card(children?: Html = <></>) -> Html {
+                  <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_optional_record_parameter() {
+        check(
+            indoc! {r#"
+                record Config { debug: Bool, timeout: Int }
+                fn Settings(config?: Config = Config {debug: false, timeout: 30}) -> Html {<></>}
+            "#},
+            expect![[r#"
+                record Config {
+                  debug: Bool,
+                  timeout: Int,
+                }
+
+                fn Settings(
+                  config?: Config = Config {debug: false, timeout: 30},
+                ) -> Html {
+                  <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_optional_enum_parameter() {
         check(
             indoc! {"
                 enum Status { Active, Inactive, Pending }
-                fn Badge(status: Status = Status::Active) -> Html {<></>}
+                fn Badge(status?: Status = Status::Active) -> Html {<></>}
             "},
             expect![[r#"
                 enum Status {
@@ -3368,7 +3371,7 @@ mod tests {
                   Pending,
                 }
 
-                fn Badge(status: Status = Status::Active) -> Html {
+                fn Badge(status?: Status = Status::Active) -> Html {
                   <></>
                 }
             "#]],
@@ -3741,11 +3744,11 @@ mod tests {
     fn some_literal_inserts_soft_lines_when_long() {
         check(
             indoc! {r#"
-                fn Main(x: Option[String] = Some("this is a very long string that causes a line break because Some uses soft lines")) -> Html {<></>}
+                fn Main(x?: Option[String] = Some("this is a very long string that causes a line break because Some uses soft lines")) -> Html {<></>}
             "#},
             expect![[r#"
                 fn Main(
-                  x: Option[String] = Some(
+                  x?: Option[String] = Some(
                     "this is a very long string that causes a line break because Some uses soft lines"
                   ),
                 ) -> Html {
@@ -4537,7 +4540,7 @@ mod tests {
                     // The button label
                     label: String,
                     // Whether the button is disabled
-                    disabled: Bool = false,
+                    disabled?: Bool = false,
                     // More params to come
                 ) -> Html {
                   <>{label}</>
@@ -4548,7 +4551,7 @@ mod tests {
                   // The button label
                   label: String,
                   // Whether the button is disabled
-                  disabled: Bool = false,
+                  disabled?: Bool = false,
                 ) -> Html {
                   // More params to come
                   <>

@@ -599,6 +599,18 @@
           }
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "?"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "STRING",
           "value": ":"
         },
@@ -622,7 +634,7 @@
                 },
                 {
                   "type": "FIELD",
-                  "name": "default",
+                  "name": "fallback",
                   "content": {
                     "type": "SYMBOL",
                     "name": "_expression"

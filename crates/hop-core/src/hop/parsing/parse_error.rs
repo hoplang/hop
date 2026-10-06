@@ -7,7 +7,7 @@ use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::function_name::InvalidFunctionNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
 use crate::symbols::type_name::InvalidTypeNameError;
-use crate::symbols::var_name::InvalidVarNameError;
+use crate::symbols::var_name::{InvalidVarNameError, VarName};
 use thiserror::Error;
 
 /// Proof that a parse error has been recorded.
@@ -215,8 +215,14 @@ pub enum ParseErrorKind {
     #[error("Import path must have at least two segments: module::Name")]
     ImportPathTooShort,
 
-    #[error("Default values are not allowed on page parameters")]
-    DefaultValueNotAllowedOnPage,
+    #[error("Optional parameters are not allowed on pages")]
+    OptionalParamNotAllowedOnPage,
+
+    #[error("Optional parameter '{name}' requires a fallback value")]
+    OptionalParamWithoutFallback { name: VarName },
+
+    #[error("Parameter '{name}' has a fallback value and must be optional: write '{name}?'")]
+    FallbackOnRequiredParam { name: VarName },
 
     #[error("Expected a 'fn body() -> Html' member")]
     ExpectedPageBodyBlock,

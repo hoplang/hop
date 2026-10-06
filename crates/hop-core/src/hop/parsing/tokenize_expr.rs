@@ -47,6 +47,7 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
             Some(end) => LexStep::Token(LangToken::ColonColon, start.to(end)),
             None => LexStep::Token(LangToken::Colon, start),
         },
+        '?' => LexStep::Token(LangToken::Question, start),
         ',' => LexStep::Token(LangToken::Comma, start),
         ';' => LexStep::Token(LangToken::Semicolon, start),
         '#' => match iter.next_if(|s| s.ch() == '[') {
@@ -1575,6 +1576,26 @@ mod tests {
                 =>
                 ^^
             "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_question_mark_after_identifier() {
+        accept(
+            "x?:",
+            expect![[r#"
+            token: Identifier("x")
+            x?:
+            ^
+
+            token: Question
+            x?:
+             ^
+
+            token: Colon
+            x?:
+              ^
+        "#]],
         );
     }
 

@@ -23,7 +23,7 @@ pub struct FunctionSignature {
 pub struct ParamEntry {
     pub name: VarName,
     pub typ: Type,
-    pub default: Option<TypedExpr>,
+    pub fallback: Option<TypedExpr>,
 }
 
 #[derive(Debug, Clone)]

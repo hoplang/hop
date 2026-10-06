@@ -107,7 +107,7 @@ pub fn typecheck_call(
             let declared = &signature.params;
             let required = declared
                 .iter()
-                .rposition(|param| param.default.is_none())
+                .rposition(|param| param.fallback.is_none())
                 .map_or(0, |index| index + 1);
             // Too few arguments leave out parameters, which is reported below
             // as for a call by name, so `F()` fails like `<F/>`.
@@ -239,7 +239,7 @@ pub fn typecheck_call(
     let missing: Vec<&str> = params
         .iter()
         .filter(|param| {
-            param.default.is_none() && !supplied.iter().any(|(p, _)| p.name == param.name)
+            param.fallback.is_none() && !supplied.iter().any(|(p, _)| p.name == param.name)
         })
         .map(|param| param.name.as_str())
         .collect();
@@ -325,7 +325,7 @@ pub fn typecheck_call(
         .filter_map(|param| {
             let value = match typed.iter().position(|(name, _)| *name == param.name) {
                 Some(index) => typed.swap_remove(index).1,
-                None => param.default.clone()?,
+                None => param.fallback.clone()?,
             };
             Some((param.name.clone(), value))
         })

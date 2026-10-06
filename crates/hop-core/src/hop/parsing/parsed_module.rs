@@ -172,7 +172,7 @@ pub struct ParsedParameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: ParsedType,
-    pub default_value: Option<ParsedExpr>,
+    pub fallback_value: Option<ParsedExpr>,
     pub examples: Option<ExamplesAnnotation>,
     /// The range of the `#[examples(...)]` annotation, present exactly when
     /// `examples` is.
@@ -192,13 +192,16 @@ impl ParsedParameter {
         } else {
             BoxDoc::nil()
         };
-        let base = prefix
-            .append(BoxDoc::text(self.var_name.as_str()))
-            .append(BoxDoc::text(": "))
-            .append(self.var_type.to_doc());
-        match &self.default_value {
-            Some(default) => base.append(BoxDoc::text(" = ")).append(default.to_doc()),
-            None => base,
+        let name = prefix.append(BoxDoc::text(self.var_name.as_str()));
+        match &self.fallback_value {
+            Some(fallback) => name
+                .append(BoxDoc::text("?: "))
+                .append(self.var_type.to_doc())
+                .append(BoxDoc::text(" = "))
+                .append(fallback.to_doc()),
+            None => name
+                .append(BoxDoc::text(": "))
+                .append(self.var_type.to_doc()),
         }
     }
 }
