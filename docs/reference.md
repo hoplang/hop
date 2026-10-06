@@ -387,9 +387,10 @@ not counted here, since it receives arguments by name only.
 
 A name that is not a parameter of `f` is a compile error, unless the
 [rest parameter](#rest-parameters) of `f` collects it as an attribute. A name
-that is not a `LowercaseIdentifier`, such as `aria-label` or `for`, is written
-in quotes, as in `f("aria-label": a)`, and a quoted name is the same name as the
-one without quotes.
+that is not a `LowercaseIdentifier`, such as `aria-label`, or that is a
+[keyword or reserved word](#keywords), such as `for`, is written in quotes, as
+in `f("aria-label": a)`, and a quoted name is the same name as the one without
+quotes.
 
 A spread `...rest` among the arguments by name passes on what the
 [rest parameter](#rest-parameters) `rest` of the calling function collects, as
@@ -956,9 +957,10 @@ A markup call expression `<F …>…</F>` calls the
 [call expression](#call-expressions) in a
 [markup interpolation](#markup-interpolations): an [attribute](#attributes)
 `a={e}` is the named argument `a: e`, with `a` in quotes when it is not a
-`LowercaseIdentifier`, `a` alone is `a: true` when `a` names a parameter of
-`F`, a spread `...rest` is the same spread, and the content between the tags,
-as a [fragment](#fragment-expressions), is the argument `children`. So
+`LowercaseIdentifier` or is a keyword or reserved word, `a` alone is `a: true`
+when `a` names a parameter of `F`, a spread `...rest` is the same spread, and
+the content between the tags, as a [fragment](#fragment-expressions), is the
+argument `children`. So
 `<F a="x" ...rest>…</F>` is `<>{F(a: "x", ...rest, children: <>…</>)}</>`,
 even when the content is empty, and `<F a="x"/>` is `<>{F(a: "x")}</>`, which
 passes no `children`.
@@ -1144,8 +1146,9 @@ in each arm of a `match` is a compile error, while a single spread inside a
 
 A rest parameter accepts the attributes that the [element](#attributes) or
 [function](#markup-call-expressions) it is spread into accepts, except those
-written in the same start tag. For example, `class` is written on the
-`<button>` where `Button` spreads `rest`, so `Button` does not accept it:
+written in the same start tag or call expression. For example, `class` is
+written on the `<button>` where `Button` spreads `rest`, so `Button` does not
+accept it:
 
 ```hop
 fn Button(
