@@ -5,6 +5,7 @@ use super::r#type::{NumericType, Type};
 use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_call::{Argument, typecheck_call_arguments};
+use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join};
 use super::typecheck_match::typecheck_match;
 use super::typecheck_node::typecheck_node;
 use super::variable_scope::VariableScope;
@@ -16,7 +17,6 @@ use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{TypedExpr, TypedLoopSource, TypedRecordUpdateField};
 use crate::hover_annotation::HoverAnnotation;
-use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
@@ -1247,15 +1247,14 @@ pub fn typecheck_expr(
             args,
             range,
             ..
-        } => match name.as_str() {
-            "join" => {
-                let string_type = Type::String;
-
-                let mut typed_args = Vec::with_capacity(args.len());
-                for arg in args {
-                    let Some(typed) = typecheck_expr(
-                        arg,
-                        Some(&string_type),
+        } => {
+            let (annotation, typed) = match name.as_str() {
+                "join" => (
+                    HoverAnnotation::Join {
+                        range: subject_range.clone(),
+                    },
+                    typecheck_join(
+                        args,
                         forwarded_params,
                         var_env,
                         type_env,
@@ -1264,101 +1263,15 @@ pub fn typecheck_expr(
                         definition_links,
                         asset_references,
                         errors,
-                    ) else {
-                        continue;
-                    };
-                    if typed.typ() != Type::String {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::TypeMismatch {
-                                context: TypeMismatchContext::MacroArgument,
-                                expected: Type::String,
-                                found: typed.typ(),
-                            },
-                            arg.range().clone(),
-                        ));
-                        continue;
-                    }
-                    typed_args.push(typed);
-                }
-
-                if typed_args.len() != args.len() {
-                    return None;
-                }
-
-                annotations.push(HoverAnnotation::Description {
-                    title: "join!(String, ...) -> String".to_string(),
-                    description: "Joins strings with spaces.".to_string(),
-                    range: subject_range.clone(),
-                });
-
-                let separator = CheapString::new(" ".to_string());
-                let mut parts = Vec::with_capacity((typed_args.len() * 2).saturating_sub(1));
-                for (index, arg) in typed_args.into_iter().enumerate() {
-                    if index > 0 {
-                        parts.push(TypedExpr::StringLiteral {
-                            value: separator.clone(),
-                        });
-                    }
-                    parts.push(arg);
-                }
-                Some(TypedExpr::StringConcat { parts })
-            }
-            "format" => {
-                let Some((template, template_range)) = args.first().and_then(|arg| match arg {
-                    ParsedExpr::StringLiteral { value, range } => Some((value, range)),
-                    _ => None,
-                }) else {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::FormatMacroNonLiteralTemplate {},
-                        args.first().map_or(range, ParsedExpr::range).clone(),
-                    ));
-                    return None;
-                };
-
-                let template = template.cook(&mut |ch, range| {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::InvalidEscapeSequence { ch },
+                    ),
+                ),
+                "format" => (
+                    HoverAnnotation::Format {
+                        range: subject_range.clone(),
+                    },
+                    typecheck_format(
+                        args,
                         range,
-                    ));
-                })?;
-
-                let mut pieces = Vec::new();
-                let mut piece = String::new();
-                let mut chars = template.as_str().chars().peekable();
-                while let Some(ch) = chars.next() {
-                    match (ch, chars.peek()) {
-                        ('{', Some('}')) => {
-                            chars.next();
-                            if !piece.is_empty() {
-                                pieces.push(Some(CheapString::new(std::mem::take(&mut piece))));
-                            }
-                            pieces.push(None);
-                        }
-                        ('{', Some('{')) | ('}', Some('}')) => {
-                            chars.next();
-                            piece.push(ch);
-                        }
-                        ('{' | '}', _) => {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::FormatMacroInvalidPlaceholder {},
-                                template_range.clone(),
-                            ));
-                            return None;
-                        }
-                        _ => piece.push(ch),
-                    }
-                }
-                if !piece.is_empty() {
-                    pieces.push(Some(CheapString::new(piece)));
-                }
-                let placeholders = pieces.iter().filter(|piece| piece.is_none()).count();
-
-                let value_args = &args[1..];
-                let mut typed_args = Vec::with_capacity(value_args.len());
-                for arg in value_args {
-                    let Some(typed) = typecheck_expr(
-                        arg,
-                        None,
                         forwarded_params,
                         var_env,
                         type_env,
@@ -1367,116 +1280,25 @@ pub fn typecheck_expr(
                         definition_links,
                         asset_references,
                         errors,
-                    ) else {
-                        continue;
-                    };
-                    match typed.typ() {
-                        Type::String => typed_args.push(typed),
-                        Type::Int => typed_args.push(TypedExpr::IntToString {
-                            value: Box::new(typed),
-                        }),
-                        found => errors.push(TypeError::new(
-                            TypeErrorKind::FormatMacroUnsupportedArgument { found },
-                            arg.range().clone(),
-                        )),
-                    }
-                }
-
-                if value_args.len() != placeholders {
+                    ),
+                ),
+                "asset" => (
+                    HoverAnnotation::Asset {
+                        range: subject_range.clone(),
+                    },
+                    typecheck_asset(args, range, asset_references, errors),
+                ),
+                _ => {
                     errors.push(TypeError::new(
-                        TypeErrorKind::FormatMacroArity {
-                            expected: placeholders,
-                            found: value_args.len(),
-                        },
-                        range.clone(),
+                        TypeErrorKind::UnknownMacro { name: name.clone() },
+                        subject_range.clone(),
                     ));
                     return None;
                 }
-
-                if typed_args.len() != value_args.len() {
-                    return None;
-                }
-
-                annotations.push(HoverAnnotation::Description {
-                    title: "format!(literal: String, ...) -> String".to_string(),
-                    description:
-                        "Replaces each `{}` in the format string with the corresponding argument."
-                            .to_string(),
-                    range: subject_range.clone(),
-                });
-
-                let mut typed_args = typed_args.into_iter();
-                let parts = pieces
-                    .into_iter()
-                    .map(|piece| match piece {
-                        Some(value) => TypedExpr::StringLiteral { value },
-                        None => typed_args.next().expect("one argument per placeholder"),
-                    })
-                    .collect();
-                Some(TypedExpr::StringConcat { parts })
-            }
-            "asset" => {
-                if args.len() != 1 {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::AssetMacroArity { actual: args.len() },
-                        range.clone(),
-                    ));
-                    return None;
-                }
-                // Must be a string literal
-                let (path, path_range) = match &args[0] {
-                    ParsedExpr::StringLiteral { value, range } => {
-                        let path = value.cook(&mut |ch, range| {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::InvalidEscapeSequence { ch },
-                                range,
-                            ));
-                        })?;
-                        (path, range.clone())
-                    }
-                    other => {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::AssetMacroNonLiteralArg {},
-                            other.range().clone(),
-                        ));
-                        return None;
-                    }
-                };
-                let asset_path = match RootRelativeFilePath::from_root_anchored(path.as_str()) {
-                    Ok(asset_path) => asset_path,
-                    Err(source) => {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::InvalidAssetPath { source },
-                            path_range,
-                        ));
-                        return None;
-                    }
-                };
-
-                asset_references.push(AssetReference {
-                    range: range.clone(),
-                    path: asset_path.clone(),
-                });
-
-                annotations.push(HoverAnnotation::Description {
-                    title: "asset!(literal: String) -> String".to_string(),
-                    description: "The path must start with `/`, which denotes the project root. \
-                         Resolves to a content-hashed URL prefixed by \
-                         `assets.production_prefix` in production builds."
-                        .to_string(),
-                    range: subject_range.clone(),
-                });
-
-                Some(TypedExpr::Asset { path: asset_path })
-            }
-            _ => {
-                errors.push(TypeError::new(
-                    TypeErrorKind::UnknownMacro { name: name.clone() },
-                    subject_range.clone(),
-                ));
-                None
-            }
-        },
+            };
+            annotations.push(annotation);
+            typed
+        }
         ParsedExpr::MethodCall {
             receiver,
             method,
@@ -1518,75 +1340,73 @@ pub fn typecheck_expr(
                 ));
             }
 
-            let typed = match (&receiver_type, method.as_str()) {
-                (Type::Array(_), "len") => {
-                    annotations.push(HoverAnnotation::Description {
-                        title: "Array::len() -> Int".to_string(),
-                        description: "Returns the number of elements in the array.".to_string(),
+            let (annotation, typed) = match (&receiver_type, method.as_str()) {
+                (Type::Array(_), "len") => (
+                    HoverAnnotation::ArrayLength {
                         range: method_range.clone(),
-                    });
+                    },
                     Some(TypedExpr::ArrayLength {
                         array: Box::new(typed_receiver),
-                    })
-                }
-                (Type::Array(_), "is_empty") => {
-                    annotations.push(HoverAnnotation::Description {
-                        title: "Array::is_empty() -> Bool".to_string(),
-                        description: "Returns `true` if the array is empty.".to_string(),
+                    }),
+                ),
+                (Type::Array(_), "is_empty") => (
+                    HoverAnnotation::ArrayIsEmpty {
                         range: method_range.clone(),
-                    });
+                    },
                     Some(TypedExpr::ArrayIsEmpty {
                         array: Box::new(typed_receiver),
-                    })
-                }
-                (Type::Int, "to_string") => Some(TypedExpr::IntToString {
-                    value: Box::new(typed_receiver),
-                }),
-                (Type::Int, "to_float") => Some(TypedExpr::IntToFloat {
-                    value: Box::new(typed_receiver),
-                }),
-                (Type::Float, "to_int") => Some(TypedExpr::FloatToInt {
-                    value: Box::new(typed_receiver),
-                }),
-                (Type::String, "is_empty") => {
-                    annotations.push(HoverAnnotation::Description {
-                        title: "String::is_empty() -> Bool".to_string(),
-                        description: "Returns `true` if the string is empty.".to_string(),
+                    }),
+                ),
+                (Type::Int, "to_string") => (
+                    HoverAnnotation::IntToString {
                         range: method_range.clone(),
-                    });
+                    },
+                    Some(TypedExpr::IntToString {
+                        value: Box::new(typed_receiver),
+                    }),
+                ),
+                (Type::Int, "to_float") => (
+                    HoverAnnotation::IntToFloat {
+                        range: method_range.clone(),
+                    },
+                    Some(TypedExpr::IntToFloat {
+                        value: Box::new(typed_receiver),
+                    }),
+                ),
+                (Type::Float, "to_int") => (
+                    HoverAnnotation::FloatToInt {
+                        range: method_range.clone(),
+                    },
+                    Some(TypedExpr::FloatToInt {
+                        value: Box::new(typed_receiver),
+                    }),
+                ),
+                (Type::String, "is_empty") => (
+                    HoverAnnotation::StringIsEmpty {
+                        range: method_range.clone(),
+                    },
                     Some(TypedExpr::StringIsEmpty {
                         string: Box::new(typed_receiver),
-                    })
-                }
-                (Type::Option(_), "is_some") => {
-                    annotations.push(HoverAnnotation::Description {
-                        title: "Option::is_some() -> Bool".to_string(),
-                        description: "Returns `true` if the option contains a value.".to_string(),
+                    }),
+                ),
+                (Type::Option(_), "is_some") => (
+                    HoverAnnotation::OptionIsSome {
                         range: method_range.clone(),
-                    });
+                    },
                     Some(TypedExpr::OptionIsSome {
                         option: Box::new(typed_receiver),
-                    })
-                }
-                (Type::Option(_), "is_none") => {
-                    annotations.push(HoverAnnotation::Description {
-                        title: "Option::is_none() -> Bool".to_string(),
-                        description: "Returns `true` if the option is `None`.".to_string(),
+                    }),
+                ),
+                (Type::Option(_), "is_none") => (
+                    HoverAnnotation::OptionIsNone {
                         range: method_range.clone(),
-                    });
+                    },
                     Some(TypedExpr::OptionIsNone {
                         option: Box::new(typed_receiver),
-                    })
-                }
+                    }),
+                ),
                 (Type::Option(inner), "unwrap_or") => {
-                    annotations.push(HoverAnnotation::Description {
-                        title: "Option::unwrap_or(default: T) -> T".to_string(),
-                        description: "Returns the contained value, or `default` if the option \
-                             is `None`."
-                            .to_string(),
-                        range: method_range.clone(),
-                    });
-                    match (args.as_slice(), typed_args.pop().flatten()) {
+                    let typed = match (args.as_slice(), typed_args.pop().flatten()) {
                         ([default], Some(typed_default)) => {
                             if typed_default.typ() != **inner {
                                 errors.push(TypeError::new(
@@ -1607,7 +1427,13 @@ pub fn typecheck_expr(
                             }
                         }
                         _ => None,
-                    }
+                    };
+                    (
+                        HoverAnnotation::OptionUnwrapOr {
+                            range: method_range.clone(),
+                        },
+                        typed,
+                    )
                 }
                 _ => {
                     errors.push(TypeError::new(
@@ -1620,6 +1446,7 @@ pub fn typecheck_expr(
                     return None;
                 }
             };
+            annotations.push(annotation);
             if args.len() != arity {
                 let error_range = match (args.first(), args.last()) {
                     (Some(first), Some(last)) => first.range().clone().to(last.range().clone()),

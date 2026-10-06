@@ -311,6 +311,78 @@ mod tests {
     }
 
     #[test]
+    fn should_show_hover_info_for_to_string_on_int() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(count: Int) -> Html {
+                  <div>{count.to_string()}</div>
+                              ^
+                }
+            "#},
+            expect![[r#"
+                ```
+                Int::to_string() -> String
+                ```
+
+                Returns the decimal representation of the integer.
+                  --> main.hop (line 2, col 15)
+                2 |   <div>{count.to_string()}</div>
+                  |               ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_to_float_on_int() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(count: Int) -> Html {
+                  match count.to_float() > 1.5 {
+                              ^
+                    true => <>Many</>,
+                    false => <></>,
+                  }
+                }
+            "#},
+            expect![[r#"
+                ```
+                Int::to_float() -> Float
+                ```
+
+                Returns the same value as a float.
+                  --> main.hop (line 2, col 15)
+                2 |   match count.to_float() > 1.5 {
+                  |               ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_to_int_on_float() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(ratio: Float) -> Html {
+                  <div>{ratio.to_int().to_string()}</div>
+                              ^
+                }
+            "#},
+            expect![[r#"
+                ```
+                Float::to_int() -> Int
+                ```
+
+                Truncates toward zero and saturates at the `Int` bounds. `NaN` becomes `0`.
+                  --> main.hop (line 2, col 15)
+                2 |   <div>{ratio.to_int().to_string()}</div>
+                  |               ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_show_hover_info_for_join_macro() {
         check(
             indoc! {r#"
