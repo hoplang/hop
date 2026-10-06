@@ -4,7 +4,7 @@ use super::resolve_type::resolve_type;
 use super::r#type::{NumericType, Type};
 use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
-use super::typecheck_call::{Argument, typecheck_call_arguments};
+use super::typecheck_call::{Argument, CallArguments, NamedArgument, typecheck_call};
 use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join};
 use super::typecheck_match::typecheck_match;
 use super::typecheck_node::typecheck_node;
@@ -1427,123 +1427,38 @@ pub fn typecheck_expr(
             name_range,
             args,
             range,
-        } => {
-            let callee = name.clone();
-            let Some(signature) = type_env.functions.get(name.as_str()) else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::UndefinedFunction {
-                        name: callee.clone(),
-                    },
-                    name_range.clone(),
-                ));
-                return None;
-            };
-            let signature = signature.clone();
-            let def_range = type_env.names[name.as_str()].definition_range.clone();
-
-            let callee_module = def_range.document_id().clone();
-
-            definition_links.push(DefinitionLink {
-                use_range: name_range.clone(),
-                definition_range: def_range,
-            });
-
-            let mut failed = false;
-            let supplied: Vec<(VarName, Argument<'_>)> = match args {
-                ParsedArguments::Positional(values) => {
-                    let required = signature
-                        .params
+        } => typecheck_call(
+            name,
+            name_range,
+            range,
+            match args {
+                ParsedArguments::Positional(values) => CallArguments::Positional(values),
+                ParsedArguments::Named(named) => CallArguments::Named(
+                    named
                         .iter()
-                        .rposition(|param| param.default.is_none())
-                        .map_or(0, |index| index + 1);
-                    if values.len() < required || values.len() > signature.params.len() {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::FunctionArgumentCountMismatch {
-                                name: callee.clone(),
-                                expected: if required == signature.params.len() {
-                                    required.to_string()
-                                } else {
-                                    format!("{required} to {}", signature.params.len())
-                                },
-                                found: values.len(),
-                            },
-                            range.clone(),
-                        ));
-                        return None;
-                    }
-                    signature
-                        .params
-                        .iter()
-                        .zip(values)
-                        .map(|(param, value)| (param.name.clone(), Argument::Expression(value)))
-                        .collect()
-                }
-                ParsedArguments::Named(named) => {
-                    let mut supplied = Vec::with_capacity(named.len());
-                    for arg in named {
-                        if supplied.iter().any(|(name, _)| *name == arg.name) {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::DuplicateArgument {
-                                    argument: arg.name.clone(),
-                                },
-                                arg.name_range.clone(),
-                            ));
-                            failed = true;
-                        } else if !signature.params.iter().any(|p| p.name == arg.name) {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::FunctionDoesNotAcceptArgument {
-                                    name: callee.clone(),
-                                    argument: arg.name.as_str().to_string(),
-                                },
-                                arg.name_range.clone(),
-                            ));
-                            failed = true;
-                        } else {
-                            supplied.push((arg.name.clone(), Argument::Expression(&arg.value)));
-                        }
-                    }
-                    supplied
-                }
-            };
-
-            let typed_args = typecheck_call_arguments(
-                &callee,
-                range,
-                &signature.params,
-                supplied,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            if failed {
-                return None;
-            }
-
+                        .map(|arg| NamedArgument {
+                            name: arg.name.to_cheap_string(),
+                            range: arg.name_range.clone(),
+                            argument: Argument::Expression(&arg.value),
+                        })
+                        .collect(),
+                ),
+            },
             // A call expression writes no attributes, so a callee that
             // declares a rest receives an empty one, as `<F/>` passes.
-            let rest = signature.rest_param.clone().map(|rest_param| {
-                (
-                    rest_param,
-                    TypedAttrs {
-                        attributes: Vec::new(),
-                        spread: None,
-                    },
-                )
-            });
-
-            Some(TypedExpr::FunctionCall {
-                function_name: callee,
-                module: callee_module,
-                args: typed_args?,
-                rest,
-                typ: signature.return_type.clone(),
-            })
-        }
+            TypedAttrs {
+                attributes: Vec::new(),
+                spread: None,
+            },
+            forwarded_params,
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        ),
     }
 }
 

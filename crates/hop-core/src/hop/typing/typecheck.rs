@@ -2138,6 +2138,355 @@ mod tests {
         );
     }
 
+    // A markup call is shorthand for a call expression in an interpolation.
+    // Each pair below typechecks to the same expression.
+    #[test]
+    fn accepts_markup_call_as_shorthand_for_call_expression() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Badge(
+                  label: String,
+                  children: Html,
+                ) -> Html {
+                  <span>
+                    {label}
+                    {children}
+                  </span>
+                }
+
+                fn Dot() -> Html {
+                  <i></i>
+                }
+
+                fn Flag(on: Bool) -> String {
+                  match on {
+                    true => "on",
+                    false => "off",
+                  }
+                }
+
+                fn Main(name: String) -> Html {
+                  <div>
+                    <Badge label="new"><b>!</b></Badge>
+                    {Badge(label: "new", children: <><b>!</b></>)}
+                    <Badge label={name}></Badge>
+                    {Badge(label: name, children: <></>)}
+                    <Dot/>
+                    {Dot()}
+                    <Flag on/>
+                    {Flag(on: true)}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Badge(label: String, children: Html) -> Html {
+                  html(tag: "span", attrs: [], children: concat(escape(label), children))
+                }
+
+                fn Dot() -> Html {
+                  html(tag: "i", attrs: [], children: concat())
+                }
+
+                fn Flag(on: Bool) -> String {
+                  match on {true => "on", false => "off"}
+                }
+
+                fn Main(name: String) -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      Badge(
+                        label: "new",
+                        children: concat(html(tag: "b", attrs: [], children: concat(raw("!")))),
+                      ),
+                      Badge(
+                        label: "new",
+                        children: concat(html(tag: "b", attrs: [], children: concat(raw("!")))),
+                      ),
+                      Badge(label: name, children: concat()),
+                      Badge(label: name, children: concat()),
+                      Dot(),
+                      Dot(),
+                      escape(Flag(on: true)),
+                      escape(Flag(on: true)),
+                    ),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    // Each pair below fails with the same message.
+    #[test]
+    fn rejects_markup_call_and_call_expression_alike() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Badge(
+                  label: String,
+                  children: Html,
+                ) -> Html {
+                  <span>
+                    {label}
+                    {children}
+                  </span>
+                }
+
+                fn Dot() -> Html {
+                  <i></i>
+                }
+
+                fn Count() -> Int {
+                  1
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    <Badge label="new"/>
+                    {Badge(label: "new")}
+                    <Dot></Dot>
+                    {Dot(children: <></>)}
+                    <Badge label={1}><b>!</b></Badge>
+                    {Badge(label: 1, children: <><b>!</b></>)}
+                    <Badge label="new" size="s"><b>!</b></Badge>
+                    {Badge(label: "new", size: "s", children: <><b>!</b></>)}
+                    <Count/>
+                    {Count()}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Function Badge requires arguments: children
+                  --> main.hop (line 21, col 6)
+                20 |   <div>
+                21 |     <Badge label="new"/>
+                   |      ^^^^^
+
+                error: Function Badge requires arguments: children
+                  --> main.hop (line 22, col 6)
+                21 |     <Badge label="new"/>
+                22 |     {Badge(label: "new")}
+                   |      ^^^^^^^^^^^^^^^^^^^
+
+                error: Function Dot does not accept argument 'children'
+                  --> main.hop (line 23, col 12)
+                22 |     {Badge(label: "new")}
+                23 |     <Dot></Dot>
+                   |            ^^^
+
+                error: Function Dot does not accept argument 'children'
+                  --> main.hop (line 24, col 10)
+                23 |     <Dot></Dot>
+                24 |     {Dot(children: <></>)}
+                   |          ^^^^^^^^
+
+                error: Expected String got Int
+                  --> main.hop (line 25, col 19)
+                24 |     {Dot(children: <></>)}
+                25 |     <Badge label={1}><b>!</b></Badge>
+                   |                   ^
+
+                error: Expected String got Int
+                  --> main.hop (line 26, col 19)
+                25 |     <Badge label={1}><b>!</b></Badge>
+                26 |     {Badge(label: 1, children: <><b>!</b></>)}
+                   |                   ^
+
+                error: Function Badge does not accept argument 'size'
+                  --> main.hop (line 27, col 24)
+                26 |     {Badge(label: 1, children: <><b>!</b></>)}
+                27 |     <Badge label="new" size="s"><b>!</b></Badge>
+                   |                        ^^^^
+
+                error: Function Badge does not accept argument 'size'
+                  --> main.hop (line 28, col 26)
+                27 |     <Badge label="new" size="s"><b>!</b></Badge>
+                28 |     {Badge(label: "new", size: "s", children: <><b>!</b></>)}
+                   |                          ^^^^
+
+                error: Expected String or Html got Int
+                  --> main.hop (line 29, col 6)
+                28 |     {Badge(label: "new", size: "s", children: <><b>!</b></>)}
+                29 |     <Count/>
+                   |      ^^^^^
+
+                error: Expected String or Html got Int
+                  --> main.hop (line 30, col 6)
+                29 |     <Count/>
+                30 |     {Count()}
+                   |      ^^^^^^^
+            "#]],
+        );
+    }
+
+    // The attribute shorthands and a defaulted `children` desugar the same
+    // way. Each pair below typechecks to the same expression.
+    #[test]
+    fn accepts_attribute_shorthands_as_call_expression_arguments() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Badge(
+                  label: String,
+                  children: Html,
+                ) -> Html {
+                  <span>
+                    {label}
+                    {children}
+                  </span>
+                }
+
+                fn Card(children: Html = <></>) -> Html {
+                  <div>
+                    {children}
+                  </div>
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    <Badge label="say \"hi\" \\o/"></Badge>
+                    {Badge(label: "say \"hi\" \\o/", children: <></>)}
+                    <Badge label="new" children={<><b>!</b></>}/>
+                    {Badge(label: "new", children: <><b>!</b></>)}
+                    <Card/>
+                    {Card()}
+                    <Card></Card>
+                    {Card(children: <></>)}
+                    <Card><i>x</i></Card>
+                    {Card(children: <><i>x</i></>)}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Badge(label: String, children: Html) -> Html {
+                  html(tag: "span", attrs: [], children: concat(escape(label), children))
+                }
+
+                fn Card(children: Html) -> Html {
+                  html(tag: "div", attrs: [], children: concat(children))
+                }
+
+                fn Main() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      Badge(label: "say "hi" \o/", children: concat()),
+                      Badge(label: "say "hi" \o/", children: concat()),
+                      Badge(
+                        label: "new",
+                        children: concat(html(tag: "b", attrs: [], children: concat(raw("!")))),
+                      ),
+                      Badge(
+                        label: "new",
+                        children: concat(html(tag: "b", attrs: [], children: concat(raw("!")))),
+                      ),
+                      Card(children: concat()),
+                      Card(children: concat()),
+                      Card(children: concat()),
+                      Card(children: concat()),
+                      Card(
+                        children: concat(html(tag: "i", attrs: [], children: concat(raw("x")))),
+                      ),
+                      Card(
+                        children: concat(html(tag: "i", attrs: [], children: concat(raw("x")))),
+                      ),
+                    ),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    // Each pair below fails with the same message.
+    #[test]
+    fn rejects_attribute_shorthands_and_call_expression_arguments_alike() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Badge(
+                  label: String,
+                  children: Html,
+                ) -> Html {
+                  <span>
+                    {label}
+                    {children}
+                  </span>
+                }
+
+                fn Text(children: String) -> Html {
+                  <p>{children}</p>
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    <Badge label><b>!</b></Badge>
+                    {Badge(label: true, children: <><b>!</b></>)}
+                    <Text>x</Text>
+                    {Text(children: <>x</>)}
+                    <Badge label="new" children={<></>}></Badge>
+                    {Badge(label: "new", children: <></>, children: <></>)}
+                    <Nope/>
+                    {Nope()}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Expected String got Bool
+                  --> main.hop (line 17, col 12)
+                16 |   <div>
+                17 |     <Badge label><b>!</b></Badge>
+                   |            ^^^^^
+
+                error: Expected String got Bool
+                  --> main.hop (line 18, col 19)
+                17 |     <Badge label><b>!</b></Badge>
+                18 |     {Badge(label: true, children: <><b>!</b></>)}
+                   |                   ^^^^
+
+                error: Expected String got Html
+                  --> main.hop (line 19, col 11)
+                18 |     {Badge(label: true, children: <><b>!</b></>)}
+                19 |     <Text>x</Text>
+                   |           ^
+
+                error: Expected String got Html
+                  --> main.hop (line 20, col 21)
+                19 |     <Text>x</Text>
+                20 |     {Text(children: <>x</>)}
+                   |                     ^^^^^^
+
+                error: Argument 'children' is supplied more than once
+                  --> main.hop (line 21, col 43)
+                20 |     {Text(children: <>x</>)}
+                21 |     <Badge label="new" children={<></>}></Badge>
+                   |                                           ^^^^^
+
+                error: Argument 'children' is supplied more than once
+                  --> main.hop (line 22, col 43)
+                21 |     <Badge label="new" children={<></>}></Badge>
+                22 |     {Badge(label: "new", children: <></>, children: <></>)}
+                   |                                           ^^^^^^^^
+
+                error: Function Nope is not defined
+                  --> main.hop (line 23, col 6)
+                22 |     {Badge(label: "new", children: <></>, children: <></>)}
+                23 |     <Nope/>
+                   |      ^^^^
+
+                error: Function Nope is not defined
+                  --> main.hop (line 24, col 6)
+                23 |     <Nope/>
+                24 |     {Nope()}
+                   |      ^^^^
+            "#]],
+        );
+    }
+
     #[test]
     fn rejects_function_invoked_without_children() {
         reject(

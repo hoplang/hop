@@ -377,8 +377,10 @@ Arguments ::= Expr ( "," Expr )* ","?
 ```
 
 `f(a, b)` passes its arguments by position, and `f(x: a, y: b)` by name. A call
-that mixes the two is a compile error, and so is leaving out a parameter that
-has no default value.
+that mixes the two is a compile error. So is an argument that does not have the
+type of its parameter, more arguments than `f` has parameters, a name that is
+not a parameter of `f`, a parameter given an argument twice, and leaving out a
+parameter that has no default value.
 
 A function with an uppercase name can also be called by a
 [markup call](#markup-call-expressions).
@@ -936,29 +938,31 @@ A fragment lets markup content be used where one expression is expected:
 
 #### Markup call expressions
 
-A markup call expression `<F …></F>` calls the
-[function](#function-declarations) `F` with its arguments, and inserts the
-value `F` returns as a [markup interpolation](#markup-interpolations) does: a
-value of type `Html` as the elements and text it consists of, and a value of
-type `String` as text, [escaped](#escaping). Each [attribute](#attributes) is
-the argument for the parameter it names.
+A markup call expression `<F …>…</F>` calls the
+[function](#function-declarations) `F`. It is shorthand for a
+[call expression](#call-expressions) in a
+[markup interpolation](#markup-interpolations): an [attribute](#attributes)
+`a={e}` that names a parameter of `F` is the named argument `a: e`, `a` alone
+is `a: true`, and the content between the tags, as a
+[fragment](#fragment-expressions), is the argument `children`. So
+`<F a="x">…</F>` is `<>{F(a: "x", children: <>…</>)}</>`, even when the
+content is empty, and `<F a="x"/>` is `<>{F(a: "x")}</>`, which passes no
+`children`.
 
 ```ebnf
 MarkupCallExpr ::= "<" UppercaseIdentifier Attribute* ">" MarkupContent "</" UppercaseIdentifier ">"
                  | "<" UppercaseIdentifier Attribute* "/>"
 ```
 
-The content between the tags is the argument for the parameter `children`, so
-`<F>…</F>` is the same as `<F children={<>…</>}/>`, even when the content is
-empty. A markup call written as a single self-closing tag, `<F/>`, passes no
-`children` argument.
+The call is checked as any call expression, and its value is inserted as any
+interpolation: a value of type `Html` as the elements and text it consists of,
+a value of type `String` as text, [escaped](#escaping), and a value of any
+other type is a compile error.
 
-The function `F` accepts an attribute for each of its parameters and, if it has
-a [rest parameter](#rest-parameters), the attributes the rest parameter accepts.
-A markup call is a compile error if `F` returns a type other than `Html` or
-`String`, if it leaves out a parameter that has no default value, if an
-argument does not have the type of its parameter, or if it has an attribute
-that `F` does not accept.
+`F` accepts an attribute for each of its parameters, and an attribute that `F`
+does not accept is a compile error. With a [rest parameter](#rest-parameters),
+`F` also accepts the attributes the rest parameter collects, and a spread
+`...rest`. These have no call expression form.
 
 ```hop
 fn Badge(
@@ -975,12 +979,13 @@ fn Dot() -> Html {
   <i></i>
 }
 
-<Badge label="new"><b>!</b></Badge>           // <span>new<b>!</b></span>
-<Badge label="new" children={<><b>!</b></>}/> // <span>new<b>!</b></span>
-<Badge label="new"></Badge>                   // <span>new</span>
-<Badge label="new"/>                          // error: Function Badge requires arguments: children
-<Dot/>                                        // <i></i>
-<Dot></Dot>                                   // error: Function Dot does not accept argument 'children'
+<Badge label="new"><b>!</b></Badge>                 // <span>new<b>!</b></span>
+<>{Badge(label: "new", children: <><b>!</b></>)}</> // <span>new<b>!</b></span>
+<Badge label="new" children={<><b>!</b></>}/>       // <span>new<b>!</b></span>
+<Badge label="new"></Badge>                         // <span>new</span>
+<Badge label="new"/>                                // error: Function Badge requires arguments: children
+<Dot/>                                              // <i></i>
+<Dot></Dot>                                         // error: Function Dot does not accept argument 'children'
 ```
 
 <a id="markup-content"></a>
@@ -1074,8 +1079,9 @@ For [XSS safety](#xss-safety), no element accepts an attribute whose name
 starts with `on`, such as `onclick`. Some attributes, such as the `src` of a
 `<script>`, accept only a string literal, written as `src="…"` or `src={"…"}`.
 
-On a [markup call](#markup-call-expressions), a name alone is the argument
-`true`.
+On a [markup call](#markup-call-expressions), an attribute that names a
+parameter is a named argument, and a name alone is the argument `true`. Any
+other attribute goes to the [rest parameter](#rest-parameters) as written.
 
 An attribute written more than once in a start tag, as in
 `<div id="a" id="b">`, is a compile error.
