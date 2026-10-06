@@ -1,8 +1,5 @@
 use crate::document::DocumentPosition;
-
-use super::parsed_ast::ParsedAst;
-use super::parsed_node::ParsedNode;
-use crate::hop::parsing::ParsedExpr;
+use crate::hop::parsing::{ParsedAst, ParsedExpr, ParsedNode};
 
 /// Finds the deepest AST node that contains the given position.
 ///
@@ -86,7 +83,7 @@ mod tests {
     use crate::diagnostic_severity::DiagnosticSeverity;
     use crate::document_annotator::DocumentAnnotator;
     use crate::extract_position::extract_position;
-    use crate::hop::parsing::parse::parse;
+    use crate::hop::parsing::parse;
     use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::{Expect, expect};
     use indoc::indoc;

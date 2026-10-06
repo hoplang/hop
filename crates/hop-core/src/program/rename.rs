@@ -1,6 +1,7 @@
 use super::Program;
+use super::find_node::find_node_at_position;
 use crate::document::{DocumentPosition, DocumentRange};
-use crate::hop::parsing::{ParsedNode, find_node_at_position};
+use crate::hop::parsing::ParsedNode;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 
