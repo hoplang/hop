@@ -155,10 +155,12 @@ pub fn typecheck_call(
                     continue;
                 }
                 written.push(name.clone());
+                // Names are compared ignoring case, here as for duplicates
+                // and attributes, so `Title` passes the parameter `title`.
                 let param = params
                     .iter()
                     .copied()
-                    .find(|param| param.name.as_str() == name.as_str());
+                    .find(|param| param.name.as_str().eq_ignore_ascii_case(name.as_str()));
                 // An argument that names no parameter goes to the rest when
                 // the element the rest lands on accepts it, unless the site of
                 // the spread already writes it.

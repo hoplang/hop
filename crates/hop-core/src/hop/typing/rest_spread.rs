@@ -6,7 +6,7 @@
 //! carries. This runs before any body is checked, because a call site needs
 //! the parameters its callee ends up forwarding.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 
 use super::type_env::{FunctionSignature, ParamEntry, Tail};
 use crate::dependency_graph::DependencyGraph;
@@ -311,16 +311,13 @@ fn rest_target_signature(
                         element,
                         mut reserved,
                     } => {
-                        let callee_param_names: HashSet<&str> = callee_sig
-                            .params
-                            .iter()
-                            .chain(&callee_sig.forwarded)
-                            .map(|p| p.name.as_str())
-                            .collect();
                         for attr in supplied_attrs {
-                            if !callee_param_names.contains(attr.as_str())
-                                && !reserved.contains(attr)
-                            {
+                            let names_callee_param = callee_sig
+                                .params
+                                .iter()
+                                .chain(&callee_sig.forwarded)
+                                .any(|p| p.name.as_str().eq_ignore_ascii_case(attr.as_str()));
+                            if !names_callee_param && !reserved.contains(attr) {
                                 reserved.push(attr.clone());
                             }
                         }
@@ -329,7 +326,9 @@ fn rest_target_signature(
                     Tail::Closed => Tail::Closed,
                 };
                 let covered_by_rest = |p: &ParamEntry| {
-                    !(supplied_attrs.iter().any(|a| a.as_str() == p.name.as_str())
+                    !(supplied_attrs
+                        .iter()
+                        .any(|a| a.as_str().eq_ignore_ascii_case(p.name.as_str()))
                         || (*has_children && p.name.as_str() == "children")
                         || declared_names.contains(&&p.name))
                 };

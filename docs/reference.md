@@ -385,7 +385,9 @@ type of its parameter, more arguments than `f` has parameters, a name given
 twice, ignoring case, and leaving out a required parameter. A rest parameter is
 not counted here, since it receives arguments by name only.
 
-A name that is not a parameter of `f` is a compile error, unless the
+An argument by name goes to the parameter of that name, compared ignoring case,
+so `f("Label": a)` passes `a` as the parameter `label`. A name that is not a
+parameter of `f` is a compile error, unless the
 [rest parameter](#rest-parameters) of `f` collects it as an attribute. A name
 that is not a `LowercaseIdentifier`, such as `aria-label`, or that is a
 [keyword or reserved word](#keywords), such as `for`, is written in quotes, as

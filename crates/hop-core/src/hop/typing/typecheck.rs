@@ -2704,6 +2704,104 @@ mod tests {
         );
     }
 
+    // A name that differs from a parameter only in case passes that parameter,
+    // and does not go to the rest.
+    #[test]
+    fn accepts_argument_names_that_differ_only_in_case_from_parameters() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Badge(label: String) -> Html {
+                  <span>
+                    {label}
+                  </span>
+                }
+
+                fn Card(
+                  title?: String = "untitled",
+                  ...rest,
+                ) -> Html {
+                  <div ...rest>
+                    {title}
+                  </div>
+                }
+
+                fn Main() -> Html {
+                  <div>
+                    <Badge Label="a"/>
+                    {Badge("LABEL": "b")}
+                    <Card Title="c"/>
+                    {Card("TITLE": "d")}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Badge(label: String) -> Html {
+                  html(tag: "span", attrs: [], children: concat(escape(label)))
+                }
+
+                fn Card(title: String, ...rest) -> Html {
+                  html(tag: "div", attrs: [...rest], children: concat(escape(title)))
+                }
+
+                fn Main() -> Html {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      Badge(label: "a"),
+                      Badge(label: "b"),
+                      Card(title: "c", rest: []),
+                      Card(title: "d", rest: []),
+                    ),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    // A parameter written in another case at the site of a rest spread is
+    // supplied there, so the rest does not carry it.
+    #[test]
+    fn accepts_parameter_written_in_another_case_where_the_rest_is_spread() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(
+                  title: String,
+                  ...rest,
+                ) -> Html {
+                  <div ...rest>
+                    {title}
+                  </div>
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  <Card Title="w" ...rest/>
+                }
+
+                fn Main() -> Html {
+                  <Wrapper data-x="y"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Card(title: String, ...rest) -> Html {
+                  html(tag: "div", attrs: [...rest], children: concat(escape(title)))
+                }
+
+                fn Main() -> Html {
+                  Wrapper(rest: [data-x: escape("y")])
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  Card(title: "w", rest: [...rest])
+                }
+            "#]],
+        );
+    }
+
     // A rest spread into a call expression forwards the rest as the spread
     // into a markup call does. Primary and Secondary typecheck to the same
     // body, apart from the kind.
