@@ -1,13 +1,13 @@
 use super::type_env::{ParamEntry, Tail, TypeEnv};
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
-use super::typecheck_markup::{typecheck_attribute_value, typecheck_markup};
+use super::typecheck_markup::typecheck_attribute_value;
 use super::typed_expr::TypedExpr;
 use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::parsing::{ParsedExpr, ParsedMarkup};
+use crate::hop::parsing::ParsedExpr;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{Type, TypedAttribute, TypedAttrs};
 use crate::hover_annotation::HoverAnnotation;
@@ -26,9 +26,6 @@ pub enum Argument<'a> {
     /// kept until the parameter or attribute it names is known, so the error
     /// can show a value of the right type.
     Bare(DocumentRange),
-    /// The content between the tags of a markup call, which is the
-    /// `children` argument as a fragment.
-    Content(&'a [ParsedMarkup], DocumentRange),
     /// Supplied by the call site itself: a parameter the caller's rest
     /// carries.
     Implied(TypedExpr),
@@ -227,8 +224,6 @@ pub fn typecheck_call(
                         ));
                         failed = true;
                     }
-                    // The content between the tags is the `children`
-                    // argument, never an attribute.
                     (None, _, _) => {
                         errors.push(TypeError::new(
                             TypeErrorKind::FunctionDoesNotAcceptArgument {
@@ -303,25 +298,6 @@ pub fn typecheck_call(
                 ));
                 failed = true;
                 continue;
-            }
-            Argument::Content(content, range) => {
-                let parts = content
-                    .iter()
-                    .filter_map(|markup| {
-                        typecheck_markup(
-                            markup,
-                            forwarded_params,
-                            registry,
-                            errors,
-                            var_env,
-                            type_env,
-                            annotations,
-                            definition_links,
-                            asset_references,
-                        )
-                    })
-                    .collect();
-                (TypedExpr::HtmlConcat { parts }, range)
             }
             Argument::Expression(expr) => {
                 let Some(value) = typecheck_expr(

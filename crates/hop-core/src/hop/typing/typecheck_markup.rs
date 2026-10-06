@@ -58,6 +58,24 @@ pub fn typecheck_markup(
             children,
             range: _,
         } => {
+            // A tag pair passes its content as the argument `children`, a
+            // fragment, even when the content is empty, while a self-closing
+            // tag passes no `children`. Empty content has no range of its own,
+            // so it is reported at the end tag that passes it.
+            let content = children.as_ref().map(|content| {
+                let range = match (content.first(), content.last(), function_name_closing_range) {
+                    (Some(first), Some(last), _) => first.range().clone().to(last.range().clone()),
+                    (_, _, Some(closing_range)) => closing_range.clone(),
+                    (_, _, None) => function_name_opening_range.clone(),
+                };
+                ParsedExpr::Markup {
+                    markup: Box::new(ParsedMarkup::Fragment {
+                        children: content.clone(),
+                        range,
+                    }),
+                }
+            });
+
             let mut arguments: Vec<NamedArgument<'_>> = Vec::new();
             let mut spread = None;
             for attribute in attributes {
@@ -102,21 +120,12 @@ pub fn typecheck_markup(
                 });
             }
 
-            // A tag pair passes its content as `children`, even when the
-            // content is empty, while a self-closing tag passes no `children`.
-            // Empty content has no range of its own, so it is reported at the
-            // end tag that passes it.
-            if let Some(content) = children {
-                let range = match (content.first(), content.last(), function_name_closing_range) {
-                    (Some(first), Some(last), _) => first.range().clone().to(last.range().clone()),
-                    (_, _, Some(closing_range)) => closing_range.clone(),
-                    (_, _, None) => function_name_opening_range.clone(),
-                };
+            if let Some(content) = &content {
                 arguments.push(NamedArgument {
                     name: AttributeName::new(CheapString::new("children".to_string()))
                         .expect("children is an attribute name"),
-                    range: range.clone(),
-                    argument: Argument::Content(content, range),
+                    range: content.range().clone(),
+                    argument: Argument::Expression(content),
                 });
             }
 

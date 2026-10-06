@@ -32,7 +32,6 @@ pub enum RestSpreadTarget {
     Function {
         callee: FunctionName,
         supplied_attrs: Vec<AttributeName>,
-        has_children: bool,
         spread_range: DocumentRange,
     },
 }
@@ -89,7 +88,6 @@ pub fn collect_spreads(expr: &ParsedExpr, out: &mut Vec<SpreadOccurrence>) {
                                     ParsedNamedArgument::Spread { .. } => None,
                                 })
                                 .collect(),
-                            has_children: false,
                             spread_range: range.clone(),
                         },
                     });
@@ -129,12 +127,20 @@ fn collect_spreads_in_markup(markup: &ParsedMarkup, out: &mut Vec<SpreadOccurren
         } => {
             for attr in attributes {
                 if let ParsedAttribute::Spread { name, range } = attr {
+                    let mut supplied_attrs = named_attrs(attributes);
+                    // A tag pair passes its content as the argument
+                    // `children`, written like any other.
+                    if children.is_some() {
+                        supplied_attrs.push(
+                            AttributeName::new(CheapString::new("children".to_string()))
+                                .expect("children is an attribute name"),
+                        );
+                    }
                     out.push(SpreadOccurrence {
                         spread_name: name.clone(),
                         target: RestSpreadTarget::Function {
                             callee: function_name.clone(),
-                            supplied_attrs: named_attrs(attributes),
-                            has_children: children.is_some(),
+                            supplied_attrs,
                             spread_range: range.clone(),
                         },
                     });
@@ -302,7 +308,6 @@ fn rest_target_signature(
         Some(RestSpreadTarget::Function {
             callee,
             supplied_attrs,
-            has_children,
             ..
         }) => match settled.get(callee.as_str()) {
             Some(callee_sig) => {
@@ -327,7 +332,6 @@ fn rest_target_signature(
                     !(supplied_attrs
                         .iter()
                         .any(|a| a.as_str().eq_ignore_ascii_case(p.name.as_str()))
-                        || (*has_children && p.name.as_str() == "children")
                         || declared_names.contains(&&p.name))
                 };
                 let forwarded = callee_sig

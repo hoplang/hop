@@ -10925,6 +10925,78 @@ mod tests {
     }
 
     #[test]
+    fn rejects_children_through_rest_when_inner_call_passes_children() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Foo(children: Html, ...rest) -> Html {
+                    <my-el ...rest>{children}</my-el>
+                }
+                fn ByTag(...rest) -> Html {
+                    <Foo ...rest>inner</Foo>
+                }
+                fn ByCall(...rest) -> Html {
+                    Foo(children: <>inner</>, ...rest)
+                }
+                page Main() {
+                  fn body() -> Html {
+                      <>
+                        <ByTag children="s"/>
+                        <ByCall children="s"/>
+                      </>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Function ByTag does not accept argument 'children'
+                  --> main.hop (line 13, col 16)
+                12 |       <>
+                13 |         <ByTag children="s"/>
+                   |                ^^^^^^^^
+
+                error: Function ByCall does not accept argument 'children'
+                  --> main.hop (line 14, col 17)
+                13 |         <ByTag children="s"/>
+                14 |         <ByCall children="s"/>
+                   |                 ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_content_for_rest_that_lands_on_custom_element() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Foo(...rest) -> Html {
+                    <my-el ...rest></my-el>
+                }
+                page Main() {
+                  fn body() -> Html {
+                      <>
+                        <Foo>inner</Foo>
+                        {Foo(children: <>inner</>)}
+                      </>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Expected String got Html
+                  --> main.hop (line 7, col 14)
+                 6 |       <>
+                 7 |         <Foo>inner</Foo>
+                   |              ^^^^^
+
+                error: Expected String got Html
+                  --> main.hop (line 8, col 24)
+                 7 |         <Foo>inner</Foo>
+                 8 |         {Foo(children: <>inner</>)}
+                   |                        ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_param_reserved_out_of_rest_when_callee_param_is_optional() {
         accept(
             indoc! {r#"
