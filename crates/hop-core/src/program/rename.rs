@@ -30,6 +30,25 @@ impl Program {
             }
         }
 
+        // A use of a function links to the name in its declaration, whether
+        // the use is a call expression, a tag of a markup call or an import.
+        let function_use = self.definition_links.get(document_id).and_then(|links| {
+            links.iter().find(|link| {
+                link.use_range.contains_position(position)
+                    && self
+                        .parsed_modules
+                        .get(link.definition_range.document_id())
+                        .is_some_and(|definition_module| {
+                            definition_module
+                                .function_declarations()
+                                .any(|function| function.name_range == link.definition_range)
+                        })
+            })
+        });
+        if let Some(link) = function_use {
+            return Some(self.collect_function_rename_locations(&link.definition_range));
+        }
+
         let markup = find_markup_at_position(module, position)?;
 
         let is_on_tag_name = markup.tag_names().any(|r| r.contains_position(position));
@@ -39,14 +58,6 @@ impl Program {
         }
 
         match markup {
-            ParsedMarkup::Call { .. } => {
-                let link = self
-                    .definition_links
-                    .get(document_id)?
-                    .iter()
-                    .find(|link| link.use_range.contains_position(position))?;
-                Some(self.collect_function_rename_locations(&link.definition_range))
-            }
             n @ ParsedMarkup::Element { .. } => Some(n.tag_names().cloned().collect()),
             _ => None,
         }
@@ -67,9 +78,32 @@ impl Program {
             .chain(module.enum_declarations().map(|e| &e.type_name_range))
             .chain(module.function_declarations().map(|f| &f.name_range));
 
-        let range = match declaration_names.find(|r| r.contains_position(position)) {
-            Some(range) => range,
-            None => find_markup_at_position(module, position)?
+        // A use of a function links to the name in its declaration, whether
+        // the use is a call expression, a tag of a markup call or an import.
+        let function_use = self
+            .definition_links
+            .get(position.document_id())
+            .and_then(|links| {
+                links.iter().find(|link| {
+                    link.use_range.contains_position(position)
+                        && self
+                            .parsed_modules
+                            .get(link.definition_range.document_id())
+                            .is_some_and(|definition_module| {
+                                definition_module
+                                    .function_declarations()
+                                    .any(|function| function.name_range == link.definition_range)
+                            })
+                })
+            });
+
+        let range = match (
+            declaration_names.find(|r| r.contains_position(position)),
+            function_use,
+        ) {
+            (Some(range), _) => range,
+            (None, Some(link)) => &link.use_range,
+            (None, None) => find_markup_at_position(module, position)?
                 .tag_names()
                 .find(|r| r.contains_position(position))?,
         };
@@ -347,6 +381,114 @@ mod tests {
                   --> components.hop (line 5, col 4)
                 5 | fn Main() -> Html {
                   |    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_rename_locations_from_call_expression() {
+        check_rename_locations(
+            indoc! {r#"
+                -- components.hop --
+                pub fn HelloWorld() -> Html {
+                  <h1>Hello World</h1>
+                }
+
+                -- main.hop --
+                import components::HelloWorld
+
+                fn Main() -> Html {
+                  <div>
+                    <HelloWorld />
+                    {HelloWorld()}
+                     ^
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                Rename
+                  --> components.hop (line 1, col 8)
+                1 | pub fn HelloWorld() -> Html {
+                  |        ^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 1, col 20)
+                1 | import components::HelloWorld
+                  |                    ^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 5, col 6)
+                5 |     <HelloWorld />
+                  |      ^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 6, col 6)
+                6 |     {HelloWorld()}
+                  |      ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_rename_locations_from_lowercase_call_expression() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                fn greeting() -> String {
+                  "Hello"
+                }
+
+                fn message() -> String {
+                  greeting()
+                  ^
+                }
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 1, col 4)
+                1 | fn greeting() -> String {
+                  |    ^^^^^^^^
+
+                Rename
+                  --> main.hop (line 6, col 3)
+                6 |   greeting()
+                  |   ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_rename_locations_from_import() {
+        check_rename_locations(
+            indoc! {r#"
+                -- components.hop --
+                pub fn HelloWorld() -> Html {
+                  <h1>Hello World</h1>
+                }
+
+                -- main.hop --
+                import components::HelloWorld
+                                   ^
+
+                fn Main() -> Html {
+                  <HelloWorld />
+                }
+            "#},
+            expect![[r#"
+                Rename
+                  --> components.hop (line 1, col 8)
+                1 | pub fn HelloWorld() -> Html {
+                  |        ^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 1, col 20)
+                1 | import components::HelloWorld
+                  |                    ^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 4, col 4)
+                4 |   <HelloWorld />
+                  |    ^^^^^^^^^^
             "#]],
         );
     }
@@ -759,6 +901,29 @@ mod tests {
                   --> main.hop (line 1, col 4)
                 1 | fn HelloWorld() -> Html {
                   |    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_renameable_symbol_from_call_expression() {
+        check_renameable_symbol(
+            indoc! {r#"
+                -- main.hop --
+                fn greeting() -> String {
+                  "Hello"
+                }
+
+                fn message() -> String {
+                  greeting()
+                     ^
+                }
+            "#},
+            expect![[r#"
+                greeting
+                  --> main.hop (line 6, col 3)
+                6 |   greeting()
+                  |   ^^^^^^^^
             "#]],
         );
     }
