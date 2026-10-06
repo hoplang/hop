@@ -1126,8 +1126,9 @@ caller passes by name that are not parameters of the function, whether written
 as attributes of a markup call or in a call expression. The body spreads it, as
 `...rest`, in the start tag of an element or markup call, or in the arguments
 of a call expression, where the collected arguments are placed as if written
-there. A rest parameter that is not the last parameter, or that the body does
-not spread exactly once, is a compile error. For example:
+at the end of the start tag or the arguments, wherever the spread is written.
+A rest parameter that is not the last parameter, or that the body does not
+spread exactly once, is a compile error. For example:
 
 ```hop
 fn Button(
@@ -1156,6 +1157,17 @@ SecondaryButton(type: "submit")            // <button class="secondary" type="su
 Exactly once means once in the source text, not once per evaluation: a spread
 in each arm of a `match` is a compile error, while a single spread inside a
 `for` body is allowed, and adds the attributes on every iteration.
+
+Since the collected arguments come last, a spread written before an attribute
+renders after it:
+
+```hop
+fn Link(...rest) -> Html {
+  <a ...rest href="/">Home</a>
+}
+
+<Link id="home"/> // <a href="/" id="home">Home</a>
+```
 
 A rest parameter accepts the names that the [element](#attributes) or
 [function](#markup-call-expressions) it is spread into accepts, except those
