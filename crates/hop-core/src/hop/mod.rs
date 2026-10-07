@@ -1,4 +1,3 @@
-pub mod assembly;
 mod formatter;
 pub mod parsing;
 pub mod typing;

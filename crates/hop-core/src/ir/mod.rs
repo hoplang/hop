@@ -1,4 +1,5 @@
 mod compiler;
+mod document_shell;
 mod expr_id;
 mod function_id;
 mod ir_function;
@@ -22,6 +23,7 @@ pub mod runtime;
 pub mod transpile;
 
 pub use compiler::compile;
+pub use document_shell::{DocumentShell, TailwindInjection};
 pub use lower_pure::lower_pure;
 pub use optimizer::optimize;
 pub use transform::retain_reachable;

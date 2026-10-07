@@ -19,6 +19,7 @@ pub fn optimize(module: PureModule) -> PureModule {
         .map(|page| PurePageDeclaration {
             name: page.name,
             parameters: page.parameters,
+            head: optimize_body(page.head, &mut expr_ids),
             body: optimize_body(page.body, &mut expr_ids),
         })
         .collect();
@@ -81,13 +82,15 @@ mod tests {
             let before_module = module.to_string();
             let before_outputs: Vec<String> = page_args
                 .iter()
-                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
+                .map(|(page_name, args)| {
+                    evaluate_page(&module, page_name, args.clone(), None).unwrap()
+                })
                 .collect();
 
             let module = optimize(module);
 
             for ((page_name, args), before_output) in page_args.iter().zip(&before_outputs) {
-                let after_output = evaluate_page(&module, page_name, args.clone()).unwrap();
+                let after_output = evaluate_page(&module, page_name, args.clone(), None).unwrap();
                 assert_eq!(
                     before_output, &after_output,
                     "page {page_name}\n-- before --\n{before_module}\n-- after --\n{module}"

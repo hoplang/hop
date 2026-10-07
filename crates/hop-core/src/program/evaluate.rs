@@ -3,10 +3,10 @@ use super::evaluate_page_error::EvaluatePageError;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::CheapString;
-use crate::hop::assembly::TailwindInjection;
 use crate::ir;
 use crate::ir::runtime::evaluator::EvalError;
 use crate::ir::runtime::random::random_value;
+use crate::ir::{DocumentShell, TailwindInjection};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
@@ -48,12 +48,13 @@ impl Program {
                 skip_optimization,
                 page_filter: Some((document_id.clone(), page_name.clone())),
                 asset_path_rewriter,
-                tailwind_injection: generated_tailwind_css.map(TailwindInjection::Inline),
-                ..Default::default()
             },
         );
+        let shell = DocumentShell::new(generated_tailwind_css.map(TailwindInjection::Inline), None);
+        let rendered =
+            ir::runtime::evaluator::evaluate_page(&pure_module, page_name, args, Some(&shell));
 
-        ir::runtime::evaluator::evaluate_page(&pure_module, page_name, args).map_err(|e| match e {
+        rendered.map_err(|e| match e {
             EvalError::PageNotFound { page } => EvaluatePageError::PageNotFound {
                 page: page.to_string(),
                 available: self.page_names(),
@@ -129,8 +130,39 @@ impl Program {
 mod tests {
     use super::super::test_support::program_from_archive;
     use super::*;
+    use expect_test::expect;
     use indoc::indoc;
     use txtar::Archive;
+
+    #[test]
+    fn should_render_the_document_around_the_head_and_the_body() {
+        let program = program_from_archive(&Archive::from(indoc! {r#"
+            -- main.hop --
+            page Main() {
+              fn head() -> Html {
+                <title>Hi</title>
+              }
+              fn body() -> Html {
+                <p>Hello</p>
+              }
+            }
+        "#}));
+
+        let main_module = RootContainedFilePath::new("main.hop").unwrap();
+        let main = TypeName::parse("Main").unwrap();
+        let result = program
+            .evaluate_page_with_values(
+                &main_module,
+                &main,
+                HashMap::new(),
+                Some(".text-red { color: red; }"),
+                false,
+                None,
+            )
+            .expect("Should evaluate successfully");
+
+        expect![[r#"<!doctype html><html><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1" name="viewport"><title>Hi</title><style>.text-red { color: red; }</style></head><body><p>Hello</p></body></html>"#]].assert_eq(&result);
+    }
 
     #[test]
     fn should_evaluate_ir_page_with_parameters() {

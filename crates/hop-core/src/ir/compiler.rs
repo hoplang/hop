@@ -2,10 +2,9 @@ use std::sync::Arc;
 
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
-use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::{
     CaseVar, Decision, Type, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
-    TypedPattern, TypedRecordUpdateField,
+    TypedPageDeclaration, TypedPattern, TypedRecordUpdateField,
 };
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::function_id::FunctionIdCounter;
@@ -26,7 +25,7 @@ use super::pure_module::{
 use super::writer_module::WriterParameter;
 
 pub fn compile(
-    pages: Vec<AssembledPageDeclaration>,
+    pages: Vec<TypedPageDeclaration>,
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 ) -> PureModule {
@@ -132,7 +131,7 @@ impl<'a> Compiler<'a> {
         declaration
     }
 
-    fn compile_page_decl(&mut self, page: AssembledPageDeclaration) -> PurePageDeclaration {
+    fn compile_page_decl(&mut self, page: TypedPageDeclaration) -> PurePageDeclaration {
         self.push_scope();
 
         let mut parameters = Vec::with_capacity(page.params.len());
@@ -147,6 +146,7 @@ impl<'a> Compiler<'a> {
         let declaration = PurePageDeclaration {
             name: page.name,
             parameters,
+            head: self.compile_expr(&page.head),
             body: self.compile_expr(&page.body),
         };
         self.pop_scope();
@@ -942,7 +942,7 @@ mod tests {
     };
     use expect_test::{Expect, expect};
 
-    fn check(page: AssembledPageDeclaration, expected: Expect) {
+    fn check(page: TypedPageDeclaration, expected: Expect) {
         let before = page.to_string();
         let mut expr_ids = ExprIdCounter::new();
         let mut var_ids = VarIdCounter::new();
@@ -952,6 +952,42 @@ mod tests {
         let after = compiled_page.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn should_compile_the_head_and_the_body() {
+        let mut page = build_page_no_params("MainComp", |t| {
+            t.text("Hello World");
+        });
+        page.head = TypedExpr::HtmlConcat {
+            parts: vec![TypedExpr::HtmlRaw {
+                value: CheapString::new("<title>Hi</title>".to_string()),
+            }],
+        };
+        check(
+            page,
+            expect![[r#"
+                -- before --
+                page MainComp() {
+                  fn head() -> Html {
+                    concat(raw("<title>Hi</title>"))
+                  }
+                  fn body() -> Html {
+                    concat(raw("Hello World"))
+                  }
+                }
+
+                -- after --
+                page MainComp() {
+                  fn head() -> Html {
+                    concat(raw("<title>Hi</title>"))
+                  }
+                  fn body() -> Html {
+                    concat(raw("Hello World"))
+                  }
+                }
+            "#]],
+        );
     }
 
     #[test]

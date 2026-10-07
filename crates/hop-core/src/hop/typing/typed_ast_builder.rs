@@ -3,13 +3,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::document::CheapString;
-use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::compile_match::compile_match;
 use crate::hop::typing::type_registry::ResolvedType;
 use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
-use crate::hop::typing::typed_module::TypedParameter;
+use crate::hop::typing::typed_module::{TypedPageDeclaration, TypedParameter};
 use crate::hop::typing::typed_pattern::Constructor;
 use crate::hop::typing::typed_pattern::TypedPattern;
 use crate::hop::typing::{TypedAttribute, TypedAttrs, TypedLoopSource, TypedRecordUpdateField};
@@ -19,7 +18,7 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
-pub fn build_page_no_params<F>(page_name: &str, children_fn: F) -> AssembledPageDeclaration
+pub fn build_page_no_params<F>(page_name: &str, children_fn: F) -> TypedPageDeclaration
 where
     F: FnOnce(&mut TypedAstBuilder),
 {
@@ -28,7 +27,7 @@ where
     builder.build(page_name)
 }
 
-pub fn build_page<F, P, T>(page_name: &str, params: P, children_fn: F) -> AssembledPageDeclaration
+pub fn build_page<F, P, T>(page_name: &str, params: P, children_fn: F) -> TypedPageDeclaration
 where
     F: FnOnce(&mut TypedAstBuilder),
     P: IntoIterator<Item = (&'static str, T)>,
@@ -48,7 +47,7 @@ pub fn build_page_with_types<'a, F>(
     page_name: &str,
     params: impl IntoIterator<Item = (&'a str, &'a str)>,
     children_fn: F,
-) -> AssembledPageDeclaration
+) -> TypedPageDeclaration
 where
     F: FnOnce(&mut TypedAstBuilder),
 {
@@ -97,13 +96,14 @@ impl TypedAstBuilder {
         }
     }
 
-    fn build(self, page_name: &str) -> AssembledPageDeclaration {
-        AssembledPageDeclaration {
+    fn build(self, page_name: &str) -> TypedPageDeclaration {
+        TypedPageDeclaration {
             name: TypeName::parse(page_name).unwrap(),
-            params: self.params,
+            head: TypedExpr::HtmlConcat { parts: Vec::new() },
             body: TypedExpr::HtmlConcat {
                 parts: self.children,
             },
+            params: self.params,
         }
     }
 
@@ -354,7 +354,7 @@ mod tests {
     use super::*;
     use expect_test::{Expect, expect};
 
-    fn check(page: AssembledPageDeclaration, expected: Expect) {
+    fn check(page: TypedPageDeclaration, expected: Expect) {
         expected.assert_eq(&format!("{}\n", page.to_doc().pretty(60)));
     }
 

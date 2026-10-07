@@ -140,14 +140,18 @@ mod tests {
 
             let before: Vec<String> = page_args
                 .iter()
-                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
+                .map(|(page_name, args)| {
+                    evaluate_page(&module, page_name, args.clone(), None).unwrap()
+                })
                 .collect();
 
             let module = run(module, 60);
 
             let after: Vec<String> = page_args
                 .iter()
-                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
+                .map(|(page_name, args)| {
+                    evaluate_page(&module, page_name, args.clone(), None).unwrap()
+                })
                 .collect();
 
             assert_eq!(before, after);
@@ -163,6 +167,7 @@ mod tests {
             .map(|page| PurePageDeclaration {
                 name: page.name,
                 parameters: page.parameters,
+                head: normalize_html(page.head, &mut expr_ids, limit),
                 body: normalize_html(page.body, &mut expr_ids, limit),
             })
             .collect();

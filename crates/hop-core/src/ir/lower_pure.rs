@@ -1,6 +1,7 @@
 use crate::hop::typing::Type;
 use crate::ir::ir_match::{EnumMatchArm, Match};
 
+use super::document_shell::DocumentShell;
 use super::pure_module::{
     PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
@@ -10,17 +11,42 @@ use super::writer_module::{
 };
 
 /// Lower a whole PureModule into a WriterModule.
-pub fn lower_pure(module: PureModule) -> WriterModule {
+///
+/// With a shell, a page writes a whole document, the shell around its head
+/// and its body. Without one, a page writes its head and its body alone.
+pub fn lower_pure(module: PureModule, shell: Option<&DocumentShell>) -> WriterModule {
     WriterModule {
-        pages: module.pages.into_iter().map(lower_page).collect(),
+        pages: module
+            .pages
+            .into_iter()
+            .map(|page| lower_page(page, shell))
+            .collect(),
         functions: module.functions.into_iter().map(lower_function).collect(),
         var_ids: module.var_ids,
     }
 }
 
-fn lower_page(decl: PurePageDeclaration) -> WriterPageDeclaration {
+fn lower_page(decl: PurePageDeclaration, shell: Option<&DocumentShell>) -> WriterPageDeclaration {
     let mut body = Vec::new();
-    lower_output(decl.body, &mut body);
+    match shell {
+        Some(shell) => {
+            body.push(WriterStatement::Write {
+                content: shell.before_head.to_string(),
+            });
+            lower_output(decl.head, &mut body);
+            body.push(WriterStatement::Write {
+                content: shell.after_head.clone(),
+            });
+            lower_output(decl.body, &mut body);
+            body.push(WriterStatement::Write {
+                content: shell.after_body.to_string(),
+            });
+        }
+        None => {
+            lower_output(decl.head, &mut body);
+            lower_output(decl.body, &mut body);
+        }
+    }
     WriterPageDeclaration {
         name: decl.name,
         parameters: decl.parameters,
@@ -527,5 +553,60 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
         PureExpr::IntToFloat { value, .. } => WriterExpr::IntToFloat {
             value: Box::new(lower_value(*value)),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::pure_module_builder::PureModuleBuilder;
+    use expect_test::{Expect, expect};
+
+    fn check(shell: Option<&DocumentShell>, expected: Expect) {
+        let module = PureModuleBuilder::new()
+            .page_no_params("Main", |t| t.raw("<p>Hello</p>"))
+            .build();
+        let before = module.to_string();
+        let after = lower_pure(module, shell).to_string();
+        expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
+    }
+
+    #[test]
+    fn writes_the_shell_around_the_page() {
+        check(
+            Some(&DocumentShell::new(None, Some("/scripts-deadbeef.js"))),
+            expect![[r#"
+                -- before --
+                page Main() {
+                  raw("<p>Hello</p>")
+                }
+
+                -- after --
+                page Main() {
+                  write("<!doctype html><html><head><meta charset=\"utf-8\"><meta content=\"width=device-width, initial-scale=1\" name=\"viewport\">")
+                  write("<script type=\"module\" src=\"/scripts-deadbeef.js\"></script></head><body>")
+                  write("<p>Hello</p>")
+                  write("</body></html>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn writes_the_page_alone_without_a_shell() {
+        check(
+            None,
+            expect![[r#"
+            -- before --
+            page Main() {
+              raw("<p>Hello</p>")
+            }
+
+            -- after --
+            page Main() {
+              write("<p>Hello</p>")
+            }
+        "#]],
+        );
     }
 }

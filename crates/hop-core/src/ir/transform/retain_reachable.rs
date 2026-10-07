@@ -25,6 +25,7 @@ pub fn retain_reachable(module: PureModule) -> PureModule {
     let mut frontier: Vec<FunctionId> = Vec::new();
     for page in &pages {
         let mut out = HashSet::new();
+        collect_callees(&page.head, &mut out);
         collect_callees(&page.body, &mut out);
         frontier.extend(out);
     }

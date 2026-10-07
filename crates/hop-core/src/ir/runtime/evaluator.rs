@@ -1,5 +1,6 @@
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::html::write_escaped_html;
+use crate::ir::document_shell::DocumentShell;
 use crate::ir::pure_module::PureExpr;
 use crate::ir::runtime::value::Value;
 use crate::ir::var_id::VarId;
@@ -15,6 +16,7 @@ pub fn evaluate_page(
     module: &PureModule,
     page_name: &TypeName,
     args: HashMap<VarName, Value>,
+    shell: Option<&DocumentShell>,
 ) -> Result<String, EvalError> {
     let page = module
         .pages
@@ -37,11 +39,27 @@ pub fn evaluate_page(
         }
     }
 
-    let value = evaluate_expr(&page.body, &mut env, &module.functions)?;
-    let Value::String(html) = value else {
+    let Value::String(head) = evaluate_expr(&page.head, &mut env, &module.functions)? else {
+        panic!("Page head must evaluate to Html");
+    };
+    let Value::String(body) = evaluate_expr(&page.body, &mut env, &module.functions)? else {
         panic!("Page body must evaluate to Html");
     };
 
+    let mut html = String::new();
+    match shell {
+        Some(shell) => {
+            html.push_str(shell.before_head);
+            html.push_str(&head);
+            html.push_str(&shell.after_head);
+            html.push_str(&body);
+            html.push_str(shell.after_body);
+        }
+        None => {
+            html.push_str(&head);
+            html.push_str(&body);
+        }
+    }
     Ok(html)
 }
 
@@ -682,7 +700,7 @@ mod tests {
                         )
                     })
                     .collect();
-                evaluate_page(&module, &page.name, args).unwrap();
+                evaluate_page(&module, &page.name, args, None).unwrap();
             }
             Ok(())
         });
@@ -696,7 +714,7 @@ mod tests {
             .collect();
         let page_name = module.pages[0].name.clone();
         let after =
-            evaluate_page(&module, &page_name, args_map).expect("Evaluation should succeed");
+            evaluate_page(&module, &page_name, args_map, None).expect("Evaluation should succeed");
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
@@ -975,7 +993,7 @@ mod tests {
 
         // Call without providing the required argument
         let page_name = TypeName::parse("Test").unwrap();
-        let result = evaluate_page(&module, &page_name, HashMap::new());
+        let result = evaluate_page(&module, &page_name, HashMap::new(), None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));

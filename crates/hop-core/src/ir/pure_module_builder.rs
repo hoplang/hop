@@ -153,9 +153,14 @@ impl PureModuleBodiesBuilder {
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
         let (parameters, body) = self.declaration(params, Type::Html, body_fn);
+        let head = PureExpr::HtmlConcat {
+            parts: Vec::new(),
+            id: self.expr_ids.borrow_mut().next(),
+        };
         self.pages.push(PurePageDeclaration {
             name: TypeName::parse(name).expect("Test page name should be valid"),
             parameters,
+            head,
             body,
         });
         self

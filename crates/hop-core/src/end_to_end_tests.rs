@@ -154,7 +154,7 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
 
 fn execute_evaluator(module: &PureModule) -> Result<String, String> {
     let page_name = TypeName::parse("Test").unwrap();
-    evaluator::evaluate_page(module, &page_name, HashMap::new())
+    evaluator::evaluate_page(module, &page_name, HashMap::new(), None)
         .map_err(|e| format!("Evaluator failed: {}", e))
 }
 
@@ -200,7 +200,6 @@ fn check_with_asset_path_rewriter(
 
     // Compile to IR without optimization
     let unoptimized_options = OrchestrateOptions {
-        skip_html_structure: true,
         skip_optimization: true,
         asset_path_rewriter: asset_path_rewriter.clone(),
         ..Default::default()
@@ -209,7 +208,6 @@ fn check_with_asset_path_rewriter(
 
     // Compile to IR with optimization
     let optimized_options = OrchestrateOptions {
-        skip_html_structure: true,
         skip_optimization: false,
         asset_path_rewriter,
         ..Default::default()
@@ -220,8 +218,8 @@ fn check_with_asset_path_rewriter(
     let unoptimized_eval = execute_evaluator(&unoptimized_pure);
     let optimized_eval = execute_evaluator(&optimized_pure);
 
-    let unoptimized_module = lower_pure(unoptimized_pure);
-    let optimized_module = lower_pure(optimized_pure);
+    let unoptimized_module = lower_pure(unoptimized_pure, None);
+    let optimized_module = lower_pure(optimized_pure, None);
 
     let unoptimized_ir = unoptimized_module.to_string();
     let optimized_ir = optimized_module.to_string();
@@ -366,11 +364,11 @@ mod tests {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
             let page_name = TypeName::parse("Test").unwrap();
-            let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new())
+            let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new(), None)
                 .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
                 .trim()
                 .to_string();
-            let module = lower_pure(module);
+            let module = lower_pure(module, None);
             let ir = module.to_string();
             let ts_code = TsTranspiler::new().transpile_module(&module, &registry);
             if let Err(e) = typecheck_typescript(&ts_code) {
@@ -396,11 +394,11 @@ mod tests {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
             let page_name = TypeName::parse("Test").unwrap();
-            let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new())
+            let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new(), None)
                 .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
                 .trim()
                 .to_string();
-            let module = lower_pure(module);
+            let module = lower_pure(module, None);
             let ir = module.to_string();
             let rust_code = RustTranspiler::new().transpile_module(&module, &registry);
             let rust_output = execute_rust(&rust_code).unwrap_or_else(|e| {

@@ -1836,7 +1836,7 @@ mod tests {
 
     fn check(builder: impl Into<PureModuleBodiesBuilder>, expected: Expect) {
         let (module, registry) = builder.into().build_with_registry();
-        let module = lower_pure(module);
+        let module = lower_pure(module, None);
         let before = module.to_string();
         let after = TsTranspiler::new().transpile_module(&module, &registry);
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);

@@ -55,6 +55,7 @@ pub fn inline_function_calls(module: PureModule) -> PureModule {
     let pages = pages
         .into_iter()
         .map(|page| PurePageDeclaration {
+            head: inline(page.head, &decls, &recursive, &mut expr_ids, &mut var_ids),
             body: inline(page.body, &decls, &recursive, &mut expr_ids, &mut var_ids),
             ..page
         })
@@ -431,14 +432,16 @@ mod tests {
             let before_module = module.to_string();
             let before: Vec<String> = page_args
                 .iter()
-                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
+                .map(|(page_name, args)| {
+                    evaluate_page(&module, page_name, args.clone(), None).unwrap()
+                })
                 .collect();
 
             let module = inline_function_calls(module);
             assert_every_read_is_bound(&module);
 
             for ((page_name, args), before_output) in page_args.iter().zip(&before) {
-                let after_output = evaluate_page(&module, page_name, args.clone()).unwrap();
+                let after_output = evaluate_page(&module, page_name, args.clone(), None).unwrap();
                 assert_eq!(
                     before_output, &after_output,
                     "page {page_name}\n-- before --\n{before_module}\n-- after --\n{module}"

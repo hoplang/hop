@@ -7,13 +7,12 @@ use crate::css_error::CssError;
 use crate::definition_link::DefinitionLink;
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, Document, DocumentPosition, PositionEncoding};
-use crate::hop::assembly::TailwindInjection;
 use crate::hop::format;
 use crate::hop::parsing::{ParseError, ParsedModule, parse};
 use crate::hop::typing::{Export, TypeError, TypeRegistry, TypedModule, typecheck};
 use crate::hover_annotation::HoverAnnotation;
 use crate::ir;
-use crate::ir::Transpiler;
+use crate::ir::{DocumentShell, TailwindInjection, Transpiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::root_contained_file_path::RootContainedFilePath;
 use std::collections::{BTreeSet, HashMap};
@@ -229,17 +228,20 @@ impl Program {
         skip_optimization: bool,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> String {
+        let shell = DocumentShell::new(
+            Some(TailwindInjection::Link {
+                href: css_link_href,
+            }),
+            js_script_src,
+        );
         let ir_module = orchestrate(
             self.typed_modules(),
             OrchestrateOptions {
                 skip_optimization,
                 asset_path_rewriter,
-                tailwind_injection: Some(TailwindInjection::Link {
-                    href: css_link_href,
-                }),
-                script_src: js_script_src,
                 ..Default::default()
             },
+            &shell,
         );
 
         match target {

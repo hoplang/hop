@@ -28,9 +28,7 @@ pub use typecheck::typecheck;
 pub use typed_expr::{
     TypedAttribute, TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField,
 };
-pub use typed_module::{
-    TypedFunctionDeclaration, TypedModule, TypedPageDeclaration, TypedParameter,
-};
+pub use typed_module::{TypedFunctionDeclaration, TypedModule, TypedPageDeclaration};
 pub use typed_pattern::TypedPattern;
 
 #[cfg(test)]

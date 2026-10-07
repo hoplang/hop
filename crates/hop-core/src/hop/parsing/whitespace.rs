@@ -161,12 +161,12 @@ mod tests {
         let module = orchestrate_pure(
             &typed_modules,
             OrchestrateOptions {
-                skip_html_structure: true,
                 skip_optimization: true,
                 ..Default::default()
             },
         );
-        evaluator::evaluate_page(&module, &page_name, HashMap::new()).expect("evaluator failed")
+        evaluator::evaluate_page(&module, &page_name, HashMap::new(), None)
+            .expect("evaluator failed")
     }
 
     #[test]

@@ -1,42 +1,37 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
-use crate::hop::assembly::{self, AssembledPageDeclaration, TailwindInjection};
 use crate::hop::typing::TypedModule;
 use crate::ir::pure_module::PureModule;
-use crate::ir::{WriterModule, compile, lower_pure, optimize, retain_reachable};
+use crate::ir::{DocumentShell, WriterModule, compile, lower_pure, optimize, retain_reachable};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Default)]
-pub struct OrchestrateOptions<'a> {
-    pub skip_html_structure: bool,
+pub struct OrchestrateOptions {
     pub skip_optimization: bool,
     /// When set, only compile the specified page instead of all pages.
     pub page_filter: Option<(RootContainedFilePath, TypeName)>,
     /// Controls how `asset!()` macro invocations are resolved.
     pub asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
-    /// When set, inject the given Tailwind CSS into the `<head>` of each page.
-    pub tailwind_injection: Option<TailwindInjection<'a>>,
-    /// When set, inject a `<script type="module" src=...>` into the `<head>` of each page.
-    pub script_src: Option<&'a str>,
 }
 
 pub fn orchestrate(
     typed_modules: &HashMap<RootContainedFilePath, TypedModule>,
-    options: OrchestrateOptions<'_>,
+    options: OrchestrateOptions,
+    shell: &DocumentShell,
 ) -> WriterModule {
-    lower_pure(orchestrate_pure(typed_modules, options))
+    lower_pure(orchestrate_pure(typed_modules, options), Some(shell))
 }
 
 pub fn orchestrate_pure(
     typed_modules: &HashMap<RootContainedFilePath, TypedModule>,
-    options: OrchestrateOptions<'_>,
+    options: OrchestrateOptions,
 ) -> PureModule {
     // Take pages from all modules (sorted by module ID for deterministic order)
     let mut document_ids: Vec<_> = typed_modules.keys().cloned().collect();
     document_ids.sort();
-    let typed_pages: Vec<_> = document_ids
+    let pages: Vec<_> = document_ids
         .iter()
         .flat_map(|id| {
             typed_modules[id]
@@ -50,18 +45,6 @@ pub fn orchestrate_pure(
         })
         .collect();
 
-    // Merge each page's head and body into a single document tree
-    let assembled_pages: Vec<AssembledPageDeclaration> = typed_pages
-        .into_iter()
-        .map(|page| {
-            if options.skip_html_structure {
-                AssembledPageDeclaration::from_body_only(page)
-            } else {
-                assembly::assemble_page(page, options.tailwind_injection, options.script_src)
-            }
-        })
-        .collect();
-
     let functions: Vec<_> = document_ids
         .iter()
         .flat_map(|id| {
@@ -72,7 +55,7 @@ pub fn orchestrate_pure(
         })
         .collect();
 
-    let pure_module = compile(assembled_pages, &functions, options.asset_path_rewriter);
+    let pure_module = compile(pages, &functions, options.asset_path_rewriter);
     // Every function in the project is compiled, whether or not
     // the selected pages reach it. Dropping the unreachable ones keeps a
     // page_filter build to what that page actually needs.
