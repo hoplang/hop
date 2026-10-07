@@ -1081,15 +1081,15 @@ attribute without a value, and with `false` it does not have the attribute. Any
 other attribute has type `String`, and its value is [escaped](#escaping):
 
 ```hop
-<button disabled={true}></button> // <button disabled></button>
-<button disabled={false}></button> // <button></button>
-<button disabled="true"></button> // error: Expected Bool got String
-<div id={1}></div>                // error: Expected String got Int
-<div hidden={true}></div>         // error: Expected String got Bool
-<input pattern="\\d+"/>           // <input pattern="\d+">
-<span title="say \"hi\""></span>  // <span title="say &quot;hi&quot;"></span>
-<abbr title="R&D"></abbr>         // <abbr title="R&amp;D"></abbr>
-<abbr title="R&amp;D"></abbr>     // <abbr title="R&amp;amp;D"></abbr>
+<button disabled={true}></button>   // <button disabled></button>
+<button disabled={false}></button>  // <button></button>
+<button disabled="true"></button>   // error: Expected Bool got String
+<div id={1}></div>                  // error: Expected String got Int
+<div hidden={true}></div>           // error: Expected String got Bool
+<input pattern="\\d+"/>             // <input pattern="\d+">
+<span title="say \"hi\""></span>    // <span title="say &quot;hi&quot;"></span>
+<abbr title="R&D"></abbr>           // <abbr title="R&amp;D"></abbr>
+<abbr title="R&amp;D"></abbr>       // <abbr title="R&amp;amp;D"></abbr>
 ```
 
 An element defined by HTML, such as `div`, accepts the global attributes of
