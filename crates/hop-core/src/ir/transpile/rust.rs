@@ -1799,14 +1799,31 @@ impl Transpiler for RustTranspiler {
                 subject,
                 true_body,
                 false_body,
-            } => arena
-                .text("if ")
-                .append(self.transpile_condition(arena, subject))
-                .append(arena.text(" { "))
-                .append(self.transpile_expr_owned(arena, true_body))
-                .append(arena.text(" } else { "))
-                .append(self.transpile_expr_owned(arena, false_body))
-                .append(arena.text(" }")),
+            } => {
+                let subject_doc = self.transpile_condition(arena, subject);
+                let true_arm = arena
+                    .text("true => ")
+                    .append(self.transpile_expr_owned(arena, true_body))
+                    .append(arena.text(","));
+                let false_arm = arena
+                    .text("false => ")
+                    .append(self.transpile_expr_owned(arena, false_body))
+                    .append(arena.text(","));
+                arena
+                    .text("match ")
+                    .append(subject_doc)
+                    .append(arena.text(" {"))
+                    .append(
+                        arena
+                            .hardline()
+                            .append(true_arm)
+                            .append(arena.hardline())
+                            .append(false_arm)
+                            .nest(4),
+                    )
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
+            }
             Match::Option {
                 subject,
                 some_arm_binding,
@@ -1821,16 +1838,30 @@ impl Transpiler for RustTranspiler {
                     self.bindings.insert(var.id, Binding::Borrowed);
                 }
                 let some_arm_doc = self.transpile_expr_owned(arena, some_arm_body);
-                arena
-                    .text("match ")
-                    .append(self.transpile_match_subject(arena, subject))
-                    .append(arena.text(" { "))
-                    .append(arena.text(some_pattern))
+                let subject_doc = self.transpile_match_subject(arena, subject);
+                let some_arm = arena
+                    .text(some_pattern)
                     .append(arena.text(" => "))
                     .append(some_arm_doc)
-                    .append(arena.text(", None => "))
+                    .append(arena.text(","));
+                let none_arm = arena
+                    .text("None => ")
                     .append(self.transpile_expr_owned(arena, none_arm_body))
-                    .append(arena.text(" }"))
+                    .append(arena.text(","));
+                arena
+                    .text("match ")
+                    .append(subject_doc)
+                    .append(arena.text(" {"))
+                    .append(
+                        arena
+                            .hardline()
+                            .append(some_arm)
+                            .append(arena.hardline())
+                            .append(none_arm)
+                            .nest(4),
+                    )
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
             }
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
@@ -1842,12 +1873,11 @@ impl Transpiler for RustTranspiler {
                 };
                 let variants = variants.to_vec();
 
-                let mut doc = arena
-                    .text("match ")
-                    .append(self.transpile_match_subject(arena, subject))
-                    .append(arena.text(" { "));
+                let subject_doc = self.transpile_match_subject(arena, subject);
 
-                for (i, arm) in arms.iter().enumerate() {
+                let mut arm_docs: Vec<Doc<'a>> = Vec::new();
+
+                for arm in arms {
                     let pattern = match &arm.pattern {
                         EnumPattern::Variant {
                             type_name,
@@ -1905,17 +1935,27 @@ impl Transpiler for RustTranspiler {
                     }
                     let arm_body_doc = self.transpile_expr_owned(arena, &arm.body);
 
-                    doc = doc
-                        .append(arena.text(pattern))
-                        .append(arena.text(" => "))
-                        .append(arm_body_doc);
-
-                    if i < arms.len() - 1 {
-                        doc = doc.append(arena.text(", "));
-                    }
+                    arm_docs.push(
+                        arena
+                            .text(pattern)
+                            .append(arena.text(" => "))
+                            .append(arm_body_doc)
+                            .append(arena.text(",")),
+                    );
                 }
 
-                doc.append(arena.text(" }"))
+                arena
+                    .text("match ")
+                    .append(subject_doc)
+                    .append(arena.text(" {"))
+                    .append(
+                        arena
+                            .hardline()
+                            .append(arena.intersperse(arm_docs, arena.hardline()))
+                            .nest(4),
+                    )
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
             }
         }
     }
@@ -2022,7 +2062,7 @@ impl Transpiler for RustTranspiler {
 mod tests {
     use super::*;
     use crate::ir::lower_pure;
-    use crate::ir::pure_module_builder::{PureModuleBodiesBuilder, PureModuleBuilder};
+    use crate::ir::pure_module_builder::{PureBuilder, PureModuleBodiesBuilder, PureModuleBuilder};
     use expect_test::{Expect, expect};
 
     fn check(builder: impl Into<PureModuleBodiesBuilder>, expected: Expect) {
@@ -3167,6 +3207,192 @@ mod tests {
                     fn write(self, output: &mut String) {
                         let v_0 = B { a: Box::new(Some(A { b: Box::new(B { a: Box::new(None::<A>) }) })) };
                         output.push_str("done");
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn wide_match_expression_breaks_one_arm_per_line() {
+        check(
+            PureModuleBuilder::new()
+                .enum_(
+                    "TimeAgo",
+                    [
+                        ("JustNow", vec![]),
+                        ("MinutesAgo", vec![("count", "Int")]),
+                        ("HoursAgo", vec![("count", "Int")]),
+                    ],
+                )
+                .page("Test", [("time", "TimeAgo")], |t| {
+                    let ago = |t: &PureBuilder, unit: &str, plural: &str| {
+                        t.bool_match_expr(
+                            t.eq(t.var("count"), t.int(1)),
+                            t.str(unit),
+                            t.string_concat(vec![t.int_to_string(t.var("count")), t.str(plural)]),
+                        )
+                    };
+                    t.escape(t.enum_match_expr(t.var("time"), |m| {
+                        m.arm("JustNow", |t| t.str("just now"));
+                        m.arm_bound("MinutesAgo", [("count", "count")], |t| {
+                            ago(t, "1 minute ago", " minutes ago")
+                        });
+                        m.arm_bound("HoursAgo", [("count", "count")], |t| {
+                            ago(t, "1 hour ago", " hours ago")
+                        });
+                    }))
+                }),
+            expect![[r#"
+                -- before --
+                page Test(time@v0: TimeAgo) {
+                  write_string(match v0 {
+                    TimeAgo::JustNow => { "just now" }
+                    TimeAgo::MinutesAgo {count: v1} => {
+                      match (v1 == 1) {
+                        true => { "1 minute ago" }
+                        false => { (v1.to_string() + " minutes ago") }
+                      }
+                    }
+                    TimeAgo::HoursAgo {count: v2} => {
+                      match (v2 == 1) {
+                        true => { "1 hour ago" }
+                        false => { (v2.to_string() + " hours ago") }
+                      }
+                    }
+                  })
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                pub enum TimeAgo {
+                    JustNow,
+                    MinutesAgo { count: i32 },
+                    HoursAgo { count: i32 },
+                }
+
+                pub struct Test {
+                    pub time: TimeAgo,
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { time: v_0 } = self;
+                        write_escaped_html(&match &v_0 {
+                            TimeAgo::JustNow => "just now".to_string(),
+                            TimeAgo::MinutesAgo { count: v_1 } => match (((*v_1) == 1_i32)) {
+                                true => "1 minute ago".to_string(),
+                                false => {
+                                    let mut s = String::new();
+                                    s.push_str(&((*v_1)).to_string());
+                                    s.push_str(" minutes ago");
+                                    s
+                                },
+                            },
+                            TimeAgo::HoursAgo { count: v_2 } => match (((*v_2) == 1_i32)) {
+                                true => "1 hour ago".to_string(),
+                                false => {
+                                    let mut s = String::new();
+                                    s.push_str(&((*v_2)).to_string());
+                                    s.push_str(" hours ago");
+                                    s
+                                },
+                            },
+                        }, output);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_match_expression_breaks_one_arm_per_line() {
+        check(
+            PureModuleBuilder::new().page_no_params("Test", |t| {
+                t.escape(t.option_match_expr_with_binding(
+                    t.some(t.str("world")),
+                    "value",
+                    |t| t.string_concat(vec![t.str("hello "), t.var("value")]),
+                    t.str("nobody"),
+                ))
+            }),
+            expect![[r#"
+                -- before --
+                page Test() {
+                  write_string(match Option[String]::Some("world") {
+                    Some(v0) => { ("hello " + v0) }
+                    None => { "nobody" }
+                  })
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                pub struct Test {}
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        write_escaped_html(&match (&Some("world".to_string())) {
+                            Some(v_0) => {
+                                let mut s = String::new();
+                                s.push_str("hello ");
+                                s.push_str(v_0);
+                                s
+                            },
+                            None => "nobody".to_string(),
+                        }, output);
                     }
                 }
             "#]],
