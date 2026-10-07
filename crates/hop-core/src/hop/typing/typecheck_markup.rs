@@ -126,9 +126,11 @@ pub fn typecheck_markup(
             }
 
             let call = typecheck_call(
-                Callee::Function(function_name),
-                function_name_opening_range,
-                function_name_opening_range,
+                Callee::Function {
+                    name: function_name,
+                    name_range: function_name_opening_range,
+                    report_range: function_name_opening_range,
+                },
                 CallArguments::Named { arguments, spread },
                 forwarded_params,
                 var_env,
@@ -281,8 +283,6 @@ pub fn typecheck_markup(
                         parts: typed_children,
                     },
                 },
-                tag_name,
-                tag_name,
                 CallArguments::Named { arguments, spread },
                 forwarded_params,
                 var_env,

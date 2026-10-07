@@ -20,7 +20,14 @@ use crate::symbols::var_name::VarName;
 pub enum Callee<'a> {
     /// A function, which takes its parameters, and through its rest the
     /// attributes of the element the rest lands on.
-    Function(&'a FunctionName),
+    Function {
+        name: &'a FunctionName,
+        /// Where the name is written, for an undefined function and the
+        /// link to its declaration.
+        name_range: &'a DocumentRange,
+        /// Where surplus and missing arguments are reported.
+        report_range: &'a DocumentRange,
+    },
     /// An element, which is a callee with no parameters whose rest lands on
     /// the element itself, so it takes its attributes as a rest takes them.
     /// Its content is not an argument.
@@ -85,8 +92,6 @@ enum Receiver<'a> {
 /// anything about the call failed, after reporting it.
 pub fn typecheck_call(
     callee: Callee<'_>,
-    name_range: &DocumentRange,
-    call_range: &DocumentRange,
     arguments: CallArguments<'_>,
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
@@ -99,18 +104,20 @@ pub fn typecheck_call(
 ) -> Option<TypedExpr> {
     let element_signature;
     let (signature, target) = match &callee {
-        Callee::Function(name) => {
+        Callee::Function {
+            name, name_range, ..
+        } => {
             let Some(signature) = type_env.functions.get(name.as_str()) else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedFunction {
                         name: FunctionName::clone(name),
                     },
-                    name_range.clone(),
+                    DocumentRange::clone(name_range),
                 ));
                 return None;
             };
             definition_links.push(DefinitionLink {
-                use_range: name_range.clone(),
+                use_range: DocumentRange::clone(name_range),
                 definition_range: type_env.names[name.as_str()].definition_range.clone(),
             });
             (signature, Target::Function(FunctionName::clone(name)))
@@ -151,7 +158,10 @@ pub fn typecheck_call(
             // Too few arguments leave out parameters, which is reported below
             // as for a call by name, so `F()` fails like `<F/>`.
             if values.len() > declared.len() {
-                let Callee::Function(name) = &callee else {
+                let Callee::Function {
+                    name, report_range, ..
+                } = &callee
+                else {
                     unreachable!("an element takes its attributes by name");
                 };
                 errors.push(TypeError::new(
@@ -164,7 +174,7 @@ pub fn typecheck_call(
                         },
                         found: values.len(),
                     },
-                    call_range.clone(),
+                    DocumentRange::clone(report_range),
                 ));
                 return None;
             }
@@ -264,7 +274,10 @@ pub fn typecheck_call(
         }
     }
     if !missing.is_empty() {
-        let Callee::Function(name) = &callee else {
+        let Callee::Function {
+            name, report_range, ..
+        } = &callee
+        else {
             unreachable!("an element has no parameters to leave out");
         };
         errors.push(TypeError::new(
@@ -272,7 +285,7 @@ pub fn typecheck_call(
                 name: FunctionName::clone(name),
                 args: missing.join(", "),
             },
-            call_range.clone(),
+            DocumentRange::clone(report_range),
         ));
         failed = true;
     }
@@ -394,7 +407,7 @@ pub fn typecheck_call(
         spread: rest_spread,
     };
     match callee {
-        Callee::Function(name) => {
+        Callee::Function { name, .. } => {
             let args = params
                 .iter()
                 .filter_map(|param| {

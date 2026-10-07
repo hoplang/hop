@@ -1422,9 +1422,11 @@ pub fn typecheck_expr(
             args,
             range,
         } => typecheck_call(
-            Callee::Function(name),
-            name_range,
-            range,
+            Callee::Function {
+                name,
+                name_range,
+                report_range: range,
+            },
             match args {
                 ParsedArguments::Positional(values) => CallArguments::Positional(values),
                 ParsedArguments::Named(named) => CallArguments::Named {
