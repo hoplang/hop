@@ -9,14 +9,22 @@ use crate::symbols::var_name::VarName;
 
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
-    /// The parameters the function declares.
-    pub params: Vec<ParamEntry>,
-    /// The parameters of a callee that the function's rest carries, which a
-    /// caller passes by name only.
-    pub forwarded: Vec<ParamEntry>,
+    /// How many fields of the row the function declares. They come first,
+    /// and they are the only fields a caller can pass by position.
+    pub declared: usize,
+    /// The parameters the function declares and those its rest adds.
+    pub row: Row,
     pub return_type: Type,
-    pub tail: Tail,
     pub rest_param: Option<VarName>,
+}
+
+/// The parameters of a callee, which a caller passes by name.
+#[derive(Debug, Clone)]
+pub struct Row {
+    /// The parameters the callee declares, followed by those its rest adds
+    /// from the function it is spread into.
+    pub fields: Vec<ParamEntry>,
+    pub tail: Tail,
 }
 
 #[derive(Debug, Clone)]
@@ -26,12 +34,18 @@ pub struct ParamEntry {
     pub fallback: Option<TypedExpr>,
 }
 
+/// The parameters of a row besides its fields.
 #[derive(Debug, Clone)]
 pub enum Tail {
+    /// No other parameters.
     Closed,
-    Html {
+    /// An optional parameter for each attribute `element` accepts, with the
+    /// type of the attribute, except the names in `lacks`. A row lacks the
+    /// names of its fields, so a name never reaches both a field and the
+    /// tail.
+    Element {
         element: HtmlElementKind,
-        reserved: Vec<AttributeName>,
+        lacks: Vec<AttributeName>,
     },
 }
 

@@ -20,8 +20,8 @@ pub enum TypedExpr {
     /// A variable expression, e.g. foo
     Var { value: VarName, typ: Type },
 
-    /// A parameter of the enclosing function that its rest carries, passed
-    /// on to a callee at a `...rest` spread. Unlike a `Var`, it reads the
+    /// A parameter that the rest of the enclosing function adds, passed on
+    /// to a callee at a `...rest` spread. Unlike a `Var`, it reads the
     /// parameter even where the body binds the same name.
     ForwardedParam { value: VarName, typ: Type },
 

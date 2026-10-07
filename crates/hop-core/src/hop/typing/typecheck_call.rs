@@ -1,4 +1,4 @@
-use super::type_env::{FunctionSignature, ParamEntry, Tail, TypeEnv};
+use super::type_env::{ParamEntry, Row, Tail, TypeEnv};
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
 use super::typed_expr::TypedExpr;
@@ -18,8 +18,8 @@ use crate::symbols::var_name::VarName;
 
 /// What a call supplies its arguments to.
 pub enum Callee<'a> {
-    /// A function, which takes its parameters, and through its rest the
-    /// attributes of the element the rest lands on.
+    /// A function, which takes the parameters it declares and those its rest
+    /// adds.
     Function {
         name: &'a FunctionName,
         /// Where the name is written, for an undefined function and the
@@ -28,9 +28,9 @@ pub enum Callee<'a> {
         /// Where surplus and missing arguments are reported.
         report_range: &'a DocumentRange,
     },
-    /// An element, which is a callee with no parameters whose rest lands on
-    /// the element itself, so it takes its attributes as a rest takes them.
-    /// Its content is not an argument.
+    /// An element, whose row has no fields and an optional parameter for each
+    /// attribute as its tail, which are the parameters a rest adds when it is
+    /// spread into the element. Its content is not an argument.
     Element {
         element: &'a HtmlElementKind,
         content: TypedExpr,
@@ -71,8 +71,9 @@ pub enum CallArguments<'a> {
 
 /// What an argument is checked against.
 enum Receiver<'a> {
+    /// A field of the callee's row.
     Parameter(&'a ParamEntry),
-    /// An attribute of the element the callee's rest lands on.
+    /// An attribute that the tail of the callee's row accepts.
     Attribute {
         name: AttributeName,
         element: &'a HtmlElementKind,
@@ -85,8 +86,8 @@ enum Receiver<'a> {
 /// A call expression, a markup call and an element all end up here, the
 /// markup call with its attributes as named arguments and its content as
 /// `children`, so the three forms are checked by the same code. A named
-/// argument that names no parameter is an attribute for the callee's rest,
-/// when the element the rest lands on accepts it.
+/// argument that names no field of the callee's row is an attribute, when
+/// the tail of the row accepts it.
 ///
 /// Arguments are checked in the order they were supplied. Returns None once
 /// anything about the call failed, after reporting it.
@@ -102,8 +103,8 @@ pub fn typecheck_call(
     asset_references: &mut Vec<AssetReference>,
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
-    let element_signature;
-    let (signature, target) = match &callee {
+    let element_row;
+    let (row, declared, target) = match &callee {
         Callee::Function {
             name, name_range, ..
         } => {
@@ -120,37 +121,34 @@ pub fn typecheck_call(
                 use_range: DocumentRange::clone(name_range),
                 definition_range: type_env.names[name.as_str()].definition_range.clone(),
             });
-            (signature, Target::Function(FunctionName::clone(name)))
+            (
+                &signature.row,
+                signature.declared,
+                Target::Function(FunctionName::clone(name)),
+            )
         }
         Callee::Element { element, .. } => {
-            element_signature = FunctionSignature {
-                params: Vec::new(),
-                forwarded: Vec::new(),
-                return_type: Type::Html,
-                tail: Tail::Html {
+            element_row = Row {
+                fields: Vec::new(),
+                tail: Tail::Element {
                     element: HtmlElementKind::clone(element),
-                    reserved: Vec::new(),
+                    lacks: Vec::new(),
                 },
-                rest_param: None,
             };
             (
-                &element_signature,
+                &element_row,
+                0,
                 Target::Element(HtmlElementKind::clone(element)),
             )
         }
     };
-    // A name reaches the parameters the callee's rest carries as well as the
-    // declared ones, while a position reaches only the declared ones.
-    let params: Vec<&ParamEntry> = signature
-        .params
-        .iter()
-        .chain(&signature.forwarded)
-        .collect();
 
     let mut failed = false;
     let (supplied, rest_spread) = match arguments {
         CallArguments::Positional(values) => {
-            let declared = &signature.params;
+            // A position reaches only the declared parameters, while a name
+            // reaches every field, including those the rest adds.
+            let declared = &row.fields[..declared];
             let required = declared
                 .iter()
                 .rposition(|param| param.fallback.is_none())
@@ -215,18 +213,17 @@ pub fn typecheck_call(
                 written.push(name.clone());
                 // Names are compared ignoring case, here as for duplicates
                 // and attributes, so `Title` passes the parameter `title`.
-                let param = params
+                let param = row
+                    .fields
                     .iter()
-                    .copied()
                     .find(|param| param.name.as_str().eq_ignore_ascii_case(name.as_str()));
-                let receiver = match (param, &signature.tail) {
+                let receiver = match (param, &row.tail) {
                     (Some(param), _) => Receiver::Parameter(param),
-                    // An argument that names no parameter goes to the rest
-                    // when the element the rest lands on accepts it, unless
-                    // the site of the spread already writes it.
-                    (None, Tail::Html { element, reserved })
-                        if element.accepts_attribute(name.as_str())
-                            && !reserved.contains(&name) =>
+                    // An argument that names no field goes to the tail when
+                    // the element accepts it, unless the row lacks it because
+                    // the site of a spread already writes it.
+                    (None, Tail::Element { element, lacks })
+                        if element.accepts_attribute(name.as_str()) && !lacks.contains(&name) =>
                     {
                         Receiver::Attribute { name, element }
                     }
@@ -249,12 +246,12 @@ pub fn typecheck_call(
     };
 
     // A parameter that is not supplied is read from the enclosing function
-    // when the caller's rest carries it, since the enclosing signature carries
-    // it for exactly this purpose. Otherwise it takes its fallback value, and
-    // without one it is missing.
-    let mut typed: Vec<(VarName, TypedExpr)> = Vec::with_capacity(params.len());
+    // when the caller's rest adds it, since the rest adds it to the enclosing
+    // function for exactly this purpose. Otherwise it takes its fallback
+    // value, and without one it is missing.
+    let mut typed: Vec<(VarName, TypedExpr)> = Vec::with_capacity(row.fields.len());
     let mut missing: Vec<&str> = Vec::new();
-    for &param in &params {
+    for param in &row.fields {
         if supplied
             .iter()
             .any(|(receiver, _)| matches!(receiver, Receiver::Parameter(p) if p.name == param.name))
@@ -408,7 +405,9 @@ pub fn typecheck_call(
     };
     match callee {
         Callee::Function { name, .. } => {
-            let args = params
+            let signature = &type_env.functions[name.as_str()];
+            let args = row
+                .fields
                 .iter()
                 .filter_map(|param| {
                     let value = match typed.iter().position(|(name, _)| *name == param.name) {
@@ -423,9 +422,9 @@ pub fn typecheck_call(
                 Some(rest_param) => Some((rest_param, attrs)),
                 None => {
                     // A spread into a callee that declares no rest is not a
-                    // mistake: the spread was carrying typed parameters, and
-                    // those are passed explicitly above, so nothing is left
-                    // for it to forward.
+                    // mistake: the spread passes on the arguments of the
+                    // parameters the rest adds, and those are passed
+                    // explicitly above, so nothing is left for it to forward.
                     assert!(
                         attrs.attributes.is_empty(),
                         "{} declares no rest, but the call site supplies attributes for one",

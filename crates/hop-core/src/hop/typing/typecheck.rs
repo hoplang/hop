@@ -13,7 +13,9 @@ use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::rest_spread::{
     RestSpreadTarget, collect_spreads, pair_rest_spread, resolve_rest_targets,
 };
-use crate::hop::typing::type_env::{FunctionSignature, Name, NameKind, ParamEntry, Tail, TypeEnv};
+use crate::hop::typing::type_env::{
+    FunctionSignature, Name, NameKind, ParamEntry, Row, Tail, TypeEnv,
+};
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::type_registry::{
     EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
@@ -796,10 +798,12 @@ fn create_function_signature<'a>(
         resolved_params,
         typed_params,
         signature: FunctionSignature {
-            params: declared_params,
-            forwarded: Vec::new(),
+            declared: declared_params.len(),
+            row: Row {
+                fields: declared_params,
+                tail: Tail::Closed,
+            },
             return_type,
-            tail: Tail::Closed,
             rest_param: function.rest_param.as_ref().map(|(name, _)| name.clone()),
         },
     })
@@ -838,12 +842,12 @@ fn typecheck_function_body(
         );
     }
 
-    // The settled signature holds the parameters the rest carries. A function
-    // that lost its name to an earlier declaration has no settled signature of
-    // its own.
+    // The row of the settled signature holds the parameters the rest adds,
+    // after the declared ones. A function that lost its name to an earlier
+    // declaration has no settled signature of its own.
     let forwarded: &[ParamEntry] = match type_env.functions.get(name.as_str()) {
         Some(settled) if type_env.names[name.as_str()].definition_range == *name_range => {
-            &settled.forwarded
+            &settled.row.fields[settled.declared..]
         }
         _ => &[],
     };

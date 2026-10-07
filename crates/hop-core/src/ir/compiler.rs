@@ -69,7 +69,7 @@ struct Compiler<'a> {
     declared: &'a HashMap<(RootContainedFilePath, FunctionName), IrFunction>,
     scopes: Vec<Vec<(VarName, VarId)>>,
     /// The parameters of the function being compiled, including its rest and
-    /// the parameters the rest carries. A spread and a forwarded parameter
+    /// the parameters the rest adds. A spread and a forwarded parameter
     /// read these, so a binding in the body that reuses the name does not
     /// capture them.
     params: HashMap<VarName, IrVar>,

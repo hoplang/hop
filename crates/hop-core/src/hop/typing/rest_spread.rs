@@ -2,13 +2,14 @@
 //!
 //! A function may declare a rest parameter and must forward it with exactly
 //! one `...name` spread. Following that spread to wherever it lands decides
-//! the function's tail, and which of the target's parameters the rest
-//! carries. This runs before any body is checked, because a call site needs
-//! the parameters its callee ends up forwarding.
+//! the parameters the rest adds to the function: those of a function it is
+//! spread into, and an optional parameter for each attribute of the element
+//! it reaches. This runs before any body is checked, because a call site
+//! needs the parameters its callee ends up with.
 
 use std::collections::{BTreeSet, HashMap};
 
-use super::type_env::{FunctionSignature, ParamEntry, Tail};
+use super::type_env::{FunctionSignature, ParamEntry, Row, Tail};
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::{
@@ -21,7 +22,7 @@ use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
 /// Where a function's rest lands, and enough of the site it lands on to
-/// decide the tail.
+/// decide the parameters the rest adds.
 #[derive(Debug, Clone)]
 pub enum RestSpreadTarget {
     Element {
@@ -205,8 +206,8 @@ pub fn pair_rest_spread(
     valid.into_iter().next().map(|occ| occ.target)
 }
 
-/// Follow every function's rest to wherever it lands, and record which of the
-/// target's parameters it carries.
+/// Follow every function's rest to wherever it lands, and settle the
+/// parameters each function has.
 ///
 /// A function spreads its rest exactly once, the typechecker rejects a second
 /// spread, so the spread relation is one-to-one, and following it either
@@ -217,8 +218,8 @@ pub fn pair_rest_spread(
 /// while their rests run down a perfectly straight line to an element, and that
 /// line is what decides the tail.
 ///
-/// Returns the settled signature per function, with the parameters its rest
-/// carries.
+/// Returns the settled signature per function, whose row holds the declared
+/// parameters followed by those the rest adds.
 pub fn resolve_rest_targets(
     rest_targets: &HashMap<CheapString, Option<RestSpreadTarget>>,
     declared: &HashMap<CheapString, FunctionSignature>,
@@ -252,8 +253,9 @@ pub fn resolve_rest_targets(
             let Some(provisional) = declared.get(name) else {
                 continue;
             };
+            let params = &provisional.row.fields[..provisional.declared];
 
-            let (forwarded, tail) = if is_cycle {
+            let rest = if is_cycle {
                 if let Some(target) = rest_target {
                     errors.push(TypeError::new(
                         TypeErrorKind::RestSpreadCycle {
@@ -263,18 +265,25 @@ pub fn resolve_rest_targets(
                         target.spread_range().clone(),
                     ));
                 }
-                (Vec::new(), Tail::Closed)
+                Row {
+                    fields: Vec::new(),
+                    tail: Tail::Closed,
+                }
             } else {
-                rest_target_signature(rest_target.as_ref(), &provisional.params, &settled)
+                rest_row(rest_target.as_ref(), params, &settled)
             };
 
+            let mut fields = params.to_vec();
+            fields.extend(rest.fields);
             settled.insert(
                 name.clone(),
                 FunctionSignature {
-                    params: provisional.params.clone(),
-                    forwarded,
+                    declared: provisional.declared,
+                    row: Row {
+                        fields,
+                        tail: rest.tail,
+                    },
                     return_type: provisional.return_type.clone(),
-                    tail,
                     rest_param: provisional.rest_param.clone(),
                 },
             );
@@ -283,68 +292,66 @@ pub fn resolve_rest_targets(
     settled
 }
 
-/// Where this function's rest lands, and the callee parameters it carries.
+/// The parameters this function's rest adds, one for each name that the
+/// site it is spread into accepts, except the names written at the spread
+/// and the parameters the function declares itself.
 ///
 /// Only reads the declaration and the target's settled signature, so it runs
 /// before any body is checked.
-fn rest_target_signature(
+fn rest_row(
     rest_target: Option<&RestSpreadTarget>,
     declared: &[ParamEntry],
     settled: &HashMap<CheapString, FunctionSignature>,
-) -> (Vec<ParamEntry>, Tail) {
-    let declared_names: Vec<&VarName> = declared.iter().map(|p| &p.name).collect();
-    match rest_target {
+) -> Row {
+    let (mut row, supplied_attrs) = match rest_target {
         Some(RestSpreadTarget::Element {
             element,
             supplied_attrs,
             ..
         }) => (
-            Vec::new(),
-            Tail::Html {
-                element: element.clone(),
-                reserved: supplied_attrs.clone(),
+            Row {
+                fields: Vec::new(),
+                tail: Tail::Element {
+                    element: element.clone(),
+                    lacks: Vec::new(),
+                },
             },
+            supplied_attrs,
         ),
         Some(RestSpreadTarget::Function {
             callee,
             supplied_attrs,
             ..
         }) => match settled.get(callee.as_str()) {
-            Some(callee_sig) => {
-                let tail = match callee_sig.tail.clone() {
-                    Tail::Html {
-                        element,
-                        mut reserved,
-                    } => {
-                        // A name written at the spread is not supplied again by
-                        // the rest, whether it passes a parameter of the callee
-                        // or an attribute, as at a spread into an element.
-                        for attr in supplied_attrs {
-                            if !reserved.contains(attr) {
-                                reserved.push(attr.clone());
-                            }
-                        }
-                        Tail::Html { element, reserved }
-                    }
-                    Tail::Closed => Tail::Closed,
+            Some(callee_sig) => (callee_sig.row.clone(), supplied_attrs),
+            None => {
+                return Row {
+                    fields: Vec::new(),
+                    tail: Tail::Closed,
                 };
-                let covered_by_rest = |p: &ParamEntry| {
-                    !(supplied_attrs
-                        .iter()
-                        .any(|a| a.as_str().eq_ignore_ascii_case(p.name.as_str()))
-                        || declared_names.contains(&&p.name))
-                };
-                let forwarded = callee_sig
-                    .params
-                    .iter()
-                    .chain(&callee_sig.forwarded)
-                    .filter(|p| covered_by_rest(p))
-                    .cloned()
-                    .collect::<Vec<_>>();
-                (forwarded, tail)
             }
-            _ => (Vec::new(), Tail::Closed),
         },
-        None => (Vec::new(), Tail::Closed),
+        None => {
+            return Row {
+                fields: Vec::new(),
+                tail: Tail::Closed,
+            };
+        }
+    };
+    // The rest adds neither a name written at the spread nor a parameter the
+    // function declares itself. Such a name leaves the fields, and the tail
+    // lacks it, whether the rest is spread into an element or a function.
+    let declared_names = declared
+        .iter()
+        .map(|param| AttributeName::from(param.name.clone()));
+    for name in supplied_attrs.iter().cloned().chain(declared_names) {
+        row.fields
+            .retain(|field| !field.name.as_str().eq_ignore_ascii_case(name.as_str()));
+        if let Tail::Element { lacks, .. } = &mut row.tail
+            && !lacks.contains(&name)
+        {
+            lacks.push(name);
+        }
     }
+    row
 }

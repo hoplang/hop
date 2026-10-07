@@ -5,7 +5,9 @@ use crate::document_annotator::DocumentAnnotator;
 use crate::hop::parsing::parse_type;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::r#type::Type;
-use crate::hop::typing::type_env::{FunctionSignature, Name, NameKind, ParamEntry, Tail, TypeEnv};
+use crate::hop::typing::type_env::{
+    FunctionSignature, Name, NameKind, ParamEntry, Row, Tail, TypeEnv,
+};
 use crate::hop::typing::type_registry::{
     EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
 };
@@ -214,7 +216,7 @@ impl TypeRegistryBuilder {
                     params,
                     return_type,
                 } => {
-                    let params = params
+                    let params: Vec<ParamEntry> = params
                         .iter()
                         .map(|(p, t)| ParamEntry {
                             name: var_name(p),
@@ -223,10 +225,12 @@ impl TypeRegistryBuilder {
                         })
                         .collect();
                     let signature = FunctionSignature {
-                        params,
-                        forwarded: Vec::new(),
+                        declared: params.len(),
+                        row: Row {
+                            fields: params,
+                            tail: Tail::Closed,
+                        },
                         return_type: types.resolve(&return_type),
-                        tail: Tail::Closed,
                         rest_param: None,
                     };
                     if types.functions.insert(var_name(&name), signature).is_some() {
