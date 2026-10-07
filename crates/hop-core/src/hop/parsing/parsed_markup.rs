@@ -193,16 +193,6 @@ impl ParsedAttribute {
         }
     }
 
-    /// The range of the attribute name, or `None` for a spread.
-    pub fn name_range(&self) -> Option<&DocumentRange> {
-        match self {
-            ParsedAttribute::KeyOnly { name_range, .. }
-            | ParsedAttribute::Expression { name_range, .. }
-            | ParsedAttribute::String { name_range, .. } => Some(name_range),
-            ParsedAttribute::Spread { .. } => None,
-        }
-    }
-
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             ParsedAttribute::KeyOnly { name, .. } => BoxDoc::text(name.as_str()),

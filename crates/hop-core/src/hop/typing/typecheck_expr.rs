@@ -4,7 +4,7 @@ use super::resolve_type::resolve_type;
 use super::r#type::{NumericType, Type};
 use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
-use super::typecheck_call::{Argument, CallArguments, NamedArgument, typecheck_call};
+use super::typecheck_call::{Argument, CallArguments, Callee, NamedArgument, typecheck_call};
 use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join};
 use super::typecheck_markup::typecheck_markup;
 use super::typecheck_match::typecheck_match;
@@ -1422,7 +1422,7 @@ pub fn typecheck_expr(
             args,
             range,
         } => typecheck_call(
-            name,
+            Callee::Function(name),
             name_range,
             range,
             match args {

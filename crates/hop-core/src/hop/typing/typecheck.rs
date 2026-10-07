@@ -2515,6 +2515,7 @@ mod tests {
                     <Count n/>
                     <Button disabled/>
                     <Button title/>
+                    <Label Text/>
                   </div>
                 }
             "#},
@@ -2560,6 +2561,12 @@ mod tests {
                 27 |     <Button disabled/>
                 28 |     <Button title/>
                    |             ^^^^^
+
+                error: Attribute 'Text' needs a value, such as Text=""
+                  --> main.hop (line 29, col 12)
+                28 |     <Button title/>
+                29 |     <Label Text/>
+                   |            ^^^^
             "#]],
         );
     }
