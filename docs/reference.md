@@ -382,21 +382,22 @@ ArgumentName  ::= LowercaseIdentifier | '"' AttributeName '"'
 `f(a, b)` passes its arguments by position, and `f(x: a, y: b)` by name. A call
 that mixes the two is a compile error. So is an argument that does not have the
 type of its parameter, more arguments than `f` has parameters, a name given
-twice, ignoring case, and leaving out a required parameter. A rest parameter is
-not counted here, since it receives arguments by name only.
+twice, ignoring case, and leaving out a required parameter. A call by position
+does not count a [rest parameter](#rest-parameters) among the parameters of
+`f`, nor the parameters it adds, since those are passed by name only.
 
 An argument by name goes to the parameter of that name, compared ignoring case,
-so `f("Label": a)` passes `a` as the parameter `label`. A name that is not a
-parameter of `f` is a compile error, unless the
-[rest parameter](#rest-parameters) of `f` collects it. A name that is not a
+so `f("Label": a)` passes `a` as the parameter `label`. A name that is neither a
+parameter of `f` nor one that the [rest parameter](#rest-parameters) of `f`
+adds is a compile error. A name that is not a
 `LowercaseIdentifier`, such as `aria-label`, or that is a
 [keyword or reserved word](#keywords), such as `for`, is written in quotes, as
 in `f("aria-label": a)`, and a quoted name is the same name as the one without
 quotes.
 
-A spread `...rest` among the arguments by name passes on what the
-[rest parameter](#rest-parameters) `rest` of the calling function collects, as
-in `f(x: a, ...rest)`.
+A spread `...rest` among the arguments by name passes on the arguments given to
+the parameters that the [rest parameter](#rest-parameters) `rest` of the
+calling function adds, as in `f(x: a, ...rest)`.
 
 A function with an uppercase name can also be called by a
 [markup call](#markup-call-expressions).
@@ -976,9 +977,9 @@ interpolation: a value of type `Html` as the elements and text it consists of,
 a value of type `String` as text, [escaped](#escaping), and a value of any
 other type is a compile error.
 
-`F` accepts an attribute for each of its parameters, and an attribute that `F`
-does not accept is a compile error. With a [rest parameter](#rest-parameters),
-`F` also accepts the attributes the rest parameter collects.
+`F` accepts an attribute for each of its parameters, including those that a
+[rest parameter](#rest-parameters) adds, and an attribute that `F` does not
+accept is a compile error.
 
 ```hop
 fn Badge(
@@ -1109,9 +1110,8 @@ For [XSS safety](#xss-safety), no element accepts an attribute whose name
 starts with `on`, such as `onclick`. Some attributes, such as the `src` of a
 `<script>`, accept only a string literal, written as `src="…"` or `src={"…"}`.
 
-On a [markup call](#markup-call-expressions), an attribute that names a
-parameter is a named argument. Any other attribute goes to the
-[rest parameter](#rest-parameters) as written.
+On a [markup call](#markup-call-expressions), an attribute is a named argument,
+and its value has the type of its parameter.
 
 Attribute names are compared ignoring case, as HTML compares them. An
 attribute written more than once in a start tag, as in `<div id="a" id="b">` or
@@ -1121,14 +1121,19 @@ attribute written more than once in a start tag, as in `<div id="a" id="b">` or
 
 #### Rest parameters
 
-A rest parameter `...rest` is the last parameter, and collects the arguments a
-caller passes by name that are not parameters of the function, whether written
-as attributes of a markup call or in a call expression. The body spreads it, as
-`...rest`, in the start tag of an element or markup call, or in the arguments
-of a call expression, where the collected arguments are placed as if written
-at the end of the start tag or the arguments, wherever the spread is written.
-A rest parameter that is not the last parameter, or that the body does not
-spread exactly once, is a compile error. For example:
+A rest parameter `...rest` is the last parameter, and adds parameters to its
+function. The body spreads it, as `...rest`, in the start tag of an element or
+markup call, or in the arguments of a call expression, and the rest parameter
+adds a parameter for each name that the [element](#attributes) or
+[function](#markup-call-expressions) it is spread into accepts, except the
+names written at the spread and the parameters its function declares itself.
+A caller passes the added parameters by name, as attributes of a markup call or
+in a call expression, and the spread passes on the arguments the caller gives
+them, placed as if written at the end of the start tag or the arguments, in the
+order the caller wrote them, wherever the spread is written. The added
+parameters are not in scope in the body. A rest parameter that is not the last
+parameter, or that the body does not spread exactly once, is a compile error.
+For example:
 
 ```hop
 fn Button(
@@ -1156,10 +1161,10 @@ SecondaryButton(type: "submit")            // <button class="secondary" type="su
 
 Exactly once means once in the source text, not once per evaluation: a spread
 in each arm of a `match` is a compile error, while a single spread inside a
-`for` body is allowed, and adds the attributes on every iteration.
+`for` body is allowed, and passes on the same arguments on every iteration.
 
-Since the collected arguments come last, a spread written before an attribute
-renders after it:
+Since the spread places its arguments at the end, a spread written before an
+attribute renders after it:
 
 ```hop
 fn Link(...rest) -> Html {
@@ -1169,11 +1174,11 @@ fn Link(...rest) -> Html {
 <Link id="home"/> // <a href="/" id="home">Home</a>
 ```
 
-A rest parameter accepts the names that the [element](#attributes) or
-[function](#markup-call-expressions) it is spread into accepts, except those
-written in the same start tag or call expression. For example, `class` is
-written on the `<button>` where `Button` spreads `rest`, so `Button` does not
-accept it:
+Spread into an element, a rest parameter adds an optional parameter for each
+attribute the element accepts, with the type of the attribute, and a caller
+that leaves one out leaves out the attribute. For example, `class` is written
+on the `<button>` where `Button` spreads `rest`, so `Button` does not accept
+it:
 
 ```hop
 fn Button(
@@ -1188,11 +1193,28 @@ fn Button(
 <Button kind="k" class="c"/> // error: Function Button does not accept argument 'class'
 ```
 
-Spread into a function, a rest parameter carries the parameters of that
-function that are not written in the same start tag or call expression, each
-with its type, and required if it is required there. In the example below,
-`title` is a parameter of `Card` that `Panel` carries, while `id` goes on to the
-`<div>` through the rest parameter of `Card`:
+A parameter that the function declares itself is not added, so an argument for
+it does not reach the element, even when the element accepts its name:
+
+```hop
+fn Field(
+  name: String,
+  ...rest,
+) -> Html {
+  <label>
+    {name}
+    <input ...rest/>
+  </label>
+}
+
+<Field name="q" type="search"/> // <label>q<input type="search"></label>
+```
+
+Spread into a function, a rest parameter adds the parameters of that function,
+including those that its rest parameter adds, each with its type, and required
+if it is required there. In the example below, `Panel` adds the parameter
+`title` of `Card`, and the parameter `id` that the rest parameter of `Card` adds
+for the `<div>`:
 
 ```hop
 fn Card(
@@ -1216,7 +1238,7 @@ Panel(title: "Home")         // <section><div>Home</div></section>
 <Panel id="p"/>              // error: Function Panel requires arguments: title
 ```
 
-The parameter `children` is carried in the same way, unless the spread is in a
+The parameter `children` is added in the same way, unless the spread is in a
 markup call with an end tag, which passes `children` itself, even when it has
 no content:
 
@@ -1601,8 +1623,8 @@ which otherwise accept any attribute. So
 The attributes below load a script or a document, or set the value of another
 attribute. Their value is a string literal, written as `name="text"` or
 `name={"text"}`, and any other expression is a compile error, whether it is
-written on the element or passed through a [rest parameter](#rest-parameters).
-The names are matched ignoring case.
+written on the element or passed to a parameter that a
+[rest parameter](#rest-parameters) adds. The names are matched ignoring case.
 
 ```
 Element        Attributes
