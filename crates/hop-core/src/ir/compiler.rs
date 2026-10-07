@@ -68,6 +68,11 @@ struct Compiler<'a> {
     var_id_counter: &'a mut VarIdCounter,
     declared: &'a HashMap<(RootContainedFilePath, FunctionName), IrFunction>,
     scopes: Vec<Vec<(VarName, VarId)>>,
+    /// The parameters of the function being compiled, including its rest and
+    /// the parameters the rest carries. A spread and a forwarded parameter
+    /// read these, so a binding in the body that reuses the name does not
+    /// capture them.
+    params: HashMap<VarName, IrVar>,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
@@ -83,6 +88,7 @@ impl<'a> Compiler<'a> {
             var_id_counter,
             declared,
             scopes: vec![Vec::new()],
+            params: HashMap::new(),
             asset_path_rewriter,
         }
     }
@@ -96,16 +102,20 @@ impl<'a> Compiler<'a> {
 
         let mut parameters = Vec::with_capacity(decl.params.len() + 1);
         for param in &decl.params {
+            let var = self.bind(&param.var_name);
+            self.params.insert(param.var_name.clone(), var);
             parameters.push(WriterParameter {
-                var: self.bind(&param.var_name),
+                var,
                 name: param.var_name.clone(),
                 typ: param.var_type.clone(),
             });
         }
         // The rest parameter receives its attributes pre-rendered as Html.
         if let Some(rest) = &decl.rest_param {
+            let var = self.bind(rest);
+            self.params.insert(rest.clone(), var);
             parameters.push(WriterParameter {
-                var: self.bind(rest),
+                var,
                 name: rest.clone(),
                 typ: Type::Html,
             });
@@ -118,6 +128,7 @@ impl<'a> Compiler<'a> {
             body: self.compile_expr(&decl.body),
         };
         self.pop_scope();
+        self.params.clear();
         declaration
     }
 
@@ -422,6 +433,11 @@ impl<'a> Compiler<'a> {
         match expr {
             TypedExpr::Var { value, typ, .. } => PureExpr::VariableReference {
                 value: self.resolve(value),
+                typ: typ.clone(),
+                id: expr_id,
+            },
+            TypedExpr::ForwardedParam { value, typ } => PureExpr::VariableReference {
+                value: self.params[value],
                 typ: typ.clone(),
                 id: expr_id,
             },
@@ -749,7 +765,7 @@ impl<'a> Compiler<'a> {
                 }
                 if let Some(spread) = &attrs.spread {
                     parts.push(PureExpr::VariableReference {
-                        value: self.resolve(spread),
+                        value: self.params[spread],
                         typ: Type::Html,
                         id: self.next_expr_id(),
                     });
@@ -789,7 +805,7 @@ impl<'a> Compiler<'a> {
                     }
                     if let Some(spread) = &attrs.spread {
                         parts.push(PureExpr::VariableReference {
-                            value: self.resolve(spread),
+                            value: self.params[spread],
                             typ: Type::Html,
                             id: self.next_expr_id(),
                         });

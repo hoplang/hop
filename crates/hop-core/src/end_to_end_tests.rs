@@ -3323,6 +3323,378 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn forwarded_param_is_not_captured_by_let() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String) -> Html {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  let title = "local";
+                  <section>
+                    {title}
+                    <Card ...rest/>
+                  </section>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Wrapper title="hi"/>
+                  }
+                }
+            "#},
+            r#"<section>local<div>hi</div></section>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Card@f0(title@v0: String) -> Html {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                fn Wrapper@f1(title@v1: String, rest@v2: Html) -> Html {
+                  let v3 = "local" in {
+                    write("<section")
+                    write(">")
+                    write_string(v3)
+                    call Card@f0(title = v1)
+                    write("</section>")
+                  }
+                }
+                page Test() {
+                  call Wrapper@f1(title = "hi", rest = {})
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<section>local<div>hi</div></section>")
+                }
+                -- expected output --
+                <section>local<div>hi</div></section>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn forwarded_param_is_not_captured_by_for_variable() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String) -> Html {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  for title in ["a", "b"] {
+                    <p>
+                      {title}
+                      <Card ...rest/>
+                    </p>
+                  }
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Wrapper title="hi"/>
+                  }
+                }
+            "#},
+            r#"<p>a<div>hi</div></p><p>b<div>hi</div></p>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Card@f0(title@v0: String) -> Html {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                fn Wrapper@f1(title@v1: String, rest@v2: Html) -> Html {
+                  for v3 in ["a", "b"] {
+                    write("<p")
+                    write(">")
+                    write_string(v3)
+                    call Card@f0(title = v1)
+                    write("</p>")
+                  }
+                }
+                page Test() {
+                  call Wrapper@f1(title = "hi", rest = {})
+                }
+                -- ir (optimized) --
+                page Test() {
+                  for v7 in ["a", "b"] {
+                    write("<p>")
+                    write_string(v7)
+                    write("<div>hi</div></p>")
+                  }
+                }
+                -- expected output --
+                <p>a<div>hi</div></p><p>b<div>hi</div></p>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn forwarded_param_is_not_captured_by_match_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String) -> Html {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  match Some("m") {
+                    Some(title) => {
+                      <p>
+                        {title}
+                        <Card ...rest/>
+                      </p>
+                    },
+                    None => <></>,
+                  }
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Wrapper title="hi"/>
+                  }
+                }
+            "#},
+            r#"<p>m<div>hi</div></p>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Card@f0(title@v0: String) -> Html {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                fn Wrapper@f1(title@v1: String, rest@v2: Html) -> Html {
+                  let v3 = Option[String]::Some("m") in {
+                    match v3 {
+                      Some(v4) => {
+                        write("<p")
+                        write(">")
+                        write_string(v4)
+                        call Card@f0(title = v1)
+                        write("</p>")
+                      }
+                      None => {
+                      }
+                    }
+                  }
+                }
+                page Test() {
+                  call Wrapper@f1(title = "hi", rest = {})
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<p>m<div>hi</div></p>")
+                }
+                -- expected output --
+                <p>m<div>hi</div></p>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_spread_on_element_is_not_captured_by_let() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Wrapper(...rest) -> Html {
+                  let rest = <b>x</b>;
+                  <div ...rest>
+                    {rest}
+                  </div>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Wrapper id="hi"/>
+                  }
+                }
+            "#},
+            r#"<div id="hi"><b>x</b></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Wrapper@f0(rest@v0: Html) -> Html {
+                  let v1 = {
+                    write("<b")
+                    write(">")
+                    write("x")
+                    write("</b>")
+                  } in {
+                    write("<div")
+                    write_html(v0)
+                    write(">")
+                    write_html(v1)
+                    write("</div>")
+                  }
+                }
+                page Test() {
+                  call Wrapper@f0(rest = {
+                    write(" id=\"")
+                    write_string("hi")
+                    write("\"")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  let v3 = {
+                    write("<b>x</b>")
+                  } in {
+                    write("<div id=\"hi\">")
+                    write_html(v3)
+                    write("</div>")
+                  }
+                }
+                -- expected output --
+                <div id="hi"><b>x</b></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_spread_into_function_is_not_captured_by_let() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(
+                  title: String,
+                  ...rest,
+                ) -> Html {
+                  <div ...rest>
+                    {title}
+                  </div>
+                }
+
+                fn Wrapper(...rest) -> Html {
+                  let rest = "local";
+                  <section>
+                    {rest}
+                    <Card title="t" ...rest/>
+                  </section>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Wrapper id="hi"/>
+                  }
+                }
+            "#},
+            r#"<section>local<div id="hi">t</div></section>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Card@f0(title@v0: String, rest@v1: Html) -> Html {
+                  write("<div")
+                  write_html(v1)
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                fn Wrapper@f1(rest@v2: Html) -> Html {
+                  let v3 = "local" in {
+                    write("<section")
+                    write(">")
+                    write_string(v3)
+                    call Card@f0(title = "t", rest = {
+                      write_html(v2)
+                    })
+                    write("</section>")
+                  }
+                }
+                page Test() {
+                  call Wrapper@f1(rest = {
+                    write(" id=\"")
+                    write_string("hi")
+                    write("\"")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<section>local<div id=\"hi\">t</div></section>")
+                }
+                -- expected output --
+                <section>local<div id="hi">t</div></section>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn accepts_param_named_like_html_attr_alongside_tail_attr() {
         check(
             indoc! {r#"

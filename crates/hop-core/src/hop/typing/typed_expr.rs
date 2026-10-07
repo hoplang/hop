@@ -20,6 +20,11 @@ pub enum TypedExpr {
     /// A variable expression, e.g. foo
     Var { value: VarName, typ: Type },
 
+    /// A parameter of the enclosing function that its rest carries, passed
+    /// on to a callee at a `...rest` spread. Unlike a `Var`, it reads the
+    /// parameter even where the body binds the same name.
+    ForwardedParam { value: VarName, typ: Type },
+
     /// A field access expression, e.g. foo.bar
     FieldAccess {
         record: Box<Self>,
@@ -328,6 +333,7 @@ impl TypedExpr {
     pub fn typ(&self) -> Type {
         match self {
             TypedExpr::Var { typ, .. }
+            | TypedExpr::ForwardedParam { typ, .. }
             | TypedExpr::FieldAccess { typ, .. }
             | TypedExpr::Array { typ, .. }
             | TypedExpr::Tuple { typ, .. }
@@ -406,7 +412,9 @@ impl TypedExpr {
         }
 
         match self {
-            TypedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
+            TypedExpr::Var { value, .. } | TypedExpr::ForwardedParam { value, .. } => {
+                BoxDoc::text(value.as_str())
+            }
             TypedExpr::FieldAccess {
                 record: object,
                 field,

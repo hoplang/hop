@@ -254,7 +254,7 @@ pub fn typecheck_call(
         if rest_spread.is_some() && forwarded_params.contains(&param.name) {
             typed.push((
                 param.name.clone(),
-                TypedExpr::Var {
+                TypedExpr::ForwardedParam {
                     value: param.name.clone(),
                     typ: param.typ.clone(),
                 },
