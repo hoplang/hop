@@ -664,13 +664,13 @@ mod tests {
     use crate::ir::pure_module_generator::random_module;
     use crate::ir::runtime::random::random_value;
     use expect_test::{Expect, expect};
-    use rand::{SeedableRng, rngs::StdRng};
+    use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
     fn fuzz_random_modules_evaluate_without_panicking() {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
-            let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
+            let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
             for page in &module.pages {
                 let args: HashMap<VarName, Value> = page
                     .parameters

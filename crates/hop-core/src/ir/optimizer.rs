@@ -52,13 +52,13 @@ mod tests {
     use crate::symbols::type_name::TypeName;
     use crate::symbols::var_name::VarName;
     use expect_test::{Expect, expect};
-    use rand::{SeedableRng, rngs::StdRng};
+    use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
     fn fuzz_random_pure_modules_evaluate_identically_after_optimization() {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
-            let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
+            let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
 
             let page_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
                 .pages

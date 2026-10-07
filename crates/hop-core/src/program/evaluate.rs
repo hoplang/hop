@@ -11,7 +11,8 @@ use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use rand::Rng;
+use rand::SeedableRng;
+use rand::rngs::Xoshiro256PlusPlus;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -64,15 +65,17 @@ impl Program {
         })
     }
 
-    /// Evaluate a page with randomly generated parameter values using the given RNG.
+    /// Evaluate a page with randomly generated parameter values derived from `seed`.
     pub fn evaluate_page_with_random_values(
         &self,
         page: &str,
-        rng: &mut impl Rng,
+        seed: u64,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Result<String, EvaluatePageError> {
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+
         let page_name = TypeName::new(CheapString::new(page.to_string())).map_err(|e| {
             EvaluatePageError::InvalidPageName {
                 page: page.to_string(),
@@ -102,7 +105,7 @@ impl Program {
                 (
                     param.var_name.clone(),
                     random_value(
-                        rng,
+                        &mut rng,
                         &param.var_type,
                         param.examples.as_ref(),
                         &self.type_registry,

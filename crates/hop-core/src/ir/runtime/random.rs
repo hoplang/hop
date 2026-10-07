@@ -233,7 +233,7 @@ mod tests {
     use super::*;
     use crate::hop::typing::TypeRegistryBuilder;
     use rand::SeedableRng;
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
 
     #[test]
     fn recursive_enum_generation_terminates() {
@@ -251,7 +251,7 @@ mod tests {
             .build();
         let ty = types.named("Tree");
         for seed in 0..50 {
-            let mut rng = StdRng::seed_from_u64(seed);
+            let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, None, types.registry());
         }
     }
@@ -263,7 +263,7 @@ mod tests {
             .build();
         let ty = types.named("Node");
         for seed in 0..50 {
-            let mut rng = StdRng::seed_from_u64(seed);
+            let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, None, types.registry());
         }
     }
@@ -288,7 +288,7 @@ mod tests {
             .build();
         let ty = types.named("Expr");
         for seed in 0..50 {
-            let mut rng = StdRng::seed_from_u64(seed);
+            let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, None, types.registry());
         }
     }
@@ -300,7 +300,7 @@ mod tests {
             .record("Node", [("value", "Int"), ("next", "Node")])
             .build();
         let ty = types.named("Node");
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         random_value(&mut rng, &ty, None, types.registry());
     }
 
@@ -314,7 +314,7 @@ mod tests {
         };
         let registry = TypeRegistry::default();
         for seed in 0..50 {
-            let mut rng = StdRng::seed_from_u64(seed);
+            let mut rng = SmallRng::seed_from_u64(seed);
             let value = random_value(&mut rng, &ty, Some(&examples), &registry);
             let Value::Array(items) = value else {
                 panic!("expected Value::Array");
@@ -333,7 +333,7 @@ mod tests {
         let ty = Type::Array(Box::new(Type::Int));
         let registry = TypeRegistry::default();
         for seed in 0..50 {
-            let mut rng = StdRng::seed_from_u64(seed);
+            let mut rng = SmallRng::seed_from_u64(seed);
             let value = random_value(&mut rng, &ty, None, &registry);
             let Value::Array(items) = value else {
                 panic!("expected Value::Array");
