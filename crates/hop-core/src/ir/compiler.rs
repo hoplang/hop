@@ -383,47 +383,43 @@ impl<'a> Compiler<'a> {
     }
 
     fn compile_attribute(&mut self, attr: &TypedAttribute, output: &mut Vec<PureExpr>) {
-        let expr = &attr.value;
-        // A Bool attribute is present, without a value, when it is true, and
-        // absent when it is false.
-        if expr.typ() == Type::Bool {
-            let subject = Box::new(self.compile_expr(expr));
-            let true_body = Box::new(PureExpr::HtmlRaw {
-                content: format!(" {}", attr.name.as_str()),
-                id: self.next_expr_id(),
-            });
-            let false_body = Box::new(PureExpr::HtmlConcat {
-                parts: Vec::new(),
-                id: self.next_expr_id(),
-            });
-            output.push(PureExpr::Match {
-                match_: Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                },
-                typ: Type::Html,
-                id: self.next_expr_id(),
-            });
-        } else {
-            assert!(
-                expr.typ() == Type::String,
-                "attribute `{}` holds {}, but attribute values must be String or Bool",
-                attr.name.as_str(),
-                expr.typ()
-            );
-            output.push(PureExpr::HtmlRaw {
-                content: format!(" {}=\"", attr.name.as_str()),
-                id: self.next_expr_id(),
-            });
-            output.push(PureExpr::HtmlEscape {
-                expr: Box::new(self.compile_expr(expr)),
-                id: self.next_expr_id(),
-            });
-            output.push(PureExpr::HtmlRaw {
-                content: "\"".to_string(),
-                id: self.next_expr_id(),
-            });
+        match attr {
+            // A boolean attribute is present, without a value, when its
+            // condition is true, and absent when it is false.
+            TypedAttribute::Presence { name, present } => {
+                let subject = Box::new(self.compile_expr(present));
+                let true_body = Box::new(PureExpr::HtmlRaw {
+                    content: format!(" {}", name.as_str()),
+                    id: self.next_expr_id(),
+                });
+                let false_body = Box::new(PureExpr::HtmlConcat {
+                    parts: Vec::new(),
+                    id: self.next_expr_id(),
+                });
+                output.push(PureExpr::Match {
+                    match_: Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    },
+                    typ: Type::Html,
+                    id: self.next_expr_id(),
+                });
+            }
+            TypedAttribute::Value { name, value } => {
+                output.push(PureExpr::HtmlRaw {
+                    content: format!(" {}=\"", name.as_str()),
+                    id: self.next_expr_id(),
+                });
+                output.push(PureExpr::HtmlEscape {
+                    expr: Box::new(self.compile_expr(value)),
+                    id: self.next_expr_id(),
+                });
+                output.push(PureExpr::HtmlRaw {
+                    content: "\"".to_string(),
+                    id: self.next_expr_id(),
+                });
+            }
         }
     }
 

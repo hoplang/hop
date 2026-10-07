@@ -270,11 +270,22 @@ pub enum TypedLoopSource {
     RangeInclusive { start: TypedExpr, end: TypedExpr },
 }
 
+/// An attribute written on an element, or received by a rest parameter.
 #[derive(Debug, Clone)]
-pub struct TypedAttribute {
-    pub name: AttributeName,
-    /// A `Bool` for a boolean attribute and a `String` for any other.
-    pub value: TypedExpr,
+pub enum TypedAttribute {
+    /// An attribute with a value, as in `id={e}`. The value is a `String`,
+    /// escaped when rendered.
+    Value {
+        name: AttributeName,
+        value: TypedExpr,
+    },
+    /// A boolean attribute, as in `disabled={e}`. The element has the
+    /// attribute, without a value, when `present` is true, and does not have
+    /// it otherwise. `present` is a `Bool`.
+    Presence {
+        name: AttributeName,
+        present: TypedExpr,
+    },
 }
 
 /// The attributes an element or a rest parameter receives: those written at
@@ -287,18 +298,16 @@ pub struct TypedAttrs {
 
 impl TypedAttribute {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let name_doc = BoxDoc::text(self.name.as_str());
-        // A Bool decides whether the attribute is present, and is not
-        // rendered as text.
-        if self.value.typ() == Type::Bool {
-            name_doc
-                .append(BoxDoc::text(": "))
-                .append(self.value.to_doc())
-        } else {
-            name_doc
+        match self {
+            TypedAttribute::Value { name, value } => BoxDoc::text(name.as_str())
                 .append(BoxDoc::text(": escape("))
-                .append(self.value.to_doc())
-                .append(BoxDoc::text(")"))
+                .append(value.to_doc())
+                .append(BoxDoc::text(")")),
+            // The condition decides whether the attribute is present, and is
+            // not rendered as text.
+            TypedAttribute::Presence { name, present } => BoxDoc::text(name.as_str())
+                .append(BoxDoc::text(": "))
+                .append(present.to_doc()),
         }
     }
 }

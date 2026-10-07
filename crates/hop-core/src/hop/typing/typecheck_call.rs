@@ -392,7 +392,15 @@ pub fn typecheck_call(
         }
         match receiver {
             Receiver::Parameter(param) => typed.push((param.name.clone(), value)),
-            Receiver::Attribute { name, .. } => attributes.push(TypedAttribute { name, value }),
+            // The expected type was chosen from whether the attribute is
+            // boolean, and the value has that type.
+            Receiver::Attribute { name, .. } => attributes.push(match expected {
+                Type::Bool => TypedAttribute::Presence {
+                    name,
+                    present: value,
+                },
+                _ => TypedAttribute::Value { name, value },
+            }),
         }
     }
     if failed {

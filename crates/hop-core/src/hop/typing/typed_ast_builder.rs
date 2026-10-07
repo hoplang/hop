@@ -264,18 +264,27 @@ impl TypedAstBuilder {
         let mut inner_builder = self.new_scoped();
         children_fn(&mut inner_builder);
 
+        let element = HtmlElementKind::parse(tag_name)
+            .expect("builder html() called with an unrecognized tag name");
+
         let attrs: Vec<TypedAttribute> = attributes
             .into_iter()
-            .map(|(name, value)| TypedAttribute {
-                name: AttributeName::new(CheapString::new(name.to_string()))
-                    .expect("builder html() called with an invalid attribute name"),
-                value,
+            .map(|(name, value)| {
+                let name = AttributeName::new(CheapString::new(name.to_string()))
+                    .expect("builder html() called with an invalid attribute name");
+                if element.is_boolean_attribute(name.as_str()) {
+                    TypedAttribute::Presence {
+                        name,
+                        present: value,
+                    }
+                } else {
+                    TypedAttribute::Value { name, value }
+                }
             })
             .collect();
 
         self.children.push(TypedExpr::Element {
-            element: HtmlElementKind::parse(tag_name)
-                .expect("builder html() called with an unrecognized tag name"),
+            element,
             attrs: TypedAttrs {
                 attributes: attrs,
                 spread: None,
