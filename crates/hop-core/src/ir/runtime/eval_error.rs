@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::ir::ir_function::IrFunction;
 use crate::symbols::{attribute_name::AttributeName, type_name::TypeName};
 
 #[derive(Debug, Error)]
@@ -10,5 +11,17 @@ pub enum EvalError {
     MissingParameter {
         page: TypeName,
         param: AttributeName,
+    },
+    #[error("Function '{function}' not found in module")]
+    FunctionNotFound { function: IrFunction },
+    #[error("Missing required parameter '{param}' for function '{function}'")]
+    MissingFunctionParameter {
+        function: IrFunction,
+        param: AttributeName,
+    },
+    #[error("Unknown argument '{name}' for function '{function}'")]
+    UnknownArgument {
+        function: IrFunction,
+        name: AttributeName,
     },
 }

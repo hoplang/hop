@@ -1,5 +1,6 @@
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::document_shell::DocumentShell;
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumPattern, Match};
 use crate::ir::pure_module::{
     PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
@@ -57,6 +58,42 @@ pub fn evaluate_page(
         }
     }
     Ok(html)
+}
+
+/// Evaluate a function on its arguments, given by parameter name.
+///
+/// Every parameter must have an argument and every argument must name a
+/// parameter.
+pub fn evaluate_function(
+    function_decls: &[PureFunctionDeclaration],
+    function: &IrFunction,
+    mut args: HashMap<AttributeName, Value>,
+) -> Result<Value, EvalError> {
+    let decl = function_decls
+        .iter()
+        .find(|decl| decl.function.id == function.id)
+        .ok_or_else(|| EvalError::FunctionNotFound {
+            function: function.clone(),
+        })?;
+    let mut env = VariableEnv::new();
+    for param in &decl.parameters {
+        match args.remove(param.name()) {
+            Some(value) => env.insert(param.var.id, value),
+            None => {
+                return Err(EvalError::MissingFunctionParameter {
+                    function: function.clone(),
+                    param: param.name().clone(),
+                });
+            }
+        }
+    }
+    if let Some(name) = args.into_keys().next() {
+        return Err(EvalError::UnknownArgument {
+            function: function.clone(),
+            name,
+        });
+    }
+    Ok(evaluate_expr(&decl.body, &mut env, function_decls))
 }
 
 fn evaluate_expr(
@@ -243,38 +280,18 @@ fn evaluate_expr(
         }
 
         PureExpr::Call { function, args, .. } => {
-            let func = function_decls
-                .iter()
-                .find(|decl| decl.function.id == function.id)
-                .unwrap_or_else(|| panic!("Function '{}' not found in module", function));
-            for (index, arg) in args.iter().enumerate() {
+            let mut values = HashMap::new();
+            for arg in args {
+                let value = evaluate_expr(&arg.expr, env, function_decls);
                 assert!(
-                    func.parameters.iter().any(|p| p.name() == &arg.name),
-                    "Unknown argument '{}' for function '{}'",
-                    arg.name,
-                    function
-                );
-                assert!(
-                    !args[..index].iter().any(|earlier| earlier.name == arg.name),
+                    values.insert(arg.name.clone(), value).is_none(),
                     "Duplicate argument '{}' for function '{}'",
                     arg.name,
                     function
                 );
             }
-            let mut callee_env = VariableEnv::new();
-            for param in &func.parameters {
-                if let Some(arg) = args.iter().find(|arg| &arg.name == param.name()) {
-                    let value = evaluate_expr(&arg.expr, env, function_decls);
-                    callee_env.insert(param.var.id, value);
-                } else {
-                    panic!(
-                        "Missing required parameter '{}' for function '{}'",
-                        param.name(),
-                        function
-                    );
-                }
-            }
-            evaluate_expr(&func.body, &mut callee_env, function_decls)
+            evaluate_function(function_decls, function, values)
+                .unwrap_or_else(|error| panic!("{error}"))
         }
 
         PureExpr::BoolLiteral { value, .. } => Value::Bool(*value),
@@ -863,6 +880,36 @@ mod tests {
                 <li>Cherry</li>
 
             "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_a_function_on_its_own() {
+        let module = PureModuleBuilder::new()
+            .function("Double", [("n", "Int")], "Int", |t| {
+                t.add(t.var("n"), t.var("n"))
+            })
+            .build();
+        let args = HashMap::from([(AttributeName::parse("n").unwrap(), Value::Int(21))]);
+        let result = evaluate_function(&module.functions, &module.functions[0].function, args);
+        assert_eq!(result.unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn should_error_when_function_argument_is_unknown() {
+        let module = PureModuleBuilder::new()
+            .function("Double", [("n", "Int")], "Int", |t| {
+                t.add(t.var("n"), t.var("n"))
+            })
+            .build();
+        let args = HashMap::from([
+            (AttributeName::parse("n").unwrap(), Value::Int(21)),
+            (AttributeName::parse("m").unwrap(), Value::Int(1)),
+        ]);
+        let result = evaluate_function(&module.functions, &module.functions[0].function, args);
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Unknown argument 'm' for function 'Double@f0'"
         );
     }
 

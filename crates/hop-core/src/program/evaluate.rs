@@ -63,6 +63,11 @@ impl Program {
                 page: page.to_string(),
                 param: param.to_string(),
             },
+            EvalError::FunctionNotFound { .. }
+            | EvalError::MissingFunctionParameter { .. }
+            | EvalError::UnknownArgument { .. } => {
+                unreachable!("evaluating a page panics on an invalid call instead")
+            }
         })
     }
 
