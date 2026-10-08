@@ -7,9 +7,9 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
 use super::writer_module::WriterParameter;
@@ -64,10 +64,10 @@ pub enum PureForSource {
     RangeInclusive { start: PureExpr, end: PureExpr },
 }
 
-/// An argument passed to a Call.
+/// An argument passed to a Call, by the name of the parameter it supplies.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PureArgument {
-    pub name: VarName,
+    pub name: AttributeName,
     pub expr: PureExpr,
 }
 

@@ -1,7 +1,7 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::hop::typing::TypedModule;
 use crate::ir::pure_module::PureModule;
-use crate::ir::{DocumentShell, WriterModule, compile, lower_pure, optimize, retain_reachable};
+use crate::ir::{DocumentShell, WriterModule, compile, lower_pure, optimize};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
@@ -55,12 +55,11 @@ pub fn orchestrate_pure(
         })
         .collect();
 
+    // Only the functions the selected pages reach are compiled, so a
+    // page_filter build holds what that page actually needs.
     let pure_module = compile(pages, &functions, options.asset_path_rewriter);
-    // Every function in the project is compiled, whether or not
-    // the selected pages reach it. Dropping the unreachable ones keeps a
-    // page_filter build to what that page actually needs.
     if options.skip_optimization {
-        retain_reachable(pure_module)
+        pure_module
     } else {
         optimize(pure_module)
     }

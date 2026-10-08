@@ -15,6 +15,7 @@ use crate::ir::pure_module::PureForSource;
 use crate::ir::var_id::VarId;
 use crate::ir::var_id::VarIdCounter;
 use crate::root_contained_file_path::RootContainedFilePath;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
@@ -24,6 +25,14 @@ use super::pure_module::{
 };
 use super::writer_module::WriterParameter;
 
+/// Compile the pages and the functions they reach.
+///
+/// A rest parameter is resolved at compile time. A call supplies attributes
+/// to the rest of its callee, and the callee is compiled once for each
+/// distinct list of attributes it is called with, with a parameter for each
+/// of them in place of the rest. So a function with a rest is compiled once
+/// per such list, a function without one at most once, and a function no
+/// page reaches not at all.
 pub fn compile(
     pages: Vec<TypedPageDeclaration>,
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
@@ -33,26 +42,39 @@ pub fn compile(
     let mut var_ids = VarIdCounter::new();
     let mut function_ids = FunctionIdCounter::new();
 
-    let declared: HashMap<(RootContainedFilePath, FunctionName), IrFunction> = source_functions
-        .iter()
-        .map(|(module, decl)| {
-            (
-                ((*module).clone(), decl.name.clone()),
-                IrFunction::new(function_ids.next(), decl.name.clone()),
-            )
-        })
-        .collect();
+    // Each declaration with its position, since the module keeps the
+    // functions in declaration order.
+    let source: HashMap<(RootContainedFilePath, FunctionName), (usize, &TypedFunctionDeclaration)> =
+        source_functions
+            .iter()
+            .enumerate()
+            .map(|(index, (module, decl))| (((*module).clone(), decl.name.clone()), (index, *decl)))
+            .collect();
 
-    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, &declared, asset_path_rewriter);
+    let mut compiler = Compiler::new(
+        &mut expr_ids,
+        &mut var_ids,
+        &mut function_ids,
+        asset_path_rewriter,
+    );
 
     let pages = pages
         .into_iter()
         .map(|page| compiler.compile_page_decl(page))
         .collect();
-    let functions: Vec<PureFunctionDeclaration> = source_functions
-        .iter()
-        .map(|(module, decl)| compiler.compile_function_decl(module, decl))
-        .collect();
+
+    // Compiling a body requests the specializations it calls, so this runs
+    // until every request is compiled.
+    let mut functions: Vec<(usize, PureFunctionDeclaration)> = Vec::new();
+    let mut next = 0;
+    while let Some(request) = compiler.specializations.get(next).cloned() {
+        let (index, decl) = source[&(request.module, request.name)];
+        let function = compiler.compile_function_decl(decl, request.shape, request.function);
+        functions.push((index, function));
+        next += 1;
+    }
+    functions.sort_by_key(|(index, _)| *index);
+    let functions = functions.into_iter().map(|(_, decl)| decl).collect();
 
     PureModule {
         pages,
@@ -62,16 +84,34 @@ pub fn compile(
     }
 }
 
+/// A function compiled for one list of attributes supplied to its rest.
+#[derive(Clone)]
+struct Specialization {
+    module: RootContainedFilePath,
+    name: FunctionName,
+    /// The attributes supplied to the rest, with their types, in the order
+    /// they render: those written at the call, then those the call forwards
+    /// from the rest of the calling function.
+    shape: Vec<(AttributeName, Type)>,
+    function: IrFunction,
+}
+
 struct Compiler<'a> {
     expr_id_counter: &'a mut ExprIdCounter,
     var_id_counter: &'a mut VarIdCounter,
-    declared: &'a HashMap<(RootContainedFilePath, FunctionName), IrFunction>,
+    function_id_counter: &'a mut FunctionIdCounter,
+    /// The specializations calls have requested so far, in request order.
+    specializations: Vec<Specialization>,
     scopes: Vec<Vec<(VarName, VarId)>>,
-    /// The parameters of the function being compiled, including its rest and
-    /// the parameters the rest adds. A spread and a forwarded parameter
-    /// read these, so a binding in the body that reuses the name does not
-    /// capture them.
+    /// The parameters of the function being compiled, those it declares and
+    /// those its rest adds from a function it is spread into. A forwarded
+    /// parameter reads these, so a binding in the body that reuses the name
+    /// does not capture it.
     params: HashMap<VarName, IrVar>,
+    /// The attributes the specialization being compiled receives through its
+    /// rest, each with the parameter that holds it, in the order they
+    /// render. The spread reads these. They are not in scope by name.
+    rest: Vec<(AttributeName, Type, IrVar)>,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
@@ -79,55 +119,56 @@ impl<'a> Compiler<'a> {
     fn new(
         expr_id_counter: &'a mut ExprIdCounter,
         var_id_counter: &'a mut VarIdCounter,
-        declared: &'a HashMap<(RootContainedFilePath, FunctionName), IrFunction>,
+        function_id_counter: &'a mut FunctionIdCounter,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Self {
         Compiler {
             expr_id_counter,
             var_id_counter,
-            declared,
+            function_id_counter,
+            specializations: Vec::new(),
             scopes: vec![Vec::new()],
             params: HashMap::new(),
+            rest: Vec::new(),
             asset_path_rewriter,
         }
     }
 
     fn compile_function_decl(
         &mut self,
-        module: &RootContainedFilePath,
         decl: &TypedFunctionDeclaration,
+        shape: Vec<(AttributeName, Type)>,
+        function: IrFunction,
     ) -> PureFunctionDeclaration {
         self.push_scope();
 
-        let mut parameters = Vec::with_capacity(decl.params.len() + 1);
+        let mut parameters = Vec::with_capacity(decl.params.len() + shape.len());
         for param in &decl.params {
             let var = self.bind(&param.var_name);
             self.params.insert(param.var_name.clone(), var);
             parameters.push(WriterParameter {
                 var,
-                name: param.var_name.clone(),
+                name: param.var_name.clone().into(),
                 typ: param.var_type.clone(),
             });
         }
-        // The rest parameter receives its attributes pre-rendered as Html.
-        if let Some(rest) = &decl.rest_param {
-            let var = self.bind(rest);
-            self.params.insert(rest.clone(), var);
-            parameters.push(WriterParameter {
-                var,
-                name: rest.clone(),
-                typ: Type::Html,
-            });
+        // Each attribute the specialization receives through its rest is a
+        // parameter of its own.
+        for (name, typ) in shape {
+            let var = IrVar::new(self.next_var_id());
+            self.rest.push((name.clone(), typ.clone(), var));
+            parameters.push(WriterParameter { var, name, typ });
         }
 
         let declaration = PureFunctionDeclaration {
-            function: self.declared[&(module.clone(), decl.name.clone())].clone(),
+            function,
             parameters,
             return_type: decl.return_type.clone(),
             body: self.compile_expr(&decl.body),
         };
         self.pop_scope();
         self.params.clear();
+        self.rest.clear();
         declaration
     }
 
@@ -138,7 +179,7 @@ impl<'a> Compiler<'a> {
         for param in page.params {
             parameters.push(WriterParameter {
                 var: self.bind(&param.var_name),
-                name: param.var_name,
+                name: param.var_name.into(),
                 typ: param.var_type,
             });
         }
@@ -382,12 +423,19 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_attribute(&mut self, attr: &TypedAttribute, output: &mut Vec<PureExpr>) {
-        match attr {
-            // A boolean attribute is present, without a value, when its
-            // condition is true, and absent when it is false.
-            TypedAttribute::Presence { name, present } => {
-                let subject = Box::new(self.compile_expr(present));
+    /// Append the parts that render one attribute of an element. A Bool
+    /// value is a boolean attribute, present without a value when it is true
+    /// and absent when it is false. Any other value is a String, escaped
+    /// between quotes.
+    fn compile_attribute(
+        &mut self,
+        name: &AttributeName,
+        typ: &Type,
+        value: PureExpr,
+        output: &mut Vec<PureExpr>,
+    ) {
+        match typ {
+            Type::Bool => {
                 let true_body = Box::new(PureExpr::HtmlRaw {
                     content: format!(" {}", name.as_str()),
                     id: self.next_expr_id(),
@@ -398,7 +446,7 @@ impl<'a> Compiler<'a> {
                 });
                 output.push(PureExpr::Match {
                     match_: Match::Bool {
-                        subject,
+                        subject: Box::new(value),
                         true_body,
                         false_body,
                     },
@@ -406,13 +454,13 @@ impl<'a> Compiler<'a> {
                     id: self.next_expr_id(),
                 });
             }
-            TypedAttribute::Value { name, value } => {
+            _ => {
                 output.push(PureExpr::HtmlRaw {
                     content: format!(" {}=\"", name.as_str()),
                     id: self.next_expr_id(),
                 });
                 output.push(PureExpr::HtmlEscape {
-                    expr: Box::new(self.compile_expr(value)),
+                    expr: Box::new(value),
                     id: self.next_expr_id(),
                 });
                 output.push(PureExpr::HtmlRaw {
@@ -757,14 +805,27 @@ impl<'a> Compiler<'a> {
                     id: self.next_expr_id(),
                 }];
                 for attr in &attrs.attributes {
-                    self.compile_attribute(attr, &mut parts);
+                    let (name, typ, value) = match attr {
+                        TypedAttribute::Value { name, value } => {
+                            (name, Type::String, self.compile_expr(value))
+                        }
+                        TypedAttribute::Presence { name, present } => {
+                            (name, Type::Bool, self.compile_expr(present))
+                        }
+                    };
+                    self.compile_attribute(name, &typ, value, &mut parts);
                 }
-                if let Some(spread) = &attrs.spread {
-                    parts.push(PureExpr::VariableReference {
-                        value: self.params[spread],
-                        typ: Type::Html,
-                        id: self.next_expr_id(),
-                    });
+                // The spread places the attributes the rest receives after
+                // those written on the element.
+                if attrs.spread.is_some() {
+                    for (name, typ, var) in self.rest.clone() {
+                        let value = PureExpr::VariableReference {
+                            value: var,
+                            typ: typ.clone(),
+                            id: self.next_expr_id(),
+                        };
+                        self.compile_attribute(&name, &typ, value, &mut parts);
+                    }
                 }
                 parts.push(PureExpr::HtmlRaw {
                     content: ">".to_string(),
@@ -789,30 +850,71 @@ impl<'a> Compiler<'a> {
                 let mut compiled_args: Vec<PureArgument> = args
                     .iter()
                     .map(|(name, value)| PureArgument {
-                        name: name.clone(),
+                        name: name.clone().into(),
                         expr: self.compile_expr(value),
                     })
                     .collect();
-                if let Some((rest_param, attrs)) = rest {
-                    let id = self.next_expr_id();
-                    let mut parts = Vec::new();
+                // The attributes supplied to the callee's rest select the
+                // specialization, and are passed to the parameters it has
+                // for them: those written at the call first, then those the
+                // spread forwards from the rest of the calling function.
+                let mut shape = Vec::new();
+                if let Some((_, attrs)) = rest {
                     for attr in &attrs.attributes {
-                        self.compile_attribute(attr, &mut parts);
-                    }
-                    if let Some(spread) = &attrs.spread {
-                        parts.push(PureExpr::VariableReference {
-                            value: self.params[spread],
-                            typ: Type::Html,
-                            id: self.next_expr_id(),
+                        let (name, typ, value) = match attr {
+                            TypedAttribute::Value { name, value } => {
+                                (name, Type::String, self.compile_expr(value))
+                            }
+                            TypedAttribute::Presence { name, present } => {
+                                (name, Type::Bool, self.compile_expr(present))
+                            }
+                        };
+                        compiled_args.push(PureArgument {
+                            name: name.clone(),
+                            expr: value,
                         });
+                        shape.push((name.clone(), typ));
                     }
-                    compiled_args.push(PureArgument {
-                        name: rest_param.clone(),
-                        expr: PureExpr::HtmlConcat { parts, id },
-                    });
+                    if attrs.spread.is_some() {
+                        for (name, typ, var) in self.rest.clone() {
+                            compiled_args.push(PureArgument {
+                                name: name.clone(),
+                                expr: PureExpr::VariableReference {
+                                    value: var,
+                                    typ: typ.clone(),
+                                    id: self.next_expr_id(),
+                                },
+                            });
+                            shape.push((name, typ));
+                        }
+                    }
                 }
+                // An attribute renders as the caller spelled it, so shapes
+                // compare by spelling, not as attribute names compare.
+                let existing = self.specializations.iter().find(|s| {
+                    s.module == *module
+                        && s.name == *function_name
+                        && s.shape.len() == shape.len()
+                        && s.shape.iter().zip(&shape).all(|((a, a_typ), (b, b_typ))| {
+                            a.as_str() == b.as_str() && a_typ == b_typ
+                        })
+                });
+                let function = match existing {
+                    Some(existing) => existing.function.clone(),
+                    None => {
+                        let function =
+                            IrFunction::new(self.function_id_counter.next(), function_name.clone());
+                        self.specializations.push(Specialization {
+                            module: module.clone(),
+                            name: function_name.clone(),
+                            shape,
+                            function: function.clone(),
+                        });
+                        function
+                    }
+                };
                 PureExpr::Call {
-                    function: self.declared[&(module.clone(), function_name.clone())].clone(),
+                    function,
                     args: compiled_args,
                     typ: typ.clone(),
                     id: expr_id,
@@ -933,19 +1035,23 @@ impl<'a> Compiler<'a> {
 mod tests {
 
     use super::*;
+    use crate::document::Document;
     use crate::hop::typing::{
         TypeRegistryBuilder, TypedAttrs, build_page, build_page_no_params, build_page_with_types,
     };
     use crate::html::HtmlElementKind;
+    use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
+    use crate::program::Program;
     use expect_test::{Expect, expect};
+    use indoc::indoc;
 
     fn check(page: TypedPageDeclaration, expected: Expect) {
         let before = page.to_string();
         let mut expr_ids = ExprIdCounter::new();
         let mut var_ids = VarIdCounter::new();
-        let declared = HashMap::new();
-        let compiled_page =
-            Compiler::new(&mut expr_ids, &mut var_ids, &declared, None).compile_page_decl(page);
+        let mut function_ids = FunctionIdCounter::new();
+        let compiled_page = Compiler::new(&mut expr_ids, &mut var_ids, &mut function_ids, None)
+            .compile_page_decl(page);
         let after = compiled_page.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -1533,6 +1639,286 @@ mod tests {
                       State {query: v1.query, num: 1}
                     }.query),
                   )
+                }
+            "#]],
+        );
+    }
+
+    /// Compile a module written in source, without optimization.
+    fn check_source(source: &str, expected: Expect) {
+        let document_id = RootContainedFilePath::new("main.hop").unwrap();
+        let mut program = Program::new();
+        program.update_hop_document(
+            &document_id,
+            Document::new(document_id.clone(), source.to_string()),
+        );
+        let diagnostics = program.diagnostics();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let module = orchestrate_pure(
+            program.typed_modules(),
+            OrchestrateOptions {
+                skip_optimization: true,
+                ..Default::default()
+            },
+        );
+        expected.assert_eq(&module.to_string());
+    }
+
+    #[test]
+    fn should_specialize_a_function_for_each_attribute_list_it_is_called_with() {
+        check_source(
+            indoc! {r#"
+                fn Button(...rest) -> Html {
+                  <button ...rest>
+                    Go
+                  </button>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <>
+                      <Button id="a"/>
+                      <Button class="b" disabled={true}/>
+                      <Button id="c"/>
+                    </>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Button@f0(id@v0: String) -> Html {
+                  concat(
+                    raw("<button"),
+                    raw(" id=\""),
+                    escape(v0),
+                    raw("\""),
+                    raw(">"),
+                    concat(raw("Go")),
+                    raw("</button>"),
+                  )
+                }
+                fn Button@f1(class@v1: String, disabled@v2: Bool) -> Html {
+                  concat(
+                    raw("<button"),
+                    raw(" class=\""),
+                    escape(v1),
+                    raw("\""),
+                    match v2 {
+                      true => { raw(" disabled") }
+                      false => { concat() }
+                    },
+                    raw(">"),
+                    concat(raw("Go")),
+                    raw("</button>"),
+                  )
+                }
+                page Test() {
+                  concat(
+                    call Button@f0(id = "a"),
+                    call Button@f1(class = "b", disabled = true),
+                    call Button@f0(id = "c"),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_forward_a_rest_through_a_function_into_an_element() {
+        check_source(
+            indoc! {r#"
+                fn Card(
+                  title: String,
+                  ...rest,
+                ) -> Html {
+                  <div ...rest>
+                    {title}
+                  </div>
+                }
+
+                fn Panel(...rest) -> Html {
+                  <Card id="panel" ...rest/>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Panel title="Hi" class="wide"/>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Card@f1(
+                  title@v2: String,
+                  id@v3: String,
+                  class@v4: String,
+                ) -> Html {
+                  concat(
+                    raw("<div"),
+                    raw(" id=\""),
+                    escape(v3),
+                    raw("\""),
+                    raw(" class=\""),
+                    escape(v4),
+                    raw("\""),
+                    raw(">"),
+                    concat(escape(v2)),
+                    raw("</div>"),
+                  )
+                }
+                fn Panel@f0(title@v0: String, class@v1: String) -> Html {
+                  call Card@f1(title = v0, id = "panel", class = v1)
+                }
+                page Test() {
+                  call Panel@f0(title = "Hi", class = "wide")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_specialize_a_recursive_function_with_a_rest() {
+        check_source(
+            indoc! {r#"
+                fn Nest(
+                  depth: Int,
+                  ...rest,
+                ) -> Html {
+                  <div ...rest>
+                    {match depth > 0 {
+                      true => <Nest depth={depth - 1} class="inner"/>,
+                      false => <></>,
+                    }}
+                  </div>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Nest depth={2} id="outer"/>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Nest@f0(depth@v0: Int, id@v1: String) -> Html {
+                  concat(
+                    raw("<div"),
+                    raw(" id=\""),
+                    escape(v1),
+                    raw("\""),
+                    raw(">"),
+                    concat(
+                      let v2 = (0 < v0) in {
+                        match v2 {
+                          true => {
+                            call Nest@f1(depth = (v0 - 1), class = "inner")
+                          }
+                          false => { concat() }
+                        }
+                      },
+                    ),
+                    raw("</div>"),
+                  )
+                }
+                fn Nest@f1(depth@v3: Int, class@v4: String) -> Html {
+                  concat(
+                    raw("<div"),
+                    raw(" class=\""),
+                    escape(v4),
+                    raw("\""),
+                    raw(">"),
+                    concat(
+                      let v5 = (0 < v3) in {
+                        match v5 {
+                          true => {
+                            call Nest@f1(depth = (v3 - 1), class = "inner")
+                          }
+                          false => { concat() }
+                        }
+                      },
+                    ),
+                    raw("</div>"),
+                  )
+                }
+                page Test() {
+                  call Nest@f0(depth = 2, id = "outer")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_name_a_parameter_after_the_attribute_it_receives() {
+        check_source(
+            indoc! {r#"
+                fn Button(...rest) -> Html {
+                  <button ...rest>
+                    Go
+                  </button>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Button data-x="1" aria-label="go"/>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Button@f0(
+                  data-x@v0: String,
+                  aria-label@v1: String,
+                ) -> Html {
+                  concat(
+                    raw("<button"),
+                    raw(" data-x=\""),
+                    escape(v0),
+                    raw("\""),
+                    raw(" aria-label=\""),
+                    escape(v1),
+                    raw("\""),
+                    raw(">"),
+                    concat(raw("Go")),
+                    raw("</button>"),
+                  )
+                }
+                page Test() {
+                  call Button@f0(data-x = "1", aria-label = "go")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_only_the_functions_the_pages_reach() {
+        check_source(
+            indoc! {r#"
+                fn Used() -> Html {
+                  <p>used</p>
+                }
+
+                fn Unused() -> Html {
+                  <p>unused</p>
+                }
+
+                fn Uncalled(...rest) -> Html {
+                  <div ...rest>
+                  </div>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Used/>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Used@f0() -> Html {
+                  concat(
+                    raw("<p"),
+                    raw(">"),
+                    concat(raw("used")),
+                    raw("</p>"),
+                  )
+                }
+                page Test() {
+                  call Used@f0()
                 }
             "#]],
         );

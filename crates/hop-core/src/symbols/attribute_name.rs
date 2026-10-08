@@ -1,4 +1,5 @@
 use std::fmt::{self, Display};
+use std::hash::{Hash, Hasher};
 
 use crate::document::CheapString;
 use crate::symbols::var_name::VarName;
@@ -36,6 +37,15 @@ impl PartialEq for AttributeName {
 }
 
 impl Eq for AttributeName {}
+
+/// Hashes the name in lowercase, so names that are equal hash the same.
+impl Hash for AttributeName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for byte in self.value.as_str().bytes() {
+            byte.to_ascii_lowercase().hash(state);
+        }
+    }
+}
 
 impl AttributeName {
     pub fn new(name: CheapString) -> Result<Self, InvalidAttributeNameError> {

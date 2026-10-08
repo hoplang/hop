@@ -4,8 +4,8 @@ use crate::ir::document_shell::DocumentShell;
 use crate::ir::pure_module::PureExpr;
 use crate::ir::runtime::value::Value;
 use crate::ir::var_id::VarId;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -15,7 +15,7 @@ use crate::ir::pure_module::{PureForSource, PureFunctionDeclaration, PureModule}
 pub fn evaluate_page(
     module: &PureModule,
     page_name: &TypeName,
-    args: HashMap<VarName, Value>,
+    args: HashMap<AttributeName, Value>,
     shell: Option<&DocumentShell>,
 ) -> Result<String, EvalError> {
     let page = module
@@ -69,7 +69,10 @@ pub enum EvalError {
     #[error("Page '{page}' not found in module")]
     PageNotFound { page: TypeName },
     #[error("Missing required parameter '{param}' for page '{page}'")]
-    MissingParameter { page: TypeName, param: VarName },
+    MissingParameter {
+        page: TypeName,
+        param: AttributeName,
+    },
 }
 
 /// Variable environment for the evaluator.
@@ -690,7 +693,7 @@ mod tests {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
             for page in &module.pages {
-                let args: HashMap<VarName, Value> = page
+                let args: HashMap<AttributeName, Value> = page
                     .parameters
                     .iter()
                     .map(|p| {
@@ -708,9 +711,9 @@ mod tests {
 
     fn check(module: PureModule, args: Vec<(&str, Value)>, expected: Expect) {
         let before = module.to_string();
-        let args_map: HashMap<VarName, Value> = args
+        let args_map: HashMap<AttributeName, Value> = args
             .into_iter()
-            .map(|(k, v)| (VarName::parse(k).unwrap(), v))
+            .map(|(k, v)| (AttributeName::parse(k).unwrap(), v))
             .collect();
         let page_name = module.pages[0].name.clone();
         let after =

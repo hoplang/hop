@@ -26,6 +26,5 @@ pub use compiler::compile;
 pub use document_shell::{DocumentShell, TailwindInjection};
 pub use lower_pure::lower_pure;
 pub use optimizer::optimize;
-pub use transform::retain_reachable;
 pub use transpile::{RustTranspiler, Transpiler, TsTranspiler};
 pub use writer_module::WriterModule;

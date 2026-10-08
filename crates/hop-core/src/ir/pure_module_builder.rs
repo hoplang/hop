@@ -13,10 +13,10 @@ use crate::ir::pure_module::{
 };
 use crate::ir::var_id::VarIdCounter;
 use crate::ir::writer_module::WriterParameter;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -209,7 +209,7 @@ impl PureModuleBodiesBuilder {
             .map(|(name, typ)| {
                 let id = self.var_ids.borrow_mut().next();
                 WriterParameter {
-                    name: VarName::parse(name).unwrap(),
+                    name: AttributeName::parse(name).unwrap(),
                     var: IrVar::new(id),
                     typ: self.types.resolve(typ),
                 }
@@ -1154,7 +1154,7 @@ impl PureBuilder {
         let pure_args: Vec<PureArgument> = args
             .into_iter()
             .map(|(k, expr)| PureArgument {
-                name: VarName::parse(k).unwrap(),
+                name: AttributeName::parse(k).unwrap(),
                 expr,
             })
             .collect();

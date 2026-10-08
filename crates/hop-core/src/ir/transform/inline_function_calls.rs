@@ -11,7 +11,8 @@ use crate::ir::pure_module::{
 use crate::ir::var_id::{VarId, VarIdCounter};
 
 /// A pass that replaces a call to a non-recursive function with the callee's
-/// body.
+/// body, and drops the function once no call to it is left. Only the
+/// functions in a call cycle remain.
 pub fn inline_function_calls(module: PureModule) -> PureModule {
     let PureModule {
         pages,
@@ -61,8 +62,11 @@ pub fn inline_function_calls(module: PureModule) -> PureModule {
         })
         .collect();
 
+    // Every call to a function outside a cycle was replaced by its body, so
+    // nothing calls such a function any more.
     let functions = order
         .into_iter()
+        .filter(|id| recursive.contains(id))
         .map(|id| decls.remove(&id).expect("each function is declared once"))
         .collect();
 
@@ -115,15 +119,7 @@ fn inline(
                 }
             };
 
-            match instantiate(callee, args, expr_ids, var_ids) {
-                Ok(body) => body,
-                Err(args) => PureExpr::Call {
-                    function,
-                    args,
-                    typ,
-                    id,
-                },
-            }
+            instantiate(callee, args, expr_ids, var_ids)
         }
 
         expr => expr.map_children(&mut |child| inline(child, decls, recursive, expr_ids, var_ids)),
@@ -131,22 +127,12 @@ fn inline(
 }
 
 /// Build a copy of the callee's body with `args` bound to its parameters.
-///
-/// Hands the arguments back when the call does not supply every parameter.
 fn instantiate(
     decl: &PureFunctionDeclaration,
     mut args: Vec<PureArgument>,
     expr_ids: &mut ExprIdCounter,
     var_ids: &mut VarIdCounter,
-) -> Result<PureExpr, Vec<PureArgument>> {
-    if decl
-        .parameters
-        .iter()
-        .any(|param| !args.iter().any(|arg| arg.name == param.name))
-    {
-        return Err(args);
-    }
-
+) -> PureExpr {
     // Freshen the body, parameters included, so this copy shares no binder
     // with any other.
     let mut renames: HashMap<VarId, IrVar> = decl
@@ -163,7 +149,12 @@ fn instantiate(
         let index = args
             .iter()
             .position(|arg| arg.name == param.name)
-            .expect("every parameter has an argument, checked above");
+            .unwrap_or_else(|| {
+                panic!(
+                    "call to {} supplies no argument for {}",
+                    decl.function, param.name
+                )
+            });
         let value = args.remove(index).expr;
         let var = renames[&param.var.id];
         let linear = matches!(reads.get(&var.id), Some(&(1, 0)));
@@ -182,7 +173,7 @@ fn instantiate(
         };
     }
 
-    Ok(body)
+    body
 }
 
 /// An expression that costs nothing to evaluate and so can be duplicated, or
@@ -345,8 +336,8 @@ mod tests {
     use crate::ir::runtime::evaluator::evaluate_page;
     use crate::ir::runtime::random::random_value;
     use crate::ir::runtime::value::Value;
+    use crate::symbols::attribute_name::AttributeName;
     use crate::symbols::type_name::TypeName;
-    use crate::symbols::var_name::VarName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
 
@@ -411,7 +402,7 @@ mod tests {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
 
-            let page_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
+            let page_args: Vec<(TypeName, HashMap<AttributeName, Value>)> = module
                 .pages
                 .iter()
                 .map(|page| {
@@ -480,9 +471,6 @@ mod tests {
                 }
 
                 -- after --
-                fn Badge@f0(label@v0: String) -> Html {
-                  concat(raw("<b>"), escape(v0), raw("</b>"))
-                }
                 page Main(title@v1: String) {
                   concat(raw("<b>"), escape(v1), raw("</b>"))
                 }
@@ -511,9 +499,6 @@ mod tests {
                 }
 
                 -- after --
-                fn Twice@f0(body@v0: Html) -> Html {
-                  concat(v0, v0)
-                }
                 page Main(name@v1: String) {
                   let v2 = escape(v1) in { concat(v2, v2) }
                 }
@@ -544,9 +529,6 @@ mod tests {
                 }
 
                 -- after --
-                fn Repeat@f0(body@v0: Html) -> Html {
-                  for _ in ["a", "b"] { v0 }
-                }
                 page Main(name@v1: String) {
                   let v2 = escape(v1) in { for _ in ["a", "b"] { v2 } }
                 }
@@ -585,16 +567,6 @@ mod tests {
                 }
 
                 -- after --
-                fn Inner@f0(x@v0: String) -> Html {
-                  concat(raw("["), escape(v0), raw("]"))
-                }
-                fn Outer@f1(x@v1: String) -> Html {
-                  concat(
-                    raw("<i>"),
-                    concat(raw("["), escape(v1), raw("]")),
-                    raw("</i>"),
-                  )
-                }
                 page Main(name@v2: String) {
                   concat(
                     raw("<i>"),

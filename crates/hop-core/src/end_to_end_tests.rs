@@ -1053,22 +1053,20 @@ mod tests {
             r#"<button class="btn" id="submit">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(label@v0: String, rest@v1: Html) -> Html {
+                fn Button@f0(label@v0: String, id@v1: String) -> Html {
                   write("<button")
                   write(" class=\"")
                   write_string("btn")
                   write("\"")
-                  write_html(v1)
+                  write(" id=\"")
+                  write_string(v1)
+                  write("\"")
                   write(">")
                   write_string(v0)
                   write("</button>")
                 }
                 page Test() {
-                  call Button@f0(label = "Hi", rest = {
-                    write(" id=\"")
-                    write_string("submit")
-                    write("\"")
-                  })
+                  call Button@f0(label = "Hi", id = "submit")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1135,62 +1133,21 @@ mod tests {
             r#"<div>x</div><div>d</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn First@f0(
-                  n@v0: Int,
-                  title@v1: String,
-                  rest@v2: Html,
-                ) -> Html {
-                  call Second@f2(n = v0, title = v1, rest = {
-                    write_html(v2)
-                  })
+                fn First@f0(n@v0: Int, title@v1: String) -> Html {
+                  call Second@f1(n = v0, title = v1)
                 }
-                fn Leaf@f1(title@v3: String) -> Html {
+                fn Leaf@f2(title@v5: String) -> Html {
                   write("<div")
                   write(">")
-                  write_string(v3)
-                  write("</div>")
-                }
-                fn Second@f2(
-                  n@v4: Int,
-                  title@v5: String,
-                  rest@v6: Html,
-                ) -> Html {
-                  call Leaf@f1(title = v5)
-                  let v7 = (0 < v4) in {
-                    match v7 {
-                      true => {
-                        call First@f0(n = (v4 - 1), title = "d", rest = {})
-                      }
-                      false => {
-                      }
-                    }
-                  }
-                }
-                page Test() {
-                  call First@f0(n = 1, title = "x", rest = {})
-                }
-                -- ir (optimized) --
-                fn First@f0(
-                  n@v0: Int,
-                  title@v1: String,
-                  rest@v2: Html,
-                ) -> Html {
-                  call Second@f2(n = v0, title = v1, rest = {
-                    write_html(v2)
-                  })
-                }
-                fn Second@f2(
-                  n@v4: Int,
-                  title@v5: String,
-                  rest@v6: Html,
-                ) -> Html {
-                  write("<div>")
                   write_string(v5)
                   write("</div>")
-                  let v7 = (0 < v4) in {
-                    match v7 {
+                }
+                fn Second@f1(n@v2: Int, title@v3: String) -> Html {
+                  call Leaf@f2(title = v3)
+                  let v4 = (0 < v2) in {
+                    match v4 {
                       true => {
-                        call First@f0(n = (v4 - 1), title = "d", rest = {})
+                        call First@f0(n = (v2 - 1), title = "d")
                       }
                       false => {
                       }
@@ -1198,7 +1155,28 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call First@f0(n = 1, title = "x", rest = {})
+                  call First@f0(n = 1, title = "x")
+                }
+                -- ir (optimized) --
+                fn First@f0(n@v0: Int, title@v1: String) -> Html {
+                  call Second@f1(n = v0, title = v1)
+                }
+                fn Second@f1(n@v2: Int, title@v3: String) -> Html {
+                  write("<div>")
+                  write_string(v3)
+                  write("</div>")
+                  let v4 = (0 < v2) in {
+                    match v4 {
+                      true => {
+                        call First@f0(n = (v2 - 1), title = "d")
+                      }
+                      false => {
+                      }
+                    }
+                  }
+                }
+                page Test() {
+                  call First@f0(n = 1, title = "x")
                 }
                 -- expected output --
                 <div>x</div><div>d</div>
@@ -1250,33 +1228,33 @@ mod tests {
             r#"<section><h1>Hi</h1><div id="x" data-k="v"></div></section>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Base@f0(rest@v0: Html) -> Html {
+                fn Base@f1(id@v3: String, data-k@v4: String) -> Html {
                   write("<div")
-                  write_html(v0)
+                  write(" id=\"")
+                  write_string(v3)
+                  write("\"")
+                  write(" data-k=\"")
+                  write_string(v4)
+                  write("\"")
                   write(">")
                   write("</div>")
                 }
-                fn Card@f1(title@v1: String, rest@v2: Html) -> Html {
+                fn Card@f0(
+                  title@v0: String,
+                  id@v1: String,
+                  data-k@v2: String,
+                ) -> Html {
                   write("<section")
                   write(">")
                   write("<h1")
                   write(">")
-                  write_string(v1)
+                  write_string(v0)
                   write("</h1>")
-                  call Base@f0(rest = {
-                    write_html(v2)
-                  })
+                  call Base@f1(id = v1, data-k = v2)
                   write("</section>")
                 }
                 page Test() {
-                  call Card@f1(title = "Hi", rest = {
-                    write(" id=\"")
-                    write_string("x")
-                    write("\"")
-                    write(" data-k=\"")
-                    write_string("v")
-                    write("\"")
-                  })
+                  call Card@f0(title = "Hi", id = "x", data-k = "v")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1328,12 +1306,14 @@ mod tests {
             r#"<div id="x"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Wrapper@f0(show@v0: Bool, rest@v1: Html) -> Html {
+                fn Wrapper@f0(show@v0: Bool, id@v1: String) -> Html {
                   let v2 = v0 in {
                     match v2 {
                       true => {
                         write("<div")
-                        write_html(v1)
+                        write(" id=\"")
+                        write_string(v1)
+                        write("\"")
                         write(">")
                         write("</div>")
                       }
@@ -1343,11 +1323,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Wrapper@f0(show = true, rest = {
-                    write(" id=\"")
-                    write_string("x")
-                    write("\"")
-                  })
+                  call Wrapper@f0(show = true, id = "x")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1400,15 +1376,21 @@ mod tests {
             r#"<input required><input><button disabled></button><button></button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(rest@v0: Html) -> Html {
+                fn Button@f1(disabled@v1: Bool) -> Html {
                   write("<button")
-                  write_html(v0)
+                  match v1 {
+                    true => {
+                      write(" disabled")
+                    }
+                    false => {
+                    }
+                  }
                   write(">")
                   write("</button>")
                 }
-                fn Field@f1(required@v1: Bool) -> Html {
+                fn Field@f0(required@v0: Bool) -> Html {
                   write("<input")
-                  match v1 {
+                  match v0 {
                     true => {
                       write(" required")
                     }
@@ -1418,26 +1400,10 @@ mod tests {
                   write(">")
                 }
                 page Test() {
-                  call Field@f1(required = true)
-                  call Field@f1(required = false)
-                  call Button@f0(rest = {
-                    match true {
-                      true => {
-                        write(" disabled")
-                      }
-                      false => {
-                      }
-                    }
-                  })
-                  call Button@f0(rest = {
-                    match false {
-                      true => {
-                        write(" disabled")
-                      }
-                      false => {
-                      }
-                    }
-                  })
+                  call Field@f0(required = true)
+                  call Field@f0(required = false)
+                  call Button@f1(disabled = true)
+                  call Button@f1(disabled = false)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1490,12 +1456,14 @@ mod tests {
             r#"<div id="x"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Wrapper@f0(show@v0: Bool, rest@v1: Html) -> Html {
+                fn Wrapper@f0(show@v0: Bool, id@v1: String) -> Html {
                   let v2 = v0 in {
                     match v2 {
                       true => {
                         write("<div")
-                        write_html(v1)
+                        write(" id=\"")
+                        write_string(v1)
+                        write("\"")
                         write(">")
                         write("</div>")
                       }
@@ -1505,11 +1473,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Wrapper@f0(show = true, rest = {
-                    write(" id=\"")
-                    write_string("x")
-                    write("\"")
-                  })
+                  call Wrapper@f0(show = true, id = "x")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1553,18 +1517,16 @@ mod tests {
             r#"<div title="a'b&lt;c&amp;d"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Panel@f0(rest@v0: Html) -> Html {
+                fn Panel@f0(title@v0: String) -> Html {
                   write("<div")
-                  write_html(v0)
+                  write(" title=\"")
+                  write_string(v0)
+                  write("\"")
                   write(">")
                   write("</div>")
                 }
                 page Test() {
-                  call Panel@f0(rest = {
-                    write(" title=\"")
-                    write_string("a'b<c&d")
-                    write("\"")
-                  })
+                  call Panel@f0(title = "a'b<c&d")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1668,18 +1630,16 @@ mod tests {
             r#"<div title="a &amp;amp; b"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Panel@f0(rest@v0: Html) -> Html {
+                fn Panel@f0(title@v0: String) -> Html {
                   write("<div")
-                  write_html(v0)
+                  write(" title=\"")
+                  write_string(v0)
+                  write("\"")
                   write(">")
                   write("</div>")
                 }
                 page Test() {
-                  call Panel@f0(rest = {
-                    write(" title=\"")
-                    write_string("a &amp; b")
-                    write("\"")
-                  })
+                  call Panel@f0(title = "a &amp; b")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1722,20 +1682,18 @@ mod tests {
             r#"<img src="a.png" alt="a">"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Icon@f0(rest@v0: Html) -> Html {
+                fn Icon@f0(src@v0: String, alt@v1: String) -> Html {
                   write("<img")
-                  write_html(v0)
+                  write(" src=\"")
+                  write_string(v0)
+                  write("\"")
+                  write(" alt=\"")
+                  write_string(v1)
+                  write("\"")
                   write(">")
                 }
                 page Test() {
-                  call Icon@f0(rest = {
-                    write(" src=\"")
-                    write_string("a.png")
-                    write("\"")
-                    write(" alt=\"")
-                    write_string("a")
-                    write("\"")
-                  })
+                  call Icon@f0(src = "a.png", alt = "a")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1779,14 +1737,13 @@ mod tests {
             r#"<div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(rest@v0: Html) -> Html {
+                fn A@f0() -> Html {
                   write("<div")
-                  write_html(v0)
                   write(">")
                   write("</div>")
                 }
                 page Test() {
-                  call A@f0(rest = {})
+                  call A@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1830,14 +1787,13 @@ mod tests {
             r#"<div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(rest@v0: Html) -> Html {
+                fn A@f0() -> Html {
                   write("<div")
-                  write_html(v0)
                   write(">")
                   write("</div>")
                 }
                 page Test() {
-                  call A@f0(rest = {})
+                  call A@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1889,30 +1845,33 @@ mod tests {
             r#"<button class="secondary" id="save" aria-label="Save">secondary</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(kind@v0: String, rest@v1: Html) -> Html {
+                fn Button@f1(
+                  kind@v2: String,
+                  id@v3: String,
+                  aria-label@v4: String,
+                ) -> Html {
                   write("<button")
                   write(" class=\"")
-                  write_string(v0)
+                  write_string(v2)
                   write("\"")
-                  write_html(v1)
+                  write(" id=\"")
+                  write_string(v3)
+                  write("\"")
+                  write(" aria-label=\"")
+                  write_string(v4)
+                  write("\"")
                   write(">")
-                  write_string(v0)
+                  write_string(v2)
                   write("</button>")
                 }
-                fn Secondary@f1(rest@v2: Html) -> Html {
-                  call Button@f0(kind = "secondary", rest = {
-                    write_html(v2)
-                  })
+                fn Secondary@f0(
+                  id@v0: String,
+                  aria-label@v1: String,
+                ) -> Html {
+                  call Button@f1(kind = "secondary", id = v0, aria-label = v1)
                 }
                 page Test() {
-                  call Secondary@f1(rest = {
-                    write(" id=\"")
-                    write_string("save")
-                    write("\"")
-                    write(" aria-label=\"")
-                    write_string("Save")
-                    write("\"")
-                  })
+                  call Secondary@f0(id = "save", aria-label = "Save")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1967,13 +1926,15 @@ mod tests {
                 fn Button@f0(
                   class@v0: String,
                   children@v1: Html,
-                  rest@v2: Html,
+                  data-foo@v2: String,
                 ) -> Html {
                   write("<button")
                   write(" class=\"")
                   write_string(v0)
                   write("\"")
-                  write_html(v2)
+                  write(" data-foo=\"")
+                  write_string(v2)
+                  write("\"")
                   write(">")
                   write_html(v1)
                   write("</button>")
@@ -1981,11 +1942,7 @@ mod tests {
                 page Test() {
                   call Button@f0(class = "p-2", children = {
                     write("Hi")
-                  }, rest = {
-                    write(" data-foo=\"")
-                    write_string("bar")
-                    write("\"")
-                  })
+                  }, data-foo = "bar")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2035,12 +1992,14 @@ mod tests {
             r#"<button class="builtin" data-x="y">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(children@v0: Html, rest@v1: Html) -> Html {
+                fn Button@f0(children@v0: Html, data-x@v1: String) -> Html {
                   write("<button")
                   write(" class=\"")
                   write_string("builtin")
                   write("\"")
-                  write_html(v1)
+                  write(" data-x=\"")
+                  write_string(v1)
+                  write("\"")
                   write(">")
                   write_html(v0)
                   write("</button>")
@@ -2048,11 +2007,7 @@ mod tests {
                 page Test() {
                   call Button@f0(children = {
                     write("Hi")
-                  }, rest = {
-                    write(" data-x=\"")
-                    write_string("y")
-                    write("\"")
-                  })
+                  }, data-x = "y")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2146,18 +2101,16 @@ mod tests {
             r#"<svg viewBox="0 0 100 100"></svg>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Svg@f0(rest@v0: Html) -> Html {
+                fn Svg@f0(viewBox@v0: String) -> Html {
                   write("<svg")
-                  write_html(v0)
+                  write(" viewBox=\"")
+                  write_string(v0)
+                  write("\"")
                   write(">")
                   write("</svg>")
                 }
                 page Test() {
-                  call Svg@f0(rest = {
-                    write(" viewBox=\"")
-                    write_string("0 0 100 100")
-                    write("\"")
-                  })
+                  call Svg@f0(viewBox = "0 0 100 100")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2206,17 +2159,17 @@ mod tests {
             r#"<div>hi</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String) -> Html {
+                fn Card@f1(title@v1: String) -> Html {
                   write("<div")
                   write(">")
-                  write_string(v0)
+                  write_string(v1)
                   write("</div>")
                 }
-                fn Wrapper@f1(title@v1: String, rest@v2: Html) -> Html {
-                  call Card@f0(title = v1)
+                fn Wrapper@f0(title@v0: String) -> Html {
+                  call Card@f1(title = v0)
                 }
                 page Test() {
-                  call Wrapper@f1(title = "hi", rest = {})
+                  call Wrapper@f0(title = "hi")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2265,17 +2218,17 @@ mod tests {
             r#"<div>explicit</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String) -> Html {
+                fn Card@f1(title@v0: String) -> Html {
                   write("<div")
                   write(">")
                   write_string(v0)
                   write("</div>")
                 }
-                fn Wrapper@f1(rest@v1: Html) -> Html {
-                  call Card@f0(title = "explicit")
+                fn Wrapper@f0() -> Html {
+                  call Card@f1(title = "explicit")
                 }
                 page Test() {
-                  call Wrapper@f1(rest = {})
+                  call Wrapper@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2329,18 +2282,18 @@ mod tests {
             r#"<div>Ada</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(user@v1: User) -> Html {
+                fn Card@f1(user@v2: User) -> Html {
                   write("<div")
                   write(">")
-                  write_string(v1.name)
+                  write_string(v2.name)
                   write("</div>")
                 }
-                fn Wrapper@f1(user@v2: User, rest@v3: Html) -> Html {
-                  call Card@f0(user = v2)
+                fn Wrapper@f0(user@v1: User) -> Html {
+                  call Card@f1(user = v1)
                 }
                 page Test() {
                   let v0 = User {name: "Ada"} in {
-                    call Wrapper@f1(user = v0, rest = {})
+                    call Wrapper@f0(user = v0)
                   }
                 }
                 -- ir (optimized) --
@@ -2468,34 +2421,24 @@ mod tests {
             r#"<div>n<div>t</div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Bar@f0(
-                  name@v0: String,
-                  title@v1: String,
-                  rest@v2: Html,
-                ) -> Html {
+                fn Bar@f1(name@v2: String, title@v3: String) -> Html {
                   write("<div")
                   write(">")
-                  write_string(v0)
-                  call Card@f2(title = v1)
+                  write_string(v2)
+                  call Card@f2(title = v3)
                   write("</div>")
                 }
-                fn Baz@f1(
-                  name@v3: String,
-                  title@v4: String,
-                  rest@v5: Html,
-                ) -> Html {
-                  call Bar@f0(name = v3, title = v4, rest = {
-                    write_html(v5)
-                  })
+                fn Baz@f0(name@v0: String, title@v1: String) -> Html {
+                  call Bar@f1(name = v0, title = v1)
                 }
-                fn Card@f2(title@v6: String) -> Html {
+                fn Card@f2(title@v4: String) -> Html {
                   write("<div")
                   write(">")
-                  write_string(v6)
+                  write_string(v4)
                   write("</div>")
                 }
                 page Test() {
-                  call Baz@f1(name = "n", title = "t", rest = {})
+                  call Baz@f0(name = "n", title = "t")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2549,9 +2492,9 @@ mod tests {
             r#"<div>positive</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(count@v0: Int) -> Html {
-                  let v1 = (0 < v0) in {
-                    match v1 {
+                fn Card@f1(count@v1: Int) -> Html {
+                  let v2 = (0 < v1) in {
+                    match v2 {
                       true => {
                         write("<div")
                         write(">")
@@ -2563,11 +2506,11 @@ mod tests {
                     }
                   }
                 }
-                fn Wrapper@f1(count@v2: Int, rest@v3: Html) -> Html {
-                  call Card@f0(count = v2)
+                fn Wrapper@f0(count@v0: Int) -> Html {
+                  call Card@f1(count = v0)
                 }
                 page Test() {
-                  call Wrapper@f1(count = 3, rest = {})
+                  call Wrapper@f0(count = 3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2622,12 +2565,14 @@ mod tests {
             r#"<div data-foo="bar">positive</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(count@v0: Int, rest@v1: Html) -> Html {
+                fn A@f1(count@v2: Int, data-foo@v3: String) -> Html {
                   write("<div")
-                  write_html(v1)
+                  write(" data-foo=\"")
+                  write_string(v3)
+                  write("\"")
                   write(">")
-                  let v2 = (0 < v0) in {
-                    match v2 {
+                  let v4 = (0 < v2) in {
+                    match v4 {
                       true => {
                         write("positive")
                       }
@@ -2637,17 +2582,11 @@ mod tests {
                   }
                   write("</div>")
                 }
-                fn B@f1(count@v3: Int, rest@v4: Html) -> Html {
-                  call A@f0(count = v3, rest = {
-                    write_html(v4)
-                  })
+                fn B@f0(count@v0: Int, data-foo@v1: String) -> Html {
+                  call A@f1(count = v0, data-foo = v1)
                 }
                 page Test() {
-                  call B@f1(count = 3, rest = {
-                    write(" data-foo=\"")
-                    write_string("bar")
-                    write("\"")
-                  })
+                  call B@f0(count = 3, data-foo = "bar")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2702,24 +2641,22 @@ mod tests {
             r#"<div>deep</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Bar@f0(children@v0: Html, rest@v1: Html) -> Html {
-                  call Foo@f2(children = v0)
+                fn Bar@f1(children@v1: Html) -> Html {
+                  call Foo@f2(children = v1)
                 }
-                fn Baz@f1(children@v2: Html, rest@v3: Html) -> Html {
-                  call Bar@f0(children = v2, rest = {
-                    write_html(v3)
-                  })
+                fn Baz@f0(children@v0: Html) -> Html {
+                  call Bar@f1(children = v0)
                 }
-                fn Foo@f2(children@v4: Html) -> Html {
+                fn Foo@f2(children@v2: Html) -> Html {
                   write("<div")
                   write(">")
-                  write_html(v4)
+                  write_html(v2)
                   write("</div>")
                 }
                 page Test() {
-                  call Baz@f1(children = {
+                  call Baz@f0(children = {
                     write("deep")
-                  }, rest = {})
+                  })
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2775,28 +2712,25 @@ mod tests {
             r#"<div class="x"><span class="x"></span></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(class@v0: String, rest@v1: Html) -> Html {
+                fn Inner@f1(class@v1: String) -> Html {
                   write("<span")
                   write(" class=\"")
-                  write_string(v0)
+                  write_string(v1)
                   write("\"")
-                  write_html(v1)
                   write(">")
                   write("</span>")
                 }
-                fn Outer@f1(class@v2: String, rest@v3: Html) -> Html {
+                fn Outer@f0(class@v0: String) -> Html {
                   write("<div")
                   write(" class=\"")
-                  write_string(v2)
+                  write_string(v0)
                   write("\"")
                   write(">")
-                  call Inner@f0(class = "x", rest = {
-                    write_html(v3)
-                  })
+                  call Inner@f1(class = "x")
                   write("</div>")
                 }
                 page Test() {
-                  call Outer@f1(class = "x", rest = {})
+                  call Outer@f0(class = "x")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2857,35 +2791,24 @@ mod tests {
             r#"<div class="primary">click</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(
-                  children@v0: Html,
-                  class@v1: String,
-                  rest@v2: Html,
-                ) -> Html {
+                fn Button@f0(children@v0: Html, class@v1: String) -> Html {
                   call Foo@f1(children = {
                     write_html(v0)
-                  }, class = v1, rest = {
-                    write_html(v2)
-                  })
+                  }, class = v1)
                 }
-                fn Foo@f1(
-                  children@v3: Html,
-                  class@v4: String,
-                  rest@v5: Html,
-                ) -> Html {
+                fn Foo@f1(children@v2: Html, class@v3: String) -> Html {
                   write("<div")
                   write(" class=\"")
-                  write_string(v4)
+                  write_string(v3)
                   write("\"")
-                  write_html(v5)
                   write(">")
-                  write_html(v3)
+                  write_html(v2)
                   write("</div>")
                 }
                 page Test() {
                   call Button@f0(children = {
                     write("click")
-                  }, class = "primary", rest = {})
+                  }, class = "primary")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2936,22 +2859,19 @@ mod tests {
             r#"<span class="y"></span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(class@v0: String, rest@v1: Html) -> Html {
+                fn Inner@f1(class@v1: String) -> Html {
                   write("<span")
                   write(" class=\"")
-                  write_string(v0)
+                  write_string(v1)
                   write("\"")
-                  write_html(v1)
                   write(">")
                   write("</span>")
                 }
-                fn Wrapper@f1(class@v2: String, rest@v3: Html) -> Html {
-                  call Inner@f0(class = v2, rest = {
-                    write_html(v3)
-                  })
+                fn Wrapper@f0(class@v0: String) -> Html {
+                  call Inner@f1(class = v0)
                 }
                 page Test() {
-                  call Wrapper@f1(class = "y", rest = {})
+                  call Wrapper@f0(class = "y")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3005,22 +2925,19 @@ mod tests {
             r#"<div class="main"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(class@v0: String, rest@v1: Html) -> Html {
+                fn A@f1(class@v1: String) -> Html {
                   write("<div")
                   write(" class=\"")
-                  write_string(v0)
+                  write_string(v1)
                   write("\"")
-                  write_html(v1)
                   write(">")
                   write("</div>")
                 }
-                fn B@f1(class@v2: String, rest@v3: Html) -> Html {
-                  call A@f0(class = v2, rest = {
-                    write_html(v3)
-                  })
+                fn B@f0(class@v0: String) -> Html {
+                  call A@f1(class = v0)
                 }
                 page Test() {
-                  call B@f1(class = "main", rest = {})
+                  call B@f0(class = "main")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3074,22 +2991,19 @@ mod tests {
             r#"<div class="b"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(class@v0: String, rest@v1: Html) -> Html {
+                fn A@f1(class@v1: String) -> Html {
                   write("<div")
                   write(" class=\"")
-                  write_string(v0)
+                  write_string(v1)
                   write("\"")
-                  write_html(v1)
                   write(">")
                   write("</div>")
                 }
-                fn B@f1(class@v2: String, rest@v3: Html) -> Html {
-                  call A@f0(class = v2, rest = {
-                    write_html(v3)
-                  })
+                fn B@f0(class@v0: String) -> Html {
+                  call A@f1(class = v0)
                 }
                 page Test() {
-                  call B@f1(class = "b", rest = {})
+                  call B@f0(class = "b")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3141,20 +3055,17 @@ mod tests {
             r#"<span>x</span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(label@v0: String, rest@v1: Html) -> Html {
+                fn A@f1(label@v1: String) -> Html {
                   write("<span")
-                  write_html(v1)
                   write(">")
-                  write_string(v0)
+                  write_string(v1)
                   write("</span>")
                 }
-                fn B@f1(label@v2: String, rest@v3: Html) -> Html {
-                  call A@f0(label = v2, rest = {
-                    write_html(v3)
-                  })
+                fn B@f0(label@v0: String) -> Html {
+                  call A@f1(label = v0)
                 }
                 page Test() {
-                  call B@f1(label = "x", rest = {})
+                  call B@f0(label = "x")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3210,25 +3121,20 @@ mod tests {
             r#"<span>x</span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Leaf@f0(label@v0: String, rest@v1: Html) -> Html {
+                fn Leaf@f2(label@v2: String) -> Html {
                   write("<span")
-                  write_html(v1)
                   write(">")
-                  write_string(v0)
+                  write_string(v2)
                   write("</span>")
                 }
-                fn Mid@f1(label@v2: String, rest@v3: Html) -> Html {
-                  call Leaf@f0(label = v2, rest = {
-                    write_html(v3)
-                  })
+                fn Mid@f1(label@v1: String) -> Html {
+                  call Leaf@f2(label = v1)
                 }
-                fn Top@f2(label@v4: String, rest@v5: Html) -> Html {
-                  call Mid@f1(label = v4, rest = {
-                    write_html(v5)
-                  })
+                fn Top@f0(label@v0: String) -> Html {
+                  call Mid@f1(label = v0)
                 }
                 page Test() {
-                  call Top@f2(label = "x", rest = {})
+                  call Top@f0(label = "x")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3276,26 +3182,22 @@ mod tests {
             r#"<span title="a" lang="en"></span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(rest@v0: Html) -> Html {
+                fn Inner@f1(title@v1: String, lang@v2: String) -> Html {
                   write("<span")
-                  write_html(v0)
+                  write(" title=\"")
+                  write_string(v1)
+                  write("\"")
+                  write(" lang=\"")
+                  write_string(v2)
+                  write("\"")
                   write(">")
                   write("</span>")
                 }
-                fn Wrapper@f1(rest@v1: Html) -> Html {
-                  call Inner@f0(rest = {
-                    write(" title=\"")
-                    write_string("a")
-                    write("\"")
-                    write_html(v1)
-                  })
+                fn Wrapper@f0(lang@v0: String) -> Html {
+                  call Inner@f1(title = "a", lang = v0)
                 }
                 page Test() {
-                  call Wrapper@f1(rest = {
-                    write(" lang=\"")
-                    write_string("en")
-                    write("\"")
-                  })
+                  call Wrapper@f0(lang = "en")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3348,23 +3250,23 @@ mod tests {
             r#"<section>local<div>hi</div></section>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String) -> Html {
+                fn Card@f1(title@v2: String) -> Html {
                   write("<div")
                   write(">")
-                  write_string(v0)
+                  write_string(v2)
                   write("</div>")
                 }
-                fn Wrapper@f1(title@v1: String, rest@v2: Html) -> Html {
-                  let v3 = "local" in {
+                fn Wrapper@f0(title@v0: String) -> Html {
+                  let v1 = "local" in {
                     write("<section")
                     write(">")
-                    write_string(v3)
-                    call Card@f0(title = v1)
+                    write_string(v1)
+                    call Card@f1(title = v0)
                     write("</section>")
                   }
                 }
                 page Test() {
-                  call Wrapper@f1(title = "hi", rest = {})
+                  call Wrapper@f0(title = "hi")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3418,29 +3320,29 @@ mod tests {
             r#"<p>a<div>hi</div></p><p>b<div>hi</div></p>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String) -> Html {
+                fn Card@f1(title@v2: String) -> Html {
                   write("<div")
                   write(">")
-                  write_string(v0)
+                  write_string(v2)
                   write("</div>")
                 }
-                fn Wrapper@f1(title@v1: String, rest@v2: Html) -> Html {
-                  for v3 in ["a", "b"] {
+                fn Wrapper@f0(title@v0: String) -> Html {
+                  for v1 in ["a", "b"] {
                     write("<p")
                     write(">")
-                    write_string(v3)
-                    call Card@f0(title = v1)
+                    write_string(v1)
+                    call Card@f1(title = v0)
                     write("</p>")
                   }
                 }
                 page Test() {
-                  call Wrapper@f1(title = "hi", rest = {})
+                  call Wrapper@f0(title = "hi")
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v7 in ["a", "b"] {
+                  for v5 in ["a", "b"] {
                     write("<p>")
-                    write_string(v7)
+                    write_string(v5)
                     write("<div>hi</div></p>")
                   }
                 }
@@ -3495,20 +3397,20 @@ mod tests {
             r#"<p>m<div>hi</div></p>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String) -> Html {
+                fn Card@f1(title@v3: String) -> Html {
                   write("<div")
                   write(">")
-                  write_string(v0)
+                  write_string(v3)
                   write("</div>")
                 }
-                fn Wrapper@f1(title@v1: String, rest@v2: Html) -> Html {
-                  let v3 = Option[String]::Some("m") in {
-                    match v3 {
-                      Some(v4) => {
+                fn Wrapper@f0(title@v0: String) -> Html {
+                  let v1 = Option[String]::Some("m") in {
+                    match v1 {
+                      Some(v2) => {
                         write("<p")
                         write(">")
-                        write_string(v4)
-                        call Card@f0(title = v1)
+                        write_string(v2)
+                        call Card@f1(title = v0)
                         write("</p>")
                       }
                       None => {
@@ -3517,7 +3419,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Wrapper@f1(title = "hi", rest = {})
+                  call Wrapper@f0(title = "hi")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3563,7 +3465,7 @@ mod tests {
             r#"<div id="hi"><b>x</b></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Wrapper@f0(rest@v0: Html) -> Html {
+                fn Wrapper@f0(id@v0: String) -> Html {
                   let v1 = {
                     write("<b")
                     write(">")
@@ -3571,18 +3473,16 @@ mod tests {
                     write("</b>")
                   } in {
                     write("<div")
-                    write_html(v0)
+                    write(" id=\"")
+                    write_string(v0)
+                    write("\"")
                     write(">")
                     write_html(v1)
                     write("</div>")
                   }
                 }
                 page Test() {
-                  call Wrapper@f0(rest = {
-                    write(" id=\"")
-                    write_string("hi")
-                    write("\"")
-                  })
+                  call Wrapper@f0(id = "hi")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3644,30 +3544,26 @@ mod tests {
             r#"<section>local<div id="hi">t</div></section>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v0: String, rest@v1: Html) -> Html {
+                fn Card@f1(title@v2: String, id@v3: String) -> Html {
                   write("<div")
-                  write_html(v1)
+                  write(" id=\"")
+                  write_string(v3)
+                  write("\"")
                   write(">")
-                  write_string(v0)
+                  write_string(v2)
                   write("</div>")
                 }
-                fn Wrapper@f1(rest@v2: Html) -> Html {
-                  let v3 = "local" in {
+                fn Wrapper@f0(id@v0: String) -> Html {
+                  let v1 = "local" in {
                     write("<section")
                     write(">")
-                    write_string(v3)
-                    call Card@f0(title = "t", rest = {
-                      write_html(v2)
-                    })
+                    write_string(v1)
+                    call Card@f1(title = "t", id = v0)
                     write("</section>")
                   }
                 }
                 page Test() {
-                  call Wrapper@f1(rest = {
-                    write(" id=\"")
-                    write_string("hi")
-                    write("\"")
-                  })
+                  call Wrapper@f0(id = "hi")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3722,12 +3618,14 @@ mod tests {
             r#"<div data-x="y">focusable</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A@f0(tabindex@v0: Int, rest@v1: Html) -> Html {
+                fn A@f1(tabindex@v2: Int, data-x@v3: String) -> Html {
                   write("<div")
-                  write_html(v1)
+                  write(" data-x=\"")
+                  write_string(v3)
+                  write("\"")
                   write(">")
-                  let v2 = (0 < v0) in {
-                    match v2 {
+                  let v4 = (0 < v2) in {
+                    match v4 {
                       true => {
                         write("focusable")
                       }
@@ -3737,17 +3635,11 @@ mod tests {
                   }
                   write("</div>")
                 }
-                fn B@f1(tabindex@v3: Int, rest@v4: Html) -> Html {
-                  call A@f0(tabindex = v3, rest = {
-                    write_html(v4)
-                  })
+                fn B@f0(tabindex@v0: Int, data-x@v1: String) -> Html {
+                  call A@f1(tabindex = v0, data-x = v1)
                 }
                 page Test() {
-                  call B@f1(tabindex = 2, rest = {
-                    write(" data-x=\"")
-                    write_string("y")
-                    write("\"")
-                  })
+                  call B@f0(tabindex = 2, data-x = "y")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -4224,10 +4116,12 @@ mod tests {
             r#"<div id="outer">a</div><div id="outer">b</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Rows@f0(items@v1: Array[String], rest@v2: Html) -> Html {
+                fn Rows@f0(items@v1: Array[String], id@v2: String) -> Html {
                   for v3 in v1 {
                     write("<div")
-                    write_html(v2)
+                    write(" id=\"")
+                    write_string(v2)
+                    write("\"")
                     write(">")
                     write_string(v3)
                     write("</div>")
@@ -4235,25 +4129,15 @@ mod tests {
                 }
                 page Test() {
                   let v0 = "outer" in {
-                    call Rows@f0(items = ["a", "b"], rest = {
-                      write(" id=\"")
-                      write_string(v0)
-                      write("\"")
-                    })
+                    call Rows@f0(items = ["a", "b"], id = v0)
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  let v5 = {
-                    write(" id=\"outer\"")
-                  } in {
-                    for v6 in ["a", "b"] {
-                      write("<div")
-                      write_html(v5)
-                      write(">")
-                      write_string(v6)
-                      write("</div>")
-                    }
+                  for v6 in ["a", "b"] {
+                    write("<div id=\"outer\">")
+                    write_string(v6)
+                    write("</div>")
                   }
                 }
                 -- expected output --
@@ -13194,28 +13078,28 @@ mod tests {
             r#"<div class="outer"><div class="inner"><p>hello</p></div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(children@v0: Html) -> Html {
+                fn Inner@f1(children@v1: Html) -> Html {
                   write("<div")
                   write(" class=\"")
                   write_string("inner")
                   write("\"")
                   write(">")
-                  write_html(v0)
+                  write_html(v1)
                   write("</div>")
                 }
-                fn Outer@f1(children@v1: Html) -> Html {
+                fn Outer@f0(children@v0: Html) -> Html {
                   write("<div")
                   write(" class=\"")
                   write_string("outer")
                   write("\"")
                   write(">")
-                  call Inner@f0(children = {
-                    write_html(v1)
+                  call Inner@f1(children = {
+                    write_html(v0)
                   })
                   write("</div>")
                 }
                 page Test() {
-                  call Outer@f1(children = {
+                  call Outer@f0(children = {
                     write("<p")
                     write(">")
                     write("hello")
@@ -13290,7 +13174,7 @@ mod tests {
             r#"<div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Footer@f0() -> Html {
+                fn Footer@f1() -> Html {
                   write("<footer")
                   write(">")
                   write("<p")
@@ -13299,7 +13183,7 @@ mod tests {
                   write("</p>")
                   write("</footer>")
                 }
-                fn Header@f1(title@v0: String) -> Html {
+                fn Header@f0(title@v0: String) -> Html {
                   write("<header")
                   write(">")
                   write("<h1")
@@ -13319,7 +13203,7 @@ mod tests {
                 }
                 page Test() {
                   call Layout@f2(children = {
-                    call Header@f1(title = "Welcome")
+                    call Header@f0(title = "Welcome")
                     write("<main")
                     write(">")
                     write("<p")
@@ -13327,7 +13211,7 @@ mod tests {
                     write("Hello world")
                     write("</p>")
                     write("</main>")
-                    call Footer@f0()
+                    call Footer@f1()
                   })
                 }
                 -- ir (optimized) --
@@ -13480,18 +13364,18 @@ mod tests {
             "<strong>a</strong><strong>b</strong>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Badge@f0(text@v1: String) -> Html {
+                fn Badge@f1(text@v4: String) -> Html {
                   write("<strong")
                   write(">")
-                  write_string(v1)
+                  write_string(v4)
                   write("</strong>")
                 }
-                fn NodeView@f1(node@v2: Node) -> Html {
-                  call Badge@f0(text = v2.value)
-                  let v3 = v2.next in {
-                    match v3 {
-                      Some(v4) => {
-                        call NodeView@f1(node = v4)
+                fn NodeView@f0(node@v1: Node) -> Html {
+                  call Badge@f1(text = v1.value)
+                  let v2 = v1.next in {
+                    match v2 {
+                      Some(v3) => {
+                        call NodeView@f0(node = v3)
                       }
                       None => {
                       }
@@ -13506,18 +13390,18 @@ mod tests {
                       next: Option[Node]::None,
                     }),
                   } in {
-                    call NodeView@f1(node = v0)
+                    call NodeView@f0(node = v0)
                   }
                 }
                 -- ir (optimized) --
-                fn NodeView@f1(node@v2: Node) -> Html {
+                fn NodeView@f0(node@v1: Node) -> Html {
                   write("<strong>")
-                  write_string(v2.value)
+                  write_string(v1.value)
                   write("</strong>")
-                  let v3 = v2.next in {
-                    match v3 {
-                      Some(v4) => {
-                        call NodeView@f1(node = v4)
+                  let v2 = v1.next in {
+                    match v2 {
+                      Some(v3) => {
+                        call NodeView@f0(node = v3)
                       }
                       None => {
                       }
@@ -13525,7 +13409,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call NodeView@f1(node = Node {
+                  call NodeView@f0(node = Node {
                     value: "a",
                     next: Option[Node]::Some(Node {
                       value: "b",
@@ -15551,22 +15435,22 @@ mod tests {
             "<section><em>z</em></section>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f0(children@v0: Html) -> Html {
+                fn Inner@f1(children@v1: Html) -> Html {
                   write("<em")
                   write(">")
-                  write_html(v0)
+                  write_html(v1)
                   write("</em>")
                 }
-                fn Outer@f1(children@v1: Html) -> Html {
+                fn Outer@f0(children@v0: Html) -> Html {
                   write("<section")
                   write(">")
-                  call Inner@f0(children = {
-                    write_html(v1)
+                  call Inner@f1(children = {
+                    write_html(v0)
                   })
                   write("</section>")
                 }
                 page Test() {
-                  call Outer@f1(children = {
+                  call Outer@f0(children = {
                     write("z")
                   })
                 }
@@ -15619,14 +15503,30 @@ mod tests {
             r#"<div id="root"><div><div></div></div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Nest@f0(n@v0: Int, rest@v1: Html) -> Html {
+                fn Nest@f0(n@v0: Int, id@v1: String) -> Html {
                   write("<div")
-                  write_html(v1)
+                  write(" id=\"")
+                  write_string(v1)
+                  write("\"")
                   write(">")
                   let v2 = (0 < v0) in {
                     match v2 {
                       true => {
-                        call Nest@f0(n = (v0 - 1), rest = {})
+                        call Nest@f1(n = (v0 - 1))
+                      }
+                      false => {
+                      }
+                    }
+                  }
+                  write("</div>")
+                }
+                fn Nest@f1(n@v3: Int) -> Html {
+                  write("<div")
+                  write(">")
+                  let v4 = (0 < v3) in {
+                    match v4 {
+                      true => {
+                        call Nest@f1(n = (v3 - 1))
                       }
                       false => {
                       }
@@ -15635,21 +15535,15 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Nest@f0(n = 2, rest = {
-                    write(" id=\"")
-                    write_string("root")
-                    write("\"")
-                  })
+                  call Nest@f0(n = 2, id = "root")
                 }
                 -- ir (optimized) --
-                fn Nest@f0(n@v0: Int, rest@v1: Html) -> Html {
-                  write("<div")
-                  write_html(v1)
-                  write(">")
-                  let v2 = (0 < v0) in {
-                    match v2 {
+                fn Nest@f1(n@v3: Int) -> Html {
+                  write("<div>")
+                  let v4 = (0 < v3) in {
+                    match v4 {
                       true => {
-                        call Nest@f0(n = (v0 - 1), rest = {})
+                        call Nest@f1(n = (v3 - 1))
                       }
                       false => {
                       }
@@ -15658,9 +15552,9 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Nest@f0(n = 2, rest = {
-                    write(" id=\"root\"")
-                  })
+                  write("<div id=\"root\">")
+                  call Nest@f1(n = 1)
+                  write("</div>")
                 }
                 -- expected output --
                 <div id="root"><div><div></div></div></div>

@@ -6,9 +6,9 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumPattern, Match};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
 /// A Writer module. The lowered, statement form of the IR, consumed by
@@ -24,22 +24,25 @@ pub struct WriterModule {
     pub var_ids: VarIdCounter,
 }
 
+/// A parameter of a page or a function. The name is what a call names the
+/// argument by: the name a declaration gives the parameter, or the name of
+/// the attribute a specialization receives through its rest.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WriterParameter {
-    pub name: VarName,
+    pub name: AttributeName,
     pub var: IrVar,
     pub typ: Type,
 }
 
 impl WriterParameter {
-    pub fn name(&self) -> &VarName {
+    pub fn name(&self) -> &AttributeName {
         &self.name
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct WriterArgument {
-    pub name: VarName,
+    pub name: AttributeName,
     pub expr: WriterExpr,
 }
 

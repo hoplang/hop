@@ -109,8 +109,8 @@ mod tests {
     use crate::ir::runtime::evaluator::evaluate_page;
     use crate::ir::runtime::random::random_value;
     use crate::ir::runtime::value::Value;
+    use crate::symbols::attribute_name::AttributeName;
     use crate::symbols::type_name::TypeName;
-    use crate::symbols::var_name::VarName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
 
@@ -120,7 +120,7 @@ mod tests {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
 
-            let page_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
+            let page_args: Vec<(TypeName, HashMap<AttributeName, Value>)> = module
                 .pages
                 .iter()
                 .map(|page| {

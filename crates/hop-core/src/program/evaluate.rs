@@ -9,8 +9,8 @@ use crate::ir::runtime::random::random_value;
 use crate::ir::{DocumentShell, TailwindInjection};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
 use crate::root_contained_file_path::RootContainedFilePath;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 use rand::SeedableRng;
 use rand::rngs::Xoshiro256PlusPlus;
 use std::collections::HashMap;
@@ -22,7 +22,7 @@ impl Program {
         &self,
         document_id: &RootContainedFilePath,
         page_name: &TypeName,
-        args: HashMap<VarName, ir::runtime::value::Value>,
+        args: HashMap<AttributeName, ir::runtime::value::Value>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
@@ -104,7 +104,7 @@ impl Program {
             .iter()
             .map(|param| {
                 (
-                    param.var_name.clone(),
+                    param.var_name.clone().into(),
                     random_value(
                         &mut rng,
                         &param.var_type,
@@ -184,7 +184,7 @@ mod tests {
         // Test evaluating hello-world page with a name parameter
         let mut args = HashMap::new();
         args.insert(
-            VarName::parse("name").unwrap(),
+            AttributeName::parse("name").unwrap(),
             ir::runtime::value::Value::String("Alice".to_string()),
         );
 
