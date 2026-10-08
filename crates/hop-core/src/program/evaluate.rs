@@ -4,7 +4,7 @@ use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::CheapString;
 use crate::ir;
-use crate::ir::runtime::evaluator::EvalError;
+use crate::ir::runtime::EvalError;
 use crate::ir::runtime::random::random_value;
 use crate::ir::{DocumentShell, TailwindInjection};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};

@@ -14,10 +14,7 @@ pub enum Value {
     Array(Vec<Value>),
     Tuple(Vec<Value>),
     Record(HashMap<FieldName, Value>),
-    /// Option::Some with inner value
-    Some(Box<Value>),
-    /// Option::None
-    None,
+    Option(Option<Box<Value>>),
     /// Enum variant with name and optional fields
     Enum {
         variant_name: TypeName,
@@ -26,45 +23,86 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn as_str(&self) -> Option<&str> {
+    /// Panics if the value is not a String.
+    pub fn unwrap_string(self) -> String {
         match self {
-            Value::String(s) => Some(s),
-            _ => None,
+            Value::String(s) => s,
+            _ => panic!("Expected a String value, found {self:?}"),
         }
     }
 
-    pub fn as_bool(&self) -> Option<bool> {
+    /// Panics if the value is not Html.
+    pub fn unwrap_html(self) -> Vec<HtmlNode> {
         match self {
-            Value::Bool(b) => Some(*b),
-            _ => None,
+            Value::Html(nodes) => nodes,
+            _ => panic!("Expected Html value, found {self:?}"),
         }
     }
 
-    pub fn as_i32(&self) -> Option<i32> {
+    /// Panics if the value is not a Bool.
+    pub fn unwrap_bool(self) -> bool {
         match self {
-            Value::Int(i) => Some(*i),
-            _ => None,
+            Value::Bool(b) => b,
+            _ => panic!("Expected a Bool value, found {self:?}"),
         }
     }
 
-    pub fn as_f64(&self) -> Option<f64> {
+    /// Panics if the value is not an Int.
+    pub fn unwrap_int(self) -> i32 {
         match self {
-            Value::Float(f) => Some(*f),
-            _ => None,
+            Value::Int(i) => i,
+            _ => panic!("Expected an Int value, found {self:?}"),
         }
     }
 
-    pub fn as_array(&self) -> Option<&Vec<Value>> {
+    /// Panics if the value is not a Float.
+    pub fn unwrap_float(self) -> f64 {
         match self {
-            Value::Array(arr) => Some(arr),
-            _ => None,
+            Value::Float(f) => f,
+            _ => panic!("Expected a Float value, found {self:?}"),
         }
     }
 
-    pub fn as_record(&self) -> Option<&HashMap<FieldName, Value>> {
+    /// Panics if the value is not an Array.
+    pub fn unwrap_array(self) -> Vec<Value> {
         match self {
-            Value::Record(rec) => Some(rec),
-            _ => None,
+            Value::Array(arr) => arr,
+            _ => panic!("Expected an Array value, found {self:?}"),
+        }
+    }
+
+    /// Panics if the value is not a Tuple.
+    pub fn unwrap_tuple(self) -> Vec<Value> {
+        match self {
+            Value::Tuple(elements) => elements,
+            _ => panic!("Expected a Tuple value, found {self:?}"),
+        }
+    }
+
+    /// Panics if the value is not a Record.
+    pub fn unwrap_record(self) -> HashMap<FieldName, Value> {
+        match self {
+            Value::Record(rec) => rec,
+            _ => panic!("Expected a Record value, found {self:?}"),
+        }
+    }
+
+    /// Panics if the value is not an Option.
+    pub fn unwrap_option(self) -> Option<Box<Value>> {
+        match self {
+            Value::Option(opt) => opt,
+            _ => panic!("Expected an Option value, found {self:?}"),
+        }
+    }
+
+    /// Panics if the value is not an Enum.
+    pub fn unwrap_enum(self) -> (TypeName, HashMap<FieldName, Value>) {
+        match self {
+            Value::Enum {
+                variant_name,
+                fields,
+            } => (variant_name, fields),
+            _ => panic!("Expected an Enum value, found {self:?}"),
         }
     }
 }

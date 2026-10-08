@@ -154,16 +154,16 @@ fn generate(
         }
         ResolvedType::Option(inner) => {
             if depth < MAX_DEPTH && rng.random_bool(0.5) {
-                Value::Some(Box::new(random_value_at_depth(
+                Value::Option(Some(Box::new(random_value_at_depth(
                     rng,
                     inner,
                     None,
                     registry,
                     depth + 1,
                     visiting,
-                )))
+                ))))
             } else {
-                Value::None
+                Value::Option(None)
             }
         }
         ResolvedType::Tuple(elements) => Value::Tuple(
