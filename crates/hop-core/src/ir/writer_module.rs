@@ -1,1065 +1,489 @@
 use std::fmt;
 
-use crate::document::CheapString;
-use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
-use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::{EnumPattern, Match};
-use crate::ir::ir_var::IrVar;
-use crate::ir::var_id::VarIdCounter;
-use crate::symbols::attribute_name::AttributeName;
-use crate::symbols::field_name::FieldName;
-use crate::symbols::type_name::TypeName;
 use pretty::BoxDoc;
 
-/// A Writer module. The lowered, statement form of the IR, consumed by
-/// the evaluator and the transpilers.
+use crate::document::CheapString;
+use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
+use crate::ir::flat_module::FlatForSource;
+use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_match::Match;
+use crate::ir::var_id::VarId;
+use crate::symbols::field_name::FieldName;
+use crate::symbols::type_name::TypeName;
+
+use super::ir_parameter::IrParameter;
+
+/// A Writer module.
 ///
-/// All IDs in the module are unique across the whole module. Each binder has
-/// a unique VarId, so two binders are never the same variable: shadowing is
-/// impossible and substitution is capture-free.
+/// The form the backends consume. A body is a sequence of statements that
+/// write to the ambient buffer, with the values they need bound by lets
+/// along the way. A let is in scope for the rest of its block and for the
+/// blocks nested in that rest. Operands are names, as in the Flat IR, so a value
+/// never contains another value. Html is written rather than held, except
+/// where a value needs it, and then an HtmlLiteral renders it into a
+/// buffer of its own.
 #[derive(Debug)]
 pub struct WriterModule {
     pub pages: Vec<WriterPageDeclaration>,
     pub functions: Vec<WriterFunctionDeclaration>,
-    pub var_ids: VarIdCounter,
-}
-
-/// A parameter of a page or a function. The name is what a call names the
-/// argument by: the name a declaration gives the parameter, or the name of
-/// the attribute a specialization receives through its rest.
-#[derive(Debug, Clone, PartialEq)]
-pub struct WriterParameter {
-    pub name: AttributeName,
-    pub var: IrVar,
-    pub typ: Type,
-}
-
-impl WriterParameter {
-    pub fn name(&self) -> &AttributeName {
-        &self.name
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct WriterArgument {
-    pub name: AttributeName,
-    pub expr: WriterExpr,
-}
-
-/// The source of iteration in a For loop.
-#[derive(Debug, PartialEq)]
-pub enum WriterForSource {
-    /// Iterate over elements of an array.
-    Array(WriterExpr),
-    /// Iterate over an inclusive integer range.
-    RangeInclusive { start: WriterExpr, end: WriterExpr },
 }
 
 #[derive(Debug)]
 pub struct WriterPageDeclaration {
-    /// Page name
     pub name: TypeName,
-    /// Parameter names with their types
-    pub parameters: Vec<WriterParameter>,
-    /// Statements for the assembled page body
-    pub body: Vec<WriterStatement>,
+    pub parameters: Vec<IrParameter>,
+    /// Statements for the assembled page.
+    pub body: Vec<Stmt>,
 }
 
 #[derive(Debug)]
 pub struct WriterFunctionDeclaration {
-    /// The function's identity, carrying its source name.
     pub function: IrFunction,
-    /// Parameter names with their types
-    pub parameters: Vec<WriterParameter>,
-    /// The function's return type.
+    pub parameters: Vec<IrParameter>,
     pub return_type: Type,
-    /// The function's body. Must produce `return_type`.
     pub body: WriterFunctionBody,
 }
 
 #[derive(Debug)]
 pub enum WriterFunctionBody {
-    /// Destination-passing: writes directly to the ambient output stream.
-    /// Call sites invoke this with a WriteFunction statement.
-    Writes(Vec<WriterStatement>),
-    /// Value-returning: evaluates to a value.
-    /// Call sites invoke this with a Call expression.
-    Returns(WriterExpr),
+    /// Destination passing: writes to the ambient buffer. A call site is a
+    /// WriteFunction statement.
+    Writes(Vec<Stmt>),
+    /// Value returning. A call site is a Call value.
+    Returns(ValueBlock),
 }
 
-/// A statement in the IR.
-///
-/// Statements may perform one kind of effect: writing to the output stream.
-/// Statement order is output order.
-#[derive(Debug, PartialEq)]
-pub enum WriterStatement {
-    /// Write a constant string to the output stream.
-    ///
-    /// Write performs no escaping.
-    Write { content: String },
+/// A value binding.
+#[derive(Debug, Clone)]
+pub struct Let {
+    pub name: VarId,
+    pub typ: Type,
+    pub value: Value,
+}
 
-    /// Write a String expression to the output stream.
-    ///
-    /// WriteString performs HTML escaping.
-    ///
-    /// The type of expr must be String.
-    WriteString { expr: WriterExpr },
+/// Lets followed by the name of the result: a value function body or a
+/// match arm in value position.
+#[derive(Debug, Clone)]
+pub struct ValueBlock {
+    pub lets: Vec<Let>,
+    pub result: VarId,
+}
 
-    /// Write an Html expression to the output stream.
-    ///
-    /// WriteHtml performs no escaping, Html is already-escaped HTML
-    /// by construction.
-    ///
-    /// The type of expr must be Html.
-    WriteHtml { expr: WriterExpr },
+/// A statement. Statements write to the ambient buffer, in order, or bind
+/// a value for the statements after them.
+#[derive(Debug, Clone)]
+pub enum Stmt {
+    Let(Let),
 
-    /// Invoke a function and write its effects to the output stream.
+    /// Write a constant string, unescaped.
+    Write(String),
+
+    /// Write a String name, escaped.
+    WriteString(VarId),
+
+    /// Write an Html name as it is.
+    WriteHtml(VarId),
+
+    /// Invoke an Html function, which writes to the same buffer. The
+    /// arguments follow the function's parameters, one for each.
     WriteFunction {
         function: IrFunction,
-        args: Vec<WriterArgument>,
+        args: Vec<VarId>,
     },
 
-    /// Loop over an array or range.
-    ///
-    /// When var is None, the loop binds no variable, but the loop still
-    /// executes.
+    /// Run the body once per element, in order. When var is None, the loop
+    /// binds no variable, but still iterates.
     For {
-        var: Option<IrVar>,
-        source: WriterForSource,
-        body: Vec<WriterStatement>,
+        var: Option<IrBinder>,
+        source: FlatForSource,
+        body: Vec<Stmt>,
     },
 
-    /// Bind a variable to the value of an expression and execute the effects
-    /// of the body.
-    ///
-    /// The binding scopes over body only, not the statements that follow.
-    Let {
-        var: IrVar,
-        value: WriterExpr,
-        body: Vec<WriterStatement>,
-    },
-
-    /// Match on a value and execute the effects of the matched branch.
-    ///
-    /// Matching is exhaustive, a value must match at least one branch.
-    Match {
-        match_: Match<WriterExpr, Vec<WriterStatement>>,
-    },
+    /// Run the arm that matches. Matching is exhaustive.
+    Match(Match<VarId, Vec<Stmt>>),
 }
 
-/// IR expression type.
-///
-/// Expressions produce no side effects. The statements inside an HtmlLiteral
-/// write into a fresh buffer, not the enclosing output stream.
-///
-/// The Int type is an i32 with wrapping add/sub/mul/neg.
-///
-/// A FloatToString conversion is avoided since semantics would be too tricky to
-/// define across backends.
-#[derive(Debug, PartialEq)]
-pub enum WriterExpr {
-    /// A Let expression.
-    Let {
-        var: IrVar,
-        value: Box<WriterExpr>,
-        body: Box<WriterExpr>,
-        typ: Type,
-    },
+/// The computation of a let. Operands are names.
+#[derive(Debug, Clone)]
+pub enum Value {
+    StringLiteral(CheapString),
+    IntLiteral(i32),
+    FloatLiteral(f64),
+    BoolLiteral(bool),
 
-    /// A Match expression over an Enum, Bool, or Option.
-    ///
-    /// Matching is exhaustive, a value must match at least one branch.
-    Match {
-        match_: Match<WriterExpr, WriterExpr>,
-        typ: Type,
-    },
-
-    /// A VariableReference expression.
-    ///
-    /// Reads the value bound by its binder.
-    ///
-    /// The `typ` field must match the binder's type.
-    VariableReference { value: IrVar, typ: Type },
-
-    /// A FieldAccess expression.
-    ///
-    /// The expression must evaluate to a record and the field must exist on the
-    /// record.
     FieldAccess {
-        record: Box<WriterExpr>,
+        record: VarId,
         field: FieldName,
-        typ: Type,
     },
 
-    /// A StringLiteral expression.
-    StringLiteral { value: CheapString },
-
-    /// A HtmlLiteral expression.
-    ///
-    /// Produced by rendering the body into a fresh buffer.
-    HtmlLiteral { body: Vec<WriterStatement> },
-
-    /// A call expression.
-    ///
-    /// Invokes a value-returning function and produces its result.
-    Call {
-        function: IrFunction,
-        args: Vec<WriterArgument>,
-        typ: Type,
-    },
-
-    /// A BoolLiteral expression.
-    BoolLiteral { value: bool },
-
-    /// A FloatLiteral expression.
-    FloatLiteral { value: f64 },
-
-    /// An IntLiteral expression.
-    IntLiteral { value: i32 },
-
-    /// An array expression.
-    Array {
-        elements: Vec<WriterExpr>,
-        typ: Type,
-    },
-
-    /// A tuple expression.
-    Tuple {
-        elements: Vec<WriterExpr>,
-        typ: Type,
-    },
-
-    /// A TupleIndex expression.
     TupleIndex {
-        tuple: Box<WriterExpr>,
+        tuple: VarId,
         index: usize,
-        typ: Type,
     },
 
-    /// A record expression.
+    Array(Vec<VarId>),
+
+    Tuple(Vec<VarId>),
+
+    /// The record type is the type of the let.
     Record {
-        type_name: TypeName,
-        fields: Vec<(FieldName, WriterExpr)>,
-        typ: Type,
+        fields: Vec<(FieldName, VarId)>,
     },
 
-    /// An enum expression.
+    /// The enum type is the type of the let.
     Enum {
-        type_name: TypeName,
         variant_name: TypeName,
-        /// Field values for variants with fields (empty for unit variants)
-        fields: Vec<(FieldName, WriterExpr)>,
-        typ: Type,
+        fields: Vec<(FieldName, VarId)>,
     },
 
-    /// An option expression.
-    Option {
-        value: Option<Box<WriterExpr>>,
-        typ: Type,
-    },
+    Option(Option<VarId>),
 
-    /// A StringConcat expression.
-    ///
-    /// N-ary mappend over String-typed parts.
-    StringConcat { parts: Vec<WriterExpr> },
+    StringConcat(Vec<VarId>),
 
-    /// A NumericAdd expression.
-    ///
-    /// Must hold two expressions of the same NumericType.
-    /// Returns the NumericType of the expressions.
     NumericAdd {
-        left: Box<WriterExpr>,
-        right: Box<WriterExpr>,
+        left: VarId,
+        right: VarId,
         operand_types: NumericType,
     },
 
-    /// A NumericSubtract expression.
-    ///
-    /// Must hold two expressions of the same NumericType.
-    /// Returns the NumericType of the expressions.
     NumericSubtract {
-        left: Box<WriterExpr>,
-        right: Box<WriterExpr>,
+        left: VarId,
+        right: VarId,
         operand_types: NumericType,
     },
 
-    /// A NumericMultiply expression.
-    ///
-    /// Must hold two expressions of the same NumericType.
-    /// Returns the NumericType of the expressions.
     NumericMultiply {
-        left: Box<WriterExpr>,
-        right: Box<WriterExpr>,
+        left: VarId,
+        right: VarId,
         operand_types: NumericType,
     },
 
-    /// A NumericNegation expression.
-    ///
-    /// Must hold an expression of a NumericType.
-    /// Returns the NumericType of the expression.
     NumericNegation {
-        operand: Box<WriterExpr>,
+        operand: VarId,
         operand_type: NumericType,
     },
 
-    /// A BoolNegation expression.
-    ///
-    /// Must hold a Bool expression.
-    /// Returns a Bool.
-    BoolNegation { operand: Box<WriterExpr> },
+    BoolNegation(VarId),
 
-    /// A BoolLogicalAnd expression.
-    ///
-    /// Must hold two Bool expressions.
-    /// Returns a Bool.
-    BoolLogicalAnd {
-        left: Box<WriterExpr>,
-        right: Box<WriterExpr>,
-    },
-
-    /// A BoolLogicalOr expression.
-    ///
-    /// Must hold two Bool expressions.
-    /// Returns a Bool.
-    BoolLogicalOr {
-        left: Box<WriterExpr>,
-        right: Box<WriterExpr>,
-    },
-
-    /// An Equals expression.
-    ///
-    /// Must hold two values of the same EquatableType.
-    /// Returns a Bool.
     Equals {
-        left: Box<WriterExpr>,
-        right: Box<WriterExpr>,
+        left: VarId,
+        right: VarId,
         operand_types: EquatableType,
     },
 
-    /// A LessThan expression.
-    ///
-    /// Must hold two values of the same ComparableType.
-    /// Returns a Bool.
     LessThan {
-        left: Box<WriterExpr>,
-        right: Box<WriterExpr>,
+        left: VarId,
+        right: VarId,
         operand_types: ComparableType,
     },
 
-    /// A LessThanOrEqual expression.
-    ///
-    /// Must hold two values of the same ComparableType.
-    /// Returns a Bool.
     LessThanOrEqual {
-        left: Box<WriterExpr>,
-        right: Box<WriterExpr>,
+        left: VarId,
+        right: VarId,
         operand_types: ComparableType,
     },
 
-    /// An ArrayLength expression.
-    ///
-    /// Must hold an Array expression.
-    /// Returns an Int.
-    ArrayLength { array: Box<WriterExpr> },
+    ArrayLength(VarId),
+    ArrayIsEmpty(VarId),
+    StringIsEmpty(VarId),
+    OptionIsSome(VarId),
+    OptionIsNone(VarId),
+    IntToString(VarId),
+    FloatToInt(VarId),
+    IntToFloat(VarId),
 
-    /// An ArrayIsEmpty expression.
-    ///
-    /// Must hold an Array expression.
-    /// Returns a Bool.
-    ArrayIsEmpty { array: Box<WriterExpr> },
+    /// Invoke a value returning function. The arguments follow the
+    /// function's parameters, one for each.
+    Call {
+        function: IrFunction,
+        args: Vec<VarId>,
+    },
 
-    /// A StringIsEmpty expression.
-    ///
-    /// Must hold a String expression.
-    /// Returns a Bool.
-    StringIsEmpty { string: Box<WriterExpr> },
+    /// Html as a value: the statements render into a fresh buffer.
+    HtmlLiteral(Vec<Stmt>),
 
-    /// An OptionIsSome expression.
-    ///
-    /// Must hold an Option expression.
-    /// Returns a Bool.
-    OptionIsSome { option: Box<WriterExpr> },
-
-    /// An OptionIsNone expression.
-    ///
-    /// Must hold an Option expression.
-    /// Returns a Bool.
-    OptionIsNone { option: Box<WriterExpr> },
-
-    /// An IntToString expression.
-    ///
-    /// Must hold an Int.
-    /// Returns a String.
-    IntToString { value: Box<WriterExpr> },
-
-    /// A FloatToInt expression.
-    ///
-    /// Saturates at the i32 bounds and maps NaN -> 0.
-    ///
-    /// Must hold a Float.
-    /// Returns an Int.
-    FloatToInt { value: Box<WriterExpr> },
-
-    /// An IntToFloat expression.
-    ///
-    /// Must hold an Int.
-    /// Returns a Float.
-    IntToFloat { value: Box<WriterExpr> },
+    /// A match over a value that is not Html. Each arm produces the value.
+    Match(Match<VarId, ValueBlock>),
 }
 
-impl WriterStatement {
+impl Value {
+    /// Apply `f` to each name this value reads directly. The names read
+    /// inside an HtmlLiteral or the arms of a Match are not visited, only
+    /// the subject of the Match.
+    #[cfg(test)]
+    pub fn for_each_operand(&self, f: &mut impl FnMut(VarId)) {
+        match self {
+            Value::StringLiteral(_)
+            | Value::IntLiteral(_)
+            | Value::FloatLiteral(_)
+            | Value::BoolLiteral(_)
+            | Value::Option(None)
+            | Value::HtmlLiteral(_) => {}
+
+            Value::FieldAccess { record: name, .. }
+            | Value::TupleIndex { tuple: name, .. }
+            | Value::Option(Some(name))
+            | Value::NumericNegation { operand: name, .. }
+            | Value::BoolNegation(name)
+            | Value::ArrayLength(name)
+            | Value::ArrayIsEmpty(name)
+            | Value::StringIsEmpty(name)
+            | Value::OptionIsSome(name)
+            | Value::OptionIsNone(name)
+            | Value::IntToString(name)
+            | Value::FloatToInt(name)
+            | Value::IntToFloat(name) => f(*name),
+
+            Value::Array(names) | Value::Tuple(names) | Value::StringConcat(names) => {
+                for name in names {
+                    f(*name);
+                }
+            }
+
+            Value::Record { fields } | Value::Enum { fields, .. } => {
+                for (_, name) in fields {
+                    f(*name);
+                }
+            }
+
+            Value::NumericAdd { left, right, .. }
+            | Value::NumericSubtract { left, right, .. }
+            | Value::NumericMultiply { left, right, .. }
+            | Value::Equals { left, right, .. }
+            | Value::LessThan { left, right, .. }
+            | Value::LessThanOrEqual { left, right, .. } => {
+                f(*left);
+                f(*right);
+            }
+
+            Value::Call { args, .. } => {
+                for arg in args {
+                    f(*arg);
+                }
+            }
+
+            Value::Match(match_) => match match_ {
+                Match::Bool { subject, .. }
+                | Match::Option { subject, .. }
+                | Match::Enum { subject, .. } => f(**subject),
+            },
+        }
+    }
+}
+
+/// Each statement on a line of its own. The statements start with a line
+/// break and the caller nests them, so an empty list prints nothing.
+fn stmts_to_doc(stmts: &[Stmt]) -> BoxDoc<'_> {
+    BoxDoc::concat(
+        stmts
+            .iter()
+            .map(|stmt| BoxDoc::line().append(stmt.to_doc())),
+    )
+}
+
+impl ValueBlock {
+    /// One line per let and one for the result.
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::intersperse(
+            self.lets
+                .iter()
+                .map(Let::to_doc)
+                .chain(std::iter::once(BoxDoc::text(self.result.to_string()))),
+            BoxDoc::line(),
+        )
+    }
+}
+
+impl Let {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text(format!("let {}: {} = ", self.name, self.typ)).append(self.value.to_doc())
+    }
+}
+
+impl Stmt {
+    /// A For, a Match or a let holding a literal spans lines, every other
+    /// statement is one line.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            WriterStatement::Write { content, .. } => BoxDoc::text("write")
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::text(format!("{:?}", content)))
-                .append(BoxDoc::text(")")),
-            WriterStatement::WriteString { expr, .. } => BoxDoc::text("write_string")
-                .append(BoxDoc::text("("))
-                .append(expr.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterStatement::WriteHtml { expr, .. } => BoxDoc::text("write_html")
-                .append(BoxDoc::text("("))
-                .append(expr.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterStatement::For {
-                var, source, body, ..
-            } => {
-                let source_doc = match source {
-                    WriterForSource::Array(array) => array.to_doc(),
-                    WriterForSource::RangeInclusive { start, end } => start
-                        .to_doc()
-                        .append(BoxDoc::text("..="))
-                        .append(end.to_doc()),
+            Stmt::Let(let_) => let_.to_doc(),
+            Stmt::Write(content) => BoxDoc::text(format!("write({content:?})")),
+            Stmt::WriteString(name) => BoxDoc::text(format!("write_string({name})")),
+            Stmt::WriteHtml(name) => BoxDoc::text(format!("write_html({name})")),
+            Stmt::WriteFunction { function, args } => {
+                let args = args
+                    .iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                BoxDoc::text(format!("write_function {function}({args})"))
+            }
+            Stmt::For { var, source, body } => {
+                let var = match var {
+                    Some(binder) => format!("{}: {}", binder.var, binder.typ),
+                    None => "_".to_string(),
                 };
-                let var_doc = match var {
-                    Some(name) => BoxDoc::text(name.to_string()),
-                    None => BoxDoc::text("_"),
+                let source = match source {
+                    FlatForSource::Array(array) => array.to_string(),
+                    FlatForSource::RangeInclusive { start, end } => format!("{start}..={end}"),
                 };
-                BoxDoc::text("for ")
-                    .append(var_doc)
-                    .append(BoxDoc::text(" in "))
-                    .append(source_doc)
-                    .append(BoxDoc::text(" {"))
-                    .append(if body.is_empty() {
-                        BoxDoc::nil()
-                    } else {
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                body.iter().map(|stmt| stmt.to_doc()),
-                                BoxDoc::line(),
-                            ))
-                            .append(BoxDoc::line())
-                            .nest(2)
-                    })
+                BoxDoc::text(format!("for {var} in {source} {{"))
+                    .append(stmts_to_doc(body).nest(2))
+                    .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
             }
-            WriterStatement::Let {
-                var, value, body, ..
-            } => BoxDoc::text("let ")
-                .append(BoxDoc::text(var.to_string()))
-                .append(BoxDoc::text(" = "))
-                .append(value.to_doc())
-                .append(BoxDoc::text(" in {"))
-                .append(if body.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            body.iter().map(|stmt| stmt.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("}")),
-            WriterStatement::Match { match_, .. } => {
-                fn body_to_doc(body: &[WriterStatement]) -> BoxDoc<'_> {
-                    if body.is_empty() {
-                        BoxDoc::nil()
-                    } else {
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                body.iter().map(|stmt| stmt.to_doc()),
-                                BoxDoc::line(),
-                            ))
-                            .nest(2)
-                    }
-                }
-
-                fn arm_to_doc<'a>(pattern: BoxDoc<'a>, body: &'a [WriterStatement]) -> BoxDoc<'a> {
-                    pattern
-                        .append(BoxDoc::text(" => {"))
-                        .append(body_to_doc(body))
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"))
-                }
-
-                match match_ {
-                    Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    } => BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line()
-                                .append(arm_to_doc(BoxDoc::text("true"), true_body))
-                                .append(BoxDoc::line())
-                                .append(arm_to_doc(BoxDoc::text("false"), false_body))
-                                .nest(2),
-                        )
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}")),
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body,
-                    } => {
-                        let some_pattern = match some_arm_binding {
-                            Some(var) => format!("Some({var})"),
-                            None => "Some(_)".to_string(),
-                        };
-                        BoxDoc::text("match ")
-                            .append(subject.to_doc())
-                            .append(BoxDoc::text(" {"))
-                            .append(
-                                BoxDoc::line()
-                                    .append(arm_to_doc(
-                                        BoxDoc::as_string(some_pattern),
-                                        some_arm_body,
-                                    ))
-                                    .append(BoxDoc::line())
-                                    .append(arm_to_doc(BoxDoc::text("None"), none_arm_body))
-                                    .nest(2),
-                            )
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("}"))
-                    }
-                    Match::Enum { subject, arms } => {
-                        let arms_doc: Vec<_> = arms
-                            .iter()
-                            .map(|arm| {
-                                let pattern = match &arm.pattern {
-                                    EnumPattern::Variant {
-                                        type_name,
-                                        variant_name,
-                                    } => {
-                                        if arm.bindings.is_empty() {
-                                            format!("{}::{}", type_name, variant_name)
-                                        } else {
-                                            let bindings_str: Vec<String> = arm
-                                                .bindings
-                                                .iter()
-                                                .map(|(field, var)| format!("{}: {}", field, var))
-                                                .collect();
-                                            format!(
-                                                "{}::{}({})",
-                                                type_name,
-                                                variant_name,
-                                                bindings_str.join(", ")
-                                            )
-                                        }
-                                    }
-                                };
-                                (pattern, &arm.body)
-                            })
-                            .collect();
-                        let arms_doc = BoxDoc::intersperse(
-                            arms_doc.into_iter().map(|(pattern, body)| {
-                                arm_to_doc(BoxDoc::as_string(pattern), body)
-                            }),
-                            BoxDoc::line(),
-                        );
-                        BoxDoc::text("match ")
-                            .append(subject.to_doc())
-                            .append(BoxDoc::text(" {"))
-                            .append(BoxDoc::line().append(arms_doc).nest(2))
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("}"))
-                    }
-                }
-            }
-            WriterStatement::WriteFunction { function, args, .. } => {
-                let mut doc = BoxDoc::text("call ")
-                    .append(BoxDoc::text(function.to_string()))
-                    .append(BoxDoc::text("("));
-                if !args.is_empty() {
-                    doc = doc.append(BoxDoc::intersperse(
-                        args.iter().map(|arg| {
-                            BoxDoc::text(arg.name.as_str())
-                                .append(BoxDoc::text(" = "))
-                                .append(arg.expr.to_doc())
-                        }),
-                        BoxDoc::text(", "),
-                    ));
-                }
-                doc = doc.append(BoxDoc::text(")"));
-                doc
-            }
+            Stmt::Match(match_) => match_.to_doc(
+                |subject| BoxDoc::text(subject.to_string()),
+                |body| stmts_to_doc(body),
+            ),
         }
     }
 }
 
-impl WriterExpr {
-    /// The type of this expression.
-    pub fn typ(&self) -> Type {
-        match self {
-            WriterExpr::VariableReference { typ, .. }
-            | WriterExpr::FieldAccess { typ, .. }
-            | WriterExpr::Array { typ, .. }
-            | WriterExpr::Tuple { typ, .. }
-            | WriterExpr::TupleIndex { typ, .. }
-            | WriterExpr::Record { typ, .. }
-            | WriterExpr::Enum { typ, .. }
-            | WriterExpr::Option { typ, .. }
-            | WriterExpr::Match { typ, .. }
-            | WriterExpr::Let { typ, .. }
-            | WriterExpr::Call { typ, .. } => typ.clone(),
-
-            WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => Type::Float,
-            WriterExpr::IntLiteral { .. } => Type::Int,
-
-            WriterExpr::HtmlLiteral { .. } => Type::Html,
-
-            WriterExpr::StringConcat { .. }
-            | WriterExpr::StringLiteral { .. }
-            | WriterExpr::IntToString { .. } => Type::String,
-
-            WriterExpr::NumericAdd { operand_types, .. }
-            | WriterExpr::NumericSubtract { operand_types, .. }
-            | WriterExpr::NumericMultiply { operand_types, .. }
-            | WriterExpr::NumericNegation {
-                operand_type: operand_types,
-                ..
-            } => match operand_types {
-                NumericType::Int => Type::Int,
-                NumericType::Float => Type::Float,
-            },
-
-            WriterExpr::BoolLiteral { .. }
-            | WriterExpr::BoolNegation { .. }
-            | WriterExpr::Equals { .. }
-            | WriterExpr::LessThan { .. }
-            | WriterExpr::LessThanOrEqual { .. }
-            | WriterExpr::BoolLogicalAnd { .. }
-            | WriterExpr::BoolLogicalOr { .. }
-            | WriterExpr::ArrayIsEmpty { .. }
-            | WriterExpr::StringIsEmpty { .. }
-            | WriterExpr::OptionIsSome { .. }
-            | WriterExpr::OptionIsNone { .. } => Type::Bool,
-
-            WriterExpr::ArrayLength { .. } | WriterExpr::FloatToInt { .. } => Type::Int,
-        }
-    }
-
-    /// Pretty-print this expression
+impl Value {
+    /// An HtmlLiteral or a Match spans lines, every other value is one
+    /// line.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            WriterExpr::VariableReference { value, .. } => BoxDoc::text(value.to_string()),
-            WriterExpr::FieldAccess { record, field, .. } => record
-                .to_doc()
-                .append(BoxDoc::text("."))
-                .append(BoxDoc::text(field.as_str())),
-            WriterExpr::StringLiteral { value, .. } => {
-                BoxDoc::text(format!("{:?}", value.as_str()))
+            Value::StringLiteral(value) => BoxDoc::text(format!("{:?}", value.as_str())),
+            Value::IntLiteral(value) => BoxDoc::text(value.to_string()),
+            Value::FloatLiteral(value) => BoxDoc::text(value.to_string()),
+            Value::BoolLiteral(value) => BoxDoc::text(value.to_string()),
+            Value::FieldAccess { record, field } => {
+                BoxDoc::text(format!("{record}.{}", field.as_str()))
             }
-
-            WriterExpr::HtmlLiteral { body, .. } => BoxDoc::text("{")
-                .append(if body.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            body.iter().map(|stmt| stmt.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("}")),
-            WriterExpr::Call { function, args, .. } => {
-                let mut doc = BoxDoc::text("call ")
-                    .append(BoxDoc::text(function.to_string()))
-                    .append(BoxDoc::text("("));
-                if !args.is_empty() {
-                    doc = doc.append(BoxDoc::intersperse(
-                        args.iter().map(|arg| {
-                            BoxDoc::text(arg.name.as_str())
-                                .append(BoxDoc::text(" = "))
-                                .append(arg.expr.to_doc())
-                        }),
-                        BoxDoc::text(", "),
-                    ));
-                }
-                doc.append(BoxDoc::text(")"))
+            Value::TupleIndex { tuple, index } => BoxDoc::text(format!("{tuple}.{index}")),
+            Value::Array(elements) => {
+                let elements = elements
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                BoxDoc::text(format!("[{elements}]"))
             }
-            WriterExpr::BoolLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            WriterExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            WriterExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            WriterExpr::Tuple { elements, .. } => BoxDoc::text("(")
-                .append(
-                    BoxDoc::line_()
-                        .append(BoxDoc::intersperse(
-                            elements.iter().map(|e| e.to_doc()),
-                            BoxDoc::text(",").append(BoxDoc::line()),
-                        ))
-                        .append(if elements.len() == 1 {
-                            BoxDoc::text(",")
-                        } else {
-                            BoxDoc::text(",").flat_alt(BoxDoc::nil())
-                        })
-                        .append(BoxDoc::line_())
-                        .nest(2)
-                        .group(),
-                )
-                .append(BoxDoc::text(")")),
-            WriterExpr::TupleIndex { tuple, index, .. } => tuple
-                .to_doc()
-                .append(BoxDoc::text("."))
-                .append(BoxDoc::text(index.to_string())),
-            WriterExpr::Array { elements, .. } => {
-                if elements.is_empty() {
-                    BoxDoc::text("[]")
+            Value::Tuple(elements) => {
+                let joined = elements
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if elements.len() == 1 {
+                    BoxDoc::text(format!("({joined},)"))
                 } else {
-                    BoxDoc::text("[")
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    elements.iter().map(|e| e.to_doc()),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("]"))
+                    BoxDoc::text(format!("({joined})"))
                 }
             }
-            WriterExpr::Record {
-                type_name, fields, ..
-            } => {
-                if fields.is_empty() {
-                    BoxDoc::text(type_name.as_str()).append(BoxDoc::text(" {}"))
-                } else {
-                    BoxDoc::text(type_name.as_str())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    fields.iter().map(|(key, value)| {
-                                        BoxDoc::text(key.as_str())
-                                            .append(BoxDoc::text(": "))
-                                            .append(value.to_doc())
-                                    }),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
+            Value::Record { fields } => {
+                let fields = fields
+                    .iter()
+                    .map(|(name, value)| format!("{}: {value}", name.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                BoxDoc::text(format!("{{{fields}}}"))
             }
-            WriterExpr::StringConcat { parts, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::intersperse(
-                    parts.iter().map(|part| part.to_doc()),
-                    BoxDoc::text(" + "),
-                ))
-                .append(BoxDoc::text(")")),
-            WriterExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" + "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::NumericSubtract { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" - "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::NumericMultiply { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" * "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::BoolNegation { operand, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::text("!"))
-                .append(operand.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::NumericNegation { operand, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::text("-"))
-                .append(operand.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::Equals { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" == "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::LessThan { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" < "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::LessThanOrEqual { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" <= "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::BoolLogicalAnd { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" && "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::BoolLogicalOr { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" || "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            WriterExpr::Enum {
-                type_name,
+            Value::Enum {
                 variant_name,
                 fields,
-                ..
             } => {
-                let base = BoxDoc::text(type_name.as_str())
-                    .append(BoxDoc::text("::"))
-                    .append(BoxDoc::text(variant_name.as_str()));
                 if fields.is_empty() {
-                    base
+                    BoxDoc::text(variant_name.as_str())
                 } else {
-                    base.append(BoxDoc::text(" {"))
-                        .append(BoxDoc::intersperse(
-                            fields.iter().map(|(name, expr)| {
-                                BoxDoc::text(name.as_str())
-                                    .append(BoxDoc::text(": "))
-                                    .append(expr.to_doc())
-                            }),
-                            BoxDoc::text(", "),
-                        ))
-                        .append(BoxDoc::text("}"))
+                    let fields = fields
+                        .iter()
+                        .map(|(name, value)| format!("{}: {value}", name.as_str()))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    BoxDoc::text(format!("{} {{{fields}}}", variant_name.as_str()))
                 }
             }
-            WriterExpr::Option { value, typ, .. } => {
-                // Extract inner type from Option[T] -> T
-                let inner_type = match typ {
-                    Type::Option(inner) => inner.to_doc(),
-                    _ => panic!("Option expression must have Option type, got {:?}", typ),
-                };
-                let type_prefix = BoxDoc::text("Option[")
-                    .append(inner_type)
-                    .append(BoxDoc::text("]::"));
-                match value {
-                    Some(inner) => type_prefix
-                        .append(BoxDoc::text("Some("))
-                        .append(inner.to_doc())
-                        .append(BoxDoc::text(")")),
-                    None => type_prefix.append(BoxDoc::text("None")),
-                }
+            Value::Option(Some(value)) => BoxDoc::text(format!("Some({value})")),
+            Value::Option(None) => BoxDoc::text("None"),
+            Value::StringConcat(parts) => {
+                let parts = parts
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                BoxDoc::text(format!("concat({parts})"))
             }
-            WriterExpr::Match { match_, .. } => {
-                fn arm_to_doc<'a>(pattern: BoxDoc<'a>, body: &'a WriterExpr) -> BoxDoc<'a> {
-                    pattern
-                        .append(BoxDoc::text(" => {"))
-                        .append(BoxDoc::line().append(body.to_doc()).nest(2))
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"))
-                        .group()
-                }
-
-                fn match_to_doc<'a>(subject: &'a WriterExpr, arms: Vec<BoxDoc<'a>>) -> BoxDoc<'a> {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(arms, BoxDoc::line()))
-                                .nest(2),
-                        )
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"))
-                        .group()
-                }
-
-                match match_ {
-                    Match::Enum { subject, arms } => {
-                        if arms.is_empty() {
-                            BoxDoc::text("match ")
-                                .append(subject.to_doc())
-                                .append(BoxDoc::text(" {}"))
-                        } else {
-                            let arm_docs = arms
-                                .iter()
-                                .map(|arm| {
-                                    let pattern_doc = match &arm.pattern {
-                                        EnumPattern::Variant {
-                                            type_name,
-                                            variant_name,
-                                        } => {
-                                            let base = BoxDoc::text(type_name.as_str())
-                                                .append(BoxDoc::text("::"))
-                                                .append(BoxDoc::text(variant_name.as_str()));
-                                            if arm.bindings.is_empty() {
-                                                base
-                                            } else {
-                                                let bindings_str: Vec<String> = arm
-                                                    .bindings
-                                                    .iter()
-                                                    .map(|(field, var)| {
-                                                        format!("{}: {}", field, var)
-                                                    })
-                                                    .collect();
-                                                base.append(BoxDoc::text(" {"))
-                                                    .append(BoxDoc::text(bindings_str.join(", ")))
-                                                    .append(BoxDoc::text("}"))
-                                            }
-                                        }
-                                    };
-                                    arm_to_doc(pattern_doc, &arm.body)
-                                })
-                                .collect();
-                            match_to_doc(subject, arm_docs)
-                        }
-                    }
-                    Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    } => match_to_doc(
-                        subject,
-                        vec![
-                            arm_to_doc(BoxDoc::text("true"), true_body),
-                            arm_to_doc(BoxDoc::text("false"), false_body),
-                        ],
-                    ),
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body,
-                    } => {
-                        let some_pattern_doc = match some_arm_binding {
-                            Some(name) => BoxDoc::text("Some(")
-                                .append(BoxDoc::text(name.to_string()))
-                                .append(BoxDoc::text(")")),
-                            None => BoxDoc::text("Some(_)"),
-                        };
-                        match_to_doc(
-                            subject,
-                            vec![
-                                arm_to_doc(some_pattern_doc, some_arm_body),
-                                arm_to_doc(BoxDoc::text("None"), none_arm_body),
-                            ],
-                        )
-                    }
-                }
+            Value::NumericAdd { left, right, .. } => BoxDoc::text(format!("{left} + {right}")),
+            Value::NumericSubtract { left, right, .. } => BoxDoc::text(format!("{left} - {right}")),
+            Value::NumericMultiply { left, right, .. } => BoxDoc::text(format!("{left} * {right}")),
+            Value::NumericNegation { operand, .. } => BoxDoc::text(format!("-{operand}")),
+            Value::BoolNegation(operand) => BoxDoc::text(format!("!{operand}")),
+            Value::Equals { left, right, .. } => BoxDoc::text(format!("{left} == {right}")),
+            Value::LessThan { left, right, .. } => BoxDoc::text(format!("{left} < {right}")),
+            Value::LessThanOrEqual { left, right, .. } => {
+                BoxDoc::text(format!("{left} <= {right}"))
             }
-            WriterExpr::Let {
-                var, value, body, ..
-            } => BoxDoc::text("let ")
-                .append(BoxDoc::text(var.to_string()))
-                .append(BoxDoc::text(" = "))
-                .append(value.to_doc())
-                .append(BoxDoc::text(" in {"))
-                .append(BoxDoc::line().append(body.to_doc()).nest(2))
+            Value::ArrayLength(array) => BoxDoc::text(format!("{array}.len()")),
+            Value::ArrayIsEmpty(array) => BoxDoc::text(format!("{array}.is_empty()")),
+            Value::StringIsEmpty(string) => BoxDoc::text(format!("{string}.is_empty()")),
+            Value::OptionIsSome(option) => BoxDoc::text(format!("{option}.is_some()")),
+            Value::OptionIsNone(option) => BoxDoc::text(format!("{option}.is_none()")),
+            Value::IntToString(value) => BoxDoc::text(format!("{value}.to_string()")),
+            Value::FloatToInt(value) => BoxDoc::text(format!("{value}.to_int()")),
+            Value::IntToFloat(value) => BoxDoc::text(format!("{value}.to_float()")),
+            Value::Call { function, args } => {
+                let args = args
+                    .iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                BoxDoc::text(format!("call {function}({args})"))
+            }
+            Value::HtmlLiteral(body) => BoxDoc::text("html {")
+                .append(stmts_to_doc(body).nest(2))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("}"))
-                .group(),
-            WriterExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
-            WriterExpr::ArrayIsEmpty { array, .. } => {
-                array.to_doc().append(BoxDoc::text(".is_empty()"))
-            }
-            WriterExpr::StringIsEmpty { string, .. } => {
-                string.to_doc().append(BoxDoc::text(".is_empty()"))
-            }
-            WriterExpr::OptionIsSome { option, .. } => {
-                option.to_doc().append(BoxDoc::text(".is_some()"))
-            }
-            WriterExpr::OptionIsNone { option, .. } => {
-                option.to_doc().append(BoxDoc::text(".is_none()"))
-            }
-            WriterExpr::IntToString { value, .. } => {
-                value.to_doc().append(BoxDoc::text(".to_string()"))
-            }
-            WriterExpr::FloatToInt { value, .. } => {
-                value.to_doc().append(BoxDoc::text(".to_int()"))
-            }
-            WriterExpr::IntToFloat { value, .. } => {
-                value.to_doc().append(BoxDoc::text(".to_float()"))
-            }
+                .append(BoxDoc::text("}")),
+            Value::Match(match_) => match_.to_doc(
+                |subject| BoxDoc::text(subject.to_string()),
+                |body| BoxDoc::line().append(body.to_doc()),
+            ),
         }
     }
 }
 
-impl<'a> WriterPageDeclaration {
-    pub fn to_doc(&'a self) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append("page ")
-            .append(self.name.as_str())
-            .append(BoxDoc::text("("))
-            .append(
-                BoxDoc::nil()
-                    // soft line break
-                    .append(BoxDoc::line_())
-                    .append(BoxDoc::intersperse(
-                        self.parameters.iter().map(|param| {
-                            // Both names: uses of the parameter in the body
-                            // print as the variable, the declaration is what
-                            // callers name.
-                            BoxDoc::text(param.name.to_string())
-                                .append(BoxDoc::text("@"))
-                                .append(BoxDoc::text(param.var.to_string()))
-                                .append(BoxDoc::text(": "))
-                                .append(param.typ.to_doc())
-                        }),
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    // trailing comma if laid out on multiple lines
-                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                    // soft line break
-                    .append(BoxDoc::line_())
-                    .nest(2)
-                    .group(),
-            )
-            .append(BoxDoc::text(") {"))
-            .append(if self.body.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.body.iter().map(|stmt| stmt.to_doc()),
-                        BoxDoc::line(),
-                    ))
-                    .append(BoxDoc::line())
-                    .nest(2)
-            })
+impl WriterFunctionDeclaration {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        let parameters = self
+            .parameters
+            .iter()
+            .map(|param| format!("{}@{}: {}", param.name.as_str(), param.var, param.typ))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let body = match &self.body {
+            WriterFunctionBody::Writes(statements) => stmts_to_doc(statements),
+            WriterFunctionBody::Returns(block) => BoxDoc::line().append(block.to_doc()),
+        };
+        BoxDoc::text(format!(
+            "fn {}({parameters}) -> {} {{",
+            self.function, self.return_type
+        ))
+        .append(body.nest(2))
+        .append(BoxDoc::line())
+        .append(BoxDoc::text("}"))
+    }
+}
+
+impl WriterPageDeclaration {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        let parameters = self
+            .parameters
+            .iter()
+            .map(|param| format!("{}@{}: {}", param.name.as_str(), param.var, param.typ))
+            .collect::<Vec<_>>()
+            .join(", ");
+        BoxDoc::text(format!("page {}({parameters}) {{", self.name.as_str()))
+            .append(stmts_to_doc(&self.body).nest(2))
+            .append(BoxDoc::line())
             .append(BoxDoc::text("}"))
     }
 }
 
-impl fmt::Display for WriterStatement {
+impl fmt::Display for WriterFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
-    }
-}
-
-impl fmt::Display for WriterExpr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
+        writeln!(f, "{}", self.to_doc().pretty(60))
     }
 }
 
@@ -1072,67 +496,11 @@ impl fmt::Display for WriterPageDeclaration {
 impl fmt::Display for WriterModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for function in &self.functions {
-            write!(f, "{}", function)?;
+            write!(f, "{function}")?;
         }
         for page in &self.pages {
-            write!(f, "{}", page)?;
+            write!(f, "{page}")?;
         }
         Ok(())
-    }
-}
-
-impl<'a> WriterFunctionDeclaration {
-    pub fn to_doc(&'a self) -> BoxDoc<'a> {
-        let params_doc = BoxDoc::nil()
-            .append(BoxDoc::line_())
-            .append(BoxDoc::intersperse(
-                self.parameters.iter().map(|param| {
-                    BoxDoc::text(param.name.to_string())
-                        .append(BoxDoc::text("@"))
-                        .append(BoxDoc::text(param.var.to_string()))
-                        .append(BoxDoc::text(": "))
-                        .append(param.typ.to_doc())
-                }),
-                BoxDoc::text(",").append(BoxDoc::line()),
-            ))
-            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-            .append(BoxDoc::line_())
-            .nest(2)
-            .group();
-
-        let head = BoxDoc::text("fn ")
-            .append(BoxDoc::text(self.function.to_string()))
-            .append(BoxDoc::text("("))
-            .append(params_doc)
-            .append(BoxDoc::text(") -> "))
-            .append(self.return_type.to_doc());
-
-        match &self.body {
-            WriterFunctionBody::Writes(statements) => head
-                .append(BoxDoc::text(" {"))
-                .append(if statements.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            statements.iter().map(|stmt| stmt.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("}")),
-            WriterFunctionBody::Returns(expr) => head
-                .append(BoxDoc::text(" {"))
-                .append(BoxDoc::line().append(expr.to_doc()).nest(2))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("}")),
-        }
-    }
-}
-
-impl fmt::Display for WriterFunctionDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.to_doc().pretty(60))
     }
 }

@@ -1,0 +1,1070 @@
+use std::collections::HashMap;
+
+use crate::document::CheapString;
+use crate::hop::typing::Type;
+use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
+use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
+use crate::ir::var_id::{VarId, VarIdCounter};
+
+/// A pass that evaluates the constant parts of a block at compile time.
+///
+/// - An op whose operands are constants becomes the constant it computes,
+///   with the backend semantics.
+/// - A field access on a record constructor reads the constructor's
+///   operand, and a tuple index on a tuple constructor likewise.
+/// - A match whose subject is a constructor runs the selected arm in place
+///   of the match, with the arm's binders reading the constructor's
+///   operands.
+/// - A string concat takes the parts of a nested concat as its own, drops
+///   empty constants and merges adjacent constants. An html concat takes
+///   the parts of a nested concat as its own. A concat of one part is that
+///   part.
+///
+/// A binding that turns out to be another name is dropped, and what read
+/// it reads that name. The bindings nothing reads any more are left for
+/// `eliminate_dead_bindings`.
+///
+/// One pass in binding order sees every operand's op before the op that
+/// reads it, so nothing is left for a second pass.
+pub fn perform_partial_evaluation(block: FlatBlock, var_ids: &mut VarIdCounter) -> FlatBlock {
+    let mut evaluator = Evaluator {
+        var_ids,
+        ops: HashMap::new(),
+        renames: HashMap::new(),
+    };
+    evaluator.evaluate_block(block)
+}
+
+/// What a binding folded to.
+enum Folded {
+    /// An op, bound to the name as before.
+    Op(FlatOp),
+    /// Another name, which the readers of the binding read instead.
+    Name(VarId),
+}
+
+struct Evaluator<'a> {
+    var_ids: &'a mut VarIdCounter,
+    /// The ops of the bindings kept so far, except those holding blocks,
+    /// for their readers to look at. Names are unique, so one map serves
+    /// every nested block.
+    ops: HashMap<VarId, FlatOp>,
+    /// The bindings that turned out to be another name, and the binders of
+    /// selected arms, which are the constructor's operands.
+    renames: HashMap<VarId, VarId>,
+}
+
+impl Evaluator<'_> {
+    fn resolve(&self, name: VarId) -> VarId {
+        self.renames.get(&name).copied().unwrap_or(name)
+    }
+
+    fn evaluate_block(&mut self, block: FlatBlock) -> FlatBlock {
+        let mut bindings = Vec::with_capacity(block.bindings.len());
+        for binding in block.bindings {
+            self.evaluate_binding(binding, &mut bindings);
+        }
+        FlatBlock {
+            bindings,
+            result: self.resolve(block.result),
+        }
+    }
+
+    /// Run the arm selected for the match `name`, its bindings joining the
+    /// block the match sits in, and let the readers of `name` read the
+    /// arm's result.
+    fn select_arm(&mut self, name: VarId, arm: FlatBlock, out: &mut Vec<FlatBinding>) {
+        for binding in arm.bindings {
+            self.evaluate_binding(binding, out);
+        }
+        let result = self.resolve(arm.result);
+        self.renames.insert(name, result);
+    }
+
+    fn evaluate_binding(&mut self, binding: FlatBinding, out: &mut Vec<FlatBinding>) {
+        let FlatBinding { name, typ, mut op } = binding;
+        op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
+        let op = match op {
+            FlatOp::Match(match_) => {
+                let match_ = match match_ {
+                    Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    } => match self.ops.get(&subject) {
+                        Some(FlatOp::BoolLiteral(true)) => {
+                            self.select_arm(name, *true_body, out);
+                            return;
+                        }
+                        Some(FlatOp::BoolLiteral(false)) => {
+                            self.select_arm(name, *false_body, out);
+                            return;
+                        }
+                        _ => Match::Bool {
+                            subject,
+                            true_body: Box::new(self.evaluate_block(*true_body)),
+                            false_body: Box::new(self.evaluate_block(*false_body)),
+                        },
+                    },
+                    Match::Option {
+                        subject,
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                    } => match self.ops.get(&subject) {
+                        Some(FlatOp::Option(Some(inner))) => {
+                            let inner = *inner;
+                            if let Some(binder) = some_arm_binding {
+                                self.renames.insert(binder.var, inner);
+                            }
+                            self.select_arm(name, *some_arm_body, out);
+                            return;
+                        }
+                        Some(FlatOp::Option(None)) => {
+                            self.select_arm(name, *none_arm_body, out);
+                            return;
+                        }
+                        _ => Match::Option {
+                            subject,
+                            some_arm_binding,
+                            some_arm_body: Box::new(self.evaluate_block(*some_arm_body)),
+                            none_arm_body: Box::new(self.evaluate_block(*none_arm_body)),
+                        },
+                    },
+                    Match::Enum { subject, arms } => match self.ops.get(&subject) {
+                        Some(FlatOp::Enum {
+                            variant_name,
+                            fields,
+                        }) => {
+                            let variant_name = variant_name.clone();
+                            let fields = fields.clone();
+                            let arm = arms
+                                .into_iter()
+                                .find(|arm| {
+                                    let EnumPattern::Variant {
+                                        variant_name: pattern,
+                                        ..
+                                    } = &arm.pattern;
+                                    *pattern == variant_name
+                                })
+                                .unwrap_or_else(|| {
+                                    panic!("no match arm for variant {}", variant_name.as_str())
+                                });
+                            for (field, binder) in arm.bindings {
+                                let value = fields
+                                    .iter()
+                                    .find(|(name, _)| *name == field)
+                                    .map(|(_, value)| *value)
+                                    .unwrap_or_else(|| {
+                                        panic!(
+                                            "variant {} has no field {}",
+                                            variant_name.as_str(),
+                                            field.as_str()
+                                        )
+                                    });
+                                self.renames.insert(binder.var, value);
+                            }
+                            self.select_arm(name, arm.body, out);
+                            return;
+                        }
+                        _ => Match::Enum {
+                            subject,
+                            arms: arms
+                                .into_iter()
+                                .map(|arm| EnumMatchArm {
+                                    pattern: arm.pattern,
+                                    bindings: arm.bindings,
+                                    body: self.evaluate_block(arm.body),
+                                })
+                                .collect(),
+                        },
+                    },
+                };
+                out.push(FlatBinding {
+                    name,
+                    typ,
+                    op: FlatOp::Match(match_),
+                });
+                return;
+            }
+
+            FlatOp::HtmlFor { var, source, body } => {
+                let body = self.evaluate_block(body);
+                out.push(FlatBinding {
+                    name,
+                    typ,
+                    op: FlatOp::HtmlFor { var, source, body },
+                });
+                return;
+            }
+
+            op => op,
+        };
+        match self.fold(op, out) {
+            Folded::Name(target) => {
+                self.renames.insert(name, target);
+            }
+            Folded::Op(op) => {
+                self.ops.insert(name, op.clone());
+                out.push(FlatBinding { name, typ, op });
+            }
+        }
+    }
+
+    /// Fold an op whose operands are resolved. Returns the constant or
+    /// name it computes when the operands allow it, and the op unchanged
+    /// otherwise.
+    fn fold(&mut self, op: FlatOp, out: &mut Vec<FlatBinding>) -> Folded {
+        match op {
+            FlatOp::FieldAccess { record, field } => match self.ops.get(&record) {
+                Some(FlatOp::Record { fields }) => Folded::Name(
+                    fields
+                        .iter()
+                        .find(|(name, _)| *name == field)
+                        .map(|(_, value)| *value)
+                        .unwrap_or_else(|| panic!("record has no field {}", field.as_str())),
+                ),
+                _ => Folded::Op(FlatOp::FieldAccess { record, field }),
+            },
+
+            FlatOp::TupleIndex { tuple, index } => match self.ops.get(&tuple) {
+                Some(FlatOp::Tuple(elements)) => {
+                    let len = elements.len();
+                    Folded::Name(*elements.get(index).unwrap_or_else(|| {
+                        panic!("index {index} is out of range for a tuple of {len}")
+                    }))
+                }
+                _ => Folded::Op(FlatOp::TupleIndex { tuple, index }),
+            },
+
+            FlatOp::NumericAdd {
+                left,
+                right,
+                operand_types,
+            } => match (self.ops.get(&left), self.ops.get(&right)) {
+                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
+                    Folded::Op(FlatOp::IntLiteral(l.wrapping_add(*r)))
+                }
+                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
+                    Folded::Op(FlatOp::FloatLiteral(l + r))
+                }
+                _ => Folded::Op(FlatOp::NumericAdd {
+                    left,
+                    right,
+                    operand_types,
+                }),
+            },
+
+            FlatOp::NumericSubtract {
+                left,
+                right,
+                operand_types,
+            } => match (self.ops.get(&left), self.ops.get(&right)) {
+                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
+                    Folded::Op(FlatOp::IntLiteral(l.wrapping_sub(*r)))
+                }
+                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
+                    Folded::Op(FlatOp::FloatLiteral(l - r))
+                }
+                _ => Folded::Op(FlatOp::NumericSubtract {
+                    left,
+                    right,
+                    operand_types,
+                }),
+            },
+
+            FlatOp::NumericMultiply {
+                left,
+                right,
+                operand_types,
+            } => match (self.ops.get(&left), self.ops.get(&right)) {
+                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
+                    Folded::Op(FlatOp::IntLiteral(l.wrapping_mul(*r)))
+                }
+                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
+                    Folded::Op(FlatOp::FloatLiteral(l * r))
+                }
+                _ => Folded::Op(FlatOp::NumericMultiply {
+                    left,
+                    right,
+                    operand_types,
+                }),
+            },
+
+            FlatOp::NumericNegation {
+                operand,
+                operand_type,
+            } => match self.ops.get(&operand) {
+                Some(FlatOp::IntLiteral(value)) => {
+                    Folded::Op(FlatOp::IntLiteral(value.wrapping_neg()))
+                }
+                Some(FlatOp::FloatLiteral(value)) => Folded::Op(FlatOp::FloatLiteral(-value)),
+                _ => Folded::Op(FlatOp::NumericNegation {
+                    operand,
+                    operand_type,
+                }),
+            },
+
+            FlatOp::BoolNegation(operand) => match self.ops.get(&operand) {
+                Some(FlatOp::BoolLiteral(value)) => Folded::Op(FlatOp::BoolLiteral(!value)),
+                _ => Folded::Op(FlatOp::BoolNegation(operand)),
+            },
+
+            FlatOp::Equals {
+                left,
+                right,
+                operand_types,
+            } => match (self.ops.get(&left), self.ops.get(&right)) {
+                (Some(FlatOp::BoolLiteral(l)), Some(FlatOp::BoolLiteral(r))) => {
+                    Folded::Op(FlatOp::BoolLiteral(l == r))
+                }
+                (Some(FlatOp::StringLiteral(l)), Some(FlatOp::StringLiteral(r))) => {
+                    Folded::Op(FlatOp::BoolLiteral(l.as_str() == r.as_str()))
+                }
+                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
+                    Folded::Op(FlatOp::BoolLiteral(l == r))
+                }
+                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
+                    Folded::Op(FlatOp::BoolLiteral(l == r))
+                }
+                _ => Folded::Op(FlatOp::Equals {
+                    left,
+                    right,
+                    operand_types,
+                }),
+            },
+
+            FlatOp::LessThan {
+                left,
+                right,
+                operand_types,
+            } => match (self.ops.get(&left), self.ops.get(&right)) {
+                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
+                    Folded::Op(FlatOp::BoolLiteral(l < r))
+                }
+                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
+                    Folded::Op(FlatOp::BoolLiteral(l < r))
+                }
+                _ => Folded::Op(FlatOp::LessThan {
+                    left,
+                    right,
+                    operand_types,
+                }),
+            },
+
+            FlatOp::LessThanOrEqual {
+                left,
+                right,
+                operand_types,
+            } => match (self.ops.get(&left), self.ops.get(&right)) {
+                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
+                    Folded::Op(FlatOp::BoolLiteral(l <= r))
+                }
+                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
+                    Folded::Op(FlatOp::BoolLiteral(l <= r))
+                }
+                _ => Folded::Op(FlatOp::LessThanOrEqual {
+                    left,
+                    right,
+                    operand_types,
+                }),
+            },
+
+            FlatOp::IntToString(value) => match self.ops.get(&value) {
+                Some(FlatOp::IntLiteral(value)) => {
+                    Folded::Op(FlatOp::StringLiteral(CheapString::new(value.to_string())))
+                }
+                _ => Folded::Op(FlatOp::IntToString(value)),
+            },
+
+            FlatOp::FloatToInt(value) => match self.ops.get(&value) {
+                Some(FlatOp::FloatLiteral(value)) => Folded::Op(FlatOp::IntLiteral(*value as i32)),
+                _ => Folded::Op(FlatOp::FloatToInt(value)),
+            },
+
+            FlatOp::IntToFloat(value) => match self.ops.get(&value) {
+                Some(FlatOp::IntLiteral(value)) => Folded::Op(FlatOp::FloatLiteral(*value as f64)),
+                _ => Folded::Op(FlatOp::IntToFloat(value)),
+            },
+
+            FlatOp::StringIsEmpty(string) => match self.ops.get(&string) {
+                Some(FlatOp::StringLiteral(value)) => {
+                    Folded::Op(FlatOp::BoolLiteral(value.as_str().is_empty()))
+                }
+                _ => Folded::Op(FlatOp::StringIsEmpty(string)),
+            },
+
+            FlatOp::ArrayIsEmpty(array) => match self.ops.get(&array) {
+                Some(FlatOp::Array(elements)) => {
+                    Folded::Op(FlatOp::BoolLiteral(elements.is_empty()))
+                }
+                _ => Folded::Op(FlatOp::ArrayIsEmpty(array)),
+            },
+
+            FlatOp::ArrayLength(array) => match self.ops.get(&array) {
+                Some(FlatOp::Array(elements)) => {
+                    Folded::Op(FlatOp::IntLiteral(elements.len() as i32))
+                }
+                _ => Folded::Op(FlatOp::ArrayLength(array)),
+            },
+
+            FlatOp::OptionIsSome(option) => match self.ops.get(&option) {
+                Some(FlatOp::Option(value)) => Folded::Op(FlatOp::BoolLiteral(value.is_some())),
+                _ => Folded::Op(FlatOp::OptionIsSome(option)),
+            },
+
+            FlatOp::OptionIsNone(option) => match self.ops.get(&option) {
+                Some(FlatOp::Option(value)) => Folded::Op(FlatOp::BoolLiteral(value.is_none())),
+                _ => Folded::Op(FlatOp::OptionIsNone(option)),
+            },
+
+            FlatOp::StringConcat(parts) => {
+                let mut flattened = Vec::with_capacity(parts.len());
+                for part in parts {
+                    match self.ops.get(&part) {
+                        Some(FlatOp::StringConcat(subparts)) => {
+                            flattened.extend(subparts.iter().copied());
+                        }
+                        _ => flattened.push(part),
+                    }
+                }
+                let mut merged: Vec<VarId> = Vec::with_capacity(flattened.len());
+                for part in flattened {
+                    let literal = match self.ops.get(&part) {
+                        Some(FlatOp::StringLiteral(value)) => Some(value.clone()),
+                        _ => None,
+                    };
+                    let Some(value) = literal else {
+                        merged.push(part);
+                        continue;
+                    };
+                    if value.as_str().is_empty() {
+                        continue;
+                    }
+                    let previous = merged.last().and_then(|last| match self.ops.get(last) {
+                        Some(FlatOp::StringLiteral(value)) => Some(value.clone()),
+                        _ => None,
+                    });
+                    match previous {
+                        // Two constants in a row become one new constant,
+                        // bound just before the concat.
+                        Some(previous) => {
+                            let mut combined = String::with_capacity(
+                                previous.as_str().len() + value.as_str().len(),
+                            );
+                            combined.push_str(previous.as_str());
+                            combined.push_str(value.as_str());
+                            let name = self.var_ids.next();
+                            let op = FlatOp::StringLiteral(CheapString::new(combined));
+                            self.ops.insert(name, op.clone());
+                            out.push(FlatBinding {
+                                name,
+                                typ: Type::String,
+                                op,
+                            });
+                            *merged.last_mut().expect("a previous part exists") = name;
+                        }
+                        None => merged.push(part),
+                    }
+                }
+                match merged.len() {
+                    0 => Folded::Op(FlatOp::StringLiteral(CheapString::new(String::new()))),
+                    1 => Folded::Name(merged[0]),
+                    _ => Folded::Op(FlatOp::StringConcat(merged)),
+                }
+            }
+
+            FlatOp::HtmlConcat(parts) => {
+                let mut flattened = Vec::with_capacity(parts.len());
+                for part in parts {
+                    match self.ops.get(&part) {
+                        Some(FlatOp::HtmlConcat(subparts)) => {
+                            flattened.extend(subparts.iter().copied());
+                        }
+                        _ => flattened.push(part),
+                    }
+                }
+                if flattened.len() == 1 {
+                    Folded::Name(flattened[0])
+                } else {
+                    Folded::Op(FlatOp::HtmlConcat(flattened))
+                }
+            }
+
+            op => Folded::Op(op),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule, FlatPageDeclaration};
+    use crate::ir::pure_module::PureModule;
+    use crate::ir::pure_module_builder::PureModuleBuilder;
+    use crate::ir::pure_module_generator::random_module;
+    use crate::ir::pure_to_flat::pure_to_flat;
+    use crate::ir::runtime::EvalError;
+    use crate::ir::runtime::flat_evaluator::evaluate_page;
+    use crate::ir::runtime::random::random_value;
+    use crate::ir::runtime::value::Value;
+    use crate::symbols::attribute_name::AttributeName;
+    use crate::symbols::type_name::TypeName;
+    use expect_test::{Expect, expect};
+    use rand::{SeedableRng, rngs::SmallRng};
+
+    fn run(module: FlatModule) -> FlatModule {
+        let mut var_ids = module.var_ids;
+        let pages = module
+            .pages
+            .into_iter()
+            .map(|page| FlatPageDeclaration {
+                name: page.name,
+                parameters: page.parameters,
+                head: perform_partial_evaluation(page.head, &mut var_ids),
+                body: perform_partial_evaluation(page.body, &mut var_ids),
+            })
+            .collect();
+        let functions = module
+            .functions
+            .into_iter()
+            .map(|function| FlatFunctionDeclaration {
+                function: function.function,
+                parameters: function.parameters,
+                return_type: function.return_type,
+                body: perform_partial_evaluation(function.body, &mut var_ids),
+            })
+            .collect();
+        FlatModule {
+            pages,
+            functions,
+            var_ids,
+        }
+    }
+
+    #[test]
+    fn fuzz_random_modules_evaluate_identically_after_partial_evaluation() {
+        arbtest::arbtest(|u| {
+            let (module, registry) = random_module(u);
+            let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
+            let module = pure_to_flat(module);
+
+            let page_args: Vec<(TypeName, HashMap<AttributeName, Value>)> = module
+                .pages
+                .iter()
+                .map(|page| {
+                    let args = page
+                        .parameters
+                        .iter()
+                        .map(|p| {
+                            (
+                                p.name().clone(),
+                                random_value(&mut rng, &p.typ, None, &registry),
+                            )
+                        })
+                        .collect();
+                    (page.name.clone(), args)
+                })
+                .collect();
+
+            let before_module = module.to_string();
+            let before: Vec<Result<String, EvalError>> = page_args
+                .iter()
+                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone(), None))
+                .collect();
+
+            let module = run(module);
+
+            // The pass drops no computation but a selected arm's siblings,
+            // which never ran, so the output and whether the call depth
+            // limit is hit both stay the same.
+            for ((page_name, args), before) in page_args.iter().zip(before) {
+                let after = evaluate_page(&module, page_name, args.clone(), None);
+                match (before, after) {
+                    (Ok(before), Ok(after)) => assert_eq!(
+                        before, after,
+                        "page {page_name}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    ),
+                    (
+                        Err(EvalError::RecursionLimit { .. }),
+                        Err(EvalError::RecursionLimit { .. }),
+                    ) => {}
+                    (before, after) => panic!(
+                        "page {page_name}: before {before:?}, after {after:?}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    ),
+                }
+            }
+            Ok(())
+        });
+    }
+
+    fn check(module: PureModule, expected: Expect) {
+        let module = pure_to_flat(module);
+        let before = module.to_string();
+        let after = run(module).to_string();
+        expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
+    }
+
+    #[test]
+    fn should_fold_arithmetic_with_wrapping() {
+        check(
+            PureModuleBuilder::new()
+                .function("wrap", [], "Int", |t| t.add(t.int(i32::MAX), t.int(1)))
+                .build(),
+            expect![[r#"
+                -- before --
+                fn wrap@f0() -> Int {
+                  let v0: Int = 2147483647
+                  let v1: Int = 1
+                  let v2: Int = v0 + v1
+                  v2
+                }
+
+                -- after --
+                fn wrap@f0() -> Int {
+                  let v0: Int = 2147483647
+                  let v1: Int = 1
+                  let v2: Int = -2147483648
+                  v2
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_select_the_arm_of_a_match_on_a_negated_constant() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    t.bool_match_expr(t.not(t.bool(true)), t.text("yes"), t.text("no"))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test() {
+                  let v1: Bool = true
+                  let v2: Bool = !v1
+                  let v5: Html = match v2 {
+                    true => {
+                      let v3: Html = text("yes")
+                      v3
+                    }
+                    false => {
+                      let v4: Html = text("no")
+                      v4
+                    }
+                  }
+                  v5
+                }
+
+                -- after --
+                page Test() {
+                  let v1: Bool = true
+                  let v2: Bool = false
+                  let v4: Html = text("no")
+                  v4
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_keep_a_match_on_a_dynamic_subject() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("flag", "Bool")], |t| {
+                    t.bool_match_expr(t.var("flag"), t.text("yes"), t.text("no"))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test(flag@v0: Bool) {
+                  let v4: Html = match v0 {
+                    true => {
+                      let v2: Html = text("yes")
+                      v2
+                    }
+                    false => {
+                      let v3: Html = text("no")
+                      v3
+                    }
+                  }
+                  v4
+                }
+
+                -- after --
+                page Test(flag@v0: Bool) {
+                  let v4: Html = match v0 {
+                    true => {
+                      let v2: Html = text("yes")
+                      v2
+                    }
+                    false => {
+                      let v3: Html = text("no")
+                      v3
+                    }
+                  }
+                  v4
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_read_a_field_of_a_record_constructor() {
+        check(
+            PureModuleBuilder::new()
+                .record("Point", [("x", "Int"), ("y", "Int")])
+                .page("Test", [("n", "Int")], |t| {
+                    t.escape(t.int_to_string(t.field_access(
+                        t.record("Point", vec![("x", t.var("n")), ("y", t.int(2))]),
+                        "x",
+                    )))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test(n@v0: Int) {
+                  let v2: Int = 2
+                  let v3: Point = {x: v0, y: v2}
+                  let v4: Int = v3.x
+                  let v5: String = v4.to_string()
+                  let v6: Html = escape(v5)
+                  v6
+                }
+
+                -- after --
+                page Test(n@v0: Int) {
+                  let v2: Int = 2
+                  let v3: Point = {x: v0, y: v2}
+                  let v5: String = v0.to_string()
+                  let v6: Html = escape(v5)
+                  v6
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_read_an_element_of_a_tuple_constructor() {
+        check(
+            PureModuleBuilder::new()
+                .function("second", [], "String", |t| {
+                    t.tuple_index(t.tuple(vec![t.int(1), t.str("two")]), 1)
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                fn second@f0() -> String {
+                  let v0: Int = 1
+                  let v1: String = "two"
+                  let v2: (Int, String) = (v0, v1)
+                  let v3: String = v2.1
+                  v3
+                }
+
+                -- after --
+                fn second@f0() -> String {
+                  let v0: Int = 1
+                  let v1: String = "two"
+                  let v2: (Int, String) = (v0, v1)
+                  v1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_flatten_a_concat_and_merge_its_adjacent_constants() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("dyn", "String")], |t| {
+                    t.escape(t.string_concat(vec![
+                        t.string_concat(vec![t.var("dyn"), t.str("a")]),
+                        t.string_concat(vec![t.str("b"), t.var("dyn")]),
+                    ]))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test(dyn@v0: String) {
+                  let v2: String = "a"
+                  let v3: String = concat(v0, v2)
+                  let v4: String = "b"
+                  let v5: String = concat(v4, v0)
+                  let v6: String = concat(v3, v5)
+                  let v7: Html = escape(v6)
+                  v7
+                }
+
+                -- after --
+                page Test(dyn@v0: String) {
+                  let v2: String = "a"
+                  let v3: String = concat(v0, v2)
+                  let v4: String = "b"
+                  let v5: String = concat(v4, v0)
+                  let v8: String = "ab"
+                  let v6: String = concat(v0, v8, v0)
+                  let v7: Html = escape(v6)
+                  v7
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_drop_empty_strings_and_read_the_one_part_left() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("dyn", "String")], |t| {
+                    t.escape(t.string_concat(vec![t.str(""), t.var("dyn"), t.str("")]))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test(dyn@v0: String) {
+                  let v2: String = ""
+                  let v3: String = ""
+                  let v4: String = concat(v2, v0, v3)
+                  let v5: Html = escape(v4)
+                  v5
+                }
+
+                -- after --
+                page Test(dyn@v0: String) {
+                  let v2: String = ""
+                  let v3: String = ""
+                  let v5: Html = escape(v0)
+                  v5
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_a_concat_of_constants_to_one_constant() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    t.escape(t.string_concat(vec![t.str("Hello, "), t.str("World")]))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test() {
+                  let v1: String = "Hello, "
+                  let v2: String = "World"
+                  let v3: String = concat(v1, v2)
+                  let v4: Html = escape(v3)
+                  v4
+                }
+
+                -- after --
+                page Test() {
+                  let v1: String = "Hello, "
+                  let v2: String = "World"
+                  let v5: String = "Hello, World"
+                  let v4: Html = escape(v5)
+                  v4
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_flatten_a_nested_html_concat() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    t.concat(vec![
+                        t.text("a"),
+                        t.concat(vec![t.text("b"), t.text("c")]),
+                        t.concat(vec![t.text("d")]),
+                    ])
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test() {
+                  let v1: Html = text("a")
+                  let v2: Html = text("b")
+                  let v3: Html = text("c")
+                  let v4: Html = concat(v2, v3)
+                  let v5: Html = text("d")
+                  let v6: Html = concat(v5)
+                  let v7: Html = concat(v1, v4, v6)
+                  v7
+                }
+
+                -- after --
+                page Test() {
+                  let v1: Html = text("a")
+                  let v2: Html = text("b")
+                  let v3: Html = text("c")
+                  let v4: Html = concat(v2, v3)
+                  let v5: Html = text("d")
+                  let v7: Html = concat(v1, v2, v3, v5)
+                  v7
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_select_an_enum_arm_and_bind_its_fields_to_the_constructor_operands() {
+        check(
+            PureModuleBuilder::new()
+                .enum_(
+                    "Shape",
+                    [("Dot", vec![]), ("Circle", vec![("radius", "Int")])],
+                )
+                .function("area", [("n", "Int")], "Int", |t| {
+                    t.enum_match_expr(
+                        t.enum_variant_with_fields("Shape", "Circle", vec![("radius", t.var("n"))]),
+                        |arms| {
+                            arms.arm("Dot", |t| t.int(0));
+                            arms.arm_bound("Circle", [("radius", "r")], |t| {
+                                t.mul(t.var("r"), t.var("r"))
+                            });
+                        },
+                    )
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                fn area@f0(n@v0: Int) -> Int {
+                  let v2: Shape = Circle {radius: v0}
+                  let v5: Int = match v2 {
+                    Shape::Dot => {
+                      let v3: Int = 0
+                      v3
+                    }
+                    Shape::Circle {radius@v1: Int} => {
+                      let v4: Int = v1 * v1
+                      v4
+                    }
+                  }
+                  v5
+                }
+
+                -- after --
+                fn area@f0(n@v0: Int) -> Int {
+                  let v2: Shape = Circle {radius: v0}
+                  let v4: Int = v0 * v0
+                  v4
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_select_the_some_arm_and_bind_its_value() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    t.option_match_expr_with_binding(
+                        t.some(t.str("x")),
+                        "v",
+                        |t| t.escape(t.var("v")),
+                        t.text("none"),
+                    )
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test() {
+                  let v2: String = "x"
+                  let v3: Option[String] = Some(v2)
+                  let v6: Html = match v3 {
+                    Some(v0: String) => {
+                      let v4: Html = escape(v0)
+                      v4
+                    }
+                    None => {
+                      let v5: Html = text("none")
+                      v5
+                    }
+                  }
+                  v6
+                }
+
+                -- after --
+                page Test() {
+                  let v2: String = "x"
+                  let v3: Option[String] = Some(v2)
+                  let v4: Html = escape(v2)
+                  v4
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_saturate_a_float_to_int_conversion() {
+        check(
+            PureModuleBuilder::new()
+                .function("big", [], "Int", |t| t.float_to_int(t.float(1e10)))
+                .build(),
+            expect![[r#"
+                -- before --
+                fn big@f0() -> Int {
+                  let v0: Float = 10000000000
+                  let v1: Int = v0.to_int()
+                  v1
+                }
+
+                -- after --
+                fn big@f0() -> Int {
+                  let v0: Float = 10000000000
+                  let v1: Int = 2147483647
+                  v1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_select_an_arm_through_a_folded_equality() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    t.bool_match_expr(
+                        t.eq(t.str("a"), t.str("a")),
+                        t.text("same"),
+                        t.text("other"),
+                    )
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                page Test() {
+                  let v1: String = "a"
+                  let v2: String = "a"
+                  let v3: Bool = v1 == v2
+                  let v6: Html = match v3 {
+                    true => {
+                      let v4: Html = text("same")
+                      v4
+                    }
+                    false => {
+                      let v5: Html = text("other")
+                      v5
+                    }
+                  }
+                  v6
+                }
+
+                -- after --
+                page Test() {
+                  let v1: String = "a"
+                  let v2: String = "a"
+                  let v3: Bool = true
+                  let v4: Html = text("same")
+                  v4
+                }
+            "#]],
+        );
+    }
+}

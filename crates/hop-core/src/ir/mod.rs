@@ -1,30 +1,30 @@
-mod compiler;
 mod document_shell;
-mod expr_id;
+pub mod flat_module;
+mod flat_optimizer;
+mod flat_to_writer;
+mod flat_transform;
 mod function_id;
+mod ir_binder;
 mod ir_function;
 mod ir_match;
-mod ir_var;
-mod lower_pure;
-mod optimizer;
+pub mod ir_parameter;
 pub mod pure_module;
-mod transform;
+mod pure_to_flat;
+mod typed_to_pure;
 mod var_id;
-mod writer_module;
+pub mod writer_module;
 
 #[cfg(test)]
-#[cfg(test)]
 pub mod pure_module_builder;
-#[cfg(test)]
 #[cfg(test)]
 pub mod pure_module_generator;
 
 pub mod runtime;
 pub mod transpile;
 
-pub use compiler::compile;
 pub use document_shell::{DocumentShell, TailwindInjection};
-pub use lower_pure::lower_pure;
-pub use optimizer::optimize;
+pub use flat_optimizer::optimize_flat;
+pub use flat_to_writer::flat_to_writer;
+pub use pure_to_flat::pure_to_flat;
 pub use transpile::{RustTranspiler, Transpiler, TsTranspiler};
-pub use writer_module::WriterModule;
+pub use typed_to_pure::typed_to_pure;

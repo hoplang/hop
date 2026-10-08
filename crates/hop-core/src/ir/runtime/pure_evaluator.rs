@@ -13,11 +13,7 @@ use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
 
-/// The most function frames that may be active at once. A call that would
-/// open one more fails with a recursion limit error, so a function that
-/// never stops calling itself reports an error instead of overflowing the
-/// stack.
-const MAX_CALL_DEPTH: usize = 12;
+use crate::ir::runtime::flat_evaluator::MAX_CALL_DEPTH;
 
 pub fn evaluate_page(
     module: &PureModule,
@@ -37,7 +33,7 @@ pub fn evaluate_page(
 
     for param in &page.parameters {
         if let Some(value) = args.remove(param.name()) {
-            env.insert(param.var.id, value);
+            env.insert(param.var, value);
         } else {
             return Err(EvalError::MissingParameter {
                 page: page.name.clone(),
@@ -66,16 +62,13 @@ pub fn evaluate_page(
     Ok(html)
 }
 
-/// Evaluate a function on its arguments, given by parameter name, with
-/// `depth` function frames already active. A call from outside any
-/// function has depth zero.
-///
-/// Every parameter must have an argument and every argument must name a
-/// parameter.
+/// Evaluate a function on its arguments, one for each parameter in the
+/// order they are declared, with `depth` function frames already active. A
+/// call from outside any function has depth zero.
 pub fn evaluate_function(
     function_decls: &[PureFunctionDeclaration],
     function: &IrFunction,
-    mut args: HashMap<AttributeName, Value>,
+    args: Vec<Value>,
     depth: usize,
 ) -> Result<Value, EvalError> {
     if depth >= MAX_CALL_DEPTH {
@@ -90,23 +83,16 @@ pub fn evaluate_function(
         .ok_or_else(|| EvalError::FunctionNotFound {
             function: function.clone(),
         })?;
-    let mut env = VariableEnv::new();
-    for param in &decl.parameters {
-        match args.remove(param.name()) {
-            Some(value) => env.insert(param.var.id, value),
-            None => {
-                return Err(EvalError::MissingFunctionParameter {
-                    function: function.clone(),
-                    param: param.name().clone(),
-                });
-            }
-        }
-    }
-    if let Some(name) = args.into_keys().next() {
-        return Err(EvalError::UnknownArgument {
+    if args.len() != decl.parameters.len() {
+        return Err(EvalError::ArgumentCount {
             function: function.clone(),
-            name,
+            expected: decl.parameters.len(),
+            found: args.len(),
         });
+    }
+    let mut env = VariableEnv::new();
+    for (param, value) in decl.parameters.iter().zip(args) {
+        env.insert(param.var, value);
     }
     evaluate_expr(&decl.body, &mut env, function_decls, depth + 1)
 }
@@ -122,9 +108,9 @@ fn evaluate_expr(
             var, value, body, ..
         } => {
             let value = evaluate_expr(value, env, function_decls, depth)?;
-            env.insert(var.id, value);
+            env.insert(var.var, value);
             let result = evaluate_expr(body, env, function_decls, depth);
-            env.remove(&var.id);
+            env.remove(&var.var);
             result
         }
 
@@ -149,7 +135,7 @@ fn evaluate_expr(
                 "Multiple matching arms found for variant '{}'",
                 variant_name
             );
-            for (field_name, var) in &arm.bindings {
+            for (field_name, binder) in &arm.bindings {
                 let (_, field) = fields
                     .iter()
                     .find(|(name, _)| name == field_name)
@@ -159,11 +145,11 @@ fn evaluate_expr(
                             field_name, variant_name
                         )
                     });
-                env.insert(var.id, field.clone());
+                env.insert(binder.var, field.clone());
             }
             let result = evaluate_expr(&arm.body, env, function_decls, depth);
-            for (_, var) in &arm.bindings {
-                env.remove(&var.id);
+            for (_, binder) in &arm.bindings {
+                env.remove(&binder.var);
             }
             result
         }
@@ -195,19 +181,19 @@ fn evaluate_expr(
             ..
         } => match evaluate_expr(subject, env, function_decls, depth)?.unwrap_option() {
             Some(inner) => {
-                if let Some(var) = some_arm_binding {
-                    env.insert(var.id, *inner);
+                if let Some(binder) = some_arm_binding {
+                    env.insert(binder.var, *inner);
                 }
                 let result = evaluate_expr(some_arm_body, env, function_decls, depth);
-                if let Some(var) = some_arm_binding {
-                    env.remove(&var.id);
+                if let Some(binder) = some_arm_binding {
+                    env.remove(&binder.var);
                 }
                 result
             }
             None => evaluate_expr(none_arm_body, env, function_decls, depth),
         },
 
-        PureExpr::VariableReference { value, .. } => Ok(env.get(&value.id).clone()),
+        PureExpr::VariableReference { value, .. } => Ok(env.get(value).clone()),
 
         PureExpr::FieldAccess { record, field, .. } => {
             let record = evaluate_expr(record, env, function_decls, depth)?.unwrap_record();
@@ -291,27 +277,21 @@ fn evaluate_expr(
             };
             let mut nodes = Vec::new();
             for item in items {
-                if let Some(var) = var {
-                    env.insert(var.id, item);
+                if let Some(binder) = var {
+                    env.insert(binder.var, item);
                 }
                 nodes.extend(evaluate_expr(body, env, function_decls, depth)?.unwrap_html());
-                if let Some(var) = var {
-                    env.remove(&var.id);
+                if let Some(binder) = var {
+                    env.remove(&binder.var);
                 }
             }
             Ok(Value::Html(nodes))
         }
 
         PureExpr::Call { function, args, .. } => {
-            let mut values = HashMap::new();
+            let mut values = Vec::with_capacity(args.len());
             for arg in args {
-                let value = evaluate_expr(&arg.expr, env, function_decls, depth)?;
-                assert!(
-                    values.insert(arg.name.clone(), value).is_none(),
-                    "Duplicate argument '{}' for function '{}'",
-                    arg.name,
-                    function
-                );
+                values.push(evaluate_expr(arg, env, function_decls, depth)?);
             }
             evaluate_function(function_decls, function, values, depth)
         }
@@ -818,7 +798,9 @@ mod tests {
                         children: concat(text("Visible")),
                       )
                     }
-                    false => { concat() }
+                    false => {
+                      concat()
+                    }
                   }
                 }
 
@@ -852,7 +834,9 @@ mod tests {
                         children: concat(text("Hidden")),
                       )
                     }
-                    false => { concat() }
+                    false => {
+                      concat()
+                    }
                   }
                 }
 
@@ -886,7 +870,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(items@v0: Array[String]) {
-                  for v1 in v0 {
+                  for v1: String in v0 {
                     concat(
                       html(
                         tag: "li",
@@ -914,26 +898,23 @@ mod tests {
                 t.add(t.var("n"), t.var("n"))
             })
             .build();
-        let args = HashMap::from([(AttributeName::parse("n").unwrap(), Value::Int(21))]);
+        let args = vec![Value::Int(21)];
         let result = evaluate_function(&module.functions, &module.functions[0].function, args, 0);
         assert_eq!(result.unwrap(), Value::Int(42));
     }
 
     #[test]
-    fn should_error_when_function_argument_is_unknown() {
+    fn should_error_when_function_is_given_too_many_arguments() {
         let module = PureModuleBuilder::new()
             .function("Double", [("n", "Int")], "Int", |t| {
                 t.add(t.var("n"), t.var("n"))
             })
             .build();
-        let args = HashMap::from([
-            (AttributeName::parse("n").unwrap(), Value::Int(21)),
-            (AttributeName::parse("m").unwrap(), Value::Int(1)),
-        ]);
+        let args = vec![Value::Int(21), Value::Int(1)];
         let result = evaluate_function(&module.functions, &module.functions[0].function, args, 0);
         assert_eq!(
             result.unwrap_err().to_string(),
-            "Unknown argument 'm' for function 'Double@f0'"
+            "Function 'Double@f0' takes 1 arguments but was given 2"
         );
     }
 
@@ -960,12 +941,16 @@ mod tests {
                 -- before --
                 fn Sum@f0(n@v0: Int) -> Int {
                   match (v0 <= 0) {
-                    true => { 0 }
-                    false => { (v0 + call Sum@f0(n = (v0 - 1))) }
+                    true => {
+                      0
+                    }
+                    false => {
+                      (v0 + call Sum@f0((v0 - 1)))
+                    }
                   }
                 }
                 page Test() {
-                  escape(call Sum@f0(n = 10).to_string())
+                  escape(call Sum@f0(10).to_string())
                 }
 
                 -- after --

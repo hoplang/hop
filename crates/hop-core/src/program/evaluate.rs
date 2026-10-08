@@ -6,7 +6,7 @@ use crate::document::CheapString;
 use crate::ir;
 use crate::ir::runtime::EvalError;
 use crate::ir::runtime::random::random_value;
-use crate::ir::{DocumentShell, TailwindInjection};
+use crate::ir::{DocumentShell, TailwindInjection, optimize_flat, pure_to_flat};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
@@ -40,19 +40,24 @@ impl Program {
             return Err(EvaluatePageError::TypeErrors);
         }
 
-        // Use orchestrate_pure to handle inlining and compilation
-        // Pass the page filter to only compile the requested page
+        // The page filter compiles only the requested page and what it
+        // reaches.
         let pure_module = orchestrate_pure(
             self.typed_modules(),
             OrchestrateOptions {
-                skip_optimization,
                 page_filter: Some((document_id.clone(), page_name.clone())),
                 asset_path_rewriter,
             },
         );
+        let flat_module = pure_to_flat(pure_module);
+        let flat_module = if skip_optimization {
+            flat_module
+        } else {
+            optimize_flat(flat_module)
+        };
         let shell = DocumentShell::new(generated_tailwind_css.map(TailwindInjection::Inline), None);
         let rendered =
-            ir::runtime::evaluator::evaluate_page(&pure_module, page_name, args, Some(&shell));
+            ir::runtime::flat_evaluator::evaluate_page(&flat_module, page_name, args, Some(&shell));
 
         rendered.map_err(|e| match e {
             EvalError::PageNotFound { page } => EvaluatePageError::PageNotFound {
@@ -67,9 +72,7 @@ impl Program {
                 function: function.name.as_str().to_string(),
                 limit,
             },
-            EvalError::FunctionNotFound { .. }
-            | EvalError::MissingFunctionParameter { .. }
-            | EvalError::UnknownArgument { .. } => {
+            EvalError::FunctionNotFound { .. } | EvalError::ArgumentCount { .. } => {
                 unreachable!("a call in a typechecked module matches its declaration")
             }
         })

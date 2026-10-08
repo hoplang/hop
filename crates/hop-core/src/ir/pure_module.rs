@@ -3,17 +3,17 @@ use std::fmt;
 use crate::document::CheapString;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
 use crate::html::HtmlElementKind;
-use crate::ir::expr_id::{ExprId, ExprIdCounter};
+use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
-use crate::ir::ir_var::IrVar;
+use crate::ir::ir_match::Match;
+use crate::ir::var_id::VarId;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use pretty::BoxDoc;
 
-use super::writer_module::WriterParameter;
+use super::ir_parameter::IrParameter;
 
 /// A Pure module.
 ///
@@ -22,21 +22,20 @@ use super::writer_module::WriterParameter;
 /// All IDs in the module are unique across the whole module. Each binder has
 /// a unique VarId, so two binders are never the same variable: shadowing is
 /// impossible and substitution is capture-free.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PureModule {
     pub pages: Vec<PurePageDeclaration>,
     pub functions: Vec<PureFunctionDeclaration>,
-    pub expr_ids: ExprIdCounter,
     pub var_ids: VarIdCounter,
 }
 
 /// A page declaration in Pure.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PurePageDeclaration {
     /// Page name
     pub name: TypeName,
     /// Parameter names with their types
-    pub parameters: Vec<WriterParameter>,
+    pub parameters: Vec<IrParameter>,
     /// PureIR expression for the page head. Must be of type `Html`.
     pub head: PureExpr,
     /// PureIR expression for the page body. Must be of type `Html`.
@@ -44,12 +43,12 @@ pub struct PurePageDeclaration {
 }
 
 /// A function declaration in Pure.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PureFunctionDeclaration {
     /// The function's identity, carrying its source name.
     pub function: IrFunction,
     /// Parameter names with their types
-    pub parameters: Vec<WriterParameter>,
+    pub parameters: Vec<IrParameter>,
     /// The function's return type. The body must be of this type.
     pub return_type: Type,
     /// PureIR expression for the function body. Must be of type `return_type`.
@@ -57,7 +56,7 @@ pub struct PureFunctionDeclaration {
 }
 
 /// The source of iteration in a HtmlFor.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum PureForSource {
     /// Iterate over elements of an array.
     Array(PureExpr),
@@ -65,15 +64,8 @@ pub enum PureForSource {
     RangeInclusive { start: PureExpr, end: PureExpr },
 }
 
-/// An argument passed to a Call, by the name of the parameter it supplies.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PureArgument {
-    pub name: AttributeName,
-    pub expr: PureExpr,
-}
-
 /// An attribute of a HtmlElement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum PureAttribute {
     /// An attribute with a value, which renders escaped between quotes.
     ///
@@ -93,15 +85,17 @@ pub enum PureAttribute {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum PureExpr {
     /// A Let expression.
+    ///
+    /// The binder's type must match the value's type, and `typ` is the
+    /// type of the body.
     Let {
-        var: IrVar,
+        var: IrBinder,
         value: Box<PureExpr>,
         body: Box<PureExpr>,
         typ: Type,
-        id: ExprId,
     },
 
     /// A Match expression over an Enum, Bool, or Option.
@@ -110,7 +104,6 @@ pub enum PureExpr {
     Match {
         match_: Match<PureExpr, PureExpr>,
         typ: Type,
-        id: ExprId,
     },
 
     /// A VariableReference expression.
@@ -118,7 +111,7 @@ pub enum PureExpr {
     /// Reads the value bound by its binder.
     ///
     /// The `typ` field must match the binder's type.
-    VariableReference { value: IrVar, typ: Type, id: ExprId },
+    VariableReference { value: VarId, typ: Type },
 
     /// A FieldAccess expression.
     ///
@@ -128,23 +121,22 @@ pub enum PureExpr {
         record: Box<PureExpr>,
         field: FieldName,
         typ: Type,
-        id: ExprId,
     },
 
     /// A StringLiteral expression.
-    StringLiteral { value: CheapString, id: ExprId },
+    StringLiteral { value: CheapString },
 
     /// A HtmlText expression.
     ///
     /// Text that renders as written, without escaping.
-    HtmlText { content: CheapString, id: ExprId },
+    HtmlText { content: CheapString },
 
     /// A HtmlEscape expression.
     ///
     /// HTML-escapes a String-typed expression into Html.
     ///
     /// Must hold a String.
-    HtmlEscape { expr: Box<PureExpr>, id: ExprId },
+    HtmlEscape { expr: Box<PureExpr> },
 
     /// A HtmlElement expression.
     ///
@@ -157,7 +149,6 @@ pub enum PureExpr {
         element: HtmlElementKind,
         attributes: Vec<PureAttribute>,
         children: Box<PureExpr>,
-        id: ExprId,
     },
 
     /// A HtmlConcat expression.
@@ -167,7 +158,7 @@ pub enum PureExpr {
     /// Part order is output order.
     ///
     /// Every part must be Html-typed.
-    HtmlConcat { parts: Vec<PureExpr>, id: ExprId },
+    HtmlConcat { parts: Vec<PureExpr> },
 
     /// A HtmlFor expression.
     ///
@@ -177,51 +168,41 @@ pub enum PureExpr {
     ///
     /// The type of body must be Html.
     HtmlFor {
-        var: Option<IrVar>,
+        var: Option<IrBinder>,
         source: Box<PureForSource>,
         body: Box<PureExpr>,
-        id: ExprId,
     },
 
     /// A call expression.
     ///
-    /// Invokes a function and produces its result.
+    /// Invokes a function and produces its result. The arguments follow
+    /// the function's parameters, one for each.
     Call {
         function: IrFunction,
-        args: Vec<PureArgument>,
+        args: Vec<PureExpr>,
         typ: Type,
-        id: ExprId,
     },
 
     /// A BoolLiteral expression.
-    BoolLiteral { value: bool, id: ExprId },
+    BoolLiteral { value: bool },
 
     /// A FloatLiteral expression.
-    FloatLiteral { value: f64, id: ExprId },
+    FloatLiteral { value: f64 },
 
     /// An IntLiteral expression.
-    IntLiteral { value: i32, id: ExprId },
+    IntLiteral { value: i32 },
 
     /// An array expression.
-    Array {
-        elements: Vec<PureExpr>,
-        typ: Type,
-        id: ExprId,
-    },
+    Array { elements: Vec<PureExpr>, typ: Type },
 
     /// A tuple expression.
-    Tuple {
-        elements: Vec<PureExpr>,
-        typ: Type,
-        id: ExprId,
-    },
+    Tuple { elements: Vec<PureExpr>, typ: Type },
 
     /// A TupleIndex expression.
     TupleIndex {
         tuple: Box<PureExpr>,
         index: usize,
         typ: Type,
-        id: ExprId,
     },
 
     /// A record expression.
@@ -229,7 +210,6 @@ pub enum PureExpr {
         type_name: TypeName,
         fields: Vec<(FieldName, PureExpr)>,
         typ: Type,
-        id: ExprId,
     },
 
     /// An enum expression.
@@ -239,20 +219,18 @@ pub enum PureExpr {
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, PureExpr)>,
         typ: Type,
-        id: ExprId,
     },
 
     /// An option expression.
     Option {
         value: Option<Box<PureExpr>>,
         typ: Type,
-        id: ExprId,
     },
 
     /// A StringConcat expression.
     ///
     /// N-ary mappend over String-typed parts.
-    StringConcat { parts: Vec<PureExpr>, id: ExprId },
+    StringConcat { parts: Vec<PureExpr> },
 
     /// A NumericAdd expression.
     ///
@@ -262,7 +240,6 @@ pub enum PureExpr {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
         operand_types: NumericType,
-        id: ExprId,
     },
 
     /// A NumericSubtract expression.
@@ -273,7 +250,6 @@ pub enum PureExpr {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
         operand_types: NumericType,
-        id: ExprId,
     },
 
     /// A NumericMultiply expression.
@@ -284,7 +260,6 @@ pub enum PureExpr {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
         operand_types: NumericType,
-        id: ExprId,
     },
 
     /// A NumericNegation expression.
@@ -294,14 +269,13 @@ pub enum PureExpr {
     NumericNegation {
         operand: Box<PureExpr>,
         operand_type: NumericType,
-        id: ExprId,
     },
 
     /// A BoolNegation expression.
     ///
     /// Must hold a Bool expression.
     /// Returns a Bool.
-    BoolNegation { operand: Box<PureExpr>, id: ExprId },
+    BoolNegation { operand: Box<PureExpr> },
 
     /// A BoolLogicalAnd expression.
     ///
@@ -310,7 +284,6 @@ pub enum PureExpr {
     BoolLogicalAnd {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
-        id: ExprId,
     },
 
     /// A BoolLogicalOr expression.
@@ -320,7 +293,6 @@ pub enum PureExpr {
     BoolLogicalOr {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
-        id: ExprId,
     },
 
     /// An Equals expression.
@@ -331,7 +303,6 @@ pub enum PureExpr {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
         operand_types: EquatableType,
-        id: ExprId,
     },
 
     /// A LessThan expression.
@@ -342,7 +313,6 @@ pub enum PureExpr {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
         operand_types: ComparableType,
-        id: ExprId,
     },
 
     /// A LessThanOrEqual expression.
@@ -353,44 +323,43 @@ pub enum PureExpr {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
         operand_types: ComparableType,
-        id: ExprId,
     },
 
     /// An ArrayLength expression.
     ///
     /// Must hold an Array expression.
     /// Returns an Int.
-    ArrayLength { array: Box<PureExpr>, id: ExprId },
+    ArrayLength { array: Box<PureExpr> },
 
     /// An ArrayIsEmpty expression.
     ///
     /// Must hold an Array expression.
     /// Returns a Bool.
-    ArrayIsEmpty { array: Box<PureExpr>, id: ExprId },
+    ArrayIsEmpty { array: Box<PureExpr> },
 
     /// A StringIsEmpty expression.
     ///
     /// Must hold a String expression.
     /// Returns a Bool.
-    StringIsEmpty { string: Box<PureExpr>, id: ExprId },
+    StringIsEmpty { string: Box<PureExpr> },
 
     /// An OptionIsSome expression.
     ///
     /// Must hold an Option expression.
     /// Returns a Bool.
-    OptionIsSome { option: Box<PureExpr>, id: ExprId },
+    OptionIsSome { option: Box<PureExpr> },
 
     /// An OptionIsNone expression.
     ///
     /// Must hold an Option expression.
     /// Returns a Bool.
-    OptionIsNone { option: Box<PureExpr>, id: ExprId },
+    OptionIsNone { option: Box<PureExpr> },
 
     /// An IntToString expression.
     ///
     /// Must hold an Int.
     /// Returns a String.
-    IntToString { value: Box<PureExpr>, id: ExprId },
+    IntToString { value: Box<PureExpr> },
 
     /// A FloatToInt expression.
     ///
@@ -398,18 +367,17 @@ pub enum PureExpr {
     ///
     /// Must hold a Float.
     /// Returns an Int.
-    FloatToInt { value: Box<PureExpr>, id: ExprId },
+    FloatToInt { value: Box<PureExpr> },
 
     /// An IntToFloat expression.
     ///
     /// Must hold an Int.
     /// Returns a Float.
-    IntToFloat { value: Box<PureExpr>, id: ExprId },
+    IntToFloat { value: Box<PureExpr> },
 }
 
 impl PureExpr {
     /// The type of this expression.
-    #[cfg(test)]
     pub fn typ(&self) -> Type {
         match self {
             PureExpr::VariableReference { typ, .. }
@@ -464,57 +432,13 @@ impl PureExpr {
         }
     }
 
-    /// The ExprId this expression carries, mutably.
-    pub fn id_mut(&mut self) -> &mut ExprId {
-        match self {
-            PureExpr::Let { id, .. }
-            | PureExpr::Match { id, .. }
-            | PureExpr::VariableReference { id, .. }
-            | PureExpr::FieldAccess { id, .. }
-            | PureExpr::StringLiteral { id, .. }
-            | PureExpr::HtmlText { id, .. }
-            | PureExpr::HtmlEscape { id, .. }
-            | PureExpr::HtmlElement { id, .. }
-            | PureExpr::HtmlConcat { id, .. }
-            | PureExpr::HtmlFor { id, .. }
-            | PureExpr::Call { id, .. }
-            | PureExpr::BoolLiteral { id, .. }
-            | PureExpr::FloatLiteral { id, .. }
-            | PureExpr::IntLiteral { id, .. }
-            | PureExpr::Array { id, .. }
-            | PureExpr::Tuple { id, .. }
-            | PureExpr::TupleIndex { id, .. }
-            | PureExpr::Record { id, .. }
-            | PureExpr::Enum { id, .. }
-            | PureExpr::Option { id, .. }
-            | PureExpr::StringConcat { id, .. }
-            | PureExpr::NumericAdd { id, .. }
-            | PureExpr::NumericSubtract { id, .. }
-            | PureExpr::NumericMultiply { id, .. }
-            | PureExpr::NumericNegation { id, .. }
-            | PureExpr::BoolNegation { id, .. }
-            | PureExpr::BoolLogicalAnd { id, .. }
-            | PureExpr::BoolLogicalOr { id, .. }
-            | PureExpr::Equals { id, .. }
-            | PureExpr::LessThan { id, .. }
-            | PureExpr::LessThanOrEqual { id, .. }
-            | PureExpr::ArrayLength { id, .. }
-            | PureExpr::ArrayIsEmpty { id, .. }
-            | PureExpr::StringIsEmpty { id, .. }
-            | PureExpr::OptionIsSome { id, .. }
-            | PureExpr::OptionIsNone { id, .. }
-            | PureExpr::IntToString { id, .. }
-            | PureExpr::FloatToInt { id, .. }
-            | PureExpr::IntToFloat { id, .. } => id,
-        }
-    }
-
     /// Apply `f` to each direct child expression, without rebuilding.
     ///
     /// The read-only counterpart to `map_children`, and it treats binding
     /// structure the same way: binders are not distinguished from any other
     /// child, so a visitor that cares about scope must intercept `Let`,
     /// `Match` and `HtmlFor` before falling through to this.
+    #[cfg(test)]
     pub fn for_each_child(&self, f: &mut impl FnMut(&PureExpr)) {
         match self {
             PureExpr::Let { value, body, .. } => {
@@ -587,7 +511,7 @@ impl PureExpr {
 
             PureExpr::Call { args, .. } => {
                 for arg in args {
-                    f(&arg.expr);
+                    f(arg);
                 }
             }
 
@@ -645,365 +569,6 @@ impl PureExpr {
             | PureExpr::BoolLiteral { .. }
             | PureExpr::FloatLiteral { .. }
             | PureExpr::IntLiteral { .. } => {}
-        }
-    }
-
-    /// Rebuild this expression with `f` applied to each direct child
-    /// expression. Does not recurse: passes drive their own recursion,
-    /// typically via a catch-all arm `expr => expr.map_children(...)` for
-    /// the variants they need no special handling for.
-    ///
-    /// Binding structure gets no special treatment: the children of `Let`,
-    /// `Match` and `HtmlFor` are mapped like any others, so a pass that
-    /// cares about binders or variable references must intercept those
-    /// variants before falling through to this.
-    pub fn map_children(self, f: &mut impl FnMut(PureExpr) -> PureExpr) -> PureExpr {
-        match self {
-            PureExpr::Let {
-                var,
-                value,
-                body,
-                typ,
-                id,
-            } => PureExpr::Let {
-                var,
-                value: Box::new(f(*value)),
-                body: Box::new(f(*body)),
-                typ,
-                id,
-            },
-
-            PureExpr::Match { match_, typ, id } => {
-                let match_ = match match_ {
-                    Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    } => Match::Bool {
-                        subject: Box::new(f(*subject)),
-                        true_body: Box::new(f(*true_body)),
-                        false_body: Box::new(f(*false_body)),
-                    },
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body,
-                    } => Match::Option {
-                        subject: Box::new(f(*subject)),
-                        some_arm_binding,
-                        some_arm_body: Box::new(f(*some_arm_body)),
-                        none_arm_body: Box::new(f(*none_arm_body)),
-                    },
-                    Match::Enum { subject, arms } => Match::Enum {
-                        subject: Box::new(f(*subject)),
-                        arms: arms
-                            .into_iter()
-                            .map(|arm| EnumMatchArm {
-                                pattern: arm.pattern,
-                                bindings: arm.bindings,
-                                body: f(arm.body),
-                            })
-                            .collect(),
-                    },
-                };
-                PureExpr::Match { match_, typ, id }
-            }
-
-            PureExpr::HtmlFor {
-                var,
-                source,
-                body,
-                id,
-            } => PureExpr::HtmlFor {
-                var,
-                source: Box::new(match *source {
-                    PureForSource::Array(array) => PureForSource::Array(f(array)),
-                    PureForSource::RangeInclusive { start, end } => PureForSource::RangeInclusive {
-                        start: f(start),
-                        end: f(end),
-                    },
-                }),
-                body: Box::new(f(*body)),
-                id,
-            },
-
-            PureExpr::FieldAccess {
-                record,
-                field,
-                typ,
-                id,
-            } => PureExpr::FieldAccess {
-                record: Box::new(f(*record)),
-                field,
-                typ,
-                id,
-            },
-
-            PureExpr::HtmlEscape { expr, id } => PureExpr::HtmlEscape {
-                expr: Box::new(f(*expr)),
-                id,
-            },
-
-            PureExpr::HtmlElement {
-                element,
-                attributes,
-                children,
-                id,
-            } => PureExpr::HtmlElement {
-                element,
-                attributes: attributes
-                    .into_iter()
-                    .map(|attribute| match attribute {
-                        PureAttribute::Value { name, value } => PureAttribute::Value {
-                            name,
-                            value: f(value),
-                        },
-                        PureAttribute::Presence { name, present } => PureAttribute::Presence {
-                            name,
-                            present: f(present),
-                        },
-                    })
-                    .collect(),
-                children: Box::new(f(*children)),
-                id,
-            },
-
-            PureExpr::HtmlConcat { parts, id } => PureExpr::HtmlConcat {
-                parts: parts.into_iter().map(&mut *f).collect(),
-                id,
-            },
-
-            PureExpr::Call {
-                function,
-                args,
-                typ,
-                id,
-            } => PureExpr::Call {
-                function,
-                args: args
-                    .into_iter()
-                    .map(|arg| PureArgument {
-                        name: arg.name,
-                        expr: f(arg.expr),
-                    })
-                    .collect(),
-                typ,
-                id,
-            },
-
-            PureExpr::Array { elements, typ, id } => PureExpr::Array {
-                elements: elements.into_iter().map(&mut *f).collect(),
-                typ,
-                id,
-            },
-
-            PureExpr::Tuple { elements, typ, id } => PureExpr::Tuple {
-                elements: elements.into_iter().map(&mut *f).collect(),
-                typ,
-                id,
-            },
-
-            PureExpr::TupleIndex {
-                tuple,
-                index,
-                typ,
-                id,
-            } => PureExpr::TupleIndex {
-                tuple: Box::new(f(*tuple)),
-                index,
-                typ,
-                id,
-            },
-
-            PureExpr::Record {
-                type_name,
-                fields,
-                typ,
-                id,
-            } => PureExpr::Record {
-                type_name,
-                fields: fields
-                    .into_iter()
-                    .map(|(name, value)| (name, f(value)))
-                    .collect(),
-                typ,
-                id,
-            },
-
-            PureExpr::Enum {
-                type_name,
-                variant_name,
-                fields,
-                typ,
-                id,
-            } => PureExpr::Enum {
-                type_name,
-                variant_name,
-                fields: fields
-                    .into_iter()
-                    .map(|(name, value)| (name, f(value)))
-                    .collect(),
-                typ,
-                id,
-            },
-
-            PureExpr::Option { value, typ, id } => PureExpr::Option {
-                value: value.map(|v| Box::new(f(*v))),
-                typ,
-                id,
-            },
-
-            PureExpr::StringConcat { parts, id } => PureExpr::StringConcat {
-                parts: parts.into_iter().map(&mut *f).collect(),
-                id,
-            },
-
-            PureExpr::NumericAdd {
-                left,
-                right,
-                operand_types,
-                id,
-            } => PureExpr::NumericAdd {
-                left: Box::new(f(*left)),
-                right: Box::new(f(*right)),
-                operand_types,
-                id,
-            },
-
-            PureExpr::NumericSubtract {
-                left,
-                right,
-                operand_types,
-                id,
-            } => PureExpr::NumericSubtract {
-                left: Box::new(f(*left)),
-                right: Box::new(f(*right)),
-                operand_types,
-                id,
-            },
-
-            PureExpr::NumericMultiply {
-                left,
-                right,
-                operand_types,
-                id,
-            } => PureExpr::NumericMultiply {
-                left: Box::new(f(*left)),
-                right: Box::new(f(*right)),
-                operand_types,
-                id,
-            },
-
-            PureExpr::NumericNegation {
-                operand,
-                operand_type,
-                id,
-            } => PureExpr::NumericNegation {
-                operand: Box::new(f(*operand)),
-                operand_type,
-                id,
-            },
-
-            PureExpr::BoolNegation { operand, id } => PureExpr::BoolNegation {
-                operand: Box::new(f(*operand)),
-                id,
-            },
-
-            PureExpr::BoolLogicalAnd { left, right, id } => PureExpr::BoolLogicalAnd {
-                left: Box::new(f(*left)),
-                right: Box::new(f(*right)),
-                id,
-            },
-
-            PureExpr::BoolLogicalOr { left, right, id } => PureExpr::BoolLogicalOr {
-                left: Box::new(f(*left)),
-                right: Box::new(f(*right)),
-                id,
-            },
-
-            PureExpr::Equals {
-                left,
-                right,
-                operand_types,
-                id,
-            } => PureExpr::Equals {
-                left: Box::new(f(*left)),
-                right: Box::new(f(*right)),
-                operand_types,
-                id,
-            },
-
-            PureExpr::LessThan {
-                left,
-                right,
-                operand_types,
-                id,
-            } => PureExpr::LessThan {
-                left: Box::new(f(*left)),
-                right: Box::new(f(*right)),
-                operand_types,
-                id,
-            },
-
-            PureExpr::LessThanOrEqual {
-                left,
-                right,
-                operand_types,
-                id,
-            } => PureExpr::LessThanOrEqual {
-                left: Box::new(f(*left)),
-                right: Box::new(f(*right)),
-                operand_types,
-                id,
-            },
-
-            PureExpr::ArrayLength { array, id } => PureExpr::ArrayLength {
-                array: Box::new(f(*array)),
-                id,
-            },
-
-            PureExpr::ArrayIsEmpty { array, id } => PureExpr::ArrayIsEmpty {
-                array: Box::new(f(*array)),
-                id,
-            },
-
-            PureExpr::StringIsEmpty { string, id } => PureExpr::StringIsEmpty {
-                string: Box::new(f(*string)),
-                id,
-            },
-
-            PureExpr::OptionIsSome { option, id } => PureExpr::OptionIsSome {
-                option: Box::new(f(*option)),
-                id,
-            },
-
-            PureExpr::OptionIsNone { option, id } => PureExpr::OptionIsNone {
-                option: Box::new(f(*option)),
-                id,
-            },
-
-            PureExpr::IntToString { value, id } => PureExpr::IntToString {
-                value: Box::new(f(*value)),
-                id,
-            },
-
-            PureExpr::FloatToInt { value, id } => PureExpr::FloatToInt {
-                value: Box::new(f(*value)),
-                id,
-            },
-
-            PureExpr::IntToFloat { value, id } => PureExpr::IntToFloat {
-                value: Box::new(f(*value)),
-                id,
-            },
-
-            PureExpr::VariableReference { .. }
-            | PureExpr::StringLiteral { .. }
-            | PureExpr::HtmlText { .. }
-            | PureExpr::BoolLiteral { .. }
-            | PureExpr::FloatLiteral { .. }
-            | PureExpr::IntLiteral { .. } => self,
         }
     }
 }
@@ -1074,7 +639,7 @@ impl PureFunctionDeclaration {
     }
 }
 
-fn params_to_doc(parameters: &[WriterParameter]) -> BoxDoc<'_> {
+fn params_to_doc(parameters: &[IrParameter]) -> BoxDoc<'_> {
     BoxDoc::nil()
         .append(BoxDoc::line_())
         .append(BoxDoc::intersperse(
@@ -1155,7 +720,7 @@ impl PureExpr {
                     )
                     .append(BoxDoc::text(")"))
             }
-            PureExpr::HtmlConcat { parts, .. } => {
+            PureExpr::HtmlConcat { parts, .. } | PureExpr::StringConcat { parts, .. } => {
                 if parts.is_empty() {
                     BoxDoc::text("concat()")
                 } else {
@@ -1185,7 +750,9 @@ impl PureExpr {
                         .append(end.to_doc()),
                 };
                 let var_doc = match var {
-                    Some(name) => BoxDoc::text(name.to_string()),
+                    Some(binder) => BoxDoc::text(binder.var.to_string())
+                        .append(BoxDoc::text(": "))
+                        .append(binder.typ.to_doc()),
                     None => BoxDoc::text("_"),
                 };
                 BoxDoc::text("for ")
@@ -1204,11 +771,7 @@ impl PureExpr {
                     .append(BoxDoc::text("("));
                 if !args.is_empty() {
                     doc = doc.append(BoxDoc::intersperse(
-                        args.iter().map(|arg| {
-                            BoxDoc::text(arg.name.as_str())
-                                .append(BoxDoc::text(" = "))
-                                .append(arg.expr.to_doc())
-                        }),
+                        args.iter().map(|arg| arg.to_doc()),
                         BoxDoc::text(", "),
                     ));
                 }
@@ -1283,13 +846,6 @@ impl PureExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            PureExpr::StringConcat { parts, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::intersperse(
-                    parts.iter().map(|part| part.to_doc()),
-                    BoxDoc::text(" + "),
-                ))
-                .append(BoxDoc::text(")")),
             PureExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
@@ -1388,107 +944,17 @@ impl PureExpr {
                     None => type_prefix.append(BoxDoc::text("None")),
                 }
             }
-            PureExpr::Match { match_, .. } => {
-                fn arm_to_doc<'a>(pattern: BoxDoc<'a>, body: &'a PureExpr) -> BoxDoc<'a> {
-                    pattern
-                        .append(BoxDoc::text(" => {"))
-                        .append(BoxDoc::line().append(body.to_doc()).nest(2))
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"))
-                        .group()
-                }
-
-                fn match_to_doc<'a>(subject: &'a PureExpr, arms: Vec<BoxDoc<'a>>) -> BoxDoc<'a> {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(arms, BoxDoc::line()))
-                                .nest(2),
-                        )
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"))
-                        .group()
-                }
-
-                match match_ {
-                    Match::Enum { subject, arms } => {
-                        if arms.is_empty() {
-                            BoxDoc::text("match ")
-                                .append(subject.to_doc())
-                                .append(BoxDoc::text(" {}"))
-                        } else {
-                            let arm_docs = arms
-                                .iter()
-                                .map(|arm| {
-                                    let pattern_doc = match &arm.pattern {
-                                        EnumPattern::Variant {
-                                            type_name,
-                                            variant_name,
-                                        } => {
-                                            let base = BoxDoc::text(type_name.as_str())
-                                                .append(BoxDoc::text("::"))
-                                                .append(BoxDoc::text(variant_name.as_str()));
-                                            if arm.bindings.is_empty() {
-                                                base
-                                            } else {
-                                                let bindings_str: Vec<String> = arm
-                                                    .bindings
-                                                    .iter()
-                                                    .map(|(field, var)| {
-                                                        format!("{}: {}", field, var)
-                                                    })
-                                                    .collect();
-                                                base.append(BoxDoc::text(" {"))
-                                                    .append(BoxDoc::text(bindings_str.join(", ")))
-                                                    .append(BoxDoc::text("}"))
-                                            }
-                                        }
-                                    };
-                                    arm_to_doc(pattern_doc, &arm.body)
-                                })
-                                .collect();
-                            match_to_doc(subject, arm_docs)
-                        }
-                    }
-                    Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    } => match_to_doc(
-                        subject,
-                        vec![
-                            arm_to_doc(BoxDoc::text("true"), true_body),
-                            arm_to_doc(BoxDoc::text("false"), false_body),
-                        ],
-                    ),
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body,
-                    } => {
-                        let some_pattern_doc = match some_arm_binding {
-                            Some(name) => BoxDoc::text("Some(")
-                                .append(BoxDoc::text(name.to_string()))
-                                .append(BoxDoc::text(")")),
-                            None => BoxDoc::text("Some(_)"),
-                        };
-                        match_to_doc(
-                            subject,
-                            vec![
-                                arm_to_doc(some_pattern_doc, some_arm_body),
-                                arm_to_doc(BoxDoc::text("None"), none_arm_body),
-                            ],
-                        )
-                    }
-                }
-            }
+            PureExpr::Match { match_, .. } => match_
+                .to_doc(PureExpr::to_doc, |body| {
+                    BoxDoc::line().append(body.to_doc())
+                })
+                .group(),
             PureExpr::Let {
                 var, value, body, ..
             } => BoxDoc::text("let ")
-                .append(BoxDoc::text(var.to_string()))
+                .append(BoxDoc::text(var.var.to_string()))
+                .append(BoxDoc::text(": "))
+                .append(var.typ.to_doc())
                 .append(BoxDoc::text(" = "))
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in {"))

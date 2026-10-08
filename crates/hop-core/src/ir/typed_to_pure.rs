@@ -6,11 +6,10 @@ use crate::hop::typing::{
     CaseVar, Decision, Type, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
     TypedPageDeclaration, TypedPattern, TypedRecordUpdateField,
 };
-use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::function_id::FunctionIdCounter;
+use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
-use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::PureForSource;
 use crate::ir::var_id::VarId;
 use crate::ir::var_id::VarIdCounter;
@@ -20,10 +19,10 @@ use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
+use super::ir_parameter::IrParameter;
 use super::pure_module::{
-    PureArgument, PureAttribute, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
+    PureAttribute, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
-use super::writer_module::WriterParameter;
 
 /// Compile the pages and the functions they reach.
 ///
@@ -33,12 +32,11 @@ use super::writer_module::WriterParameter;
 /// of them in place of the rest. So a function with a rest is compiled once
 /// per such list, a function without one at most once, and a function no
 /// page reaches not at all.
-pub fn compile(
+pub fn typed_to_pure(
     pages: Vec<TypedPageDeclaration>,
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 ) -> PureModule {
-    let mut expr_ids = ExprIdCounter::new();
     let mut var_ids = VarIdCounter::new();
     let mut function_ids = FunctionIdCounter::new();
 
@@ -51,12 +49,7 @@ pub fn compile(
             .map(|(index, (module, decl))| (((*module).clone(), decl.name.clone()), (index, *decl)))
             .collect();
 
-    let mut compiler = Compiler::new(
-        &mut expr_ids,
-        &mut var_ids,
-        &mut function_ids,
-        asset_path_rewriter,
-    );
+    let mut compiler = Compiler::new(&mut var_ids, &mut function_ids, asset_path_rewriter);
 
     let pages = pages
         .into_iter()
@@ -79,7 +72,6 @@ pub fn compile(
     PureModule {
         pages,
         functions,
-        expr_ids,
         var_ids,
     }
 }
@@ -97,7 +89,6 @@ struct Specialization {
 }
 
 struct Compiler<'a> {
-    expr_id_counter: &'a mut ExprIdCounter,
     var_id_counter: &'a mut VarIdCounter,
     function_id_counter: &'a mut FunctionIdCounter,
     /// The specializations calls have requested so far, in request order.
@@ -107,23 +98,21 @@ struct Compiler<'a> {
     /// those its rest adds from a function it is spread into. A forwarded
     /// parameter reads these, so a binding in the body that reuses the name
     /// does not capture it.
-    params: HashMap<VarName, IrVar>,
+    params: HashMap<VarName, VarId>,
     /// The attributes the specialization being compiled receives through its
     /// rest, each with the parameter that holds it, in the order they
     /// render. The spread reads these. They are not in scope by name.
-    rest: Vec<(AttributeName, Type, IrVar)>,
+    rest: Vec<(AttributeName, Type, VarId)>,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
 impl<'a> Compiler<'a> {
     fn new(
-        expr_id_counter: &'a mut ExprIdCounter,
         var_id_counter: &'a mut VarIdCounter,
         function_id_counter: &'a mut FunctionIdCounter,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Self {
         Compiler {
-            expr_id_counter,
             var_id_counter,
             function_id_counter,
             specializations: Vec::new(),
@@ -146,18 +135,19 @@ impl<'a> Compiler<'a> {
         for param in &decl.params {
             let var = self.bind(&param.var_name);
             self.params.insert(param.var_name.clone(), var);
-            parameters.push(WriterParameter {
+            parameters.push(IrParameter {
                 var,
                 name: param.var_name.clone().into(),
                 typ: param.var_type.clone(),
             });
         }
         // Each attribute the specialization receives through its rest is a
-        // parameter of its own.
+        // parameter of its own, after the declared ones and in the order of
+        // the shape, as a call passes them.
         for (name, typ) in shape {
-            let var = IrVar::new(self.next_var_id());
+            let var = self.next_var_id();
             self.rest.push((name.clone(), typ.clone(), var));
-            parameters.push(WriterParameter { var, name, typ });
+            parameters.push(IrParameter { var, name, typ });
         }
 
         let declaration = PureFunctionDeclaration {
@@ -177,7 +167,7 @@ impl<'a> Compiler<'a> {
 
         let mut parameters = Vec::with_capacity(page.params.len());
         for param in page.params {
-            parameters.push(WriterParameter {
+            parameters.push(IrParameter {
                 var: self.bind(&param.var_name),
                 name: param.var_name.into(),
                 typ: param.var_type,
@@ -198,10 +188,6 @@ impl<'a> Compiler<'a> {
         self.var_id_counter.next()
     }
 
-    fn next_expr_id(&mut self) -> ExprId {
-        self.expr_id_counter.next()
-    }
-
     fn push_scope(&mut self) {
         self.scopes.push(Vec::new());
     }
@@ -210,19 +196,19 @@ impl<'a> Compiler<'a> {
         self.scopes.pop().expect("scope stack should not be empty");
     }
 
-    fn bind(&mut self, name: &VarName) -> IrVar {
+    fn bind(&mut self, name: &VarName) -> VarId {
         let id = self.next_var_id();
         self.scopes
             .last_mut()
             .expect("scope stack should not be empty")
             .push((name.clone(), id));
-        IrVar::new(id)
+        id
     }
 
-    fn resolve(&mut self, name: &VarName) -> IrVar {
+    fn resolve(&mut self, name: &VarName) -> VarId {
         for scope in self.scopes.iter().rev() {
             if let Some((_, id)) = scope.iter().rev().find(|(n, _)| n == name) {
-                return IrVar::new(*id);
+                return *id;
             }
         }
         panic!("undefined variable: {name}");
@@ -237,7 +223,7 @@ impl<'a> Compiler<'a> {
         arms: &[(TypedPattern, TypedExpr)],
         typ: &Type,
         used: &HashSet<CaseVar>,
-        case_vars: &mut HashMap<CaseVar, IrVar>,
+        case_vars: &mut HashMap<CaseVar, VarId>,
     ) -> PureExpr {
         match decision {
             Decision::Success(body) => {
@@ -248,7 +234,7 @@ impl<'a> Compiler<'a> {
                     self.scopes
                         .last_mut()
                         .expect("scope stack should not be empty")
-                        .push((binding.name.clone(), case_vars[&binding.source].id));
+                        .push((binding.name.clone(), case_vars[&binding.source]));
                 }
                 let result = self.compile_expr(&arms[body.value].1);
                 self.pop_scope();
@@ -259,11 +245,9 @@ impl<'a> Compiler<'a> {
                 true_case,
                 false_case,
             } => {
-                let id = self.next_expr_id();
                 let subject = Box::new(PureExpr::VariableReference {
                     value: case_vars[&variable.id],
                     typ: variable.typ.clone(),
-                    id: self.next_expr_id(),
                 });
                 let true_body = self.compile_decision(&true_case.body, arms, typ, used, case_vars);
                 let false_body =
@@ -275,7 +259,6 @@ impl<'a> Compiler<'a> {
                         false_body: Box::new(false_body),
                     },
                     typ: typ.clone(),
-                    id,
                 }
             }
             Decision::SwitchOption {
@@ -283,16 +266,17 @@ impl<'a> Compiler<'a> {
                 some_case,
                 none_case,
             } => {
-                let id = self.next_expr_id();
                 let subject = Box::new(PureExpr::VariableReference {
                     value: case_vars[&variable.id],
                     typ: variable.typ.clone(),
-                    id: self.next_expr_id(),
                 });
                 let binding = if used.contains(&some_case.var.id) {
-                    let var = IrVar::new(self.next_var_id());
+                    let var = self.next_var_id();
                     case_vars.insert(some_case.var.id, var);
-                    Some(var)
+                    Some(IrBinder {
+                        var,
+                        typ: some_case.var.typ.clone(),
+                    })
                 } else {
                     None
                 };
@@ -306,15 +290,12 @@ impl<'a> Compiler<'a> {
                         none_arm_body: Box::new(none_body),
                     },
                     typ: typ.clone(),
-                    id,
                 }
             }
             Decision::SwitchEnum { variable, cases } => {
-                let id = self.next_expr_id();
                 let subject = Box::new(PureExpr::VariableReference {
                     value: case_vars[&variable.id],
                     typ: variable.typ.clone(),
-                    id: self.next_expr_id(),
                 });
                 let enum_arms = cases
                     .iter()
@@ -326,9 +307,15 @@ impl<'a> Compiler<'a> {
                                 if !used.contains(&binding.var.id) {
                                     return None;
                                 }
-                                let var = IrVar::new(self.next_var_id());
+                                let var = self.next_var_id();
                                 case_vars.insert(binding.var.id, var);
-                                Some((binding.field_name.clone(), var))
+                                Some((
+                                    binding.field_name.clone(),
+                                    IrBinder {
+                                        var,
+                                        typ: binding.var.typ.clone(),
+                                    },
+                                ))
                             })
                             .collect();
                         EnumMatchArm {
@@ -347,7 +334,6 @@ impl<'a> Compiler<'a> {
                         arms: enum_arms,
                     },
                     typ: typ.clone(),
-                    id,
                 }
             }
             Decision::SwitchRecord { variable, case } => {
@@ -358,29 +344,29 @@ impl<'a> Compiler<'a> {
                     if !used.contains(&binding.var.id) {
                         continue;
                     }
-                    let id = self.next_expr_id();
                     let value = PureExpr::FieldAccess {
-                        id: self.next_expr_id(),
                         record: Box::new(PureExpr::VariableReference {
                             value: case_vars[&variable.id],
                             typ: variable.typ.clone(),
-                            id: self.next_expr_id(),
                         }),
                         field: binding.field_name.clone(),
                         typ: binding.var.typ.clone(),
                     };
-                    let var = IrVar::new(self.next_var_id());
+                    let var = self.next_var_id();
                     case_vars.insert(binding.var.id, var);
-                    lets.push((id, var, value));
+                    let binder = IrBinder {
+                        var,
+                        typ: binding.var.typ.clone(),
+                    };
+                    lets.push((binder, value));
                 }
                 let mut result = self.compile_decision(&case.body, arms, typ, used, case_vars);
-                for (id, var, value) in lets.into_iter().rev() {
+                for (var, value) in lets.into_iter().rev() {
                     result = PureExpr::Let {
                         var,
                         value: Box::new(value),
                         body: Box::new(result),
                         typ: typ.clone(),
-                        id,
                     };
                 }
                 result
@@ -393,29 +379,29 @@ impl<'a> Compiler<'a> {
                     if !used.contains(&element.id) {
                         continue;
                     }
-                    let id = self.next_expr_id();
                     let value = PureExpr::TupleIndex {
-                        id: self.next_expr_id(),
                         tuple: Box::new(PureExpr::VariableReference {
                             value: case_vars[&variable.id],
                             typ: variable.typ.clone(),
-                            id: self.next_expr_id(),
                         }),
                         index,
                         typ: element.typ.clone(),
                     };
-                    let var = IrVar::new(self.next_var_id());
+                    let var = self.next_var_id();
                     case_vars.insert(element.id, var);
-                    lets.push((id, var, value));
+                    let binder = IrBinder {
+                        var,
+                        typ: element.typ.clone(),
+                    };
+                    lets.push((binder, value));
                 }
                 let mut result = self.compile_decision(&case.body, arms, typ, used, case_vars);
-                for (id, var, value) in lets.into_iter().rev() {
+                for (var, value) in lets.into_iter().rev() {
                     result = PureExpr::Let {
                         var,
                         value: Box::new(value),
                         body: Box::new(result),
                         typ: typ.clone(),
-                        id,
                     };
                 }
                 result
@@ -424,18 +410,14 @@ impl<'a> Compiler<'a> {
     }
 
     fn compile_expr(&mut self, expr: &TypedExpr) -> PureExpr {
-        let expr_id = self.next_expr_id();
-
         match expr {
             TypedExpr::Var { value, typ, .. } => PureExpr::VariableReference {
                 value: self.resolve(value),
                 typ: typ.clone(),
-                id: expr_id,
             },
             TypedExpr::ForwardedParam { value, typ } => PureExpr::VariableReference {
                 value: self.params[value],
                 typ: typ.clone(),
-                id: expr_id,
             },
             TypedExpr::FieldAccess {
                 record: object,
@@ -446,11 +428,9 @@ impl<'a> Compiler<'a> {
                 record: Box::new(self.compile_expr(object)),
                 field: field.clone(),
                 typ: typ.clone(),
-                id: expr_id,
             },
             TypedExpr::BoolNegation { operand, .. } => PureExpr::BoolNegation {
                 operand: Box::new(self.compile_expr(operand)),
-                id: expr_id,
             },
             TypedExpr::NumericNegation {
                 operand,
@@ -458,17 +438,14 @@ impl<'a> Compiler<'a> {
             } => PureExpr::NumericNegation {
                 operand: Box::new(self.compile_expr(operand)),
                 operand_type: operand_type.clone(),
-                id: expr_id,
             },
             TypedExpr::Array { elements, typ, .. } => PureExpr::Array {
                 elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
                 typ: typ.clone(),
-                id: expr_id,
             },
             TypedExpr::Tuple { elements, typ } => PureExpr::Tuple {
                 elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
                 typ: typ.clone(),
-                id: expr_id,
             },
             TypedExpr::Record {
                 type_name,
@@ -482,7 +459,6 @@ impl<'a> Compiler<'a> {
                     .map(|(k, v)| (k.clone(), self.compile_expr(v)))
                     .collect(),
                 typ: typ.clone(),
-                id: expr_id,
             },
             TypedExpr::RecordUpdate {
                 type_name,
@@ -491,8 +467,7 @@ impl<'a> Compiler<'a> {
                 typ,
             } => {
                 let value = Box::new(self.compile_expr(base));
-                let base_var = IrVar::new(self.next_var_id());
-                let literal_id = self.next_expr_id();
+                let base_var = self.next_var_id();
                 let literal = PureExpr::Record {
                     type_name: type_name.clone(),
                     fields: fields
@@ -502,11 +477,9 @@ impl<'a> Compiler<'a> {
                                 TypedRecordUpdateField::Explicit(value) => self.compile_expr(value),
                                 TypedRecordUpdateField::FromBase(field_typ) => {
                                     PureExpr::FieldAccess {
-                                        id: self.next_expr_id(),
                                         record: Box::new(PureExpr::VariableReference {
                                             value: base_var,
                                             typ: typ.clone(),
-                                            id: self.next_expr_id(),
                                         }),
                                         field: name.clone(),
                                         typ: field_typ.clone(),
@@ -517,19 +490,19 @@ impl<'a> Compiler<'a> {
                         })
                         .collect(),
                     typ: typ.clone(),
-                    id: literal_id,
                 };
                 PureExpr::Let {
-                    var: base_var,
+                    var: IrBinder {
+                        var: base_var,
+                        typ: typ.clone(),
+                    },
                     value,
                     body: Box::new(literal),
                     typ: typ.clone(),
-                    id: expr_id,
                 }
             }
             TypedExpr::StringLiteral { value, .. } => PureExpr::StringLiteral {
                 value: value.clone(),
-                id: expr_id,
             },
             TypedExpr::Asset { path } => {
                 let value = match &self.asset_path_rewriter {
@@ -538,24 +511,13 @@ impl<'a> Compiler<'a> {
                 };
                 PureExpr::StringLiteral {
                     value: CheapString::new(value),
-                    id: expr_id,
                 }
             }
-            TypedExpr::BoolLiteral { value, .. } => PureExpr::BoolLiteral {
-                value: *value,
-                id: expr_id,
-            },
-            TypedExpr::FloatLiteral { value, .. } => PureExpr::FloatLiteral {
-                value: *value,
-                id: expr_id,
-            },
-            TypedExpr::IntLiteral { value, .. } => PureExpr::IntLiteral {
-                value: *value,
-                id: expr_id,
-            },
+            TypedExpr::BoolLiteral { value, .. } => PureExpr::BoolLiteral { value: *value },
+            TypedExpr::FloatLiteral { value, .. } => PureExpr::FloatLiteral { value: *value },
+            TypedExpr::IntLiteral { value, .. } => PureExpr::IntLiteral { value: *value },
             TypedExpr::StringConcat { parts, .. } => PureExpr::StringConcat {
                 parts: parts.iter().map(|part| self.compile_expr(part)).collect(),
-                id: expr_id,
             },
             TypedExpr::Equals {
                 left,
@@ -566,7 +528,6 @@ impl<'a> Compiler<'a> {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
-                id: expr_id,
             },
             TypedExpr::NotEquals {
                 left,
@@ -575,15 +536,12 @@ impl<'a> Compiler<'a> {
                 ..
             } => {
                 // Desugar NotEquals into BoolNegation(Equals(...))
-                let equals_id = self.next_expr_id();
                 PureExpr::BoolNegation {
                     operand: Box::new(PureExpr::Equals {
                         left: Box::new(self.compile_expr(left)),
                         right: Box::new(self.compile_expr(right)),
                         operand_types: operand_types.clone(),
-                        id: equals_id,
                     }),
-                    id: expr_id,
                 }
             }
             TypedExpr::LessThan {
@@ -595,7 +553,6 @@ impl<'a> Compiler<'a> {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
-                id: expr_id,
             },
             // Convert a > b to b < a
             TypedExpr::GreaterThan {
@@ -607,7 +564,6 @@ impl<'a> Compiler<'a> {
                 left: Box::new(self.compile_expr(right)),
                 right: Box::new(self.compile_expr(left)),
                 operand_types: operand_types.clone(),
-                id: expr_id,
             },
             TypedExpr::LessThanOrEqual {
                 left,
@@ -618,7 +574,6 @@ impl<'a> Compiler<'a> {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
-                id: expr_id,
             },
             // Convert a >= b to b <= a
             TypedExpr::GreaterThanOrEqual {
@@ -630,17 +585,14 @@ impl<'a> Compiler<'a> {
                 left: Box::new(self.compile_expr(right)),
                 right: Box::new(self.compile_expr(left)),
                 operand_types: operand_types.clone(),
-                id: expr_id,
             },
             TypedExpr::BoolLogicalAnd { left, right, .. } => PureExpr::BoolLogicalAnd {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
-                id: expr_id,
             },
             TypedExpr::BoolLogicalOr { left, right, .. } => PureExpr::BoolLogicalOr {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
-                id: expr_id,
             },
             TypedExpr::NumericAdd {
                 left,
@@ -651,7 +603,6 @@ impl<'a> Compiler<'a> {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
-                id: expr_id,
             },
             TypedExpr::NumericSubtract {
                 left,
@@ -662,7 +613,6 @@ impl<'a> Compiler<'a> {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
-                id: expr_id,
             },
             TypedExpr::NumericMultiply {
                 left,
@@ -673,7 +623,6 @@ impl<'a> Compiler<'a> {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
-                id: expr_id,
             },
             TypedExpr::Enum {
                 type_name,
@@ -690,7 +639,6 @@ impl<'a> Compiler<'a> {
                     })
                     .collect(),
                 typ: typ.clone(),
-                id: expr_id,
             },
             TypedExpr::Match {
                 subject,
@@ -701,21 +649,22 @@ impl<'a> Compiler<'a> {
                 let mut used = HashSet::new();
                 decision.collect_used(&mut used);
                 let value = Box::new(self.compile_expr(subject));
-                let var = IrVar::new(self.next_var_id());
+                let var = self.next_var_id();
                 let mut case_vars = HashMap::from([(CaseVar(0), var)]);
                 let body = self.compile_decision(decision, arms, typ, &used, &mut case_vars);
                 PureExpr::Let {
-                    var,
+                    var: IrBinder {
+                        var,
+                        typ: value.typ(),
+                    },
                     value,
                     body: Box::new(body),
                     typ: typ.clone(),
-                    id: expr_id,
                 }
             }
             TypedExpr::Option { value, typ } => PureExpr::Option {
                 value: value.as_ref().map(|v| Box::new(self.compile_expr(v))),
                 typ: typ.clone(),
-                id: expr_id,
             },
             TypedExpr::HtmlConcat { parts } => {
                 let mut compiled = Vec::with_capacity(parts.len());
@@ -727,14 +676,10 @@ impl<'a> Compiler<'a> {
                     );
                     compiled.push(self.compile_expr(part));
                 }
-                PureExpr::HtmlConcat {
-                    parts: compiled,
-                    id: expr_id,
-                }
+                PureExpr::HtmlConcat { parts: compiled }
             }
             TypedExpr::HtmlText { value } => PureExpr::HtmlText {
                 content: value.clone(),
-                id: expr_id,
             },
             TypedExpr::HtmlEscape { expr } => {
                 assert_eq!(
@@ -744,7 +689,6 @@ impl<'a> Compiler<'a> {
                 );
                 PureExpr::HtmlEscape {
                     expr: Box::new(self.compile_expr(expr)),
-                    id: expr_id,
                 }
             }
             TypedExpr::Element {
@@ -773,7 +717,6 @@ impl<'a> Compiler<'a> {
                         let value = PureExpr::VariableReference {
                             value: var,
                             typ: typ.clone(),
-                            id: self.next_expr_id(),
                         };
                         attributes.push(match typ {
                             Type::Bool => PureAttribute::Presence {
@@ -788,7 +731,6 @@ impl<'a> Compiler<'a> {
                     element: element.clone(),
                     attributes,
                     children: Box::new(self.compile_expr(children)),
-                    id: expr_id,
                 }
             }
             TypedExpr::Call {
@@ -798,17 +740,17 @@ impl<'a> Compiler<'a> {
                 rest,
                 typ,
             } => {
-                let mut compiled_args: Vec<PureArgument> = args
+                // The typechecker orders the arguments as the callee
+                // declares its parameters.
+                let mut compiled_args: Vec<PureExpr> = args
                     .iter()
-                    .map(|(name, value)| PureArgument {
-                        name: name.clone().into(),
-                        expr: self.compile_expr(value),
-                    })
+                    .map(|(_, value)| self.compile_expr(value))
                     .collect();
                 // The attributes supplied to the callee's rest select the
                 // specialization, and are passed to the parameters it has
-                // for them: those written at the call first, then those the
-                // spread forwards from the rest of the calling function.
+                // for them, in the order of its shape: those written at the
+                // call first, then those the spread forwards from the rest
+                // of the calling function.
                 let mut shape = Vec::new();
                 if let Some((_, attrs)) = rest {
                     for attr in &attrs.attributes {
@@ -820,21 +762,14 @@ impl<'a> Compiler<'a> {
                                 (name, Type::Bool, self.compile_expr(present))
                             }
                         };
-                        compiled_args.push(PureArgument {
-                            name: name.clone(),
-                            expr: value,
-                        });
+                        compiled_args.push(value);
                         shape.push((name.clone(), typ));
                     }
                     if attrs.spread.is_some() {
                         for (name, typ, var) in self.rest.clone() {
-                            compiled_args.push(PureArgument {
-                                name: name.clone(),
-                                expr: PureExpr::VariableReference {
-                                    value: var,
-                                    typ: typ.clone(),
-                                    id: self.next_expr_id(),
-                                },
+                            compiled_args.push(PureExpr::VariableReference {
+                                value: var,
+                                typ: typ.clone(),
                             });
                             shape.push((name, typ));
                         }
@@ -868,7 +803,6 @@ impl<'a> Compiler<'a> {
                     function,
                     args: compiled_args,
                     typ: typ.clone(),
-                    id: expr_id,
                 }
             }
             TypedExpr::Let {
@@ -879,7 +813,10 @@ impl<'a> Compiler<'a> {
             } => {
                 let value = Box::new(self.compile_expr(value));
                 self.push_scope();
-                let ir_var = self.bind(var);
+                let ir_var = IrBinder {
+                    var: self.bind(var),
+                    typ: value.typ(),
+                };
                 let body = Box::new(self.compile_expr(body));
                 self.pop_scope();
                 PureExpr::Let {
@@ -887,7 +824,6 @@ impl<'a> Compiler<'a> {
                     value,
                     body,
                     typ: typ.clone(),
-                    id: expr_id,
                 }
             }
             TypedExpr::For {
@@ -912,36 +848,42 @@ impl<'a> Compiler<'a> {
                         }
                     }
                 };
+                let element_type = match &pure_source {
+                    PureForSource::Array(array) => {
+                        let Type::Array(element_type) = array.typ() else {
+                            unreachable!("a loop over an array has an Array source");
+                        };
+                        *element_type
+                    }
+                    PureForSource::RangeInclusive { .. } => Type::Int,
+                };
                 self.push_scope();
-                let var = var_name.as_ref().map(|name| self.bind(name));
+                let var = var_name.as_ref().map(|name| IrBinder {
+                    var: self.bind(name),
+                    typ: element_type,
+                });
                 let body = Box::new(self.compile_expr(body));
                 self.pop_scope();
                 PureExpr::HtmlFor {
                     var,
                     source: Box::new(pure_source),
                     body,
-                    id: expr_id,
                 }
             }
             TypedExpr::ArrayLength { array } => PureExpr::ArrayLength {
                 array: Box::new(self.compile_expr(array)),
-                id: expr_id,
             },
             TypedExpr::ArrayIsEmpty { array } => PureExpr::ArrayIsEmpty {
                 array: Box::new(self.compile_expr(array)),
-                id: expr_id,
             },
             TypedExpr::StringIsEmpty { string } => PureExpr::StringIsEmpty {
                 string: Box::new(self.compile_expr(string)),
-                id: expr_id,
             },
             TypedExpr::OptionIsSome { option } => PureExpr::OptionIsSome {
                 option: Box::new(self.compile_expr(option)),
-                id: expr_id,
             },
             TypedExpr::OptionIsNone { option } => PureExpr::OptionIsNone {
                 option: Box::new(self.compile_expr(option)),
-                id: expr_id,
             },
             TypedExpr::OptionUnwrapOr {
                 option,
@@ -949,34 +891,31 @@ impl<'a> Compiler<'a> {
                 typ,
             } => {
                 let subject = Box::new(self.compile_expr(option));
-                let binding = IrVar::new(self.next_var_id());
-                let reference_id = self.next_expr_id();
+                let binding = self.next_var_id();
                 PureExpr::Match {
                     match_: Match::Option {
                         subject,
-                        some_arm_binding: Some(binding),
+                        some_arm_binding: Some(IrBinder {
+                            var: binding,
+                            typ: typ.clone(),
+                        }),
                         some_arm_body: Box::new(PureExpr::VariableReference {
                             value: binding,
                             typ: typ.clone(),
-                            id: reference_id,
                         }),
                         none_arm_body: Box::new(self.compile_expr(default)),
                     },
                     typ: typ.clone(),
-                    id: expr_id,
                 }
             }
             TypedExpr::IntToString { value } => PureExpr::IntToString {
                 value: Box::new(self.compile_expr(value)),
-                id: expr_id,
             },
             TypedExpr::FloatToInt { value } => PureExpr::FloatToInt {
                 value: Box::new(self.compile_expr(value)),
-                id: expr_id,
             },
             TypedExpr::IntToFloat { value } => PureExpr::IntToFloat {
                 value: Box::new(self.compile_expr(value)),
-                id: expr_id,
             },
         }
     }
@@ -998,11 +937,10 @@ mod tests {
 
     fn check(page: TypedPageDeclaration, expected: Expect) {
         let before = page.to_string();
-        let mut expr_ids = ExprIdCounter::new();
         let mut var_ids = VarIdCounter::new();
         let mut function_ids = FunctionIdCounter::new();
-        let compiled_page = Compiler::new(&mut expr_ids, &mut var_ids, &mut function_ids, None)
-            .compile_page_decl(page);
+        let compiled_page =
+            Compiler::new(&mut var_ids, &mut function_ids, None).compile_page_decl(page);
         let after = compiled_page.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -1178,7 +1116,7 @@ mod tests {
                 -- after --
                 page MainComp(show@v0: Bool) {
                   concat(
-                    let v1 = v0 in {
+                    let v1: Bool = v0 in {
                       match v1 {
                         true => {
                           concat(
@@ -1189,7 +1127,9 @@ mod tests {
                             ),
                           )
                         }
-                        false => { concat() }
+                        false => {
+                          concat()
+                        }
                       }
                     },
                   )
@@ -1245,7 +1185,7 @@ mod tests {
                       tag: "ul",
                       attrs: [],
                       children: concat(
-                        for v1 in v0 {
+                        for v1: String in v0 {
                           concat(
                             html(
                               tag: "li",
@@ -1432,10 +1372,14 @@ mod tests {
                 -- after --
                 page TestComp(flag@v0: Bool) {
                   concat(
-                    let v1 = v0 in {
+                    let v1: Bool = v0 in {
                       match v1 {
-                        true => { concat(text("yes")) }
-                        false => { concat(text("no")) }
+                        true => {
+                          concat(text("yes"))
+                        }
+                        false => {
+                          concat(text("no"))
+                        }
                       }
                     },
                   )
@@ -1528,7 +1472,7 @@ mod tests {
                 -- after --
                 page MainComp(user@v0: User) {
                   concat(
-                    escape(let v1 = v0 in {
+                    escape(let v1: User = v0 in {
                       User {name: "Jane", age: v1.age}
                     }.name),
                   )
@@ -1565,7 +1509,7 @@ mod tests {
                 -- after --
                 page MainComp(app@v0: App) {
                   concat(
-                    escape(let v1 = v0.state in {
+                    escape(let v1: State = v0.state in {
                       State {query: v1.query, num: 1}
                     }.query),
                   )
@@ -1587,7 +1531,6 @@ mod tests {
         let module = orchestrate_pure(
             program.typed_modules(),
             OrchestrateOptions {
-                skip_optimization: true,
                 ..Default::default()
             },
         );
@@ -1631,9 +1574,9 @@ mod tests {
                 }
                 page Test() {
                   concat(
-                    call Button@f0(id = "a"),
-                    call Button@f1(class = "b", disabled = true),
-                    call Button@f0(id = "c"),
+                    call Button@f0("a"),
+                    call Button@f1("b", true),
+                    call Button@f0("c"),
                   )
                 }
             "#]],
@@ -1676,10 +1619,10 @@ mod tests {
                   )
                 }
                 fn Panel@f0(title@v0: String, class@v1: String) -> Html {
-                  call Card@f1(title = v0, id = "panel", class = v1)
+                  call Card@f1(v0, "panel", v1)
                 }
                 page Test() {
-                  call Panel@f0(title = "Hi", class = "wide")
+                  call Panel@f0("Hi", "wide")
                 }
             "#]],
         );
@@ -1713,12 +1656,14 @@ mod tests {
                     tag: "div",
                     attrs: [id: v1],
                     children: concat(
-                      let v2 = (0 < v0) in {
+                      let v2: Bool = (0 < v0) in {
                         match v2 {
                           true => {
-                            call Nest@f1(depth = (v0 - 1), class = "inner")
+                            call Nest@f1((v0 - 1), "inner")
                           }
-                          false => { concat() }
+                          false => {
+                            concat()
+                          }
                         }
                       },
                     ),
@@ -1729,19 +1674,21 @@ mod tests {
                     tag: "div",
                     attrs: [class: v4],
                     children: concat(
-                      let v5 = (0 < v3) in {
+                      let v5: Bool = (0 < v3) in {
                         match v5 {
                           true => {
-                            call Nest@f1(depth = (v3 - 1), class = "inner")
+                            call Nest@f1((v3 - 1), "inner")
                           }
-                          false => { concat() }
+                          false => {
+                            concat()
+                          }
                         }
                       },
                     ),
                   )
                 }
                 page Test() {
-                  call Nest@f0(depth = 2, id = "outer")
+                  call Nest@f0(2, "outer")
                 }
             "#]],
         );
@@ -1775,7 +1722,7 @@ mod tests {
                   )
                 }
                 page Test() {
-                  call Button@f0(data-x = "1", aria-label = "go")
+                  call Button@f0("1", "go")
                 }
             "#]],
         );

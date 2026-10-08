@@ -12,8 +12,10 @@ use crate::hop::parsing::{ParseError, ParsedModule, parse};
 use crate::hop::typing::{Export, TypeError, TypeRegistry, TypedModule, typecheck};
 use crate::hover_annotation::HoverAnnotation;
 use crate::ir;
-use crate::ir::{DocumentShell, TailwindInjection, Transpiler};
-use crate::orchestrator::{OrchestrateOptions, orchestrate};
+use crate::ir::{
+    DocumentShell, TailwindInjection, Transpiler, flat_to_writer, optimize_flat, pure_to_flat,
+};
+use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
 use crate::root_contained_file_path::RootContainedFilePath;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -234,22 +236,26 @@ impl Program {
             }),
             js_script_src,
         );
-        let ir_module = orchestrate(
-            self.typed_modules(),
-            OrchestrateOptions {
-                skip_optimization,
-                asset_path_rewriter,
-                ..Default::default()
-            },
-            &shell,
-        );
+        let options = OrchestrateOptions {
+            asset_path_rewriter,
+            ..Default::default()
+        };
+
+        let pure = orchestrate_pure(self.typed_modules(), options);
+        let flat = pure_to_flat(pure);
+        let flat = if skip_optimization {
+            flat
+        } else {
+            optimize_flat(flat)
+        };
+        let module = flat_to_writer(flat, Some(&shell));
 
         match target {
             TargetLanguage::Typescript => {
-                ir::TsTranspiler::new().transpile_module(&ir_module, &self.type_registry)
+                ir::TsTranspiler::new().transpile_module(&module, &self.type_registry)
             }
             TargetLanguage::Rust => {
-                ir::RustTranspiler::new().transpile_module(&ir_module, &self.type_registry)
+                ir::RustTranspiler::new().transpile_module(&module, &self.type_registry)
             }
         }
     }

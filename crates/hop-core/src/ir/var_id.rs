@@ -6,9 +6,17 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VarId(usize);
 
+impl VarId {
+    /// The number that distinguishes this id, for building an identifier
+    /// from it.
+    pub fn index(self) -> usize {
+        self.0
+    }
+}
+
 impl fmt::Display for VarId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "v{}", self.0)
     }
 }
 

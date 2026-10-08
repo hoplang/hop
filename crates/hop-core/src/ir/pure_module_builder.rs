@@ -4,17 +4,17 @@ use crate::hop::typing::{
     TypeRegistry, TypeRegistryBuilder,
 };
 use crate::html::HtmlElementKind;
-use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::function_id::FunctionIdCounter;
+use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
-use crate::ir::ir_var::IrVar;
+use crate::ir::ir_parameter::IrParameter;
 use crate::ir::pure_module::{
-    PureArgument, PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
+    PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
     PurePageDeclaration,
 };
+use crate::ir::var_id::VarId;
 use crate::ir::var_id::VarIdCounter;
-use crate::ir::writer_module::WriterParameter;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
@@ -119,7 +119,9 @@ impl<'a> From<PureModuleBuilder> for PureModuleBodiesBuilder<'a> {
     }
 }
 
-type FunctionSignature = (IrFunction, Type);
+/// A declared function, the names of its parameters in order, and its
+/// return type.
+type FunctionSignature = (IrFunction, Vec<AttributeName>, Type);
 
 enum DeferredDeclaration {
     Page {
@@ -191,12 +193,18 @@ impl<'a> PureModuleBodiesBuilder<'a> {
             FunctionName::parse(name).expect("Test function name should be valid"),
         );
         let return_type = self.types.resolve(return_type);
-        let parameters = params
+        let parameters: Vec<(AttributeName, Type)> = params
             .into_iter()
             .map(|(name, typ)| (AttributeName::parse(name).unwrap(), self.types.resolve(typ)))
             .collect();
-        self.callees
-            .insert(name.to_string(), (function.clone(), return_type.clone()));
+        self.callees.insert(
+            name.to_string(),
+            (
+                function.clone(),
+                parameters.iter().map(|(name, _)| name.clone()).collect(),
+                return_type.clone(),
+            ),
+        );
         self.deferred.push(Deferred {
             declaration: DeferredDeclaration::Function {
                 function,
@@ -213,18 +221,17 @@ impl<'a> PureModuleBodiesBuilder<'a> {
     }
 
     pub fn build_with_registry(self) -> (PureModule, TypeRegistry) {
-        let expr_ids = Rc::new(RefCell::new(ExprIdCounter::new()));
         let var_ids = Rc::new(RefCell::new(VarIdCounter::new()));
         let callees = Rc::new(self.callees);
         let mut pages = Vec::new();
         let mut functions = Vec::new();
         for deferred in self.deferred {
-            let parameters: Vec<WriterParameter> = deferred
+            let parameters: Vec<IrParameter> = deferred
                 .parameters
                 .into_iter()
-                .map(|(name, typ)| WriterParameter {
+                .map(|(name, typ)| IrParameter {
                     name,
-                    var: IrVar::new(var_ids.borrow_mut().next()),
+                    var: var_ids.borrow_mut().next(),
                     typ,
                 })
                 .collect();
@@ -234,7 +241,6 @@ impl<'a> PureModuleBodiesBuilder<'a> {
                     .map(|p| (p.name.as_str().to_string(), p.var, p.typ.clone()))
                     .collect(),
                 types: self.types.clone(),
-                expr_ids: expr_ids.clone(),
                 var_ids: var_ids.clone(),
                 callees: callees.clone(),
             };
@@ -252,10 +258,7 @@ impl<'a> PureModuleBodiesBuilder<'a> {
             );
             match deferred.declaration {
                 DeferredDeclaration::Page { name } => {
-                    let head = PureExpr::HtmlConcat {
-                        parts: Vec::new(),
-                        id: expr_ids.borrow_mut().next(),
-                    };
+                    let head = PureExpr::HtmlConcat { parts: Vec::new() };
                     pages.push(PurePageDeclaration {
                         name,
                         parameters,
@@ -279,30 +282,24 @@ impl<'a> PureModuleBodiesBuilder<'a> {
         let module = PureModule {
             pages,
             functions,
-            expr_ids: *expr_ids.borrow(),
             var_ids: *var_ids.borrow(),
         };
         (module, self.types.registry().clone())
     }
 }
 
-type ScopedVar = (String, IrVar, Type);
+type ScopedVar = (String, VarId, Type);
 
 pub struct PureBuilder {
     var_stack: Vec<ScopedVar>,
     types: Rc<TestTypes>,
-    expr_ids: Rc<RefCell<ExprIdCounter>>,
     var_ids: Rc<RefCell<VarIdCounter>>,
     callees: Rc<HashMap<String, FunctionSignature>>,
 }
 
 impl PureBuilder {
-    fn next_expr_id(&self) -> ExprId {
-        self.expr_ids.borrow_mut().next()
-    }
-
-    fn bind(&self) -> IrVar {
-        IrVar::new(self.var_ids.borrow_mut().next())
+    fn bind(&self) -> VarId {
+        self.var_ids.borrow_mut().next()
     }
 
     fn scoped(&self, bindings: impl IntoIterator<Item = ScopedVar>) -> Self {
@@ -311,7 +308,6 @@ impl PureBuilder {
         Self {
             var_stack,
             types: self.types.clone(),
-            expr_ids: self.expr_ids.clone(),
             var_ids: self.var_ids.clone(),
             callees: self.callees.clone(),
         }
@@ -330,29 +326,19 @@ impl PureBuilder {
     pub fn str(&self, s: &str) -> PureExpr {
         PureExpr::StringLiteral {
             value: CheapString::new(s.to_string()),
-            id: self.next_expr_id(),
         }
     }
 
     pub fn int(&self, n: i32) -> PureExpr {
-        PureExpr::IntLiteral {
-            value: n,
-            id: self.next_expr_id(),
-        }
+        PureExpr::IntLiteral { value: n }
     }
 
     pub fn bool(&self, b: bool) -> PureExpr {
-        PureExpr::BoolLiteral {
-            value: b,
-            id: self.next_expr_id(),
-        }
+        PureExpr::BoolLiteral { value: b }
     }
 
     pub fn float(&self, f: f64) -> PureExpr {
-        PureExpr::FloatLiteral {
-            value: f,
-            id: self.next_expr_id(),
-        }
+        PureExpr::FloatLiteral { value: f }
     }
 
     pub fn var(&self, name: &str) -> PureExpr {
@@ -373,11 +359,7 @@ impl PureBuilder {
                 )
             });
 
-        PureExpr::VariableReference {
-            value,
-            typ,
-            id: self.next_expr_id(),
-        }
+        PureExpr::VariableReference { value, typ }
     }
 
     pub fn eq(&self, left: PureExpr, right: PureExpr) -> PureExpr {
@@ -395,7 +377,6 @@ impl PureBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_expr_id(),
         }
     }
 
@@ -412,7 +393,6 @@ impl PureBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_expr_id(),
         }
     }
 
@@ -429,7 +409,6 @@ impl PureBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_expr_id(),
         }
     }
 
@@ -443,7 +422,6 @@ impl PureBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_expr_id(),
         }
     }
 
@@ -457,7 +435,6 @@ impl PureBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_expr_id(),
         }
     }
 
@@ -471,7 +448,6 @@ impl PureBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_expr_id(),
         }
     }
 
@@ -484,7 +460,6 @@ impl PureBuilder {
         );
         PureExpr::BoolNegation {
             operand: Box::new(operand),
-            id: self.next_expr_id(),
         }
     }
 
@@ -497,7 +472,6 @@ impl PureBuilder {
         PureExpr::NumericNegation {
             operand: Box::new(operand),
             operand_type,
-            id: self.next_expr_id(),
         }
     }
 
@@ -517,7 +491,6 @@ impl PureBuilder {
         PureExpr::BoolLogicalAnd {
             left: Box::new(left),
             right: Box::new(right),
-            id: self.next_expr_id(),
         }
     }
 
@@ -537,16 +510,7 @@ impl PureBuilder {
         PureExpr::BoolLogicalOr {
             left: Box::new(left),
             right: Box::new(right),
-            id: self.next_expr_id(),
         }
-    }
-
-    pub fn array(&self, elements: Vec<PureExpr>) -> PureExpr {
-        let element_type = elements
-            .first()
-            .map(|first| first.typ())
-            .expect("Cannot create empty array literal in test builder");
-        self.array_typed(element_type, elements)
     }
 
     pub fn array_typed(&self, element_type: Type, elements: Vec<PureExpr>) -> PureExpr {
@@ -562,7 +526,6 @@ impl PureBuilder {
         PureExpr::Array {
             elements,
             typ: Type::Array(Box::new(element_type)),
-            id: self.next_expr_id(),
         }
     }
 
@@ -570,7 +533,6 @@ impl PureBuilder {
         PureExpr::Tuple {
             typ: Type::Tuple(elements.iter().map(|element| element.typ()).collect()),
             elements,
-            id: self.next_expr_id(),
         }
     }
 
@@ -587,7 +549,6 @@ impl PureBuilder {
             typ: elements[index].clone(),
             tuple: Box::new(tuple),
             index,
-            id: self.next_expr_id(),
         }
     }
 
@@ -600,7 +561,6 @@ impl PureBuilder {
         );
         PureExpr::IntToString {
             value: Box::new(value),
-            id: self.next_expr_id(),
         }
     }
 
@@ -613,7 +573,6 @@ impl PureBuilder {
         );
         PureExpr::FloatToInt {
             value: Box::new(value),
-            id: self.next_expr_id(),
         }
     }
 
@@ -626,7 +585,6 @@ impl PureBuilder {
         );
         PureExpr::IntToFloat {
             value: Box::new(value),
-            id: self.next_expr_id(),
         }
     }
 
@@ -674,7 +632,6 @@ impl PureBuilder {
                 .map(|(k, v)| (FieldName::parse(k).unwrap(), v))
                 .collect(),
             typ: self.types.named(record_name),
-            id: self.next_expr_id(),
         }
     }
 
@@ -750,7 +707,6 @@ impl PureBuilder {
                 .map(|(k, v)| (FieldName::parse(k).unwrap(), v))
                 .collect(),
             typ: self.types.named(enum_name),
-            id: self.next_expr_id(),
         }
     }
 
@@ -759,7 +715,6 @@ impl PureBuilder {
         PureExpr::Option {
             value: Some(Box::new(inner)),
             typ: Type::Option(Box::new(inner_type)),
-            id: self.next_expr_id(),
         }
     }
 
@@ -771,7 +726,6 @@ impl PureBuilder {
         PureExpr::Option {
             value: None,
             typ: Type::Option(Box::new(inner_type)),
-            id: self.next_expr_id(),
         }
     }
 
@@ -806,7 +760,6 @@ impl PureBuilder {
                 arms: arms.arms,
             },
             typ,
-            id: self.next_expr_id(),
         }
     }
 
@@ -833,7 +786,6 @@ impl PureBuilder {
                 false_body: Box::new(false_body),
             },
             typ: result_type,
-            id: self.next_expr_id(),
         }
     }
 
@@ -865,7 +817,6 @@ impl PureBuilder {
                 none_arm_body: Box::new(none_body),
             },
             typ: result_type,
-            id: self.next_expr_id(),
         }
     }
 
@@ -886,7 +837,7 @@ impl PureBuilder {
 
         let binding = self.bind();
         let some_body =
-            some_body_fn(&self.scoped([(binding_name.to_string(), binding, inner_type)]));
+            some_body_fn(&self.scoped([(binding_name.to_string(), binding, inner_type.clone())]));
 
         assert_eq!(
             some_body.typ(),
@@ -900,12 +851,14 @@ impl PureBuilder {
         PureExpr::Match {
             match_: Match::Option {
                 subject: Box::new(subject),
-                some_arm_binding: Some(binding),
+                some_arm_binding: Some(IrBinder {
+                    var: binding,
+                    typ: inner_type,
+                }),
                 some_arm_body: Box::new(some_body),
                 none_arm_body: Box::new(none_body),
             },
             typ: result_type,
-            id: self.next_expr_id(),
         }
     }
 
@@ -934,7 +887,6 @@ impl PureBuilder {
             record: Box::new(object),
             field: field_name,
             typ: field_type,
-            id: self.next_expr_id(),
         }
     }
 
@@ -945,16 +897,18 @@ impl PureBuilder {
         let value_type = value.typ();
 
         let var = self.bind();
-        let body = body_fn(&self.scoped([(var_name.to_string(), var, value_type)]));
+        let body = body_fn(&self.scoped([(var_name.to_string(), var, value_type.clone())]));
 
         let typ = body.typ();
 
         PureExpr::Let {
-            var,
+            var: IrBinder {
+                var,
+                typ: value_type,
+            },
             value: Box::new(value),
             body: Box::new(body),
             typ,
-            id: self.next_expr_id(),
         }
     }
 
@@ -967,36 +921,7 @@ impl PureBuilder {
                 part
             );
         }
-        PureExpr::StringConcat {
-            parts,
-            id: self.next_expr_id(),
-        }
-    }
-
-    pub fn join(&self, args: Vec<PureExpr>) -> PureExpr {
-        for arg in &args {
-            assert_eq!(
-                arg.typ(),
-                Type::String,
-                "join expects String arguments, got: {}",
-                arg
-            );
-        }
-        let separator = CheapString::new(" ".to_string());
-        let mut parts = Vec::with_capacity((args.len() * 2).saturating_sub(1));
-        for (index, arg) in args.into_iter().enumerate() {
-            if index > 0 {
-                parts.push(PureExpr::StringLiteral {
-                    value: separator.clone(),
-                    id: self.next_expr_id(),
-                });
-            }
-            parts.push(arg);
-        }
-        PureExpr::StringConcat {
-            parts,
-            id: self.next_expr_id(),
-        }
+        PureExpr::StringConcat { parts }
     }
 
     pub fn array_length(&self, operand: PureExpr) -> PureExpr {
@@ -1007,7 +932,6 @@ impl PureBuilder {
         );
         PureExpr::ArrayLength {
             array: Box::new(operand),
-            id: self.next_expr_id(),
         }
     }
 
@@ -1019,7 +943,6 @@ impl PureBuilder {
         );
         PureExpr::ArrayIsEmpty {
             array: Box::new(operand),
-            id: self.next_expr_id(),
         }
     }
 
@@ -1032,7 +955,6 @@ impl PureBuilder {
         );
         PureExpr::StringIsEmpty {
             string: Box::new(operand),
-            id: self.next_expr_id(),
         }
     }
 
@@ -1044,7 +966,6 @@ impl PureBuilder {
         );
         PureExpr::OptionIsSome {
             option: Box::new(operand),
-            id: self.next_expr_id(),
         }
     }
 
@@ -1056,7 +977,6 @@ impl PureBuilder {
         );
         PureExpr::OptionIsNone {
             option: Box::new(operand),
-            id: self.next_expr_id(),
         }
     }
 
@@ -1069,7 +989,6 @@ impl PureBuilder {
         );
         PureExpr::HtmlText {
             content: CheapString::new(content.to_string()),
-            id: self.next_expr_id(),
         }
     }
 
@@ -1091,7 +1010,6 @@ impl PureBuilder {
             element,
             attributes,
             children: Box::new(children),
-            id: self.next_expr_id(),
         }
     }
 
@@ -1130,7 +1048,6 @@ impl PureBuilder {
         );
         PureExpr::HtmlEscape {
             expr: Box::new(expr),
-            id: self.next_expr_id(),
         }
     }
 
@@ -1143,10 +1060,7 @@ impl PureBuilder {
                 part
             );
         }
-        PureExpr::HtmlConcat {
-            parts,
-            id: self.next_expr_id(),
-        }
+        PureExpr::HtmlConcat { parts }
     }
 
     pub fn html_for<F>(&self, var: Option<&str>, array: PureExpr, body_fn: F) -> PureExpr
@@ -1165,6 +1079,10 @@ impl PureBuilder {
             .zip(var)
             .map(|(name, v)| (name.to_string(), v, element_type.clone()))
             .collect();
+        let var = var.map(|var| IrBinder {
+            var,
+            typ: element_type,
+        });
         let body = body_fn(&self.scoped(bindings));
         assert_eq!(
             body.typ(),
@@ -1177,7 +1095,6 @@ impl PureBuilder {
             var,
             source: Box::new(PureForSource::Array(array)),
             body: Box::new(body),
-            id: self.next_expr_id(),
         }
     }
 
@@ -1211,6 +1128,10 @@ impl PureBuilder {
             .zip(var)
             .map(|(name, v)| (name.to_string(), v, Type::Int))
             .collect();
+        let var = var.map(|var| IrBinder {
+            var,
+            typ: Type::Int,
+        });
         let body = body_fn(&self.scoped(bindings));
         assert_eq!(
             body.typ(),
@@ -1223,30 +1144,35 @@ impl PureBuilder {
             var,
             source: Box::new(PureForSource::RangeInclusive { start, end }),
             body: Box::new(body),
-            id: self.next_expr_id(),
         }
     }
 
-    pub fn call(&self, name: &str, args: Vec<(&str, PureExpr)>) -> PureExpr {
-        let (function, return_type) = self
+    /// A call with its arguments given by parameter name, in any order.
+    pub fn call(&self, name: &str, mut args: Vec<(&str, PureExpr)>) -> PureExpr {
+        let (function, parameters, return_type) = self
             .callees
             .get(name)
             .cloned()
             .unwrap_or_else(|| panic!("Call to undeclared function '{}'", name));
 
-        let pure_args: Vec<PureArgument> = args
-            .into_iter()
-            .map(|(k, expr)| PureArgument {
-                name: AttributeName::parse(k).unwrap(),
-                expr,
+        let pure_args: Vec<PureExpr> = parameters
+            .iter()
+            .map(|param| {
+                let index = args
+                    .iter()
+                    .position(|(k, _)| *k == param.as_str())
+                    .unwrap_or_else(|| panic!("Call to '{}' has no argument '{}'", name, param));
+                args.swap_remove(index).1
             })
             .collect();
+        if let Some((k, _)) = args.first() {
+            panic!("Call to '{}' has unknown argument '{}'", name, k);
+        }
 
         PureExpr::Call {
             function,
             args: pure_args,
             typ: return_type,
-            id: self.next_expr_id(),
         }
     }
 }
@@ -1312,7 +1238,7 @@ fn resolve_arm_bindings<'s>(
     variants: &[EnumVariant],
     variant: &str,
     field_bindings: impl IntoIterator<Item = (&'s str, &'s str)>,
-) -> (Vec<(FieldName, IrVar)>, Vec<ScopedVar>) {
+) -> (Vec<(FieldName, IrBinder)>, Vec<ScopedVar>) {
     let variant_fields = variants
         .iter()
         .find(|v| v.name.as_str() == variant)
@@ -1339,7 +1265,13 @@ fn resolve_arm_bindings<'s>(
                 )
             });
         let binding = builder.bind();
-        bindings.push((FieldName::parse(field_name).unwrap(), binding));
+        bindings.push((
+            FieldName::parse(field_name).unwrap(),
+            IrBinder {
+                var: binding,
+                typ: field_type.clone(),
+            },
+        ));
         scoped_vars.push((binding_name.to_string(), binding, field_type));
     }
     (bindings, scoped_vars)

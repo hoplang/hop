@@ -1,52 +1,40 @@
+use std::collections::HashMap;
+
 use pretty::{Arena, DocAllocator};
 
-use super::{Doc, Transpiler};
+use super::Doc;
+use super::transpiler::Transpiler;
 use crate::hop::typing::{Type, TypeRegistry};
+use crate::ir::flat_module::FlatForSource;
+use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::{EnumPattern, Match};
-use crate::ir::ir_var::IrVar;
-use crate::ir::var_id::{VarId, VarIdCounter};
+use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
+use crate::ir::ir_parameter::IrParameter;
+use crate::ir::var_id::VarId;
 use crate::ir::writer_module::{
-    WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
-    WriterModule, WriterPageDeclaration, WriterParameter, WriterStatement,
+    Let, Stmt, ValueBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterModule,
+    WriterPageDeclaration,
 };
-use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
-/// Names every variable in the generated code, derived from the IR's variable
-/// identity rather than the source name.
+/// Names every variable in the generated code after the name that binds it
+/// in the IR rather than the source name.
 ///
-/// Each binder within a declaration has a distinct `VarId`, so this is unique
-/// per scope by construction: no hop identifier can shadow another, and no name
-/// can collide with a TypeScript reserved word or with the `output` buffer.
-fn var_ident(var: &IrVar) -> String {
-    var_id_ident(var.id)
-}
-
-/// The generated name for a `VarId`, whether it comes from a binder in the IR
-/// or was minted by [`TsTranspiler::fresh_var`].
-fn var_id_ident(id: VarId) -> String {
-    format!("v_{id}")
-}
-
-/// The property that names an argument. A name with a `-`, `:` or `.` in
-/// it, as an attribute passed to a rest can have, is quoted.
-fn property_key(name: &AttributeName) -> String {
-    if name.as_str().contains(['-', ':', '.']) {
-        format!("\"{}\"", name.as_str())
-    } else {
-        name.as_str().to_string()
-    }
+/// Names are unique across the module, so no hop identifier can shadow
+/// another, and no name can collide with a TypeScript reserved word or with
+/// the `output` buffer.
+fn name_ident(name: VarId) -> String {
+    format!("v_{}", name.index())
 }
 
 /// Destructuring entry for a parameter: `name: v_0`. The property name stays
 /// the source name, since it is the caller-facing argument name.
-fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a WriterParameter) -> Doc<'a> {
+fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter) -> Doc<'a> {
     arena
-        .text(property_key(param.name()))
+        .text(param.name().as_str())
         .append(arena.text(": "))
-        .append(arena.text(var_ident(&param.var)))
+        .append(arena.text(name_ident(param.var)))
 }
 
 fn function_ident(function: &IrFunction) -> String {
@@ -64,9 +52,12 @@ pub struct TsTranspiler {
     needs_html: bool,
     /// Registry of the module currently being transpiled
     registry: TypeRegistry,
-    /// Continues the module's variable numbering, so that names the transpiler
-    /// needs for itself cannot collide with the ones bound in the IR.
-    var_ids: VarIdCounter,
+    /// The type of every name bound so far. A match binds its subject to
+    /// a fresh constant of the subject's declared type, so a nested match
+    /// on the same name is not narrowed by the arm it sits in.
+    name_types: HashMap<VarId, Type>,
+    /// Numbers the subject constants.
+    subjects: usize,
 }
 
 impl TsTranspiler {
@@ -77,35 +68,27 @@ impl TsTranspiler {
             needs_float_to_int: false,
             needs_html: false,
             registry: TypeRegistry::default(),
-            var_ids: VarIdCounter::new(),
+            name_types: HashMap::new(),
+            subjects: 0,
         }
     }
 
-    /// Emit a binding as a plain `const` declaration followed by the statements
-    /// it scopes over.
-    fn const_binding<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        var: &'a IrVar,
-        binding_type: Doc<'a>,
-        value: Doc<'a>,
-        body: &'a [WriterStatement],
-    ) -> Doc<'a> {
-        let declaration = arena
+    /// Bind the subject of a match to a fresh constant of its declared
+    /// type, and return the constant's name with the binding statement.
+    fn bind_subject<'a>(&mut self, arena: &'a Arena<'a>, subject: VarId) -> (String, Doc<'a>) {
+        let name = format!("s_{}", self.subjects);
+        self.subjects += 1;
+        let typ = self.name_types[&subject].clone();
+        let binding = arena
             .text("const ")
-            .append(arena.text(var_ident(var)))
+            .append(arena.text(name.clone()))
             .append(arena.text(": "))
-            .append(binding_type)
+            .append(self.transpile_type(arena, &typ))
             .append(arena.text(" = "))
-            .append(value)
-            .append(arena.text(";"));
-        if body.is_empty() {
-            declaration
-        } else {
-            declaration
-                .append(arena.hardline())
-                .append(self.transpile_statements(arena, body))
-        }
+            .append(arena.text(name_ident(subject)))
+            .append(arena.text(";"))
+            .append(arena.hardline());
+        (name, binding)
     }
 
     fn escape_string(&mut self, s: &str) -> String {
@@ -121,19 +104,17 @@ impl TsTranspiler {
         format!("\"{}\"", self.escape_string(s))
     }
 
-    /// Mint a name for a variable the generated code needs but the IR does not
-    /// bind, such as the subject of a match.
-    fn fresh_var(&mut self) -> String {
-        var_id_ident(self.var_ids.next())
-    }
-
-    /// The destructuring parameter of a page or function: the binding pattern
-    /// and the type literal that annotates it, as in `{a: v_0}: {a: string}`.
+    /// The destructuring parameter of a page: the binding pattern and the
+    /// type literal that annotates it, as in `{a: v_0}: {a: string}`. The
+    /// parameters' types are recorded.
     fn transpile_parameter_list<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parameters: &'a [WriterParameter],
+        parameters: &'a [IrParameter],
     ) -> Doc<'a> {
+        for param in parameters {
+            self.name_types.insert(param.var, param.typ.clone());
+        }
         if parameters.is_empty() {
             return arena.nil();
         }
@@ -145,7 +126,7 @@ impl TsTranspiler {
             .iter()
             .map(|param| {
                 arena
-                    .text(property_key(param.name()))
+                    .text(param.name().as_str())
                     .append(arena.text(": "))
                     .append(self.transpile_type(arena, &param.typ))
             })
@@ -163,13 +144,13 @@ impl TsTranspiler {
             .group()
     }
 
-    /// The argument of a record or enum constructor call: `({a: 1, b: 2})`, or
-    /// `()` when the type has no fields.
+    /// The argument of a record or enum constructor call: `({a: e_1, b: e_2})`,
+    /// or `()` when the type has no fields.
     fn transpile_field_object<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         base: Doc<'a>,
-        fields: &'a [(FieldName, WriterExpr)],
+        fields: &'a [(FieldName, VarId)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             return base.append(arena.text(")"));
@@ -180,7 +161,7 @@ impl TsTranspiler {
                 arena
                     .text(name.as_str())
                     .append(arena.text(": "))
-                    .append(self.transpile_expr(arena, value))
+                    .append(arena.text(name_ident(*value)))
             })
             .collect();
         base.append(arena.text("{"))
@@ -195,61 +176,186 @@ impl TsTranspiler {
             .group()
     }
 
-    /// Bind a match subject to `name` and emit the switch over it.
-    fn bind_match_subject_stmt<'a>(
+    /// The arguments of a call, in the order of the callee's parameters:
+    /// `(v_1, v_2)`.
+    fn transpile_arguments<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        subject: &'a WriterExpr,
-        name: String,
-        switch_doc: Doc<'a>,
+        base: Doc<'a>,
+        args: &'a [VarId],
     ) -> Doc<'a> {
-        arena
-            .text("const ")
-            .append(arena.text(name))
-            .append(arena.text(": "))
-            .append(self.transpile_type(arena, &subject.typ()))
-            .append(arena.text(" = "))
-            .append(self.transpile_expr(arena, subject))
-            .append(arena.text(";"))
-            .append(arena.hardline())
-            .append(switch_doc)
-    }
-
-    /// The same in expression position, where the binding has to be an arrow
-    /// function parameter because there is no statement to declare it in.
-    fn bind_match_subject_expr<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        subject: &'a WriterExpr,
-        name: String,
-        switch_body: Doc<'a>,
-    ) -> Doc<'a> {
-        arena
-            .text("((")
-            .append(arena.text(name))
-            .append(arena.text(": "))
-            .append(self.transpile_type(arena, &subject.typ()))
-            .append(arena.text(") => {"))
-            .append(arena.line().append(switch_body).nest(2))
-            .append(arena.line())
-            .append(arena.text("})("))
-            .append(self.transpile_expr(arena, subject))
+        let arg_docs: Vec<_> = args
+            .iter()
+            .map(|arg| arena.text(name_ident(*arg)))
+            .collect();
+        base.append(arena.intersperse(arg_docs, arena.text(", ")))
             .append(arena.text(")"))
-            .group()
     }
 
-    fn transpile_bool_subject<'a>(
+    /// A statement block, indented, between the braces the caller writes.
+    fn transpile_block<'a>(&mut self, arena: &'a Arena<'a>, statements: &'a [Stmt]) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.hardline())
+            .append(self.transpile_statements(arena, statements))
+            .append(arena.hardline())
+            .nest(4)
+    }
+
+    /// The arms of an enum match as switch cases, each ending in `tail`,
+    /// with the arm's bindings destructured from `subject` first.
+    fn transpile_enum_cases<'a, Body>(
         &mut self,
         arena: &'a Arena<'a>,
-        subject: &'a WriterExpr,
+        subject: VarId,
+        arms: &'a [EnumMatchArm<Body>],
+        mut body: impl FnMut(&mut Self, &'a Body) -> Doc<'a>,
+        tail: &'static str,
     ) -> Doc<'a> {
-        match subject {
-            WriterExpr::BoolLiteral { .. } => self.transpile_expr(arena, subject),
-            _ => arena
-                .text("(")
-                .append(self.transpile_expr(arena, subject))
-                .append(arena.text(" as boolean)")),
-        }
+        let (subject_name, subject_binding) = self.bind_subject(arena, subject);
+        let tail_doc = if tail.is_empty() {
+            arena.nil()
+        } else {
+            arena.hardline().append(arena.text(tail))
+        };
+        let case_docs: Vec<_> = arms
+            .iter()
+            .map(|arm| {
+                let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
+                for (_, binder) in &arm.bindings {
+                    self.name_types.insert(binder.var, binder.typ.clone());
+                }
+                let bindings_doc = if arm.bindings.is_empty() {
+                    arena.nil()
+                } else {
+                    let destructure_docs: Vec<_> = arm
+                        .bindings
+                        .iter()
+                        .map(|(field, binder)| {
+                            arena
+                                .text(field.as_str())
+                                .append(arena.text(": "))
+                                .append(arena.text(name_ident(binder.var)))
+                        })
+                        .collect();
+                    arena
+                        .text("const { ")
+                        .append(arena.intersperse(destructure_docs, arena.text(", ")))
+                        .append(arena.text(" } = "))
+                        .append(arena.text(subject_name.clone()))
+                        .append(arena.text(";"))
+                        .append(arena.hardline())
+                };
+                arena
+                    .text("case \"")
+                    .append(arena.text(variant_name.as_str()))
+                    .append(arena.text("\": {"))
+                    .append(
+                        arena
+                            .hardline()
+                            .append(bindings_doc)
+                            .append(body(self, &arm.body))
+                            .append(tail_doc.clone())
+                            .nest(4),
+                    )
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
+            })
+            .collect();
+        subject_binding
+            .append(arena.text("switch ("))
+            .append(arena.text(subject_name))
+            .append(arena.text("._tag) {"))
+            .append(
+                arena
+                    .hardline()
+                    .append(arena.intersperse(case_docs, arena.hardline()))
+                    .nest(4),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}"))
+    }
+
+    /// The arms of an option match as switch cases, each ending in `tail`,
+    /// with the some arm's binding read from `subject` first.
+    fn transpile_option_cases<'a, Body>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: VarId,
+        some_arm_binding: Option<&'a IrBinder>,
+        some_arm_body: &'a Body,
+        none_arm_body: &'a Body,
+        mut body: impl FnMut(&mut Self, &'a Body) -> Doc<'a>,
+        tail: &'static str,
+    ) -> Doc<'a> {
+        self.needs_option = true;
+        let (subject_name, subject_binding) = self.bind_subject(arena, subject);
+        let tail_doc = if tail.is_empty() {
+            arena.nil()
+        } else {
+            arena.hardline().append(arena.text(tail))
+        };
+        let binding_doc = match some_arm_binding {
+            Some(binder) => {
+                self.name_types.insert(binder.var, binder.typ.clone());
+                arena
+                    .text("const ")
+                    .append(arena.text(name_ident(binder.var)))
+                    .append(arena.text(" = "))
+                    .append(arena.text(subject_name.clone()))
+                    .append(arena.text(".value;"))
+                    .append(arena.hardline())
+            }
+            None => arena.nil(),
+        };
+        let some_case = arena
+            .text("case \"Some\": {")
+            .append(
+                arena
+                    .hardline()
+                    .append(binding_doc)
+                    .append(body(self, some_arm_body))
+                    .append(tail_doc.clone())
+                    .nest(4),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}"));
+        let none_case = arena
+            .text("case \"None\": {")
+            .append(
+                arena
+                    .hardline()
+                    .append(body(self, none_arm_body))
+                    .append(tail_doc)
+                    .nest(4),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}"));
+        subject_binding
+            .append(arena.text("switch ("))
+            .append(arena.text(subject_name))
+            .append(arena.text(".tag) {"))
+            .append(
+                arena
+                    .hardline()
+                    .append(some_case)
+                    .append(arena.hardline())
+                    .append(none_case)
+                    .nest(4),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}"))
+    }
+
+    /// Wrap statements that return a value in an immediately invoked arrow
+    /// function, which is how a value is computed by statements in
+    /// expression position.
+    fn transpile_iife<'a>(&mut self, arena: &'a Arena<'a>, body: Doc<'a>) -> Doc<'a> {
+        arena
+            .text("(() => {")
+            .append(arena.hardline().append(body).nest(4))
+            .append(arena.hardline())
+            .append(arena.text("})()"))
     }
 }
 
@@ -271,7 +377,8 @@ impl Transpiler for TsTranspiler {
         self.needs_float_to_int = false;
         self.needs_html = false;
         self.registry = registry.clone();
-        self.var_ids = module.var_ids;
+        self.name_types.clear();
+        self.subjects = 0;
 
         let arena = &Arena::new();
 
@@ -626,33 +733,15 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [WriterArgument],
+        args: &'a [VarId],
     ) -> Doc<'a> {
-        let mut doc = arena
+        let base = arena
             .nil()
             .append(arena.text("output += "))
             .append(arena.text(function_ident(function)))
             .append(arena.text("("));
-
-        if !args.is_empty() {
-            // Build named arguments
-            let arg_docs: Vec<_> = args
-                .iter()
-                .map(|arg| {
-                    arena
-                        .text(property_key(&arg.name))
-                        .append(arena.text(": "))
-                        .append(self.transpile_expr(arena, &arg.expr))
-                })
-                .collect();
-
-            doc = doc
-                .append(arena.text("{"))
-                .append(arena.intersperse(arg_docs, arena.text(", ")))
-                .append(arena.text("}"));
-        }
-
-        doc.append(arena.text(");"))
+        self.transpile_arguments(arena, base, args)
+            .append(arena.text(";"))
     }
 
     fn transpile_function_def<'a>(
@@ -660,12 +749,24 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         function: &'a WriterFunctionDeclaration,
     ) -> Doc<'a> {
-        let parameters = self.transpile_parameter_list(arena, &function.parameters);
+        // A function is internal to the module, so it takes its parameters
+        // in order, as a call passes them.
+        let param_docs: Vec<_> = function
+            .parameters
+            .iter()
+            .map(|param| {
+                self.name_types.insert(param.var, param.typ.clone());
+                arena
+                    .text(name_ident(param.var))
+                    .append(arena.text(": "))
+                    .append(self.transpile_type(arena, &param.typ))
+            })
+            .collect();
         let head = arena
             .text("function ")
             .append(arena.text(function_ident(&function.function)))
             .append(arena.text("("))
-            .append(parameters);
+            .append(arena.intersperse(param_docs, arena.text(", ")));
 
         match &function.body {
             WriterFunctionBody::Writes(statements) => {
@@ -683,9 +784,9 @@ impl Transpiler for TsTranspiler {
                     .append(body.nest(4))
                     .append(arena.text("}"))
             }
-            WriterFunctionBody::Returns(expr) => {
+            WriterFunctionBody::Returns(block) => {
                 let return_type = self.transpile_type(arena, &function.return_type);
-                let body = self.transpile_expr(arena, expr);
+                let body = self.transpile_value_block(arena, block);
                 head.append(arena.text("): "))
                     .append(return_type)
                     .append(arena.text(" {"))
@@ -693,9 +794,7 @@ impl Transpiler for TsTranspiler {
                         arena
                             .nil()
                             .append(arena.line())
-                            .append(arena.text("return "))
                             .append(body)
-                            .append(arena.text(";"))
                             .append(arena.line())
                             .nest(4),
                     )
@@ -704,35 +803,17 @@ impl Transpiler for TsTranspiler {
         }
     }
 
-    fn transpile_function_call_expr<'a>(
+    fn transpile_function_call_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [WriterArgument],
+        args: &'a [VarId],
     ) -> Doc<'a> {
-        let mut doc = arena
+        let base = arena
             .nil()
             .append(arena.text(function_ident(function)))
             .append(arena.text("("));
-
-        if !args.is_empty() {
-            let arg_docs: Vec<_> = args
-                .iter()
-                .map(|arg| {
-                    arena
-                        .text(property_key(&arg.name))
-                        .append(arena.text(": "))
-                        .append(self.transpile_expr(arena, &arg.expr))
-                })
-                .collect();
-
-            doc = doc
-                .append(arena.text("{"))
-                .append(arena.intersperse(arg_docs, arena.text(", ")))
-                .append(arena.text("}"));
-        }
-
-        doc.append(arena.text(")"))
+        self.transpile_arguments(arena, base, args)
     }
 
     fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a> {
@@ -746,123 +827,82 @@ impl Transpiler for TsTranspiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        expr: &'a WriterExpr,
+        name: VarId,
     ) -> Doc<'a> {
         self.needs_escape_html = true;
         arena
             .nil()
             .append(arena.text("output += escapeHtml("))
-            .append(self.transpile_expr(arena, expr))
+            .append(arena.text(name_ident(name)))
             .append(arena.text(");"))
     }
 
-    fn transpile_write_html_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        expr: &'a WriterExpr,
-    ) -> Doc<'a> {
+    fn transpile_write_html_statement<'a>(&mut self, arena: &'a Arena<'a>, name: VarId) -> Doc<'a> {
         arena
             .nil()
             .append(arena.text("output += "))
-            .append(self.transpile_expr(arena, expr))
+            .append(arena.text(name_ident(name)))
             .append(arena.text(";"))
     }
 
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrVar>,
-        source: &'a WriterForSource,
-        body: &'a [WriterStatement],
+        var: Option<&'a IrBinder>,
+        source: &'a FlatForSource,
+        body: &'a [Stmt],
     ) -> Doc<'a> {
-        let var_name = var.map_or_else(|| "_".to_string(), var_ident);
+        let var_name = match var {
+            Some(binder) => {
+                self.name_types.insert(binder.var, binder.typ.clone());
+                name_ident(binder.var)
+            }
+            None => "_".to_string(),
+        };
         match source {
-            WriterForSource::Array(array) => {
-                let source_name = self.fresh_var();
-                arena
-                    .text("const ")
-                    .append(arena.text(source_name.clone()))
-                    .append(arena.text(": "))
-                    .append(self.transpile_type(arena, &array.typ()))
-                    .append(arena.text(" = "))
-                    .append(self.transpile_expr(arena, array))
-                    .append(arena.text(";"))
-                    .append(arena.hardline())
-                    .append(arena.text("for (const "))
-                    .append(arena.text(var_name))
-                    .append(arena.text(" of "))
-                    .append(arena.text(source_name))
-                    .append(arena.text(") {"))
-                    .append(
-                        arena
-                            .nil()
-                            .append(arena.hardline())
-                            .append(self.transpile_statements(arena, body))
-                            .append(arena.hardline())
-                            .nest(4),
-                    )
-                    .append(arena.text("}"))
-            }
-            WriterForSource::RangeInclusive { start, end } => {
-                let start_name = self.fresh_var();
-                let end_name = self.fresh_var();
-                arena
-                    .text("const ")
-                    .append(arena.text(start_name.clone()))
-                    .append(arena.text(": "))
-                    .append(self.transpile_type(arena, &start.typ()))
-                    .append(arena.text(" = "))
-                    .append(self.transpile_expr(arena, start))
-                    .append(arena.text(";"))
-                    .append(arena.hardline())
-                    .append(arena.text("const "))
-                    .append(arena.text(end_name.clone()))
-                    .append(arena.text(": "))
-                    .append(self.transpile_type(arena, &end.typ()))
-                    .append(arena.text(" = "))
-                    .append(self.transpile_expr(arena, end))
-                    .append(arena.text(";"))
-                    .append(arena.hardline())
-                    .append(arena.text("for (let "))
-                    .append(arena.text(var_name.clone()))
-                    .append(arena.text(" = "))
-                    .append(arena.text(start_name))
-                    .append(arena.text("; "))
-                    .append(arena.text(var_name.clone()))
-                    .append(arena.text(" <= "))
-                    .append(arena.text(end_name))
-                    .append(arena.text("; "))
-                    .append(arena.text(var_name))
-                    .append(arena.text("++) {"))
-                    .append(
-                        arena
-                            .nil()
-                            .append(arena.hardline())
-                            .append(self.transpile_statements(arena, body))
-                            .append(arena.hardline())
-                            .nest(4),
-                    )
-                    .append(arena.text("}"))
-            }
+            FlatForSource::Array(array) => arena
+                .text("for (const ")
+                .append(arena.text(var_name))
+                .append(arena.text(" of "))
+                .append(arena.text(name_ident(*array)))
+                .append(arena.text(") {"))
+                .append(self.transpile_block(arena, body))
+                .append(arena.text("}")),
+            FlatForSource::RangeInclusive { start, end } => arena
+                .text("for (let ")
+                .append(arena.text(var_name.clone()))
+                .append(arena.text(" = "))
+                .append(arena.text(name_ident(*start)))
+                .append(arena.text("; "))
+                .append(arena.text(var_name.clone()))
+                .append(arena.text(" <= "))
+                .append(arena.text(name_ident(*end)))
+                .append(arena.text("; "))
+                .append(arena.text(var_name))
+                .append(arena.text("++) {"))
+                .append(self.transpile_block(arena, body))
+                .append(arena.text("}")),
         }
     }
 
-    fn transpile_let_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        var: &'a IrVar,
-        value: &'a WriterExpr,
-        body: &'a [WriterStatement],
-    ) -> Doc<'a> {
-        let binding_type = self.transpile_type(arena, &value.typ());
-        let value = self.transpile_expr(arena, value);
-        self.const_binding(arena, var, binding_type, value, body)
+    fn transpile_let_statement<'a>(&mut self, arena: &'a Arena<'a>, let_: &'a Let) -> Doc<'a> {
+        self.name_types.insert(let_.name, let_.typ.clone());
+        let binding_type = self.transpile_type(arena, &let_.typ);
+        let value = self.transpile_value(arena, &let_.value, &let_.typ);
+        arena
+            .text("const ")
+            .append(arena.text(name_ident(let_.name)))
+            .append(arena.text(": "))
+            .append(binding_type)
+            .append(arena.text(" = "))
+            .append(value)
+            .append(arena.text(";"))
     }
 
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterExpr, Vec<WriterStatement>>,
+        match_: &'a Match<VarId, Vec<Stmt>>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -872,16 +912,9 @@ impl Transpiler for TsTranspiler {
             } => {
                 let if_doc = arena
                     .text("if (")
-                    .append(self.transpile_bool_subject(arena, subject))
+                    .append(arena.text(name_ident(**subject)))
                     .append(arena.text(") {"))
-                    .append(
-                        arena
-                            .nil()
-                            .append(arena.hardline())
-                            .append(self.transpile_statements(arena, true_body))
-                            .append(arena.hardline())
-                            .nest(4),
-                    )
+                    .append(self.transpile_block(arena, true_body))
                     .append(arena.text("}"));
                 // An empty false arm emits no `else` branch.
                 if false_body.is_empty() {
@@ -889,14 +922,7 @@ impl Transpiler for TsTranspiler {
                 } else {
                     if_doc
                         .append(arena.text(" else {"))
-                        .append(
-                            arena
-                                .nil()
-                                .append(arena.hardline())
-                                .append(self.transpile_statements(arena, false_body))
-                                .append(arena.hardline())
-                                .nest(4),
-                        )
+                        .append(self.transpile_block(arena, false_body))
                         .append(arena.text("}"))
                 }
             }
@@ -905,148 +931,29 @@ impl Transpiler for TsTranspiler {
                 some_arm_binding,
                 some_arm_body,
                 none_arm_body,
-            } => {
-                self.needs_option = true;
-                let subject_name = self.fresh_var();
-                let some_case = if let Some(var_name) = some_arm_binding {
-                    arena
-                        .text("case \"Some\": {")
-                        .append(
-                            arena
-                                .hardline()
-                                .append(arena.text("const "))
-                                .append(arena.text(var_ident(var_name)))
-                                .append(arena.text(" = "))
-                                .append(arena.text(subject_name.clone()))
-                                .append(arena.text(".value;"))
-                                .append(arena.hardline())
-                                .append(self.transpile_statements(arena, some_arm_body))
-                                .append(arena.hardline())
-                                .append(arena.text("break;"))
-                                .nest(4),
-                        )
-                        .append(arena.hardline())
-                        .append(arena.text("}"))
-                } else {
-                    arena
-                        .text("case \"Some\": {")
-                        .append(
-                            arena
-                                .hardline()
-                                .append(self.transpile_statements(arena, some_arm_body))
-                                .append(arena.hardline())
-                                .append(arena.text("break;"))
-                                .nest(4),
-                        )
-                        .append(arena.hardline())
-                        .append(arena.text("}"))
-                };
-
-                let none_case = arena
-                    .text("case \"None\": {")
-                    .append(
-                        arena
-                            .hardline()
-                            .append(self.transpile_statements(arena, none_arm_body))
-                            .append(arena.hardline())
-                            .append(arena.text("break;"))
-                            .nest(4),
-                    )
-                    .append(arena.hardline())
-                    .append(arena.text("}"));
-
-                self.bind_match_subject_stmt(
-                    arena,
-                    subject,
-                    subject_name.clone(),
-                    arena
-                        .text("switch (")
-                        .append(arena.text(subject_name))
-                        .append(arena.text(".tag) {"))
-                        .append(
-                            arena
-                                .hardline()
-                                .append(some_case)
-                                .append(arena.hardline())
-                                .append(none_case)
-                                .nest(4),
-                        )
-                        .append(arena.hardline())
-                        .append(arena.text("}")),
-                )
-            }
-            Match::Enum { subject, arms } => {
-                let subject_name = self.fresh_var();
-                let case_docs: Vec<_> = arms
-                    .iter()
-                    .map(|arm| match &arm.pattern {
-                        EnumPattern::Variant {
-                            type_name: _,
-                            variant_name,
-                        } => {
-                            // Generate binding destructuring if there are bindings
-                            let bindings_doc = if arm.bindings.is_empty() {
-                                arena.nil()
-                            } else {
-                                let destructure_docs: Vec<_> = arm
-                                    .bindings
-                                    .iter()
-                                    .map(|(field, var)| {
-                                        arena
-                                            .text(field.as_str())
-                                            .append(arena.text(": "))
-                                            .append(arena.text(var_ident(var)))
-                                    })
-                                    .collect();
-                                arena
-                                    .text("const { ")
-                                    .append(arena.intersperse(destructure_docs, arena.text(", ")))
-                                    .append(arena.text(" } = "))
-                                    .append(arena.text(subject_name.clone()))
-                                    .append(arena.text(";"))
-                                    .append(arena.hardline())
-                            };
-
-                            arena
-                                .text("case \"")
-                                .append(arena.text(variant_name.as_str()))
-                                .append(arena.text("\": {"))
-                                .append(
-                                    arena
-                                        .hardline()
-                                        .append(bindings_doc)
-                                        .append(self.transpile_statements(arena, &arm.body))
-                                        .append(arena.hardline())
-                                        .append(arena.text("break;"))
-                                        .nest(4),
-                                )
-                                .append(arena.hardline())
-                                .append(arena.text("}"))
-                        }
-                    })
-                    .collect();
-                let cases = arena.intersperse(case_docs, arena.hardline());
-
-                self.bind_match_subject_stmt(
-                    arena,
-                    subject,
-                    subject_name.clone(),
-                    arena
-                        .text("switch (")
-                        .append(arena.text(subject_name.clone()))
-                        .append(arena.text("._tag) {"))
-                        .append(arena.hardline().append(cases).nest(4))
-                        .append(arena.hardline())
-                        .append(arena.text("}")),
-                )
-            }
+            } => self.transpile_option_cases(
+                arena,
+                **subject,
+                some_arm_binding.as_ref(),
+                some_arm_body.as_ref(),
+                none_arm_body.as_ref(),
+                |this, body| this.transpile_statements(arena, body),
+                "break;",
+            ),
+            Match::Enum { subject, arms } => self.transpile_enum_cases(
+                arena,
+                **subject,
+                arms,
+                |this, body| this.transpile_statements(arena, body),
+                "break;",
+            ),
         }
     }
 
     fn transpile_statements<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        statements: &'a [WriterStatement],
+        statements: &'a [Stmt],
     ) -> Doc<'a> {
         let mut docs: Vec<Doc<'a>> = Vec::new();
         for stmt in statements {
@@ -1055,33 +962,45 @@ impl Transpiler for TsTranspiler {
         arena.intersperse(docs, arena.hardline())
     }
 
-    fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, var: &'a IrVar) -> Doc<'a> {
-        arena.text(var_ident(var))
+    /// The lets as `const` declarations, then a `return` of the result.
+    fn transpile_value_block<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        block: &'a ValueBlock,
+    ) -> Doc<'a> {
+        let mut docs: Vec<Doc<'a>> = Vec::new();
+        for let_ in &block.lets {
+            docs.push(self.transpile_let_statement(arena, let_));
+        }
+        docs.push(
+            arena
+                .text("return ")
+                .append(arena.text(name_ident(block.result)))
+                .append(arena.text(";")),
+        );
+        arena.intersperse(docs, arena.hardline())
     }
 
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        object: &'a WriterExpr,
+        record: VarId,
         field: &'a FieldName,
     ) -> Doc<'a> {
         arena
             .nil()
-            .append(self.transpile_expr(arena, object))
+            .append(arena.text(name_ident(record)))
             .append(arena.text("."))
             .append(arena.text(field.as_str()))
     }
 
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a> {
-        arena
-            .text("(")
-            .append(arena.text(self.quote_string(value)))
-            .append(arena.text(" as string)"))
+        arena.text(self.quote_string(value))
     }
 
     /// The fragment body gets its own `output` buffer, so it is built by an
     /// immediately invoked arrow function rather than inline.
-    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStatement]) -> Doc<'a> {
+    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [Stmt]) -> Doc<'a> {
         self.needs_html = true;
         arena
             .text("(() => {")
@@ -1100,45 +1019,42 @@ impl Transpiler for TsTranspiler {
             .append(arena.text("})()"))
     }
 
+    /// The cast keeps the `const` at `boolean`. A union declared type is
+    /// narrowed to the type of what is assigned, so without it a later
+    /// comparison against the other literal would not typecheck.
     fn transpile_bool_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {
         match value {
-            true => arena.text("(true as boolean)"),
-            false => arena.text("(false as boolean)"),
+            true => arena.text("true as boolean"),
+            false => arena.text("false as boolean"),
         }
     }
 
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a> {
         let text = if value.is_nan() {
-            "(globalThis.NaN as number)".to_string()
+            "globalThis.NaN".to_string()
         } else if value == f64::INFINITY {
-            "(globalThis.Infinity as number)".to_string()
+            "globalThis.Infinity".to_string()
         } else if value == f64::NEG_INFINITY {
-            "(-globalThis.Infinity as number)".to_string()
+            "-globalThis.Infinity".to_string()
         } else {
-            format!("({:?} as number)", value)
+            format!("{:?}", value)
         };
         arena.text(text)
     }
 
     fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i32) -> Doc<'a> {
-        arena.text(format!("({} as number)", value))
+        arena.text(value.to_string())
     }
 
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [WriterExpr],
-        elem_type: &'a Type,
+        elements: &'a [VarId],
+        _elem_type: &'a Type,
     ) -> Doc<'a> {
-        if elements.is_empty() {
-            return arena
-                .text("([] as ")
-                .append(self.transpile_array_type(arena, elem_type))
-                .append(arena.text(")"));
-        }
         let elem_docs: Vec<_> = elements
             .iter()
-            .map(|e| self.transpile_expr(arena, e))
+            .map(|e| arena.text(name_ident(*e)))
             .collect();
         arena
             .nil()
@@ -1150,28 +1066,27 @@ impl Transpiler for TsTranspiler {
     fn transpile_tuple_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [WriterExpr],
-        element_types: &'a [Type],
+        elements: &'a [VarId],
+        _element_types: &'a [Type],
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
             .iter()
-            .map(|e| self.transpile_expr(arena, e))
+            .map(|e| arena.text(name_ident(*e)))
             .collect();
         arena
-            .text("([")
+            .text("[")
             .append(arena.intersperse(elem_docs, arena.text(", ")))
-            .append(arena.text("] as "))
-            .append(self.transpile_tuple_type(arena, element_types))
-            .append(arena.text(")"))
+            .append(arena.text("]"))
     }
 
     fn transpile_tuple_index<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        tuple: &'a WriterExpr,
+        tuple: VarId,
         index: usize,
     ) -> Doc<'a> {
-        self.transpile_expr(arena, tuple)
+        arena
+            .text(name_ident(tuple))
             .append(arena.text("["))
             .append(arena.text(index.to_string()))
             .append(arena.text("]"))
@@ -1181,7 +1096,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, WriterExpr)],
+        fields: &'a [(FieldName, VarId)],
     ) -> Doc<'a> {
         let base = arena
             .text("new ")
@@ -1195,7 +1110,7 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, WriterExpr)],
+        fields: &'a [(FieldName, VarId)],
     ) -> Doc<'a> {
         // Call the namespace constructor function: Color.Red() or Result.Ok(value)
         let base = arena
@@ -1209,297 +1124,209 @@ impl Transpiler for TsTranspiler {
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" === "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" === "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" === "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" === "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" < "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" < "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" <= "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" <= "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a WriterExpr) -> Doc<'a> {
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: VarId) -> Doc<'a> {
+        arena.text("!").append(arena.text(name_ident(operand)))
+    }
+
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: VarId) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("!("))
-            .append(self.transpile_expr(arena, operand))
-            .append(arena.text(")"))
+            .text("-")
+            .append(arena.text(name_ident(operand)))
+            .append(arena.text(" | 0"))
     }
 
-    fn transpile_int_negation<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        operand: &'a WriterExpr,
-    ) -> Doc<'a> {
-        arena
-            .nil()
-            .append(arena.text("((-("))
-            .append(self.transpile_expr(arena, operand))
-            .append(arena.text(")) | 0)"))
+    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: VarId) -> Doc<'a> {
+        arena.text("-").append(arena.text(name_ident(operand)))
     }
 
-    fn transpile_float_negation<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        operand: &'a WriterExpr,
-    ) -> Doc<'a> {
-        arena
-            .nil()
-            .append(arena.text("-("))
-            .append(self.transpile_expr(arena, operand))
-            .append(arena.text(")"))
-    }
-
-    fn transpile_string_concat<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        parts: &'a [WriterExpr],
-    ) -> Doc<'a> {
+    fn transpile_string_concat<'a>(&mut self, arena: &'a Arena<'a>, parts: &'a [VarId]) -> Doc<'a> {
         if parts.is_empty() {
             return arena.text("\"\"");
         }
-        arena
-            .nil()
-            .append(arena.text("("))
-            .append(arena.intersperse(
-                parts.iter().map(|part| self.transpile_expr(arena, part)),
-                arena.text(" + "),
-            ))
-            .append(arena.text(")"))
-    }
-
-    fn transpile_logical_and<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
-    ) -> Doc<'a> {
-        arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
-            .append(arena.text(" && "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
-    }
-
-    fn transpile_logical_or<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
-    ) -> Doc<'a> {
-        arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
-            .append(arena.text(" || "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+        arena.intersperse(
+            parts.iter().map(|part| arena.text(name_ident(*part))),
+            arena.text(" + "),
+        )
     }
 
     fn transpile_int_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
             .nil()
-            .append(arena.text("(("))
-            .append(self.transpile_expr(arena, left))
+            .append(arena.text("("))
+            .append(arena.text(name_ident(left)))
             .append(arena.text(" + "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(") | 0)"))
+            .append(arena.text(name_ident(right)))
+            .append(arena.text(") | 0"))
     }
 
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" + "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
             .nil()
-            .append(arena.text("(("))
-            .append(self.transpile_expr(arena, left))
+            .append(arena.text("("))
+            .append(arena.text(name_ident(left)))
             .append(arena.text(" - "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(") | 0)"))
+            .append(arena.text(name_ident(right)))
+            .append(arena.text(") | 0"))
     }
 
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" - "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
             .nil()
             .append(arena.text("globalThis.Math.imul("))
-            .append(self.transpile_expr(arena, left))
+            .append(arena.text(name_ident(left)))
             .append(arena.text(", "))
-            .append(self.transpile_expr(arena, right))
+            .append(arena.text(name_ident(right)))
             .append(arena.text(")"))
     }
 
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        left: VarId,
+        right: VarId,
     ) -> Doc<'a> {
         arena
-            .nil()
-            .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
+            .text(name_ident(left))
             .append(arena.text(" * "))
-            .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<&'a WriterExpr>,
+        value: Option<VarId>,
         inner_type: &'a Type,
     ) -> Doc<'a> {
         self.needs_option = true;
@@ -1508,7 +1335,7 @@ impl Transpiler for TsTranspiler {
                 .text("Option.some<")
                 .append(self.transpile_type(arena, inner_type))
                 .append(arena.text(">("))
-                .append(self.transpile_expr(arena, inner))
+                .append(arena.text(name_ident(inner)))
                 .append(arena.text(")")),
             None => arena
                 .text("Option.none<")
@@ -1517,260 +1344,126 @@ impl Transpiler for TsTranspiler {
         }
     }
 
-    fn transpile_match_expr<'a>(
+    /// A match in value position. The arms compute their value by
+    /// statements, so unless both arms of a bool match are bare results
+    /// the match becomes an immediately invoked arrow function whose arms
+    /// return.
+    fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterExpr, WriterExpr>,
+        match_: &'a Match<VarId, ValueBlock>,
     ) -> Doc<'a> {
         match match_ {
-            Match::Enum { subject, arms } => {
-                let subject_name = self.fresh_var();
-                let case_docs: Vec<_> =
-                    arms.iter()
-                        .map(|arm| match &arm.pattern {
-                            EnumPattern::Variant {
-                                type_name: _,
-                                variant_name,
-                            } => {
-                                if arm.bindings.is_empty() {
-                                    arena
-                                        .text("case \"")
-                                        .append(arena.text(variant_name.as_str()))
-                                        .append(arena.text("\": return "))
-                                        .append(self.transpile_expr(arena, &arm.body))
-                                        .append(arena.text(";"))
-                                } else {
-                                    let destructure_docs: Vec<_> = arm
-                                        .bindings
-                                        .iter()
-                                        .map(|(field, var)| {
-                                            arena
-                                                .text(field.as_str())
-                                                .append(arena.text(": "))
-                                                .append(arena.text(var_ident(var)))
-                                        })
-                                        .collect();
-                                    arena
-                                        .text("case \"")
-                                        .append(arena.text(variant_name.as_str()))
-                                        .append(arena.text("\": {"))
-                                        .append(
-                                            arena
-                                                .line()
-                                                .append(arena.text("const { "))
-                                                .append(arena.intersperse(
-                                                    destructure_docs,
-                                                    arena.text(", "),
-                                                ))
-                                                .append(arena.text(" } = "))
-                                                .append(arena.text(subject_name.clone()))
-                                                .append(arena.text(";"))
-                                                .append(arena.line())
-                                                .append(arena.text("return "))
-                                                .append(self.transpile_expr(arena, &arm.body))
-                                                .append(arena.text(";"))
-                                                .nest(2),
-                                        )
-                                        .append(arena.line())
-                                        .append(arena.text("}"))
-                                }
-                            }
-                        })
-                        .collect();
-                let cases = arena.intersperse(case_docs, arena.line());
-
-                let switch_body = arena
-                    .text("switch (")
-                    .append(arena.text(subject_name.clone()))
-                    .append(arena.text("._tag) {"))
-                    .append(arena.line().append(cases).nest(2))
-                    .append(arena.line())
-                    .append(arena.text("}"));
-
-                self.bind_match_subject_expr(arena, subject, subject_name, switch_body)
-            }
             Match::Bool {
                 subject,
                 true_body,
                 false_body,
-            } => arena
-                .text("(")
-                .append(self.transpile_bool_subject(arena, subject))
-                .append(arena.text(" ? "))
-                .append(self.transpile_expr(arena, true_body))
-                .append(arena.text(" : "))
-                .append(self.transpile_expr(arena, false_body))
-                .append(arena.text(")")),
+            } => {
+                if true_body.lets.is_empty() && false_body.lets.is_empty() {
+                    return arena
+                        .text(name_ident(**subject))
+                        .append(arena.text(" ? "))
+                        .append(arena.text(name_ident(true_body.result)))
+                        .append(arena.text(" : "))
+                        .append(arena.text(name_ident(false_body.result)));
+                }
+                let body = arena
+                    .text("if (")
+                    .append(arena.text(name_ident(**subject)))
+                    .append(arena.text(") {"))
+                    .append(
+                        arena
+                            .hardline()
+                            .append(self.transpile_value_block(arena, true_body))
+                            .nest(4),
+                    )
+                    .append(arena.hardline())
+                    .append(arena.text("} else {"))
+                    .append(
+                        arena
+                            .hardline()
+                            .append(self.transpile_value_block(arena, false_body))
+                            .nest(4),
+                    )
+                    .append(arena.hardline())
+                    .append(arena.text("}"));
+                self.transpile_iife(arena, body)
+            }
             Match::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
                 none_arm_body,
             } => {
-                self.needs_option = true;
-                let subject_name = self.fresh_var();
-                let some_case = {
-                    let body_doc = self.transpile_expr(arena, some_arm_body);
-                    if let Some(var_name) = some_arm_binding {
-                        arena
-                            .text("case \"Some\": {")
-                            .append(
-                                arena
-                                    .line()
-                                    .append(arena.text("const "))
-                                    .append(arena.text(var_ident(var_name)))
-                                    .append(arena.text(" = "))
-                                    .append(arena.text(subject_name.clone()))
-                                    .append(arena.text(".value;"))
-                                    .append(arena.line())
-                                    .append(arena.text("return "))
-                                    .append(body_doc)
-                                    .append(arena.text(";"))
-                                    .nest(2),
-                            )
-                            .append(arena.line())
-                            .append(arena.text("}"))
-                    } else {
-                        arena
-                            .text("case \"Some\": return ")
-                            .append(body_doc)
-                            .append(arena.text(";"))
-                    }
-                };
-
-                let none_case = arena
-                    .text("case \"None\": return ")
-                    .append(self.transpile_expr(arena, none_arm_body))
-                    .append(arena.text(";"));
-
-                let cases = arena.intersperse([some_case, none_case], arena.line());
-
-                let switch_body = arena
-                    .text("switch (")
-                    .append(arena.text(subject_name.clone()))
-                    .append(arena.text(".tag) {"))
-                    .append(arena.line().append(cases).nest(2))
-                    .append(arena.line())
-                    .append(arena.text("}"));
-
-                self.bind_match_subject_expr(arena, subject, subject_name, switch_body)
+                let body = self.transpile_option_cases(
+                    arena,
+                    **subject,
+                    some_arm_binding.as_ref(),
+                    some_arm_body.as_ref(),
+                    none_arm_body.as_ref(),
+                    |this, block| this.transpile_value_block(arena, block),
+                    "",
+                );
+                self.transpile_iife(arena, body)
+            }
+            Match::Enum { subject, arms } => {
+                let body = self.transpile_enum_cases(
+                    arena,
+                    **subject,
+                    arms,
+                    |this, block| this.transpile_value_block(arena, block),
+                    "",
+                );
+                self.transpile_iife(arena, body)
             }
         }
     }
 
-    /// A `let` in expression position.
-    fn transpile_let_expr<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        var: &'a IrVar,
-        value: &'a WriterExpr,
-        body: &'a WriterExpr,
-    ) -> Doc<'a> {
-        let param_type = self.transpile_type(arena, &value.typ());
-        let value = self.transpile_expr(arena, value);
+    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: VarId) -> Doc<'a> {
+        arena.text(name_ident(array)).append(arena.text(".length"))
+    }
+
+    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: VarId) -> Doc<'a> {
         arena
-            .text("((")
-            .append(arena.text(var_ident(var)))
-            .append(arena.text(": "))
-            .append(param_type)
-            .append(arena.text(") => {"))
-            .append(
-                arena
-                    .line()
-                    .append(arena.text("return "))
-                    .append(self.transpile_expr(arena, body))
-                    .append(arena.text(";"))
-                    .nest(2),
-            )
-            .append(arena.line())
-            .append(arena.text("})("))
-            .append(value)
-            .append(arena.text(")"))
+            .text(name_ident(array))
+            .append(arena.text(".length === 0"))
     }
 
-    fn transpile_array_length<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        array: &'a WriterExpr,
-    ) -> Doc<'a> {
-        self.transpile_expr(arena, array)
-            .append(arena.text(".length"))
-    }
-
-    fn transpile_array_is_empty<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        array: &'a WriterExpr,
-    ) -> Doc<'a> {
+    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: VarId) -> Doc<'a> {
         arena
-            .text("(")
-            .append(self.transpile_expr(arena, array))
-            .append(arena.text(".length === 0)"))
+            .text(name_ident(string))
+            .append(arena.text(".length === 0"))
     }
 
-    fn transpile_string_is_empty<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        string: &'a WriterExpr,
-    ) -> Doc<'a> {
+    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: VarId) -> Doc<'a> {
         arena
-            .text("(")
-            .append(self.transpile_expr(arena, string))
-            .append(arena.text(".length === 0)"))
+            .text(name_ident(option))
+            .append(arena.text(".tag === \"Some\""))
     }
 
-    fn transpile_option_is_some<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        option: &'a WriterExpr,
-    ) -> Doc<'a> {
+    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: VarId) -> Doc<'a> {
         arena
-            .text("(")
-            .append(self.transpile_expr(arena, option))
-            .append(arena.text(".tag === \"Some\")"))
+            .text(name_ident(option))
+            .append(arena.text(".tag === \"None\""))
     }
 
-    fn transpile_option_is_none<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        option: &'a WriterExpr,
-    ) -> Doc<'a> {
+    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: VarId) -> Doc<'a> {
         arena
-            .text("(")
-            .append(self.transpile_expr(arena, option))
-            .append(arena.text(".tag === \"None\")"))
+            .text(name_ident(value))
+            .append(arena.text(".toString()"))
     }
 
-    fn transpile_int_to_string<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        value: &'a WriterExpr,
-    ) -> Doc<'a> {
-        arena
-            .text("(")
-            .append(self.transpile_expr(arena, value))
-            .append(arena.text(").toString()"))
-    }
-
-    fn transpile_float_to_int<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        value: &'a WriterExpr,
-    ) -> Doc<'a> {
+    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: VarId) -> Doc<'a> {
         self.needs_float_to_int = true;
         arena
             .text("floatToInt(")
-            .append(self.transpile_expr(arena, value))
+            .append(arena.text(name_ident(value)))
             .append(arena.text(")"))
     }
 
-    fn transpile_int_to_float<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        value: &'a WriterExpr,
-    ) -> Doc<'a> {
+    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: VarId) -> Doc<'a> {
         // In JavaScript, all numbers are floats, so no conversion needed
-        self.transpile_expr(arena, value)
+        arena.text(name_ident(value))
     }
 
     fn transpile_bool_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
@@ -1841,13 +1534,14 @@ impl Transpiler for TsTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::lower_pure;
+    use crate::ir::flat_to_writer::flat_to_writer;
     use crate::ir::pure_module_builder::{PureModuleBodiesBuilder, PureModuleBuilder};
+    use crate::ir::pure_to_flat::pure_to_flat;
     use expect_test::{Expect, expect};
 
     fn check<'a>(builder: impl Into<PureModuleBodiesBuilder<'a>>, expected: Expect) {
         let (module, registry) = builder.into().build_with_registry();
-        let module = lower_pure(module, None);
+        let module = flat_to_writer(pure_to_flat(module), None);
         let before = module.to_string();
         let after = TsTranspiler::new().transpile_module(&module, &registry);
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
@@ -1896,10 +1590,13 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(unit@v0: ()) {
-                  write_string([
-                    v0,
-                    Holder {nothing: ()}.nothing,
-                  ].len().to_string())
+                  let v2: () = ()
+                  let v3: Holder = {nothing: v2}
+                  let v4: () = v3.nothing
+                  let v5: Array[()] = [v0, v4]
+                  let v6: Int = v5.len()
+                  let v7: String = v6.to_string()
+                  write_string(v7)
                 }
 
                 -- after --
@@ -1923,9 +1620,13 @@ mod tests {
 
                 export function Test({unit: v_0}: {unit: []}): string {
                     let output: string = "";
-                    output += escapeHtml(([v_0, new Holder({
-                        nothing: ([] as [])
-                    }).nothing].length).toString());
+                    const v_2: [] = [];
+                    const v_3: Holder = new Holder({nothing: v_2});
+                    const v_4: [] = v_3.nothing;
+                    const v_5: [][] = [v_0, v_4];
+                    const v_6: number = v_5.length;
+                    const v_7: string = v_6.toString();
+                    output += escapeHtml(v_7);
                     return output;
                 }
             "#]],
@@ -1945,9 +1646,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Row(cell@v0: (Int, String)) {
-                  write_string(v0.0.to_string())
+                  let v2: Int = v0.0
+                  let v3: String = v2.to_string()
+                  let v6: String = v0.1
+                  write_string(v3)
                   write(": ")
-                  write_string(v0.1)
+                  write_string(v6)
                 }
 
                 -- after --
@@ -1963,9 +1667,12 @@ mod tests {
 
                 export function Row({cell: v_0}: {cell: [number, string]}): string {
                     let output: string = "";
-                    output += escapeHtml((v_0[0]).toString());
+                    const v_2: number = v_0[0];
+                    const v_3: string = v_2.toString();
+                    const v_6: string = v_0[1];
+                    output += escapeHtml(v_3);
                     output += ": ";
-                    output += escapeHtml(v_0[1]);
+                    output += escapeHtml(v_6);
                     return output;
                 }
             "#]],
@@ -2093,7 +1800,7 @@ mod tests {
                     show: boolean
                 }): string {
                     let output: string = "";
-                    if ((v_1 as boolean)) {
+                    if (v_1) {
                         output += "<h1>";
                         output += escapeHtml(v_0);
                         output += "</h1>\n";
@@ -2129,7 +1836,7 @@ mod tests {
                 -- before --
                 page ListItems(items@v0: Array[String]) {
                   write("<ul>\n")
-                  for v1 in v0 {
+                  for v1: String in v0 {
                     write("<li>")
                     write_string(v1)
                     write("</li>\n")
@@ -2151,8 +1858,7 @@ mod tests {
                 export function ListItems({items: v_0}: {items: string[]}): string {
                     let output: string = "";
                     output += "<ul>\n";
-                    const v_2: string[] = v_0;
-                    for (const v_1 of v_2) {
+                    for (const v_1 of v_0) {
                         output += "<li>";
                         output += escapeHtml(v_1);
                         output += "</li>\n";
@@ -2175,8 +1881,11 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Counter() {
-                  for v0 in 1..=3 {
-                    write_string(v0.to_string())
+                  let v2: Int = 1
+                  let v3: Int = 3
+                  for v0: Int in v2..=v3 {
+                    let v4: String = v0.to_string()
+                    write_string(v4)
                     write(" ")
                   }
                 }
@@ -2194,10 +1903,11 @@ mod tests {
 
                 export function Counter(): string {
                     let output: string = "";
-                    const v_1: number = (1 as number);
-                    const v_2: number = (3 as number);
-                    for (let v_0 = v_1; v_0 <= v_2; v_0++) {
-                        output += escapeHtml((v_0).toString());
+                    const v_2: number = 1;
+                    const v_3: number = 3;
+                    for (let v_0 = v_2; v_0 <= v_3; v_0++) {
+                        const v_4: string = v_0.toString();
+                        output += escapeHtml(v_4);
                         output += " ";
                     }
                     return output;
@@ -2228,30 +1938,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page GreetingCard() {
-                  let v0 = "Hello from hop!" in {
-                    write("<div class=\"card\">\n<p>")
-                    write_string(v0)
-                    write("</p>\n</div>\n")
-                  }
+                  write("<div class=\"card\">\n<p>Hello from hop!</p>\n</div>\n")
                 }
 
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
 
-                function escapeHtml(str: string): string {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;');
-                }
-
                 export function GreetingCard(): string {
                     let output: string = "";
-                    const v_0: string = ("Hello from hop!" as string);
-                    output += "<div class=\"card\">\n<p>";
-                    output += escapeHtml(v_0);
-                    output += "</p>\n</div>\n";
+                    output += "<div class=\"card\">\n<p>Hello from hop!</p>\n</div>\n";
                     return output;
                 }
             "#]],
@@ -2273,33 +1968,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestMainComp() {
-                  write("<div data-hop-id=\"test/card-comp\">")
-                  let v0 = "Hello World" in {
-                    write("<h2>")
-                    write_string(v0)
-                    write("</h2>")
-                  }
+                  write("<div data-hop-id=\"test/card-comp\"><h2>Hello World</h2>")
                   write("</div>")
                 }
 
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
 
-                function escapeHtml(str: string): string {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;');
-                }
-
                 export function TestMainComp(): string {
                     let output: string = "";
-                    output += "<div data-hop-id=\"test/card-comp\">";
-                    const v_0: string = ("Hello World" as string);
-                    output += "<h2>";
-                    output += escapeHtml(v_0);
-                    output += "</h2>";
+                    output += "<div data-hop-id=\"test/card-comp\"><h2>Hello World</h2>";
                     output += "</div>";
                     return output;
                 }
@@ -2325,21 +2003,13 @@ mod tests {
             expect![[r#"
                 -- before --
                 page RenderHtml(user_input@v0: String) {
-                  let v1 = {
-                    write("<b>hi</b>")
-                  } in {
-                    write("<div>")
-                    write_html(v1)
-                    write("</div><div>")
-                    write_string(v0)
-                    write("</div>")
-                  }
+                  write("<div><b>hi</b></div><div>")
+                  write_string(v0)
+                  write("</div>")
                 }
 
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
-
-                type Html = string & { readonly __brand: unique symbol };
 
                 function escapeHtml(str: string): string {
                     return str
@@ -2351,14 +2021,7 @@ mod tests {
 
                 export function RenderHtml({user_input: v_0}: {user_input: string}): string {
                     let output: string = "";
-                    const v_1: Html = (() => {
-                        let output: string = "";
-                        output += "<b>hi</b>";
-                        return output as Html;
-                    })();
-                    output += "<div>";
-                    output += v_1;
-                    output += "</div><div>";
+                    output += "<div><b>hi</b></div><div>";
                     output += escapeHtml(v_0);
                     output += "</div>";
                     return output;
@@ -2386,8 +2049,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page UserProfile(user@v0: User) {
+                  let v2: String = v0.name
                   write("<div>")
-                  write_string(v0.name)
+                  write_string(v2)
                   write("</div>")
                 }
 
@@ -2426,8 +2090,9 @@ mod tests {
 
                 export function UserProfile({user: v_0}: {user: User}): string {
                     let output: string = "";
+                    const v_2: string = v_0.name;
                     output += "<div>";
-                    output += escapeHtml(v_0.name);
+                    output += escapeHtml(v_2);
                     output += "</div>";
                     return output;
                 }
@@ -2447,8 +2112,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page CreateUser() {
+                  let v1: String = "John"
+                  let v2: Int = 30
+                  let v3: User = {name: v1, age: v2}
+                  let v4: String = v3.name
                   write("<div>")
-                  write_string(User {name: "John", age: 30}.name)
+                  write_string(v4)
                   write("</div>")
                 }
 
@@ -2475,11 +2144,12 @@ mod tests {
 
                 export function CreateUser(): string {
                     let output: string = "";
+                    const v_1: string = "John";
+                    const v_2: number = 30;
+                    const v_3: User = new User({name: v_1, age: v_2});
+                    const v_4: string = v_3.name;
                     output += "<div>";
-                    output += escapeHtml(new User({
-                        name: ("John" as string),
-                        age: (30 as number)
-                    }).name);
+                    output += escapeHtml(v_4);
                     output += "</div>";
                     return output;
                 }
@@ -2498,7 +2168,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(node@v0: Node) {
-                  write_string(v0.value.to_string())
+                  let v2: Int = v0.value
+                  let v3: String = v2.to_string()
+                  write_string(v3)
                 }
 
                 -- after --
@@ -2535,7 +2207,9 @@ mod tests {
 
                 export function Test({node: v_0}: {node: Node}): string {
                     let output: string = "";
-                    output += escapeHtml((v_0.value).toString());
+                    const v_2: number = v_0.value;
+                    const v_3: string = v_2.toString();
+                    output += escapeHtml(v_3);
                     return output;
                 }
             "#]],
@@ -2599,15 +2273,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = Node {
-                    value: 2,
-                    next: Option[Node]::Some(Node {
-                      value: 1,
-                      next: Option[Node]::None,
-                    }),
-                  } in {
-                    write_string(v0.value.to_string())
-                  }
+                  let v2: Int = 2
+                  let v3: Int = 1
+                  let v4: Option[Node] = None
+                  let v5: Node = {value: v3, next: v4}
+                  let v6: Option[Node] = Some(v5)
+                  let v7: Node = {value: v2, next: v6}
+                  let v8: Int = v7.value
+                  let v9: String = v8.to_string()
+                  write_string(v9)
                 }
 
                 -- after --
@@ -2644,14 +2318,15 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0: Node = new Node({
-                        value: (2 as number),
-                        next: Option.some<Node>(new Node({
-                            value: (1 as number),
-                            next: Option.none<Node>()
-                        }))
-                    });
-                    output += escapeHtml((v_0.value).toString());
+                    const v_2: number = 2;
+                    const v_3: number = 1;
+                    const v_4: Option.Option<Node> = Option.none<Node>();
+                    const v_5: Node = new Node({value: v_3, next: v_4});
+                    const v_6: Option.Option<Node> = Option.some<Node>(v_5);
+                    const v_7: Node = new Node({value: v_2, next: v_6});
+                    const v_8: number = v_7.value;
+                    const v_9: string = v_8.toString();
+                    output += escapeHtml(v_9);
                     return output;
                 }
             "#]],
@@ -2693,7 +2368,6 @@ mod tests {
             PureModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Green", "Blue"])
                 .page("ColorName", [("color", "Color")], |t| {
-                    // Use match expression to convert color to string
                     let match_result = t.enum_match_expr(t.var("color"), |m| {
                         m.arm("Red", |t| t.str("red"));
                         m.arm("Green", |t| t.str("green"));
@@ -2704,11 +2378,21 @@ mod tests {
             expect![[r#"
                 -- before --
                 page ColorName(color@v0: Color) {
-                  write_string(match v0 {
-                    Color::Red => { "red" }
-                    Color::Green => { "green" }
-                    Color::Blue => { "blue" }
-                  })
+                  let v5: String = match v0 {
+                    Color::Red => {
+                      let v2: String = "red"
+                      v2
+                    }
+                    Color::Green => {
+                      let v3: String = "green"
+                      v3
+                    }
+                    Color::Blue => {
+                      let v4: String = "blue"
+                      v4
+                    }
+                  }
+                  write_string(v5)
                 }
 
                 -- after --
@@ -2738,13 +2422,24 @@ mod tests {
 
                 export function ColorName({color: v_0}: {color: Color.Color}): string {
                     let output: string = "";
-                    output += escapeHtml(((v_1: Color.Color) => {
-                      switch (v_1._tag) {
-                        case "Red": return ("red" as string);
-                        case "Green": return ("green" as string);
-                        case "Blue": return ("blue" as string);
-                      }
-                    })(v_0));
+                    const v_5: string = (() => {
+                        const s_0: Color.Color = v_0;
+                        switch (s_0._tag) {
+                            case "Red": {
+                                const v_2: string = "red";
+                                return v_2;
+                            }
+                            case "Green": {
+                                const v_3: string = "green";
+                                return v_3;
+                            }
+                            case "Blue": {
+                                const v_4: string = "blue";
+                                return v_4;
+                            }
+                        }
+                    })();
+                    output += escapeHtml(v_5);
                     return output;
                 }
             "#]],
@@ -2761,10 +2456,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 page IsActive(active@v0: Bool) {
-                  write_string(match v0 {
-                    true => { "yes" }
-                    false => { "no" }
-                  })
+                  let v4: String = match v0 {
+                    true => {
+                      let v2: String = "yes"
+                      v2
+                    }
+                    false => {
+                      let v3: String = "no"
+                      v3
+                    }
+                  }
+                  write_string(v4)
                 }
 
                 -- after --
@@ -2780,7 +2482,16 @@ mod tests {
 
                 export function IsActive({active: v_0}: {active: boolean}): string {
                     let output: string = "";
-                    output += escapeHtml(((v_0 as boolean) ? ("yes" as string) : ("no" as string)));
+                    const v_4: string = (() => {
+                        if (v_0) {
+                            const v_2: string = "yes";
+                            return v_2;
+                        } else {
+                            const v_3: string = "no";
+                            return v_3;
+                        }
+                    })();
+                    output += escapeHtml(v_4);
                     return output;
                 }
             "#]],
@@ -2798,10 +2509,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 page CheckOption(opt@v0: Option[Int]) {
-                  write_string(match v0 {
-                    Some(_) => { "has value" }
-                    None => { "empty" }
-                  })
+                  let v4: String = match v0 {
+                    Some(_) => {
+                      let v2: String = "has value"
+                      v2
+                    }
+                    None => {
+                      let v3: String = "empty"
+                      v3
+                    }
+                  }
+                  write_string(v4)
                 }
 
                 -- after --
@@ -2828,12 +2546,20 @@ mod tests {
 
                 export function CheckOption({opt: v_0}: {opt: Option.Option<number>}): string {
                     let output: string = "";
-                    output += escapeHtml(((v_1: Option.Option<number>) => {
-                      switch (v_1.tag) {
-                        case "Some": return ("has value" as string);
-                        case "None": return ("empty" as string);
-                      }
-                    })(v_0));
+                    const v_4: string = (() => {
+                        const s_0: Option.Option<number> = v_0;
+                        switch (s_0.tag) {
+                            case "Some": {
+                                const v_2: string = "has value";
+                                return v_2;
+                            }
+                            case "None": {
+                                const v_3: string = "empty";
+                                return v_3;
+                            }
+                        }
+                    })();
+                    output += escapeHtml(v_4);
                     return output;
                 }
             "#]],
@@ -2847,17 +2573,14 @@ mod tests {
                 "CheckNestedOption",
                 [("opt", "Option[Option[Bool]]")],
                 |t| {
-                    // Outer match on opt: Some(v0) => middle_match, None => "none"
                     let outer_match = t.option_match_expr_with_binding(
                         t.var("opt"),
                         "v0",
                         |t| {
-                            // Middle match on v0 (Option[Bool]): Some(v1) => innermost_match, None => "some-none"
                             t.option_match_expr_with_binding(
                                 t.var("v0"),
                                 "v1",
                                 |t| {
-                                    // Inner match on v1 (Bool): true => "true", false => "false"
                                     t.bool_match_expr(
                                         t.var("v1"),
                                         t.str("some-some-true"),
@@ -2876,20 +2599,35 @@ mod tests {
             expect![[r#"
                 -- before --
                 page CheckNestedOption(opt@v0: Option[Option[Bool]]) {
-                  write_string(match v0 {
-                    Some(v1) => {
-                      match v1 {
-                        Some(v2) => {
-                          match v2 {
-                            true => { "some-some-true" }
-                            false => { "some-some-false" }
+                  let v10: String = match v0 {
+                    Some(v1: Option[Bool]) => {
+                      let v8: String = match v1 {
+                        Some(v2: Bool) => {
+                          let v6: String = match v2 {
+                            true => {
+                              let v4: String = "some-some-true"
+                              v4
+                            }
+                            false => {
+                              let v5: String = "some-some-false"
+                              v5
+                            }
                           }
+                          v6
                         }
-                        None => { "some-none" }
+                        None => {
+                          let v7: String = "some-none"
+                          v7
+                        }
                       }
+                      v8
                     }
-                    None => { "none" }
-                  })
+                    None => {
+                      let v9: String = "none"
+                      v9
+                    }
+                  }
+                  write_string(v10)
                 }
 
                 -- after --
@@ -2920,23 +2658,42 @@ mod tests {
                     opt: Option.Option<Option.Option<boolean>>
                 }): string {
                     let output: string = "";
-                    output += escapeHtml(((v_3: Option.Option<Option.Option<boolean>>) => {
-                      switch (v_3.tag) {
-                        case "Some": {
-                          const v_1 = v_3.value;
-                          return ((v_4: Option.Option<boolean>) => {
-                            switch (v_4.tag) {
-                              case "Some": {
-                                const v_2 = v_4.value;
-                                return ((v_2 as boolean) ? ("some-some-true" as string) : ("some-some-false" as string));
-                              }
-                              case "None": return ("some-none" as string);
+                    const v_10: string = (() => {
+                        const s_0: Option.Option<Option.Option<boolean>> = v_0;
+                        switch (s_0.tag) {
+                            case "Some": {
+                                const v_1 = s_0.value;
+                                const v_8: string = (() => {
+                                    const s_1: Option.Option<boolean> = v_1;
+                                    switch (s_1.tag) {
+                                        case "Some": {
+                                            const v_2 = s_1.value;
+                                            const v_6: string = (() => {
+                                                if (v_2) {
+                                                    const v_4: string = "some-some-true";
+                                                    return v_4;
+                                                } else {
+                                                    const v_5: string = "some-some-false";
+                                                    return v_5;
+                                                }
+                                            })();
+                                            return v_6;
+                                        }
+                                        case "None": {
+                                            const v_7: string = "some-none";
+                                            return v_7;
+                                        }
+                                    }
+                                })();
+                                return v_8;
                             }
-                          })(v_1);
+                            case "None": {
+                                const v_9: string = "none";
+                                return v_9;
+                            }
                         }
-                        case "None": return ("none" as string);
-                      }
-                    })(v_0));
+                    })();
+                    output += escapeHtml(v_10);
                     return output;
                 }
             "#]],
@@ -2947,14 +2704,13 @@ mod tests {
     fn let_expression() {
         check(
             PureModuleBuilder::new().page("LetExpr", [("name", "String")], |t| {
-                // let x = name in x
                 let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
                 t.escape(result)
             }),
             expect![[r#"
                 -- before --
                 page LetExpr(name@v0: String) {
-                  write_string(let v1 = v0 in { v1 })
+                  write_string(v0)
                 }
 
                 -- after --
@@ -2970,9 +2726,7 @@ mod tests {
 
                 export function LetExpr({name: v_0}: {name: string}): string {
                     let output: string = "";
-                    output += escapeHtml(((v_1: string) => {
-                      return v_1;
-                    })(v_0));
+                    output += escapeHtml(v_0);
                     return output;
                 }
             "#]],
@@ -3000,7 +2754,7 @@ mod tests {
                 -- before --
                 page DisplayOption(opt@v0: Option[String]) {
                   match v0 {
-                    Some(v1) => {
+                    Some(v1: String) => {
                       write("<span>Found: ")
                       write_string(v1)
                       write("</span>")
@@ -3039,10 +2793,10 @@ mod tests {
                     opt: Option.Option<string>
                 }): string {
                     let output: string = "";
-                    const v_2: Option.Option<string> = v_0;
-                    switch (v_2.tag) {
+                    const s_0: Option.Option<string> = v_0;
+                    switch (s_0.tag) {
                         case "Some": {
-                            const v_1 = v_2.value;
+                            const v_1 = s_0.value;
                             output += "<span>Found: ";
                             output += escapeHtml(v_1);
                             output += "</span>";
@@ -3079,18 +2833,29 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                page TestOptionLiteral(
-                  opt1@v0: Option[String],
-                  opt2@v1: Option[String],
-                ) {
-                  write_string(match v0 {
-                    Some(_) => { "has value" }
-                    None => { "empty" }
-                  })
-                  write_string(match v1 {
-                    Some(_) => { "HAS" }
-                    None => { "EMPTY" }
-                  })
+                page TestOptionLiteral(opt1@v0: Option[String], opt2@v1: Option[String]) {
+                  let v5: String = match v0 {
+                    Some(_) => {
+                      let v3: String = "has value"
+                      v3
+                    }
+                    None => {
+                      let v4: String = "empty"
+                      v4
+                    }
+                  }
+                  let v9: String = match v1 {
+                    Some(_) => {
+                      let v7: String = "HAS"
+                      v7
+                    }
+                    None => {
+                      let v8: String = "EMPTY"
+                      v8
+                    }
+                  }
+                  write_string(v5)
+                  write_string(v9)
                 }
 
                 -- after --
@@ -3123,18 +2888,34 @@ mod tests {
                     opt2: Option.Option<string>
                 }): string {
                     let output: string = "";
-                    output += escapeHtml(((v_2: Option.Option<string>) => {
-                      switch (v_2.tag) {
-                        case "Some": return ("has value" as string);
-                        case "None": return ("empty" as string);
-                      }
-                    })(v_0));
-                    output += escapeHtml(((v_3: Option.Option<string>) => {
-                      switch (v_3.tag) {
-                        case "Some": return ("HAS" as string);
-                        case "None": return ("EMPTY" as string);
-                      }
-                    })(v_1));
+                    const v_5: string = (() => {
+                        const s_0: Option.Option<string> = v_0;
+                        switch (s_0.tag) {
+                            case "Some": {
+                                const v_3: string = "has value";
+                                return v_3;
+                            }
+                            case "None": {
+                                const v_4: string = "empty";
+                                return v_4;
+                            }
+                        }
+                    })();
+                    const v_9: string = (() => {
+                        const s_1: Option.Option<string> = v_1;
+                        switch (s_1.tag) {
+                            case "Some": {
+                                const v_7: string = "HAS";
+                                return v_7;
+                            }
+                            case "None": {
+                                const v_8: string = "EMPTY";
+                                return v_8;
+                            }
+                        }
+                    })();
+                    output += escapeHtml(v_5);
+                    output += escapeHtml(v_9);
                     return output;
                 }
             "#]],
@@ -3157,15 +2938,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestInlineMatch() {
-                  let v0 = Option[String]::Some("world") in {
-                    match v0 {
-                      Some(v1) => {
-                        write("Got:")
-                        write_string(v1)
-                      }
-                      None => {
-                        write("Empty")
-                      }
+                  let v3: String = "world"
+                  let v4: Option[String] = Some(v3)
+                  match v4 {
+                    Some(v1: String) => {
+                      write("Got:")
+                      write_string(v1)
+                    }
+                    None => {
+                      write("Empty")
                     }
                   }
                 }
@@ -3194,11 +2975,12 @@ mod tests {
 
                 export function TestInlineMatch(): string {
                     let output: string = "";
-                    const v_0: Option.Option<string> = Option.some<string>(("world" as string));
-                    const v_2: Option.Option<string> = v_0;
-                    switch (v_2.tag) {
+                    const v_3: string = "world";
+                    const v_4: Option.Option<string> = Option.some<string>(v_3);
+                    const s_0: Option.Option<string> = v_4;
+                    switch (s_0.tag) {
                         case "Some": {
-                            const v_1 = v_2.value;
+                            const v_1 = s_0.value;
                             output += "Got:";
                             output += escapeHtml(v_1);
                             break;
@@ -3235,10 +3017,13 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  match Option[String]::Some("x") {
-                    Some(v0) => {
-                      match Option[String]::Some(v0) {
-                        Some(v1) => {
+                  let v3: String = "x"
+                  let v4: Option[String] = Some(v3)
+                  match v4 {
+                    Some(v0: String) => {
+                      let v5: Option[String] = Some(v0)
+                      match v5 {
+                        Some(v1: String) => {
                           write_string(v1)
                         }
                         None => {
@@ -3276,14 +3061,17 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_2: Option.Option<string> = Option.some<string>(("x" as string));
-                    switch (v_2.tag) {
+                    const v_3: string = "x";
+                    const v_4: Option.Option<string> = Option.some<string>(v_3);
+                    const s_0: Option.Option<string> = v_4;
+                    switch (s_0.tag) {
                         case "Some": {
-                            const v_0 = v_2.value;
-                            const v_3: Option.Option<string> = Option.some<string>(v_0);
-                            switch (v_3.tag) {
+                            const v_0 = s_0.value;
+                            const v_5: Option.Option<string> = Option.some<string>(v_0);
+                            const s_1: Option.Option<string> = v_5;
+                            switch (s_1.tag) {
                                 case "Some": {
-                                    const v_1 = v_3.value;
+                                    const v_1 = s_1.value;
                                     output += escapeHtml(v_1);
                                     break;
                                 }
@@ -3316,10 +3104,18 @@ mod tests {
             expect![[r#"
                 -- before --
                 page IsActive(active@v0: Bool) {
-                  write_string(match (!v0) {
-                    true => { "yes" }
-                    false => { "no" }
-                  })
+                  let v2: Bool = !v0
+                  let v5: String = match v2 {
+                    true => {
+                      let v3: String = "yes"
+                      v3
+                    }
+                    false => {
+                      let v4: String = "no"
+                      v4
+                    }
+                  }
+                  write_string(v5)
                 }
 
                 -- after --
@@ -3335,7 +3131,17 @@ mod tests {
 
                 export function IsActive({active: v_0}: {active: boolean}): string {
                     let output: string = "";
-                    output += escapeHtml(((!(v_0) as boolean) ? ("yes" as string) : ("no" as string)));
+                    const v_2: boolean = !v_0;
+                    const v_5: string = (() => {
+                        if (v_2) {
+                            const v_3: string = "yes";
+                            return v_3;
+                        } else {
+                            const v_4: string = "no";
+                            return v_4;
+                        }
+                    })();
+                    output += escapeHtml(v_5);
                     return output;
                 }
             "#]],
@@ -3368,11 +3174,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page ShowOutcome(r@v0: Outcome) {
-                  write("<div>")
-                  let v1 = Outcome::Success {value: 42} in {
-                    write("Created Ok!")
-                  }
-                  write("</div>")
+                  let v3: Int = 42
+                  let v4: Outcome = Success {value: v3}
+                  write("<div>Created Ok!</div>")
                 }
 
                 -- after --
@@ -3391,10 +3195,9 @@ mod tests {
 
                 export function ShowOutcome({r: v_0}: {r: Outcome.Outcome}): string {
                     let output: string = "";
-                    output += "<div>";
-                    const v_1: Outcome.Outcome = Outcome.Success({value: (42 as number)});
-                    output += "Created Ok!";
-                    output += "</div>";
+                    const v_3: number = 42;
+                    const v_4: Outcome.Outcome = Outcome.Success({value: v_3});
+                    output += "<div>Created Ok!</div>";
                     return output;
                 }
             "#]],
@@ -3426,11 +3229,11 @@ mod tests {
                 -- before --
                 page ShowOutcome(r@v0: Outcome) {
                   match v0 {
-                    Outcome::Success(value: v1) => {
+                    Outcome::Success {value@v1: String} => {
                       write("Value: ")
                       write_string(v1)
                     }
-                    Outcome::Failure(message: v2) => {
+                    Outcome::Failure {message@v2: String} => {
                       write("Error: ")
                       write_string(v2)
                     }
@@ -3461,16 +3264,16 @@ mod tests {
 
                 export function ShowOutcome({r: v_0}: {r: Outcome.Outcome}): string {
                     let output: string = "";
-                    const v_3: Outcome.Outcome = v_0;
-                    switch (v_3._tag) {
+                    const s_0: Outcome.Outcome = v_0;
+                    switch (s_0._tag) {
                         case "Success": {
-                            const { value: v_1 } = v_3;
+                            const { value: v_1 } = s_0;
                             output += "Value: ";
                             output += escapeHtml(v_1);
                             break;
                         }
                         case "Failure": {
-                            const { message: v_2 } = v_3;
+                            const { message: v_2 } = s_0;
                             output += "Error: ";
                             output += escapeHtml(v_2);
                             break;
@@ -3483,23 +3286,23 @@ mod tests {
     }
 
     #[test]
-    fn transpiles_let_fragment_as_nested_buffer() {
+    fn transpiles_a_fragment_read_twice_as_a_nested_buffer() {
         check(
             PureModuleBuilder::new().page_no_params("Test", |t| {
                 t.let_expr(
                     "v_0",
                     t.concat(vec![t.element("b", vec![], vec![t.text("hi")])]),
-                    |t| t.var("v_0"),
+                    |t| t.concat(vec![t.var("v_0"), t.var("v_0")]),
                 )
             }),
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = {
+                  let v5: Html = html {
                     write("<b>hi</b>")
-                  } in {
-                    write_html(v0)
                   }
+                  write_html(v5)
+                  write_html(v5)
                 }
 
                 -- after --
@@ -3509,12 +3312,13 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0: Html = (() => {
+                    const v_5: Html = (() => {
                         let output: string = "";
                         output += "<b>hi</b>";
                         return output as Html;
                     })();
-                    output += v_0;
+                    output += v_5;
+                    output += v_5;
                     return output;
                 }
             "#]],
@@ -3529,7 +3333,9 @@ mod tests {
                     t.element("b", vec![], vec![t.text("hi")])
                 })
                 .page_no_params("Test", |t| {
-                    t.let_expr("x", t.call("Frag", vec![]), |t| t.var("x"))
+                    t.let_expr("x", t.call("Frag", vec![]), |t| {
+                        t.concat(vec![t.var("x"), t.var("x")])
+                    })
                 }),
             expect![[r#"
                 -- before --
@@ -3537,11 +3343,11 @@ mod tests {
                   write("<b>hi</b>")
                 }
                 page Test() {
-                  let v0 = {
-                    call Frag@f0()
-                  } in {
-                    write_html(v0)
+                  let v2: Html = html {
+                    write_function Frag@f0()
                   }
+                  write_html(v2)
+                  write_html(v2)
                 }
 
                 -- after --
@@ -3557,12 +3363,13 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0: Html = (() => {
+                    const v_2: Html = (() => {
                         let output: string = "";
                         output += renderFrag_0();
                         return output as Html;
                     })();
-                    output += v_0;
+                    output += v_2;
+                    output += v_2;
                     return output;
                 }
             "#]],
@@ -3585,7 +3392,10 @@ mod tests {
                   v0
                 }
                 page Test() {
-                  write_string(call format_price@f0(price = 5).to_string())
+                  let v2: Int = 5
+                  let v3: Int = call format_price@f0(v2)
+                  let v4: String = v3.to_string()
+                  write_string(v4)
                 }
 
                 -- after --
@@ -3599,13 +3409,16 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                function renderFormatPrice_0({price: v_0}: {price: number}): number {
+                function renderFormatPrice_0(v_0: number): number {
                     return v_0;
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    output += escapeHtml((renderFormatPrice_0({price: (5 as number)})).toString());
+                    const v_2: number = 5;
+                    const v_3: number = renderFormatPrice_0(v_2);
+                    const v_4: string = v_3.toString();
+                    output += escapeHtml(v_4);
                     return output;
                 }
             "#]],
@@ -3642,15 +3455,24 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn foo@f0(x@v0: Int) -> Int {
-                  (v0 + 10)
+                  let v17: Int = 10
+                  let v18: Int = v0 + v17
+                  v18
                 }
                 page Test() {
+                  let v3: Int = 0
+                  let v4: Int = -7
+                  let v5: Int = call foo@f0(v4)
+                  let v11: Int = 10
+                  let v12: Int = call foo@f0(v11)
+                  let v13: String = v12.to_string()
                   write("<div>")
-                  for v1 in 0..=call foo@f0(x = -7) {
-                    write_string(v1.to_string())
+                  for v1: Int in v3..=v5 {
+                    let v6: String = v1.to_string()
+                    write_string(v6)
                     write(",")
                   }
-                  write_string(call foo@f0(x = 10).to_string())
+                  write_string(v13)
                   write("</div>")
                 }
 
@@ -3665,20 +3487,27 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                function renderFoo_0({x: v_0}: {x: number}): number {
-                    return ((v_0 + (10 as number)) | 0);
+                function renderFoo_0(v_0: number): number {
+                    const v_17: number = 10;
+                    const v_18: number = (v_0 + v_17) | 0;
+                    return v_18;
                 }
 
                 export function Test(): string {
                     let output: string = "";
+                    const v_3: number = 0;
+                    const v_4: number = -7;
+                    const v_5: number = renderFoo_0(v_4);
+                    const v_11: number = 10;
+                    const v_12: number = renderFoo_0(v_11);
+                    const v_13: string = v_12.toString();
                     output += "<div>";
-                    const v_2: number = (0 as number);
-                    const v_3: number = renderFoo_0({x: (-7 as number)});
-                    for (let v_1 = v_2; v_1 <= v_3; v_1++) {
-                        output += escapeHtml((v_1).toString());
+                    for (let v_1 = v_3; v_1 <= v_5; v_1++) {
+                        const v_6: string = v_1.toString();
+                        output += escapeHtml(v_6);
                         output += ",";
                     }
-                    output += escapeHtml((renderFoo_0({x: (10 as number)})).toString());
+                    output += escapeHtml(v_13);
                     output += "</div>";
                     return output;
                 }
@@ -3687,7 +3516,7 @@ mod tests {
     }
 
     #[test]
-    fn quotes_an_argument_name_that_is_not_an_identifier() {
+    fn passes_a_parameter_whose_name_is_not_an_identifier_by_position() {
         check(
             PureModuleBuilder::new()
                 .function("Button", [("data-x", "String")], "Html", |t| {
@@ -3702,7 +3531,8 @@ mod tests {
                   write("\"></button>")
                 }
                 page Test() {
-                  call Button@f0(data-x = "1")
+                  let v2: String = "1"
+                  write_function Button@f0(v2)
                 }
 
                 -- after --
@@ -3716,7 +3546,7 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                function renderButton_0({"data-x": v_0}: {"data-x": string}): string {
+                function renderButton_0(v_0: string): string {
                     let output: string = "";
                     output += "<button data-x=\"";
                     output += escapeHtml(v_0);
@@ -3726,7 +3556,8 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    output += renderButton_0({"data-x": ("1" as string)});
+                    const v_2: string = "1";
+                    output += renderButton_0(v_2);
                     return output;
                 }
             "#]],

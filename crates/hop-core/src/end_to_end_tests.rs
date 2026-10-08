@@ -1,10 +1,10 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::Document;
 use crate::document_annotator::DocumentAnnotator;
-use crate::ir::lower_pure;
-use crate::ir::pure_module::PureModule;
-use crate::ir::runtime::evaluator;
+use crate::ir::flat_module::FlatModule;
+use crate::ir::runtime::flat_evaluator;
 use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
+use crate::ir::{flat_to_writer, optimize_flat, pure_to_flat};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
 use crate::program::Program;
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -152,9 +152,9 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn execute_evaluator(module: &PureModule) -> Result<String, String> {
+fn execute_evaluator(module: &FlatModule) -> Result<String, String> {
     let page_name = TypeName::parse("Test").unwrap();
-    evaluator::evaluate_page(module, &page_name, HashMap::new(), None)
+    flat_evaluator::evaluate_page(module, &page_name, HashMap::new(), None)
         .map_err(|e| format!("Evaluator failed: {}", e))
 }
 
@@ -198,28 +198,22 @@ fn check_with_asset_path_rewriter(
     let typed_modules = program.typed_modules().clone();
     let registry = program.type_registry();
 
-    // Compile to IR without optimization
-    let unoptimized_options = OrchestrateOptions {
-        skip_optimization: true,
-        asset_path_rewriter: asset_path_rewriter.clone(),
-        ..Default::default()
-    };
-    let unoptimized_pure = orchestrate_pure(&typed_modules, unoptimized_options);
+    let pure = orchestrate_pure(
+        &typed_modules,
+        OrchestrateOptions {
+            asset_path_rewriter,
+            ..Default::default()
+        },
+    );
+    let unoptimized_flat = pure_to_flat(pure.clone());
+    let optimized_flat = optimize_flat(pure_to_flat(pure));
 
-    // Compile to IR with optimization
-    let optimized_options = OrchestrateOptions {
-        skip_optimization: false,
-        asset_path_rewriter,
-        ..Default::default()
-    };
-    let optimized_pure = orchestrate_pure(&typed_modules, optimized_options);
+    // Evaluate the Flat modules before lowering consumes them.
+    let unoptimized_eval = execute_evaluator(&unoptimized_flat);
+    let optimized_eval = execute_evaluator(&optimized_flat);
 
-    // Evaluate the Pure modules before lowering consumes them.
-    let unoptimized_eval = execute_evaluator(&unoptimized_pure);
-    let optimized_eval = execute_evaluator(&optimized_pure);
-
-    let unoptimized_module = lower_pure(unoptimized_pure, None);
-    let optimized_module = lower_pure(optimized_pure, None);
+    let unoptimized_module = flat_to_writer(unoptimized_flat, None);
+    let optimized_module = flat_to_writer(optimized_flat, None);
 
     let unoptimized_ir = unoptimized_module.to_string();
     let optimized_ir = optimized_module.to_string();
@@ -229,7 +223,7 @@ fn check_with_asset_path_rewriter(
         unoptimized_ir, optimized_ir, expected_output
     );
 
-    // Test evaluator on the unoptimized Pure module
+    // Test evaluator on the unoptimized Flat module
     let eval_output = match unoptimized_eval {
         Ok(out) => out,
         Err(e) => panic!(
@@ -244,7 +238,7 @@ fn check_with_asset_path_rewriter(
     );
     output.push_str("-- eval (unoptimized) --\nOK\n");
 
-    // Test evaluator on the optimized Pure module
+    // Test evaluator on the optimized Flat module
     let eval_output = match optimized_eval {
         Ok(out) => out,
         Err(e) => panic!(
@@ -365,13 +359,14 @@ mod tests {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
             let page_name = TypeName::parse("Test").unwrap();
-            let expected = match evaluator::evaluate_page(&module, &page_name, HashMap::new(), None)
-            {
-                Ok(output) => output.trim().to_string(),
-                Err(EvalError::RecursionLimit { .. }) => return Ok(()),
-                Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
-            };
-            let module = lower_pure(module, None);
+            let module = pure_to_flat(module);
+            let expected =
+                match flat_evaluator::evaluate_page(&module, &page_name, HashMap::new(), None) {
+                    Ok(output) => output.trim().to_string(),
+                    Err(EvalError::RecursionLimit { .. }) => return Ok(()),
+                    Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
+                };
+            let module = flat_to_writer(optimize_flat(module), None);
             let ir = module.to_string();
             let ts_code = TsTranspiler::new().transpile_module(&module, &registry);
             if let Err(e) = typecheck_typescript(&ts_code) {
@@ -397,13 +392,14 @@ mod tests {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
             let page_name = TypeName::parse("Test").unwrap();
-            let expected = match evaluator::evaluate_page(&module, &page_name, HashMap::new(), None)
-            {
-                Ok(output) => output.trim().to_string(),
-                Err(EvalError::RecursionLimit { .. }) => return Ok(()),
-                Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
-            };
-            let module = lower_pure(module, None);
+            let module = pure_to_flat(module);
+            let expected =
+                match flat_evaluator::evaluate_page(&module, &page_name, HashMap::new(), None) {
+                    Ok(output) => output.trim().to_string(),
+                    Err(EvalError::RecursionLimit { .. }) => return Ok(()),
+                    Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
+                };
+            let module = flat_to_writer(optimize_flat(module), None);
             let ir = module.to_string();
             let rust_code = RustTranspiler::new().transpile_module(&module, &registry);
             let rust_output = execute_rust(&rust_code).unwrap_or_else(|e| {
@@ -446,34 +442,50 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [Flag {value: true}] {
-                    let v1 = v0 in {
-                      let v2 = v1.value in {
-                        let v3 = (v2 || false) in {
-                          match v3 {
-                            true => {
-                              write("yes")
-                            }
-                            false => {
-                            }
-                          }
-                        }
+                  let v5: Bool = true
+                  let v6: Flag = {value: v5}
+                  let v7: Array[Flag] = [v6]
+                  for v0: Flag in v7 {
+                    let v8: Bool = v0.value
+                    let v10: Bool = match v8 {
+                      true => {
+                        v8
+                      }
+                      false => {
+                        let v9: Bool = false
+                        v9
+                      }
+                    }
+                    match v10 {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [Flag {value: true}] {
-                    let v2 = v0.value in {
-                      let v3 = (v2 || false) in {
-                        match v3 {
-                          true => {
-                            write("yes")
-                          }
-                          false => {
-                          }
-                        }
+                  let v5: Bool = true
+                  let v6: Flag = {value: v5}
+                  let v7: Array[Flag] = [v6]
+                  for v0: Flag in v7 {
+                    let v8: Bool = v0.value
+                    let v10: Bool = match v8 {
+                      true => {
+                        v8
+                      }
+                      false => {
+                        let v9: Bool = false
+                        v9
+                      }
+                    }
+                    match v10 {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
                       }
                     }
                   }
@@ -525,55 +537,54 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn spin@f0() -> Bool {
-                  call spin@f0()
+                  let v20: Bool = call spin@f0()
+                  v20
                 }
                 page Test() {
-                  let v0 = (false && call spin@f0()) in {
-                    match v0 {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
-                      }
+                  let v3: Bool = false
+                  let v5: Bool = match v3 {
+                    true => {
+                      let v4: Bool = call spin@f0()
+                      v4
+                    }
+                    false => {
+                      v3
                     }
                   }
-                  let v1 = (true || call spin@f0()) in {
-                    match v1 {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
-                      }
+                  let v11: Bool = true
+                  let v13: Bool = match v11 {
+                    true => {
+                      v11
+                    }
+                    false => {
+                      let v12: Bool = call spin@f0()
+                      v12
+                    }
+                  }
+                  match v5 {
+                    true => {
+                      write("yes")
+                    }
+                    false => {
+                      write("no")
+                    }
+                  }
+                  match v13 {
+                    true => {
+                      write("yes")
+                    }
+                    false => {
+                      write("no")
                     }
                   }
                 }
                 -- ir (optimized) --
                 fn spin@f0() -> Bool {
-                  call spin@f0()
+                  let v20: Bool = call spin@f0()
+                  v20
                 }
                 page Test() {
-                  let v0 = (false && call spin@f0()) in {
-                    match v0 {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
-                      }
-                    }
-                  }
-                  let v1 = (true || call spin@f0()) in {
-                    match v1 {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
-                      }
-                    }
-                  }
+                  write("noyes")
                 }
                 -- expected output --
                 noyes
@@ -618,20 +629,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "foo" in {
-                    let v1 = Option[String]::Some("bar") in {
-                      let v5 = let v2 = v1 in {
-                        match v2 {
-                          Some(v3) => { let v4 = (v3 + " ") in { v4 } }
-                          None => { "" }
-                        }
-                      } in {
-                        write("<p>")
-                        write_string(let v6 = (v5 + v0) in { v6 })
-                        write("</p>")
-                      }
+                  let v9: String = "bar"
+                  let v10: Option[String] = Some(v9)
+                  let v14: String = match v10 {
+                    Some(v3: String) => {
+                      let v11: String = " "
+                      let v12: String = concat(v3, v11)
+                      v12
+                    }
+                    None => {
+                      let v13: String = ""
+                      v13
                     }
                   }
+                  write("<p>")
+                  write_string(v14)
+                  write("foo</p>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -682,38 +695,40 @@ mod tests {
             "<p>admin ada</p><p>admin</p><p>guest</p>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Badge@f0(
-                  admin@v0: Bool,
-                  name@v1: Option[String],
-                ) -> Html {
-                  let v2 = (v0, v1) in {
-                    let v3 = v2.0 in {
-                      let v4 = v2.1 in {
-                        match v3 {
-                          true => {
-                            match v4 {
-                              Some(v5) => {
-                                write("<p>admin ")
-                                write_string(v5)
-                                write("</p>")
-                              }
-                              None => {
-                                write("<p>admin</p>")
-                              }
-                            }
-                          }
-                          false => {
-                            write("<p>guest</p>")
-                          }
+                fn Badge@f0(admin@v0: Bool, name@v1: Option[String]) -> Html {
+                  let v19: (Bool, Option[String]) = (v0, v1)
+                  let v20: Bool = v19.0
+                  let v21: Option[String] = v19.1
+                  match v20 {
+                    true => {
+                      match v21 {
+                        Some(v5: String) => {
+                          write("<p>admin ")
+                          write_string(v5)
+                          write("</p>")
+                        }
+                        None => {
+                          write("<p>admin</p>")
                         }
                       }
+                    }
+                    false => {
+                      write("<p>guest</p>")
                     }
                   }
                 }
                 page Test() {
-                  call Badge@f0(admin = true, name = Option[String]::Some("ada"))
-                  call Badge@f0(admin = true, name = Option[String]::None)
-                  call Badge@f0(admin = false, name = Option[String]::Some("bob"))
+                  let v7: Bool = true
+                  let v8: String = "ada"
+                  let v9: Option[String] = Some(v8)
+                  let v11: Bool = true
+                  let v12: Option[String] = None
+                  let v14: Bool = false
+                  let v15: String = "bob"
+                  let v16: Option[String] = Some(v15)
+                  write_function Badge@f0(v7, v9)
+                  write_function Badge@f0(v11, v12)
+                  write_function Badge@f0(v14, v16)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -763,38 +778,43 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Row@f0(cell@v0: ((String, Int), (Bool,))) -> Html {
-                  let v1 = v0 in {
-                    let v2 = v1.0 in {
-                      let v3 = v1.1 in {
-                        let v4 = v3.0 in {
-                          match v4 {
-                            true => {
-                              let v5 = v2.0 in {
-                                let v6 = v2.1 in {
-                                  write("<p>")
-                                  write_string(v5)
-                                  write(": ")
-                                  write_string(v6.to_string())
-                                  write("</p>")
-                                }
-                              }
-                            }
-                            false => {
-                              let v7 = v2.0 in {
-                                write("<p>")
-                                write_string(v7)
-                                write("</p>")
-                              }
-                            }
-                          }
-                        }
-                      }
+                  let v24: (String, Int) = v0.0
+                  let v25: (Bool,) = v0.1
+                  let v26: Bool = v25.0
+                  match v26 {
+                    true => {
+                      let v27: String = v24.0
+                      let v28: Int = v24.1
+                      let v31: String = v28.to_string()
+                      write("<p>")
+                      write_string(v27)
+                      write(": ")
+                      write_string(v31)
+                      write("</p>")
+                    }
+                    false => {
+                      let v35: String = v24.0
+                      write("<p>")
+                      write_string(v35)
+                      write("</p>")
                     }
                   }
                 }
                 page Test() {
-                  call Row@f0(cell = (("apples", 3), (true,)))
-                  call Row@f0(cell = (("pears", 0), (false,)))
+                  let v9: String = "apples"
+                  let v10: Int = 3
+                  let v11: (String, Int) = (v9, v10)
+                  let v12: Bool = true
+                  let v13: (Bool,) = (v12,)
+                  let v14: ((String, Int), (Bool,)) = (v11, v13)
+                  let v16: String = "pears"
+                  let v17: Int = 0
+                  let v18: (String, Int) = (v16, v17)
+                  let v19: Bool = false
+                  let v20: (Bool,) = (v19,)
+                  let v21: ((String, Int), (Bool,)) = (v18, v20)
+                  write_function Row@f0(v14)
+                  write_function Row@f0(v21)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -840,21 +860,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<ul>")
-                  let v0 = "Item" in {
-                    let v1 = 2 in {
-                      write("<li class=\"")
-                      write_string(let v2 = "row" in {
-                        ((v2 + "-") + "odd")
-                      })
-                      write("\">")
-                      write_string(v0)
-                      write(": ")
-                      write_string(v1.to_string())
-                      write("</li>")
-                    }
-                  }
-                  write("</ul>")
+                  let v5: Int = 2
+                  let v13: String = v5.to_string()
+                  write("<ul><li class=\"row-odd\">Item: ")
+                  write_string(v13)
+                  write("</li></ul>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -907,34 +917,36 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [Count {n: 57}] {
-                    let v1 = v0 in {
-                      let v2 = v1.n in {
-                        let v3 = (v2 == 57) in {
-                          match v3 {
-                            true => {
-                              write("eq")
-                            }
-                            false => {
-                            }
-                          }
-                        }
+                  let v5: Int = 57
+                  let v6: Count = {n: v5}
+                  let v7: Array[Count] = [v6]
+                  for v0: Count in v7 {
+                    let v8: Int = v0.n
+                    let v9: Int = 57
+                    let v10: Bool = v8 == v9
+                    match v10 {
+                      true => {
+                        write("eq")
+                      }
+                      false => {
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [Count {n: 57}] {
-                    let v2 = v0.n in {
-                      let v3 = (v2 == 57) in {
-                        match v3 {
-                          true => {
-                            write("eq")
-                          }
-                          false => {
-                          }
-                        }
+                  let v5: Int = 57
+                  let v6: Count = {n: v5}
+                  let v7: Array[Count] = [v6]
+                  for v0: Count in v7 {
+                    let v8: Int = v0.n
+                    let v9: Int = 57
+                    let v10: Bool = v8 == v9
+                    match v10 {
+                      true => {
+                        write("eq")
+                      }
+                      false => {
                       }
                     }
                   }
@@ -981,25 +993,42 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [Flag {value: true}] {
-                    let v1 = v0 in {
-                      let v2 = v1.value in {
-                        write_string(let v3 = v2 in {
-                          match v3 { true => { "yes" } false => { "no" } }
-                        })
+                  let v5: Bool = true
+                  let v6: Flag = {value: v5}
+                  let v7: Array[Flag] = [v6]
+                  for v0: Flag in v7 {
+                    let v8: Bool = v0.value
+                    let v11: String = match v8 {
+                      true => {
+                        let v9: String = "yes"
+                        v9
+                      }
+                      false => {
+                        let v10: String = "no"
+                        v10
                       }
                     }
+                    write_string(v11)
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [Flag {value: true}] {
-                    let v2 = v0.value in {
-                      write_string(match v2 {
-                        true => { "yes" }
-                        false => { "no" }
-                      })
+                  let v5: Bool = true
+                  let v6: Flag = {value: v5}
+                  let v7: Array[Flag] = [v6]
+                  for v0: Flag in v7 {
+                    let v8: Bool = v0.value
+                    let v11: String = match v8 {
+                      true => {
+                        let v9: String = "yes"
+                        v9
+                      }
+                      false => {
+                        let v10: String = "no"
+                        v10
+                      }
                     }
+                    write_string(v11)
                   }
                 }
                 -- expected output --
@@ -1052,7 +1081,9 @@ mod tests {
                   write("</button>")
                 }
                 page Test() {
-                  call Button@f0(label = "Hi", id = "submit")
+                  let v3: String = "Hi"
+                  let v4: String = "submit"
+                  write_function Button@f0(v3, v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1120,7 +1151,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn First@f0(n@v0: Int, title@v1: String) -> Html {
-                  call Second@f1(n = v0, title = v1)
+                  write_function Second@f1(v0, v1)
                 }
                 fn Leaf@f2(title@v5: String) -> Html {
                   write("<div>")
@@ -1128,40 +1159,50 @@ mod tests {
                   write("</div>")
                 }
                 fn Second@f1(n@v2: Int, title@v3: String) -> Html {
-                  call Leaf@f2(title = v3)
-                  let v4 = (0 < v2) in {
-                    match v4 {
-                      true => {
-                        call First@f0(n = (v2 - 1), title = "d")
-                      }
-                      false => {
-                      }
+                  let v15: Int = 0
+                  let v16: Bool = v15 < v2
+                  write_function Leaf@f2(v3)
+                  match v16 {
+                    true => {
+                      let v17: Int = 1
+                      let v18: Int = v2 - v17
+                      let v19: String = "d"
+                      write_function First@f0(v18, v19)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call First@f0(n = 1, title = "x")
+                  let v7: Int = 1
+                  let v8: String = "x"
+                  write_function First@f0(v7, v8)
                 }
                 -- ir (optimized) --
                 fn First@f0(n@v0: Int, title@v1: String) -> Html {
-                  call Second@f1(n = v0, title = v1)
+                  write_function Second@f1(v0, v1)
                 }
                 fn Second@f1(n@v2: Int, title@v3: String) -> Html {
+                  let v15: Int = 0
+                  let v16: Bool = v15 < v2
                   write("<div>")
                   write_string(v3)
                   write("</div>")
-                  let v4 = (0 < v2) in {
-                    match v4 {
-                      true => {
-                        call First@f0(n = (v2 - 1), title = "d")
-                      }
-                      false => {
-                      }
+                  match v16 {
+                    true => {
+                      let v17: Int = 1
+                      let v18: Int = v2 - v17
+                      let v19: String = "d"
+                      write_function First@f0(v18, v19)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call First@f0(n = 1, title = "x")
+                  let v7: Int = 1
+                  let v8: String = "x"
+                  write_function First@f0(v7, v8)
                 }
                 -- expected output --
                 <div>x</div><div>d</div>
@@ -1220,19 +1261,18 @@ mod tests {
                   write_string(v4)
                   write("\"></div>")
                 }
-                fn Card@f0(
-                  title@v0: String,
-                  id@v1: String,
-                  data-k@v2: String,
-                ) -> Html {
+                fn Card@f0(title@v0: String, id@v1: String, data-k@v2: String) -> Html {
                   write("<section><h1>")
                   write_string(v0)
                   write("</h1>")
-                  call Base@f1(id = v1, data-k = v2)
+                  write_function Base@f1(v1, v2)
                   write("</section>")
                 }
                 page Test() {
-                  call Card@f0(title = "Hi", id = "x", data-k = "v")
+                  let v6: String = "Hi"
+                  let v7: String = "x"
+                  let v8: String = "v"
+                  write_function Card@f0(v6, v7, v8)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1285,20 +1325,20 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Wrapper@f0(show@v0: Bool, id@v1: String) -> Html {
-                  let v2 = v0 in {
-                    match v2 {
-                      true => {
-                        write("<div id=\"")
-                        write_string(v1)
-                        write("\"></div>")
-                      }
-                      false => {
-                      }
+                  match v0 {
+                    true => {
+                      write("<div id=\"")
+                      write_string(v1)
+                      write("\"></div>")
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Wrapper@f0(show = true, id = "x")
+                  let v4: Bool = true
+                  let v5: String = "x"
+                  write_function Wrapper@f0(v4, v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1374,10 +1414,14 @@ mod tests {
                   write(">")
                 }
                 page Test() {
-                  call Field@f0(required = true)
-                  call Field@f0(required = false)
-                  call Button@f1(disabled = true)
-                  call Button@f1(disabled = false)
+                  let v3: Bool = true
+                  let v5: Bool = false
+                  let v7: Bool = true
+                  let v9: Bool = false
+                  write_function Field@f0(v3)
+                  write_function Field@f0(v5)
+                  write_function Button@f1(v7)
+                  write_function Button@f1(v9)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1431,20 +1475,20 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Wrapper@f0(show@v0: Bool, id@v1: String) -> Html {
-                  let v2 = v0 in {
-                    match v2 {
-                      true => {
-                        write("<div id=\"")
-                        write_string(v1)
-                        write("\"></div>")
-                      }
-                      false => {
-                      }
+                  match v0 {
+                    true => {
+                      write("<div id=\"")
+                      write_string(v1)
+                      write("\"></div>")
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Wrapper@f0(show = true, id = "x")
+                  let v4: Bool = true
+                  let v5: String = "x"
+                  write_function Wrapper@f0(v4, v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1494,7 +1538,8 @@ mod tests {
                   write("\"></div>")
                 }
                 page Test() {
-                  call Panel@f0(title = "a'b<c&d")
+                  let v2: String = "a'b<c&d"
+                  write_function Panel@f0(v2)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1589,7 +1634,8 @@ mod tests {
                   write("\"></div>")
                 }
                 page Test() {
-                  call Panel@f0(title = "a &amp; b")
+                  let v2: String = "a &amp; b"
+                  write_function Panel@f0(v2)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1640,7 +1686,9 @@ mod tests {
                   write("\">")
                 }
                 page Test() {
-                  call Icon@f0(src = "a.png", alt = "a")
+                  let v3: String = "a.png"
+                  let v4: String = "a"
+                  write_function Icon@f0(v3, v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1688,7 +1736,7 @@ mod tests {
                   write("<div></div>")
                 }
                 page Test() {
-                  call A@f0()
+                  write_function A@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1736,7 +1784,7 @@ mod tests {
                   write("<div></div>")
                 }
                 page Test() {
-                  call A@f0()
+                  write_function A@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1788,11 +1836,7 @@ mod tests {
             r#"<button class="secondary" id="save" aria-label="Save">secondary</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f1(
-                  kind@v2: String,
-                  id@v3: String,
-                  aria-label@v4: String,
-                ) -> Html {
+                fn Button@f1(kind@v2: String, id@v3: String, aria-label@v4: String) -> Html {
                   write("<button class=\"")
                   write_string(v2)
                   write("\" id=\"")
@@ -1803,19 +1847,23 @@ mod tests {
                   write_string(v2)
                   write("</button>")
                 }
-                fn Secondary@f0(
-                  id@v0: String,
-                  aria-label@v1: String,
-                ) -> Html {
-                  call Button@f1(kind = "secondary", id = v0, aria-label = v1)
+                fn Secondary@f0(id@v0: String, aria-label@v1: String) -> Html {
+                  let v12: String = "secondary"
+                  write_function Button@f1(v12, v0, v1)
                 }
                 page Test() {
-                  call Secondary@f0(id = "save", aria-label = "Save")
+                  let v6: String = "save"
+                  let v7: String = "Save"
+                  write_function Secondary@f0(v6, v7)
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("<button class=\"secondary\" id=\"save\" aria-label=\"Save\">")
-                  write("secondary</button>")
+                  let v17: String = "secondary"
+                  write("<button class=\"")
+                  write_string(v17)
+                  write("\" id=\"save\" aria-label=\"Save\">")
+                  write_string(v17)
+                  write("</button>")
                 }
                 -- expected output --
                 <button class="secondary" id="save" aria-label="Save">secondary</button>
@@ -1862,11 +1910,7 @@ mod tests {
             r#"<button class="p-2" data-foo="bar">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(
-                  class@v0: String,
-                  children@v1: Html,
-                  data-foo@v2: String,
-                ) -> Html {
+                fn Button@f0(class@v0: String, children@v1: Html, data-foo@v2: String) -> Html {
                   write("<button class=\"")
                   write_string(v0)
                   write("\" data-foo=\"")
@@ -1876,9 +1920,12 @@ mod tests {
                   write("</button>")
                 }
                 page Test() {
-                  call Button@f0(class = "p-2", children = {
+                  let v4: String = "p-2"
+                  let v6: Html = html {
                     write("Hi")
-                  }, data-foo = "bar")
+                  }
+                  let v7: String = "bar"
+                  write_function Button@f0(v4, v6, v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1936,9 +1983,11 @@ mod tests {
                   write("</button>")
                 }
                 page Test() {
-                  call Button@f0(children = {
+                  let v4: Html = html {
                     write("Hi")
-                  }, data-x = "y")
+                  }
+                  let v5: String = "y"
+                  write_function Button@f0(v4, v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2030,7 +2079,8 @@ mod tests {
                   write("\"></svg>")
                 }
                 page Test() {
-                  call Svg@f0(viewBox = "0 0 100 100")
+                  let v2: String = "0 0 100 100"
+                  write_function Svg@f0(v2)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2085,10 +2135,11 @@ mod tests {
                   write("</div>")
                 }
                 fn Wrapper@f0(title@v0: String) -> Html {
-                  call Card@f1(title = v0)
+                  write_function Card@f1(v0)
                 }
                 page Test() {
-                  call Wrapper@f0(title = "hi")
+                  let v3: String = "hi"
+                  write_function Wrapper@f0(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2143,10 +2194,11 @@ mod tests {
                   write("</div>")
                 }
                 fn Wrapper@f0() -> Html {
-                  call Card@f1(title = "explicit")
+                  let v6: String = "explicit"
+                  write_function Card@f1(v6)
                 }
                 page Test() {
-                  call Wrapper@f0()
+                  write_function Wrapper@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2201,17 +2253,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f1(user@v2: User) -> Html {
+                  let v7: String = v2.name
                   write("<div>")
-                  write_string(v2.name)
+                  write_string(v7)
                   write("</div>")
                 }
                 fn Wrapper@f0(user@v1: User) -> Html {
-                  call Card@f1(user = v1)
+                  write_function Card@f1(v1)
                 }
                 page Test() {
-                  let v0 = User {name: "Ada"} in {
-                    call Wrapper@f0(user = v0)
-                  }
+                  let v4: String = "Ada"
+                  let v5: User = {name: v4}
+                  write_function Wrapper@f0(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2265,24 +2318,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "outer" in {
-                    for v1 in [Flag {value: "x"}] {
-                      let v2 = v1 in {
-                        let v3 = v2.value in {
-                          write_string(v0)
-                          write_string(v3)
-                        }
-                      }
-                    }
+                  let v6: String = "x"
+                  let v7: Flag = {value: v6}
+                  let v8: Array[Flag] = [v7]
+                  for v1: Flag in v8 {
+                    let v9: String = v1.value
+                    write("outer")
+                    write_string(v9)
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v1 in [Flag {value: "x"}] {
-                    let v3 = v1.value in {
-                      write("outer")
-                      write_string(v3)
-                    }
+                  let v6: String = "x"
+                  let v7: Flag = {value: v6}
+                  let v8: Array[Flag] = [v7]
+                  for v1: Flag in v8 {
+                    let v9: String = v1.value
+                    write("outer")
+                    write_string(v9)
                   }
                 }
                 -- expected output --
@@ -2341,11 +2394,11 @@ mod tests {
                 fn Bar@f1(name@v2: String, title@v3: String) -> Html {
                   write("<div>")
                   write_string(v2)
-                  call Card@f2(title = v3)
+                  write_function Card@f2(v3)
                   write("</div>")
                 }
                 fn Baz@f0(name@v0: String, title@v1: String) -> Html {
-                  call Bar@f1(name = v0, title = v1)
+                  write_function Bar@f1(v0, v1)
                 }
                 fn Card@f2(title@v4: String) -> Html {
                   write("<div>")
@@ -2353,7 +2406,9 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Baz@f0(name = "n", title = "t")
+                  let v6: String = "n"
+                  let v7: String = "t"
+                  write_function Baz@f0(v6, v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2408,21 +2463,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f1(count@v1: Int) -> Html {
-                  let v2 = (0 < v1) in {
-                    match v2 {
-                      true => {
-                        write("<div>positive</div>")
-                      }
-                      false => {
-                      }
+                  let v6: Int = 0
+                  let v7: Bool = v6 < v1
+                  match v7 {
+                    true => {
+                      write("<div>positive</div>")
+                    }
+                    false => {
                     }
                   }
                 }
                 fn Wrapper@f0(count@v0: Int) -> Html {
-                  call Card@f1(count = v0)
+                  write_function Card@f1(v0)
                 }
                 page Test() {
-                  call Wrapper@f0(count = 3)
+                  let v4: Int = 3
+                  write_function Wrapper@f0(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2478,25 +2534,27 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn A@f1(count@v2: Int, data-foo@v3: String) -> Html {
+                  let v9: Int = 0
+                  let v10: Bool = v9 < v2
                   write("<div data-foo=\"")
                   write_string(v3)
                   write("\">")
-                  let v4 = (0 < v2) in {
-                    match v4 {
-                      true => {
-                        write("positive")
-                      }
-                      false => {
-                      }
+                  match v10 {
+                    true => {
+                      write("positive")
+                    }
+                    false => {
                     }
                   }
                   write("</div>")
                 }
                 fn B@f0(count@v0: Int, data-foo@v1: String) -> Html {
-                  call A@f1(count = v0, data-foo = v1)
+                  write_function A@f1(v0, v1)
                 }
                 page Test() {
-                  call B@f0(count = 3, data-foo = "bar")
+                  let v6: Int = 3
+                  let v7: String = "bar"
+                  write_function B@f0(v6, v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2552,10 +2610,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Bar@f1(children@v1: Html) -> Html {
-                  call Foo@f2(children = v1)
+                  write_function Foo@f2(v1)
                 }
                 fn Baz@f0(children@v0: Html) -> Html {
-                  call Bar@f1(children = v0)
+                  write_function Bar@f1(v0)
                 }
                 fn Foo@f2(children@v2: Html) -> Html {
                   write("<div>")
@@ -2563,9 +2621,10 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Baz@f0(children = {
+                  let v5: Html = html {
                     write("deep")
-                  })
+                  }
+                  write_function Baz@f0(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2627,14 +2686,16 @@ mod tests {
                   write("\"></span>")
                 }
                 fn Outer@f0(class@v0: String) -> Html {
+                  let v7: String = "x"
                   write("<div class=\"")
                   write_string(v0)
                   write("\">")
-                  call Inner@f1(class = "x")
+                  write_function Inner@f1(v7)
                   write("</div>")
                 }
                 page Test() {
-                  call Outer@f0(class = "x")
+                  let v3: String = "x"
+                  write_function Outer@f0(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2696,9 +2757,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Button@f0(children@v0: Html, class@v1: String) -> Html {
-                  call Foo@f1(children = {
+                  let v9: Html = html {
                     write_html(v0)
-                  }, class = v1)
+                  }
+                  write_function Foo@f1(v9, v1)
                 }
                 fn Foo@f1(children@v2: Html, class@v3: String) -> Html {
                   write("<div class=\"")
@@ -2708,9 +2770,11 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Button@f0(children = {
+                  let v6: Html = html {
                     write("click")
-                  }, class = "primary")
+                  }
+                  let v7: String = "primary"
+                  write_function Button@f0(v6, v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2767,10 +2831,11 @@ mod tests {
                   write("\"></span>")
                 }
                 fn Wrapper@f0(class@v0: String) -> Html {
-                  call Inner@f1(class = v0)
+                  write_function Inner@f1(v0)
                 }
                 page Test() {
-                  call Wrapper@f0(class = "y")
+                  let v3: String = "y"
+                  write_function Wrapper@f0(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2830,10 +2895,11 @@ mod tests {
                   write("\"></div>")
                 }
                 fn B@f0(class@v0: String) -> Html {
-                  call A@f1(class = v0)
+                  write_function A@f1(v0)
                 }
                 page Test() {
-                  call B@f0(class = "main")
+                  let v3: String = "main"
+                  write_function B@f0(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2893,10 +2959,11 @@ mod tests {
                   write("\"></div>")
                 }
                 fn B@f0(class@v0: String) -> Html {
-                  call A@f1(class = v0)
+                  write_function A@f1(v0)
                 }
                 page Test() {
-                  call B@f0(class = "b")
+                  let v3: String = "b"
+                  write_function B@f0(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2954,10 +3021,11 @@ mod tests {
                   write("</span>")
                 }
                 fn B@f0(label@v0: String) -> Html {
-                  call A@f1(label = v0)
+                  write_function A@f1(v0)
                 }
                 page Test() {
-                  call B@f0(label = "x")
+                  let v3: String = "x"
+                  write_function B@f0(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3019,13 +3087,14 @@ mod tests {
                   write("</span>")
                 }
                 fn Mid@f1(label@v1: String) -> Html {
-                  call Leaf@f2(label = v1)
+                  write_function Leaf@f2(v1)
                 }
                 fn Top@f0(label@v0: String) -> Html {
-                  call Mid@f1(label = v0)
+                  write_function Mid@f1(v0)
                 }
                 page Test() {
-                  call Top@f0(label = "x")
+                  let v4: String = "x"
+                  write_function Top@f0(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3081,10 +3150,12 @@ mod tests {
                   write("\"></span>")
                 }
                 fn Wrapper@f0(lang@v0: String) -> Html {
-                  call Inner@f1(title = "a", lang = v0)
+                  let v8: String = "a"
+                  write_function Inner@f1(v8, v0)
                 }
                 page Test() {
-                  call Wrapper@f0(lang = "en")
+                  let v4: String = "en"
+                  write_function Wrapper@f0(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3143,15 +3214,13 @@ mod tests {
                   write("</div>")
                 }
                 fn Wrapper@f0(title@v0: String) -> Html {
-                  let v1 = "local" in {
-                    write("<section>")
-                    write_string(v1)
-                    call Card@f1(title = v0)
-                    write("</section>")
-                  }
+                  write("<section>local")
+                  write_function Card@f1(v0)
+                  write("</section>")
                 }
                 page Test() {
-                  call Wrapper@f0(title = "hi")
+                  let v4: String = "hi"
+                  write_function Wrapper@f0(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3211,21 +3280,28 @@ mod tests {
                   write("</div>")
                 }
                 fn Wrapper@f0(title@v0: String) -> Html {
-                  for v1 in ["a", "b"] {
+                  let v9: String = "a"
+                  let v10: String = "b"
+                  let v11: Array[String] = [v9, v10]
+                  for v1: String in v11 {
                     write("<p>")
                     write_string(v1)
-                    call Card@f1(title = v0)
+                    write_function Card@f1(v0)
                     write("</p>")
                   }
                 }
                 page Test() {
-                  call Wrapper@f0(title = "hi")
+                  let v4: String = "hi"
+                  write_function Wrapper@f0(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v5 in ["a", "b"] {
+                  let v20: String = "a"
+                  let v21: String = "b"
+                  let v22: Array[String] = [v20, v21]
+                  for v23: String in v22 {
                     write("<p>")
-                    write_string(v5)
+                    write_string(v23)
                     write("<div>hi</div></p>")
                   }
                 }
@@ -3286,21 +3362,22 @@ mod tests {
                   write("</div>")
                 }
                 fn Wrapper@f0(title@v0: String) -> Html {
-                  let v1 = Option[String]::Some("m") in {
-                    match v1 {
-                      Some(v2) => {
-                        write("<p>")
-                        write_string(v2)
-                        call Card@f1(title = v0)
-                        write("</p>")
-                      }
-                      None => {
-                      }
+                  let v10: String = "m"
+                  let v11: Option[String] = Some(v10)
+                  match v11 {
+                    Some(v2: String) => {
+                      write("<p>")
+                      write_string(v2)
+                      write_function Card@f1(v0)
+                      write("</p>")
+                    }
+                    None => {
                     }
                   }
                 }
                 page Test() {
-                  call Wrapper@f0(title = "hi")
+                  let v5: String = "hi"
+                  write_function Wrapper@f0(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3347,28 +3424,17 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Wrapper@f0(id@v0: String) -> Html {
-                  let v1 = {
-                    write("<b>x</b>")
-                  } in {
-                    write("<div id=\"")
-                    write_string(v0)
-                    write("\">")
-                    write_html(v1)
-                    write("</div>")
-                  }
+                  write("<div id=\"")
+                  write_string(v0)
+                  write("\"><b>x</b></div>")
                 }
                 page Test() {
-                  call Wrapper@f0(id = "hi")
+                  let v3: String = "hi"
+                  write_function Wrapper@f0(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
-                  let v3 = {
-                    write("<b>x</b>")
-                  } in {
-                    write("<div id=\"hi\">")
-                    write_html(v3)
-                    write("</div>")
-                  }
+                  write("<div id=\"hi\"><b>x</b></div>")
                 }
                 -- expected output --
                 <div id="hi"><b>x</b></div>
@@ -3428,15 +3494,14 @@ mod tests {
                   write("</div>")
                 }
                 fn Wrapper@f0(id@v0: String) -> Html {
-                  let v1 = "local" in {
-                    write("<section>")
-                    write_string(v1)
-                    call Card@f1(title = "t", id = v0)
-                    write("</section>")
-                  }
+                  let v12: String = "t"
+                  write("<section>local")
+                  write_function Card@f1(v12, v0)
+                  write("</section>")
                 }
                 page Test() {
-                  call Wrapper@f0(id = "hi")
+                  let v5: String = "hi"
+                  write_function Wrapper@f0(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3492,25 +3557,27 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn A@f1(tabindex@v2: Int, data-x@v3: String) -> Html {
+                  let v9: Int = 0
+                  let v10: Bool = v9 < v2
                   write("<div data-x=\"")
                   write_string(v3)
                   write("\">")
-                  let v4 = (0 < v2) in {
-                    match v4 {
-                      true => {
-                        write("focusable")
-                      }
-                      false => {
-                      }
+                  match v10 {
+                    true => {
+                      write("focusable")
+                    }
+                    false => {
                     }
                   }
                   write("</div>")
                 }
                 fn B@f0(tabindex@v0: Int, data-x@v1: String) -> Html {
-                  call A@f1(tabindex = v0, data-x = v1)
+                  write_function A@f1(v0, v1)
                 }
                 page Test() {
-                  call B@f0(tabindex = 2, data-x = "y")
+                  let v6: Int = 2
+                  let v7: String = "y"
+                  write_function B@f0(v6, v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3563,24 +3630,25 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("hello") in {
-                    let v3 = let v1 = v0 in {
-                      match v1 {
-                        Some(v2) => { Option[String]::Some(v2) }
-                        None => { Option[String]::None }
-                      }
-                    } in {
-                      let v4 = v3 in {
-                        match v4 {
-                          Some(v5) => {
-                            write("mapped:")
-                            write_string(v5)
-                          }
-                          None => {
-                            write("was-none")
-                          }
-                        }
-                      }
+                  let v7: String = "hello"
+                  let v8: Option[String] = Some(v7)
+                  let v11: Option[String] = match v8 {
+                    Some(v2: String) => {
+                      let v9: Option[String] = Some(v2)
+                      v9
+                    }
+                    None => {
+                      let v10: Option[String] = None
+                      v10
+                    }
+                  }
+                  match v11 {
+                    Some(v5: String) => {
+                      write("mapped:")
+                      write_string(v5)
+                    }
+                    None => {
+                      write("was-none")
                     }
                   }
                 }
@@ -3633,12 +3701,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v2 = let v0 = Point {x: "hi", y: "bye"} in {
-                    let v1 = v0.x in { v1 }
-                  } in {
-                    write("got:")
-                    write_string(v2)
-                  }
+                  let v4: String = "hi"
+                  let v5: String = "bye"
+                  let v6: Point = {x: v4, y: v5}
+                  let v7: String = v6.x
+                  write("got:")
+                  write_string(v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3689,12 +3757,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v1 = let v0 = Point {x: "hi", y: "bye"} in {
-                    v0.x
-                  } in {
-                    write("got:")
-                    write_string(v1)
-                  }
+                  let v3: String = "hi"
+                  let v4: String = "bye"
+                  let v5: Point = {x: v3, y: v4}
+                  let v6: String = v5.x
+                  write("got:")
+                  write_string(v6)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3742,15 +3810,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("hi") in {
-                    match v0 {
-                      Some(v1) => {
-                        write("got:")
-                        write_string(v1)
-                      }
-                      None => {
-                        write("none")
-                      }
+                  let v3: String = "hi"
+                  let v4: Option[String] = Some(v3)
+                  match v4 {
+                    Some(v1: String) => {
+                      write("got:")
+                      write_string(v1)
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -3799,20 +3867,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("inner") in {
-                    let v3 = Option[String]::Some(let v1 = v0 in {
-                      match v1 { Some(v2) => { v2 } None => { "default" } }
-                    }) in {
-                      let v4 = v3 in {
-                        match v4 {
-                          Some(v5) => {
-                            write_string(v5)
-                          }
-                          None => {
-                            write("none")
-                          }
-                        }
-                      }
+                  let v7: String = "inner"
+                  let v8: Option[String] = Some(v7)
+                  let v10: String = match v8 {
+                    Some(v2: String) => {
+                      v2
+                    }
+                    None => {
+                      let v9: String = "default"
+                      v9
+                    }
+                  }
+                  let v11: Option[String] = Some(v10)
+                  match v11 {
+                    Some(v5: String) => {
+                      write_string(v5)
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -3864,15 +3936,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Tag@f0(text@v0: String) -> Html {
-                  let v1 = v0 in {
-                    write("<div>")
-                    write_string(v1)
-                    write("</div>")
-                  }
+                  write("<div>")
+                  write_string(v0)
+                  write("</div>")
                 }
                 page Test() {
-                  call Tag@f0(text = "a")
-                  call Tag@f0(text = "b")
+                  let v3: String = "a"
+                  let v5: String = "b"
+                  write_function Tag@f0(v3)
+                  write_function Tag@f0(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3930,11 +4002,9 @@ mod tests {
                   write("</p>")
                 }
                 page Test() {
-                  let v0 = "A" in {
-                    let v1 = "B" in {
-                      call Swap@f0(a = v1, b = v0)
-                    }
-                  }
+                  let v5: String = "A"
+                  let v6: String = "B"
+                  write_function Swap@f0(v6, v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3986,7 +4056,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Rows@f0(items@v1: Array[String], id@v2: String) -> Html {
-                  for v3 in v1 {
+                  for v3: String in v1 {
                     write("<div id=\"")
                     write_string(v2)
                     write("\">")
@@ -3995,15 +4065,20 @@ mod tests {
                   }
                 }
                 page Test() {
-                  let v0 = "outer" in {
-                    call Rows@f0(items = ["a", "b"], id = v0)
-                  }
+                  let v5: String = "outer"
+                  let v6: String = "a"
+                  let v7: String = "b"
+                  let v8: Array[String] = [v6, v7]
+                  write_function Rows@f0(v8, v5)
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v6 in ["a", "b"] {
+                  let v6: String = "a"
+                  let v7: String = "b"
+                  let v8: Array[String] = [v6, v7]
+                  for v14: String in v8 {
                     write("<div id=\"outer\">")
-                    write_string(v6)
+                    write_string(v14)
                     write("</div>")
                   }
                 }
@@ -4050,16 +4125,30 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = true in {
-                    write_string(let v1 = v0 in {
-                      match v1 { true => { "yes" } false => { "no" } }
-                    })
+                  let v5: Bool = true
+                  let v8: String = match v5 {
+                    true => {
+                      let v6: String = "yes"
+                      v6
+                    }
+                    false => {
+                      let v7: String = "no"
+                      v7
+                    }
                   }
-                  let v2 = false in {
-                    write_string(let v3 = v2 in {
-                      match v3 { true => { "YES" } false => { "NO" } }
-                    })
+                  let v11: Bool = false
+                  let v14: String = match v11 {
+                    true => {
+                      let v12: String = "YES"
+                      v12
+                    }
+                    false => {
+                      let v13: String = "NO"
+                      v13
+                    }
                   }
+                  write_string(v8)
+                  write_string(v14)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -4104,16 +4193,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "" in {
-                    let v1 = "main" in {
-                      write_string(let v2 = (v0 == "") in {
-                        match v2 {
-                          true => { v1 }
-                          false => { ((v1 + " - ") + v0) }
-                        }
-                      })
+                  let v4: String = ""
+                  let v5: String = "main"
+                  let v6: String = ""
+                  let v7: Bool = v4 == v6
+                  let v11: String = match v7 {
+                    true => {
+                      v5
+                    }
+                    false => {
+                      let v8: String = " - "
+                      let v9: String = concat(v5, v8)
+                      let v10: String = concat(v9, v4)
+                      v10
                     }
                   }
+                  write_string(v11)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -4163,17 +4258,32 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("hi") in {
-                    write_string(let v1 = v0 in {
-                      match v1 { Some(_) => { "some" } None => { "none" } }
-                    })
+                  let v5: String = "hi"
+                  let v6: Option[String] = Some(v5)
+                  let v9: String = match v6 {
+                    Some(_) => {
+                      let v7: String = "some"
+                      v7
+                    }
+                    None => {
+                      let v8: String = "none"
+                      v8
+                    }
                   }
+                  let v13: Option[String] = None
+                  let v16: String = match v13 {
+                    Some(_) => {
+                      let v14: String = "SOME"
+                      v14
+                    }
+                    None => {
+                      let v15: String = "NONE"
+                      v15
+                    }
+                  }
+                  write_string(v9)
                   write(",")
-                  let v2 = Option[String]::None in {
-                    write_string(let v3 = v2 in {
-                      match v3 { Some(_) => { "SOME" } None => { "NONE" } }
-                    })
-                  }
+                  write_string(v16)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -4231,41 +4341,51 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = true in {
-                    let v1 = false in {
-                      write_string(let v2 = v0 in {
-                        match v2 {
-                          true => {
-                            let v3 = v1 in {
-                              match v3 {
-                                true => { "TT" }
-                                false => { "TF" }
-                              }
-                            }
-                          }
-                          false => { "F" }
+                  let v9: Bool = true
+                  let v10: Bool = false
+                  let v15: String = match v9 {
+                    true => {
+                      let v13: String = match v10 {
+                        true => {
+                          let v11: String = "TT"
+                          v11
                         }
-                      })
+                        false => {
+                          let v12: String = "TF"
+                          v12
+                        }
+                      }
+                      v13
+                    }
+                    false => {
+                      let v14: String = "F"
+                      v14
                     }
                   }
+                  let v19: Bool = false
+                  let v20: Bool = true
+                  let v25: String = match v19 {
+                    true => {
+                      let v23: String = match v20 {
+                        true => {
+                          let v21: String = "TT"
+                          v21
+                        }
+                        false => {
+                          let v22: String = "TF"
+                          v22
+                        }
+                      }
+                      v23
+                    }
+                    false => {
+                      let v24: String = "F"
+                      v24
+                    }
+                  }
+                  write_string(v15)
                   write(",")
-                  let v4 = false in {
-                    let v5 = true in {
-                      write_string(let v6 = v4 in {
-                        match v6 {
-                          true => {
-                            let v7 = v5 in {
-                              match v7 {
-                                true => { "TT" }
-                                false => { "TF" }
-                              }
-                            }
-                          }
-                          false => { "F" }
-                        }
-                      })
-                    }
-                  }
+                  write_string(v25)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -4306,9 +4426,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = -123 in {
-                    write_string(v0.to_string())
-                  }
+                  let v2: Int = -123
+                  let v3: String = v2.to_string()
+                  write_string(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -4365,87 +4485,84 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 10000000000 in {
-                    let v1 = (((((((((v0 * v0) * v0) * v0) * v0) * v0) * v0) * v0) * v0) * v0) in {
-                      let v2 = (((v1 * v1) * v1) * v1) in {
-                        let v3 = (v2 * 0) in {
-                          let v4 = (
-                            (v3 == v3),
-                            (!(v3 == v3)),
-                            (v3 < v3),
-                            (v3 <= v3),
-                            (v3 < v3),
-                            (v3 <= v3),
-                            (v3 < v2),
-                            ((-v2) < v3),
-                            (v3.to_int() == 0),
-                          ) in {
-                            let v5 = v4.0 in {
-                              let v6 = v4.1 in {
-                                let v7 = v4.2 in {
-                                  let v8 = v4.3 in {
-                                    let v9 = v4.4 in {
-                                      let v10 = v4.5 in {
-                                        let v11 = v4.6 in {
-                                          let v12 = v4.7 in {
-                                            let v13 = v4.8 in {
-                                              match v13 {
+                  let v15: Float = 10000000000
+                  let v16: Float = v15 * v15
+                  let v17: Float = v16 * v15
+                  let v18: Float = v17 * v15
+                  let v19: Float = v18 * v15
+                  let v20: Float = v19 * v15
+                  let v21: Float = v20 * v15
+                  let v22: Float = v21 * v15
+                  let v23: Float = v22 * v15
+                  let v24: Float = v23 * v15
+                  let v25: Float = v24 * v24
+                  let v26: Float = v25 * v24
+                  let v27: Float = v26 * v24
+                  let v28: Float = 0
+                  let v29: Float = v27 * v28
+                  let v30: Bool = v29 == v29
+                  let v31: Bool = v29 == v29
+                  let v32: Bool = !v31
+                  let v33: Bool = v29 < v29
+                  let v34: Bool = v29 <= v29
+                  let v35: Bool = v29 < v29
+                  let v36: Bool = v29 <= v29
+                  let v37: Bool = v29 < v27
+                  let v38: Float = -v27
+                  let v39: Bool = v38 < v29
+                  let v40: Int = v29.to_int()
+                  let v41: Int = 0
+                  let v42: Bool = v40 == v41
+                  let v43: (Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool) = (v30, v32, v33, v34, v35, v36, v37, v39, v42)
+                  let v44: Bool = v43.0
+                  let v45: Bool = v43.1
+                  let v46: Bool = v43.2
+                  let v47: Bool = v43.3
+                  let v48: Bool = v43.4
+                  let v49: Bool = v43.5
+                  let v50: Bool = v43.6
+                  let v51: Bool = v43.7
+                  let v52: Bool = v43.8
+                  match v52 {
+                    true => {
+                      match v51 {
+                        true => {
+                          write("wrong")
+                        }
+                        false => {
+                          match v50 {
+                            true => {
+                              write("wrong")
+                            }
+                            false => {
+                              match v49 {
+                                true => {
+                                  write("wrong")
+                                }
+                                false => {
+                                  match v48 {
+                                    true => {
+                                      write("wrong")
+                                    }
+                                    false => {
+                                      match v47 {
+                                        true => {
+                                          write("wrong")
+                                        }
+                                        false => {
+                                          match v46 {
+                                            true => {
+                                              write("wrong")
+                                            }
+                                            false => {
+                                              match v45 {
                                                 true => {
-                                                  match v12 {
+                                                  match v44 {
                                                     true => {
                                                       write("wrong")
                                                     }
                                                     false => {
-                                                      match v11 {
-                                                        true => {
-                                                          write("wrong")
-                                                        }
-                                                        false => {
-                                                          match v10 {
-                                                            true => {
-                                                              write("wrong")
-                                                            }
-                                                            false => {
-                                                              match v9 {
-                                                                true => {
-                                                                  write("wrong")
-                                                                }
-                                                                false => {
-                                                                  match v8 {
-                                                                    true => {
-                                                                      write("wrong")
-                                                                    }
-                                                                    false => {
-                                                                      match v7 {
-                                                                        true => {
-                                                                          write("wrong")
-                                                                        }
-                                                                        false => {
-                                                                          match v6 {
-                                                                            true => {
-                                                                              match v5 {
-                                                                                true => {
-                                                                                  write("wrong")
-                                                                                }
-                                                                                false => {
-                                                                                  write("ok")
-                                                                                }
-                                                                              }
-                                                                            }
-                                                                            false => {
-                                                                              write("wrong")
-                                                                            }
-                                                                          }
-                                                                        }
-                                                                      }
-                                                                    }
-                                                                  }
-                                                                }
-                                                              }
-                                                            }
-                                                          }
-                                                        }
-                                                      }
+                                                      write("ok")
                                                     }
                                                   }
                                                 }
@@ -4465,6 +4582,9 @@ mod tests {
                           }
                         }
                       }
+                    }
+                    false => {
+                      write("wrong")
                     }
                   }
                 }
@@ -4518,72 +4638,74 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 2147483647 in {
-                    let v1 = -2147483648 in {
-                      let v2 = (
-                        ((v0 + 1) == v1),
-                        ((v1 - 1) == v0),
-                        ((-v1) == v1),
-                        ((v0 * 2) == -2),
-                        ((v0 * v0) == 1),
-                        ((v1 * -1) == v1),
-                      ) in {
-                        let v3 = v2.0 in {
-                          let v4 = v2.1 in {
-                            let v5 = v2.2 in {
-                              let v6 = v2.3 in {
-                                let v7 = v2.4 in {
-                                  let v8 = v2.5 in {
-                                    match v8 {
-                                      true => {
-                                        match v7 {
-                                          true => {
-                                            match v6 {
-                                              true => {
-                                                match v5 {
-                                                  true => {
-                                                    match v4 {
-                                                      true => {
-                                                        match v3 {
-                                                          true => {
-                                                            write("ok")
-                                                          }
-                                                          false => {
-                                                            write("wrong")
-                                                          }
-                                                        }
-                                                      }
-                                                      false => {
-                                                        write("wrong")
-                                                      }
-                                                    }
-                                                  }
-                                                  false => {
-                                                    write("wrong")
-                                                  }
-                                                }
-                                              }
-                                              false => {
-                                                write("wrong")
-                                              }
-                                            }
-                                          }
-                                          false => {
-                                            write("wrong")
-                                          }
+                  let v10: Int = 2147483647
+                  let v11: Int = -2147483648
+                  let v12: Int = 1
+                  let v13: Int = v10 + v12
+                  let v14: Bool = v13 == v11
+                  let v15: Int = 1
+                  let v16: Int = v11 - v15
+                  let v17: Bool = v16 == v10
+                  let v18: Int = -v11
+                  let v19: Bool = v18 == v11
+                  let v20: Int = 2
+                  let v21: Int = v10 * v20
+                  let v22: Int = -2
+                  let v23: Bool = v21 == v22
+                  let v24: Int = v10 * v10
+                  let v25: Int = 1
+                  let v26: Bool = v24 == v25
+                  let v27: Int = -1
+                  let v28: Int = v11 * v27
+                  let v29: Bool = v28 == v11
+                  let v30: (Bool, Bool, Bool, Bool, Bool, Bool) = (v14, v17, v19, v23, v26, v29)
+                  let v31: Bool = v30.0
+                  let v32: Bool = v30.1
+                  let v33: Bool = v30.2
+                  let v34: Bool = v30.3
+                  let v35: Bool = v30.4
+                  let v36: Bool = v30.5
+                  match v36 {
+                    true => {
+                      match v35 {
+                        true => {
+                          match v34 {
+                            true => {
+                              match v33 {
+                                true => {
+                                  match v32 {
+                                    true => {
+                                      match v31 {
+                                        true => {
+                                          write("ok")
+                                        }
+                                        false => {
+                                          write("wrong")
                                         }
                                       }
-                                      false => {
-                                        write("wrong")
-                                      }
+                                    }
+                                    false => {
+                                      write("wrong")
                                     }
                                   }
                                 }
+                                false => {
+                                  write("wrong")
+                                }
                               }
+                            }
+                            false => {
+                              write("wrong")
                             }
                           }
                         }
+                        false => {
+                          write("wrong")
+                        }
                       }
+                    }
+                    false => {
+                      write("wrong")
                     }
                   }
                 }
@@ -4650,130 +4772,139 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 10000000000 in {
-                    let v1 = (((((((((v0 * v0) * v0) * v0) * v0) * v0) * v0) * v0) * v0) * v0) in {
-                      let v2 = (((v1 * v1) * v1) * v1) in {
-                        let v3 = 5 in {
-                          let v4 = 3.7 in {
-                            let v5 = -2.9 in {
-                              let v6 = 2147483648 in {
-                                let v7 = 2147483647.9 in {
-                                  let v8 = -2147483648.9 in {
-                                    let v9 = -2147483649 in {
-                                      let v10 = -0.5 in {
-                                        let v11 = (
-                                          (v3.to_int() == 5),
-                                          (v4.to_int() == 3),
-                                          (v5.to_int() == -2),
-                                          (v2.to_int() == 2147483647),
-                                          ((-v2).to_int() == -2147483648),
-                                          (v6.to_int() == 2147483647),
-                                          (v7.to_int() == 2147483647),
-                                          (v8.to_int() == -2147483648),
-                                          (v9.to_int() == -2147483648),
-                                          (v10.to_int().to_string() == "0"),
-                                        ) in {
-                                          let v12 = v11.0 in {
-                                            let v13 = v11.1 in {
-                                              let v14 = v11.2 in {
-                                                let v15 = v11.3 in {
-                                                  let v16 = v11.4 in {
-                                                    let v17 = v11.5 in {
-                                                      let v18 = v11.6 in {
-                                                        let v19 = v11.7 in {
-                                                          let v20 = v11.8 in {
-                                                            let v21 = v11.9 in {
-                                                              match v21 {
-                                                                true => {
-                                                                  match v20 {
-                                                                    true => {
-                                                                      match v19 {
-                                                                        true => {
-                                                                          match v18 {
-                                                                            true => {
-                                                                              match v17 {
-                                                                                true => {
-                                                                                  match v16 {
-                                                                                    true => {
-                                                                                      match v15 {
-                                                                                        true => {
-                                                                                          match v14 {
-                                                                                            true => {
-                                                                                              match v13 {
-                                                                                                true => {
-                                                                                                  match v12 {
-                                                                                                    true => {
-                                                                                                      write("ok")
-                                                                                                    }
-                                                                                                    false => {
-                                                                                                      write("wrong")
-                                                                                                    }
-                                                                                                  }
-                                                                                                }
-                                                                                                false => {
-                                                                                                  write("wrong")
-                                                                                                }
-                                                                                              }
-                                                                                            }
-                                                                                            false => {
-                                                                                              write("wrong")
-                                                                                            }
-                                                                                          }
-                                                                                        }
-                                                                                        false => {
-                                                                                          write("wrong")
-                                                                                        }
-                                                                                      }
-                                                                                    }
-                                                                                    false => {
-                                                                                      write("wrong")
-                                                                                    }
-                                                                                  }
-                                                                                }
-                                                                                false => {
-                                                                                  write("wrong")
-                                                                                }
-                                                                              }
-                                                                            }
-                                                                            false => {
-                                                                              write("wrong")
-                                                                            }
-                                                                          }
-                                                                        }
-                                                                        false => {
-                                                                          write("wrong")
-                                                                        }
-                                                                      }
-                                                                    }
-                                                                    false => {
-                                                                      write("wrong")
-                                                                    }
-                                                                  }
-                                                                }
-                                                                false => {
-                                                                  write("wrong")
-                                                                }
-                                                              }
-                                                            }
-                                                          }
+                  let v23: Float = 10000000000
+                  let v24: Float = v23 * v23
+                  let v25: Float = v24 * v23
+                  let v26: Float = v25 * v23
+                  let v27: Float = v26 * v23
+                  let v28: Float = v27 * v23
+                  let v29: Float = v28 * v23
+                  let v30: Float = v29 * v23
+                  let v31: Float = v30 * v23
+                  let v32: Float = v31 * v23
+                  let v33: Float = v32 * v32
+                  let v34: Float = v33 * v32
+                  let v35: Float = v34 * v32
+                  let v36: Float = 5
+                  let v37: Float = 3.7
+                  let v38: Float = -2.9
+                  let v39: Float = 2147483648
+                  let v40: Float = 2147483647.9
+                  let v41: Float = -2147483648.9
+                  let v42: Float = -2147483649
+                  let v43: Float = -0.5
+                  let v44: Int = v36.to_int()
+                  let v45: Int = 5
+                  let v46: Bool = v44 == v45
+                  let v47: Int = v37.to_int()
+                  let v48: Int = 3
+                  let v49: Bool = v47 == v48
+                  let v50: Int = v38.to_int()
+                  let v51: Int = -2
+                  let v52: Bool = v50 == v51
+                  let v53: Int = v35.to_int()
+                  let v54: Int = 2147483647
+                  let v55: Bool = v53 == v54
+                  let v56: Float = -v35
+                  let v57: Int = v56.to_int()
+                  let v58: Int = -2147483648
+                  let v59: Bool = v57 == v58
+                  let v60: Int = v39.to_int()
+                  let v61: Int = 2147483647
+                  let v62: Bool = v60 == v61
+                  let v63: Int = v40.to_int()
+                  let v64: Int = 2147483647
+                  let v65: Bool = v63 == v64
+                  let v66: Int = v41.to_int()
+                  let v67: Int = -2147483648
+                  let v68: Bool = v66 == v67
+                  let v69: Int = v42.to_int()
+                  let v70: Int = -2147483648
+                  let v71: Bool = v69 == v70
+                  let v72: Int = v43.to_int()
+                  let v73: String = v72.to_string()
+                  let v74: String = "0"
+                  let v75: Bool = v73 == v74
+                  let v76: (Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool) = (v46, v49, v52, v55, v59, v62, v65, v68, v71, v75)
+                  let v77: Bool = v76.0
+                  let v78: Bool = v76.1
+                  let v79: Bool = v76.2
+                  let v80: Bool = v76.3
+                  let v81: Bool = v76.4
+                  let v82: Bool = v76.5
+                  let v83: Bool = v76.6
+                  let v84: Bool = v76.7
+                  let v85: Bool = v76.8
+                  let v86: Bool = v76.9
+                  match v86 {
+                    true => {
+                      match v85 {
+                        true => {
+                          match v84 {
+                            true => {
+                              match v83 {
+                                true => {
+                                  match v82 {
+                                    true => {
+                                      match v81 {
+                                        true => {
+                                          match v80 {
+                                            true => {
+                                              match v79 {
+                                                true => {
+                                                  match v78 {
+                                                    true => {
+                                                      match v77 {
+                                                        true => {
+                                                          write("ok")
+                                                        }
+                                                        false => {
+                                                          write("wrong")
                                                         }
                                                       }
                                                     }
+                                                    false => {
+                                                      write("wrong")
+                                                    }
                                                   }
+                                                }
+                                                false => {
+                                                  write("wrong")
                                                 }
                                               }
                                             }
+                                            false => {
+                                              write("wrong")
+                                            }
                                           }
+                                        }
+                                        false => {
+                                          write("wrong")
                                         }
                                       }
                                     }
+                                    false => {
+                                      write("wrong")
+                                    }
                                   }
+                                }
+                                false => {
+                                  write("wrong")
                                 }
                               }
                             }
+                            false => {
+                              write("wrong")
+                            }
                           }
                         }
+                        false => {
+                          write("wrong")
+                        }
                       }
+                    }
+                    false => {
+                      write("wrong")
                     }
                   }
                 }
@@ -4837,97 +4968,103 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = inf in {
-                    let v1 = -inf in {
-                      let v2 = -2147483648 in {
-                        let v3 = (v0 * 0) in {
-                          let v4 = (
-                            (0 < v0),
-                            ((v0 * 2) == v0),
-                            (v1 < 0),
-                            ((v1 * 2) == v1),
-                            ((v2 - 1) == 2147483647),
-                          ) in {
-                            let v5 = v4.0 in {
-                              let v6 = v4.1 in {
-                                let v7 = v4.2 in {
-                                  let v8 = v4.3 in {
-                                    let v9 = v4.4 in {
-                                      match v9 {
-                                        true => {
-                                          match v8 {
-                                            true => {
-                                              match v7 {
-                                                true => {
-                                                  match v6 {
-                                                    true => {
-                                                      match v5 {
-                                                        true => {
-                                                          write("ok")
-                                                        }
-                                                        false => {
-                                                          write("wrong")
-                                                        }
-                                                      }
-                                                    }
-                                                    false => {
-                                                      write("wrong")
-                                                    }
-                                                  }
-                                                }
-                                                false => {
-                                                  write("wrong")
-                                                }
-                                              }
-                                            }
-                                            false => {
-                                              write("wrong")
-                                            }
-                                          }
-                                        }
-                                        false => {
-                                          write("wrong")
-                                        }
-                                      }
+                  let v14: Float = inf
+                  let v15: Float = -inf
+                  let v16: Int = -2147483648
+                  let v17: Float = 0
+                  let v18: Float = v14 * v17
+                  let v19: Float = 0
+                  let v20: Bool = v19 < v14
+                  let v21: Float = 2
+                  let v22: Float = v14 * v21
+                  let v23: Bool = v22 == v14
+                  let v24: Float = 0
+                  let v25: Bool = v15 < v24
+                  let v26: Float = 2
+                  let v27: Float = v15 * v26
+                  let v28: Bool = v27 == v15
+                  let v29: Int = 1
+                  let v30: Int = v16 - v29
+                  let v31: Int = 2147483647
+                  let v32: Bool = v30 == v31
+                  let v33: (Bool, Bool, Bool, Bool, Bool) = (v20, v23, v25, v28, v32)
+                  let v34: Bool = v33.0
+                  let v35: Bool = v33.1
+                  let v36: Bool = v33.2
+                  let v37: Bool = v33.3
+                  let v38: Bool = v33.4
+                  let v56: Int = 0
+                  let v57: Int = 1
+                  match v38 {
+                    true => {
+                      match v37 {
+                        true => {
+                          match v36 {
+                            true => {
+                              match v35 {
+                                true => {
+                                  match v34 {
+                                    true => {
+                                      write("ok")
+                                    }
+                                    false => {
+                                      write("wrong")
                                     }
                                   }
                                 }
-                              }
-                            }
-                          }
-                          for v10 in 0..=1 {
-                            let v11 = v10.to_float() in {
-                              let v12 = (!((v3 + v11) == (v3 + v11))) in {
-                                match v12 {
-                                  true => {
-                                    write("ok")
-                                  }
-                                  false => {
-                                    write("wrong")
-                                  }
+                                false => {
+                                  write("wrong")
                                 }
                               }
                             }
+                            false => {
+                              write("wrong")
+                            }
                           }
                         }
+                        false => {
+                          write("wrong")
+                        }
+                      }
+                    }
+                    false => {
+                      write("wrong")
+                    }
+                  }
+                  for v10: Int in v56..=v57 {
+                    let v58: Float = v10.to_float()
+                    let v59: Float = v18 + v58
+                    let v60: Float = v18 + v58
+                    let v61: Bool = v59 == v60
+                    let v62: Bool = !v61
+                    match v62 {
+                      true => {
+                        write("ok")
+                      }
+                      false => {
+                        write("wrong")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
+                  let v18: Float = NaN
+                  let v56: Int = 0
+                  let v57: Int = 1
                   write("ok")
-                  for v10 in 0..=1 {
-                    let v11 = v10.to_float() in {
-                      let v12 = (!((NaN + v11) == (NaN + v11))) in {
-                        match v12 {
-                          true => {
-                            write("ok")
-                          }
-                          false => {
-                            write("wrong")
-                          }
-                        }
+                  for v10: Int in v56..=v57 {
+                    let v58: Float = v10.to_float()
+                    let v59: Float = v18 + v58
+                    let v60: Float = v18 + v58
+                    let v61: Bool = v59 == v60
+                    let v62: Bool = !v61
+                    match v62 {
+                      true => {
+                        write("ok")
+                      }
+                      false => {
+                        write("wrong")
                       }
                     }
                   }
@@ -4987,39 +5124,53 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 2147483647 in {
-                    let v1 = -2147483648 in {
-                      for v2 in (v0 - 1)..=v0 {
-                        write_string(v2.to_string())
-                        write(",")
-                      }
-                      for v3 in v1..=(v1 + 1) {
-                        write_string(v3.to_string())
-                        write(",")
-                      }
-                      for _ in 3..=1 {
-                        write("wrong")
-                      }
-                      for _ in v0..=v1 {
-                        write("wrong")
-                      }
-                    }
+                  let v5: Int = 2147483647
+                  let v6: Int = -2147483648
+                  let v7: Int = 1
+                  let v8: Int = v5 - v7
+                  let v14: Int = 1
+                  let v15: Int = v6 + v14
+                  let v21: Int = 3
+                  let v22: Int = 1
+                  for v2: Int in v8..=v5 {
+                    let v9: String = v2.to_string()
+                    write_string(v9)
+                    write(",")
+                  }
+                  for v3: Int in v6..=v15 {
+                    let v16: String = v3.to_string()
+                    write_string(v16)
+                    write(",")
+                  }
+                  for _ in v21..=v22 {
+                    write("wrong")
+                  }
+                  for _ in v5..=v6 {
+                    write("wrong")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v2 in 2147483646..=2147483647 {
-                    write_string(v2.to_string())
+                  let v5: Int = 2147483647
+                  let v6: Int = -2147483648
+                  let v8: Int = 2147483646
+                  let v15: Int = -2147483647
+                  let v21: Int = 3
+                  let v22: Int = 1
+                  for v2: Int in v8..=v5 {
+                    let v9: String = v2.to_string()
+                    write_string(v9)
                     write(",")
                   }
-                  for v3 in -2147483648..=-2147483647 {
-                    write_string(v3.to_string())
+                  for v3: Int in v6..=v15 {
+                    let v16: String = v3.to_string()
+                    write_string(v16)
                     write(",")
                   }
-                  for _ in 3..=1 {
+                  for _ in v21..=v22 {
                     write("wrong")
                   }
-                  for _ in 2147483647..=-2147483648 {
+                  for _ in v5..=v6 {
                     write("wrong")
                   }
                 }
@@ -5151,11 +5302,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "Alice" in {
-                    write("Hello, ")
-                    write_string(v0)
-                    write("!")
-                  }
+                  write("Hello, Alice!")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -5205,24 +5352,20 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = true in {
-                    let v1 = v0 in {
-                      match v1 {
-                        true => {
-                          write("Visible")
-                        }
-                        false => {
-                        }
-                      }
+                  let v4: Bool = true
+                  let v9: Bool = !v4
+                  match v4 {
+                    true => {
+                      write("Visible")
                     }
-                    let v2 = (!v0) in {
-                      match v2 {
-                        true => {
-                          write("Hidden")
-                        }
-                        false => {
-                        }
-                      }
+                    false => {
+                    }
+                  }
+                  match v9 {
+                    true => {
+                      write("Hidden")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -5269,14 +5412,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in ["a", "b", "c"] {
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: String = "c"
+                  let v5: Array[String] = [v2, v3, v4]
+                  for v0: String in v5 {
                     write_string(v0)
                     write(",")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in ["a", "b", "c"] {
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: String = "c"
+                  let v5: Array[String] = [v2, v3, v4]
+                  for v0: String in v5 {
                     write_string(v0)
                     write(",")
                   }
@@ -5317,14 +5468,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in ["a", "b", "c"] {
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: String = "c"
+                  let v5: Array[String] = [v2, v3, v4]
+                  for v0: String in v5 {
                     write_string(v0)
                     write(",")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in ["a", "b", "c"] {
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: String = "c"
+                  let v5: Array[String] = [v2, v3, v4]
+                  for v0: String in v5 {
                     write_string(v0)
                     write(",")
                   }
@@ -5365,15 +5524,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in 1..=3 {
-                    write_string(v0.to_string())
+                  let v2: Int = 1
+                  let v3: Int = 3
+                  for v0: Int in v2..=v3 {
+                    let v4: String = v0.to_string()
+                    write_string(v4)
                     write(",")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in 1..=3 {
-                    write_string(v0.to_string())
+                  let v2: Int = 1
+                  let v3: Int = 3
+                  for v0: Int in v2..=v3 {
+                    let v4: String = v0.to_string()
+                    write_string(v4)
                     write(",")
                   }
                 }
@@ -5414,15 +5579,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = ["a", "b", "c"] in {
-                    for _ in v0 {
-                      write("*")
-                    }
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: String = "c"
+                  let v5: Array[String] = [v2, v3, v4]
+                  for _ in v5 {
+                    write("*")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for _ in ["a", "b", "c"] {
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: String = "c"
+                  let v5: Array[String] = [v2, v3, v4]
+                  for _ in v5 {
                     write("*")
                   }
                 }
@@ -5463,18 +5634,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in ["a", "b", "c"] {
-                    let v1 = (v0 + "!") in {
-                      write_string(v1)
-                    }
+                  let v3: String = "a"
+                  let v4: String = "b"
+                  let v5: String = "c"
+                  let v6: Array[String] = [v3, v4, v5]
+                  for v0: String in v6 {
+                    write_string(v0)
+                    write("!")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in ["a", "b", "c"] {
-                    let v1 = (v0 + "!") in {
-                      write_string(v1)
-                    }
+                  let v3: String = "a"
+                  let v4: String = "b"
+                  let v5: String = "c"
+                  let v6: Array[String] = [v3, v4, v5]
+                  for v0: String in v6 {
+                    write_string(v0)
+                    write("!")
                   }
                 }
                 -- expected output --
@@ -5516,21 +5693,23 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [true] {
-                    let v1 = v0 in {
-                      match v1 {
-                        true => {
-                          write("x")
-                        }
-                        false => {
-                        }
+                  let v3: Bool = true
+                  let v4: Array[Bool] = [v3]
+                  for v0: Bool in v4 {
+                    match v0 {
+                      true => {
+                        write("x")
+                      }
+                      false => {
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [true] {
+                  let v3: Bool = true
+                  let v4: Array[Bool] = [v3]
+                  for v0: Bool in v4 {
                     match v0 {
                       true => {
                         write("x")
@@ -5579,15 +5758,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in 1..=3 {
-                    write_string(v0.to_string())
+                  let v2: Int = 1
+                  let v3: Int = 3
+                  for v0: Int in v2..=v3 {
+                    let v4: String = v0.to_string()
+                    write_string(v4)
                     write(",")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in 1..=3 {
-                    write_string(v0.to_string())
+                  let v2: Int = 1
+                  let v3: Int = 3
+                  for v0: Int in v2..=v3 {
+                    let v4: String = v0.to_string()
+                    write_string(v4)
                     write(",")
                   }
                 }
@@ -5627,14 +5812,20 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in 0..=5 {
-                    write_string(v0.to_string())
+                  let v2: Int = 0
+                  let v3: Int = 5
+                  for v0: Int in v2..=v3 {
+                    let v4: String = v0.to_string()
+                    write_string(v4)
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in 0..=5 {
-                    write_string(v0.to_string())
+                  let v2: Int = 0
+                  let v3: Int = 5
+                  for v0: Int in v2..=v3 {
+                    let v4: String = v0.to_string()
+                    write_string(v4)
                   }
                 }
                 -- expected output --
@@ -5681,24 +5872,36 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in 1..=2 {
-                    for v1 in 1..=2 {
+                  let v3: Int = 1
+                  let v4: Int = 2
+                  for v0: Int in v3..=v4 {
+                    let v5: Int = 1
+                    let v6: Int = 2
+                    for v1: Int in v5..=v6 {
+                      let v8: String = v0.to_string()
+                      let v11: String = v1.to_string()
                       write("(")
-                      write_string(v0.to_string())
+                      write_string(v8)
                       write(",")
-                      write_string(v1.to_string())
+                      write_string(v11)
                       write(")")
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in 1..=2 {
-                    for v1 in 1..=2 {
+                  let v3: Int = 1
+                  let v4: Int = 2
+                  for v0: Int in v3..=v4 {
+                    let v5: Int = 1
+                    let v6: Int = 2
+                    for v1: Int in v5..=v6 {
+                      let v8: String = v0.to_string()
+                      let v11: String = v1.to_string()
                       write("(")
-                      write_string(v0.to_string())
+                      write_string(v8)
                       write(",")
-                      write_string(v1.to_string())
+                      write_string(v11)
                       write(")")
                     }
                   }
@@ -5738,9 +5941,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "<div>Hello & world</div>" in {
-                    write_string(v0)
-                  }
+                  write("&lt;div&gt;Hello &amp; world&lt;/div&gt;")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -5781,9 +5982,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "Hello from let" in {
-                    write_string(v0)
-                  }
+                  write("Hello from let")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -5833,7 +6032,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in ["a", "b"] {
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: Array[String] = [v2, v3]
+                  for v0: String in v4 {
                     write("<span class=\"")
                     write_string(v0)
                     write(" px-2 py-1\">")
@@ -5843,7 +6045,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in ["a", "b"] {
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: Array[String] = [v2, v3]
+                  for v0: String in v4 {
                     write("<span class=\"")
                     write_string(v0)
                     write(" px-2 py-1\">")
@@ -5887,12 +6092,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "Hello" in {
-                    let v1 = " World" in {
-                      write_string(v0)
-                      write_string(v1)
-                    }
-                  }
+                  write("Hello World")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -5939,17 +6139,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in ["A", "B"] {
-                    let v1 = "[" in {
-                      write_string(v1)
-                      write_string(v0)
-                      write("]")
-                    }
+                  let v3: String = "A"
+                  let v4: String = "B"
+                  let v5: Array[String] = [v3, v4]
+                  for v0: String in v5 {
+                    write("[")
+                    write_string(v0)
+                    write("]")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in ["A", "B"] {
+                  let v3: String = "A"
+                  let v4: String = "B"
+                  let v5: Array[String] = [v3, v4]
+                  for v0: String in v5 {
                     write("[")
                     write_string(v0)
                     write("]")
@@ -5992,13 +6196,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = (("foo" + "bar") == "foobar") in {
-                    match v0 {
-                      true => {
-                        write("equals")
-                      }
-                      false => {
-                      }
+                  let v2: String = "foo"
+                  let v3: String = "bar"
+                  let v4: String = concat(v2, v3)
+                  let v5: String = "foobar"
+                  let v6: Bool = v4 == v5
+                  match v6 {
+                    true => {
+                      write("equals")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6049,22 +6256,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = (3 < 5) in {
-                    match v0 {
-                      true => {
-                        write("3 &lt; 5")
-                      }
-                      false => {
-                      }
+                  let v3: Int = 3
+                  let v4: Int = 5
+                  let v5: Bool = v3 < v4
+                  let v10: Int = 10
+                  let v11: Int = 2
+                  let v12: Bool = v10 < v11
+                  match v5 {
+                    true => {
+                      write("3 &lt; 5")
+                    }
+                    false => {
                     }
                   }
-                  let v1 = (10 < 2) in {
-                    match v1 {
-                      true => {
-                        write("10 &lt; 2")
-                      }
-                      false => {
-                      }
+                  match v12 {
+                    true => {
+                      write("10 &lt; 2")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6109,13 +6318,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = (1.5 < 2.5) in {
-                    match v0 {
-                      true => {
-                        write("1.5 &lt; 2.5")
-                      }
-                      false => {
-                      }
+                  let v2: Float = 1.5
+                  let v3: Float = 2.5
+                  let v4: Bool = v2 < v3
+                  match v4 {
+                    true => {
+                      write("1.5 &lt; 2.5")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6169,16 +6379,19 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Person {name: "Alice", age: 30} in {
-                    write_string(v0.name)
-                    let v1 = (v0.age == 30) in {
-                      match v1 {
-                        true => {
-                          write(":30")
-                        }
-                        false => {
-                        }
-                      }
+                  let v3: String = "Alice"
+                  let v4: Int = 30
+                  let v5: Person = {name: v3, age: v4}
+                  let v6: String = v5.name
+                  let v8: Int = v5.age
+                  let v9: Int = 30
+                  let v10: Bool = v8 == v9
+                  write_string(v6)
+                  match v10 {
+                    true => {
+                      write(":30")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6230,11 +6443,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Pair {second: "b", first: "a"} in {
-                    write_string(v0.first)
-                    write("-")
-                    write_string(v0.second)
-                  }
+                  let v2: String = "b"
+                  let v3: String = "a"
+                  let v4: Pair = {second: v2, first: v3}
+                  let v5: String = v4.first
+                  let v8: String = v4.second
+                  write_string(v5)
+                  write("-")
+                  write_string(v8)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -6290,15 +6506,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Shape::Rect {height: "b", width: "a"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Shape::Rect(width: v2, height: v3) => {
-                          write_string(v2)
-                          write("-")
-                          write_string(v3)
-                        }
-                      }
+                  let v5: String = "b"
+                  let v6: String = "a"
+                  let v7: Shape = Rect {height: v5, width: v6}
+                  match v7 {
+                    Shape::Rect {width@v2: String, height@v3: String} => {
+                      write_string(v2)
+                      write("-")
+                      write_string(v3)
                     }
                   }
                 }
@@ -6358,14 +6573,17 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Person {
-                    name: "Alice",
-                    address: Address {city: "Paris", zip: "75001"},
-                  } in {
-                    write_string(v0.name)
-                    write(",")
-                    write_string(v0.address.city)
-                  }
+                  let v2: String = "Alice"
+                  let v3: String = "Paris"
+                  let v4: String = "75001"
+                  let v5: Address = {city: v3, zip: v4}
+                  let v6: Person = {name: v2, address: v5}
+                  let v7: String = v6.name
+                  let v10: Address = v6.address
+                  let v11: String = v10.city
+                  write_string(v7)
+                  write(",")
+                  write_string(v11)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -6410,17 +6628,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 3 in {
-                    let v1 = 7 in {
-                      let v2 = ((v0 + v1) == 10) in {
-                        match v2 {
-                          true => {
-                            write("correct")
-                          }
-                          false => {
-                          }
-                        }
-                      }
+                  let v4: Int = 3
+                  let v5: Int = 7
+                  let v6: Int = v4 + v5
+                  let v7: Int = 10
+                  let v8: Bool = v6 == v7
+                  match v8 {
+                    true => {
+                      write("correct")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6467,17 +6684,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 10 in {
-                    let v1 = 3 in {
-                      let v2 = ((v0 - v1) == 7) in {
-                        match v2 {
-                          true => {
-                            write("correct")
-                          }
-                          false => {
-                          }
-                        }
-                      }
+                  let v4: Int = 10
+                  let v5: Int = 3
+                  let v6: Int = v4 - v5
+                  let v7: Int = 7
+                  let v8: Bool = v6 == v7
+                  match v8 {
+                    true => {
+                      write("correct")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6524,17 +6740,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 4 in {
-                    let v1 = 5 in {
-                      let v2 = ((v0 * v1) == 20) in {
-                        match v2 {
-                          true => {
-                            write("correct")
-                          }
-                          false => {
-                          }
-                        }
-                      }
+                  let v4: Int = 4
+                  let v5: Int = 5
+                  let v6: Int = v4 * v5
+                  let v7: Int = 20
+                  let v8: Bool = v6 == v7
+                  match v8 {
+                    true => {
+                      write("correct")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6581,17 +6796,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = true in {
-                    let v1 = true in {
-                      let v2 = (v0 && v1) in {
-                        match v2 {
-                          true => {
-                            write("TT")
-                          }
-                          false => {
-                          }
-                        }
-                      }
+                  let v4: Bool = true
+                  let v5: Bool = true
+                  let v6: Bool = match v4 {
+                    true => {
+                      v5
+                    }
+                    false => {
+                      v4
+                    }
+                  }
+                  match v6 {
+                    true => {
+                      write("TT")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6638,17 +6857,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = false in {
-                    let v1 = true in {
-                      let v2 = (v0 || v1) in {
-                        match v2 {
-                          true => {
-                            write("FT")
-                          }
-                          false => {
-                          }
-                        }
-                      }
+                  let v4: Bool = false
+                  let v5: Bool = true
+                  let v6: Bool = match v4 {
+                    true => {
+                      v4
+                    }
+                    false => {
+                      v5
+                    }
+                  }
+                  match v6 {
+                    true => {
+                      write("FT")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6703,31 +6926,34 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = (3 <= 5) in {
-                    match v0 {
-                      true => {
-                        write("A")
-                      }
-                      false => {
-                      }
+                  let v4: Int = 3
+                  let v5: Int = 5
+                  let v6: Bool = v4 <= v5
+                  let v11: Int = 5
+                  let v12: Int = 5
+                  let v13: Bool = v11 <= v12
+                  let v18: Int = 7
+                  let v19: Int = 5
+                  let v20: Bool = v18 <= v19
+                  match v6 {
+                    true => {
+                      write("A")
+                    }
+                    false => {
                     }
                   }
-                  let v1 = (5 <= 5) in {
-                    match v1 {
-                      true => {
-                        write("B")
-                      }
-                      false => {
-                      }
+                  match v13 {
+                    true => {
+                      write("B")
+                    }
+                    false => {
                     }
                   }
-                  let v2 = (7 <= 5) in {
-                    match v2 {
-                      true => {
-                        write("C")
-                      }
-                      false => {
-                      }
+                  match v20 {
+                    true => {
+                      write("C")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -6773,16 +6999,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("hello") in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(v2) => {
-                          write_string(v2)
-                        }
-                        None => {
-                          write("none")
-                        }
-                      }
+                  let v4: String = "hello"
+                  let v5: Option[String] = Some(v4)
+                  match v5 {
+                    Some(v2: String) => {
+                      write_string(v2)
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -6828,16 +7052,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("hello") in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
-                      }
+                  let v3: String = "hello"
+                  let v4: Option[String] = Some(v3)
+                  match v4 {
+                    Some(_) => {
+                      write("some")
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -6885,39 +7107,41 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [
-                    Option[Bool]::Some(true),
-                    Option[Bool]::Some(false),
-                    Option[Bool]::None,
-                  ] {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(v2) => {
-                          match v2 {
-                            true => {
-                              write("a")
-                            }
-                            false => {
-                              write("b")
-                            }
+                  let v4: Bool = true
+                  let v5: Option[Bool] = Some(v4)
+                  let v6: Bool = false
+                  let v7: Option[Bool] = Some(v6)
+                  let v8: Option[Bool] = None
+                  let v9: Array[Option[Bool]] = [v5, v7, v8]
+                  for v0: Option[Bool] in v9 {
+                    match v0 {
+                      Some(v2: Bool) => {
+                        match v2 {
+                          true => {
+                            write("a")
+                          }
+                          false => {
+                            write("b")
                           }
                         }
-                        None => {
-                          write("c")
-                        }
+                      }
+                      None => {
+                        write("c")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    Option[Bool]::Some(true),
-                    Option[Bool]::Some(false),
-                    Option[Bool]::None,
-                  ] {
+                  let v4: Bool = true
+                  let v5: Option[Bool] = Some(v4)
+                  let v6: Bool = false
+                  let v7: Option[Bool] = Some(v6)
+                  let v8: Option[Bool] = None
+                  let v9: Array[Option[Bool]] = [v5, v7, v8]
+                  for v0: Option[Bool] in v9 {
                     match v0 {
-                      Some(v2) => {
+                      Some(v2: Bool) => {
                         match v2 {
                           true => {
                             write("a")
@@ -6982,58 +7206,68 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [
-                    Foo {a: true, b: Option[String]::Some("a")},
-                    Foo {a: true, b: Option[String]::None},
-                    Foo {a: false, b: Option[String]::Some("x")},
-                  ] {
-                    let v1 = v0 in {
-                      let v2 = v1.a in {
-                        let v3 = v1.b in {
-                          match v2 {
-                            true => {
-                              match v3 {
-                                Some(v4) => {
-                                  write_string(v4)
-                                }
-                                None => {
-                                  write("b")
-                                }
-                              }
-                            }
-                            false => {
-                              write("c")
-                            }
+                  let v6: Bool = true
+                  let v7: String = "a"
+                  let v8: Option[String] = Some(v7)
+                  let v9: Foo = {a: v6, b: v8}
+                  let v10: Bool = true
+                  let v11: Option[String] = None
+                  let v12: Foo = {a: v10, b: v11}
+                  let v13: Bool = false
+                  let v14: String = "x"
+                  let v15: Option[String] = Some(v14)
+                  let v16: Foo = {a: v13, b: v15}
+                  let v17: Array[Foo] = [v9, v12, v16]
+                  for v0: Foo in v17 {
+                    let v18: Bool = v0.a
+                    let v19: Option[String] = v0.b
+                    match v18 {
+                      true => {
+                        match v19 {
+                          Some(v4: String) => {
+                            write_string(v4)
+                          }
+                          None => {
+                            write("b")
                           }
                         }
+                      }
+                      false => {
+                        write("c")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    Foo {a: true, b: Option[String]::Some("a")},
-                    Foo {a: true, b: Option[String]::None},
-                    Foo {a: false, b: Option[String]::Some("x")},
-                  ] {
-                    let v2 = v0.a in {
-                      let v3 = v0.b in {
-                        match v2 {
-                          true => {
-                            match v3 {
-                              Some(v4) => {
-                                write_string(v4)
-                              }
-                              None => {
-                                write("b")
-                              }
-                            }
+                  let v6: Bool = true
+                  let v7: String = "a"
+                  let v8: Option[String] = Some(v7)
+                  let v9: Foo = {a: v6, b: v8}
+                  let v10: Bool = true
+                  let v11: Option[String] = None
+                  let v12: Foo = {a: v10, b: v11}
+                  let v13: Bool = false
+                  let v14: String = "x"
+                  let v15: Option[String] = Some(v14)
+                  let v16: Foo = {a: v13, b: v15}
+                  let v17: Array[Foo] = [v9, v12, v16]
+                  for v0: Foo in v17 {
+                    let v18: Bool = v0.a
+                    let v19: Option[String] = v0.b
+                    match v18 {
+                      true => {
+                        match v19 {
+                          Some(v4: String) => {
+                            write_string(v4)
                           }
-                          false => {
-                            write("c")
+                          None => {
+                            write("b")
                           }
                         }
+                      }
+                      false => {
+                        write("c")
                       }
                     }
                   }
@@ -7089,39 +7323,41 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [
-                    Status::Active {admin: true},
-                    Status::Active {admin: false},
-                    Status::Inactive,
-                  ] {
-                    let v1 = v0 in {
-                      match v1 {
-                        Status::Active(admin: v2) => {
-                          match v2 {
-                            true => {
-                              write("a")
-                            }
-                            false => {
-                              write("b")
-                            }
+                  let v4: Bool = true
+                  let v5: Status = Active {admin: v4}
+                  let v6: Bool = false
+                  let v7: Status = Active {admin: v6}
+                  let v8: Status = Inactive
+                  let v9: Array[Status] = [v5, v7, v8]
+                  for v0: Status in v9 {
+                    match v0 {
+                      Status::Active {admin@v2: Bool} => {
+                        match v2 {
+                          true => {
+                            write("a")
+                          }
+                          false => {
+                            write("b")
                           }
                         }
-                        Status::Inactive => {
-                          write("c")
-                        }
+                      }
+                      Status::Inactive => {
+                        write("c")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    Status::Active {admin: true},
-                    Status::Active {admin: false},
-                    Status::Inactive,
-                  ] {
+                  let v4: Bool = true
+                  let v5: Status = Active {admin: v4}
+                  let v6: Bool = false
+                  let v7: Status = Active {admin: v6}
+                  let v8: Status = Inactive
+                  let v9: Array[Status] = [v5, v7, v8]
+                  for v0: Status in v9 {
                     match v0 {
-                      Status::Active(admin: v2) => {
+                      Status::Active {admin@v2: Bool} => {
                         match v2 {
                           true => {
                             write("a")
@@ -7178,20 +7414,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("inner") in {
-                    let v3 = Option[String]::Some(let v1 = v0 in {
-                      match v1 { Some(v2) => { v2 } None => { "default" } }
-                    }) in {
-                      let v4 = v3 in {
-                        match v4 {
-                          Some(v5) => {
-                            write_string(v5)
-                          }
-                          None => {
-                            write("none")
-                          }
-                        }
-                      }
+                  let v7: String = "inner"
+                  let v8: Option[String] = Some(v7)
+                  let v10: String = match v8 {
+                    Some(v2: String) => {
+                      v2
+                    }
+                    None => {
+                      let v9: String = "default"
+                      v9
+                    }
+                  }
+                  let v11: Option[String] = Some(v10)
+                  match v11 {
+                    Some(v5: String) => {
+                      write_string(v5)
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -7238,34 +7478,36 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [
-                    Option[String]::Some("a"),
-                    Option[String]::None,
-                    Option[String]::Some("b"),
-                  ] {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(v2) => {
-                          write("[")
-                          write_string(v2)
-                          write("]")
-                        }
-                        None => {
-                          write("[_]")
-                        }
+                  let v4: String = "a"
+                  let v5: Option[String] = Some(v4)
+                  let v6: Option[String] = None
+                  let v7: String = "b"
+                  let v8: Option[String] = Some(v7)
+                  let v9: Array[Option[String]] = [v5, v6, v8]
+                  for v0: Option[String] in v9 {
+                    match v0 {
+                      Some(v2: String) => {
+                        write("[")
+                        write_string(v2)
+                        write("]")
+                      }
+                      None => {
+                        write("[_]")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    Option[String]::Some("a"),
-                    Option[String]::None,
-                    Option[String]::Some("b"),
-                  ] {
+                  let v4: String = "a"
+                  let v5: Option[String] = Some(v4)
+                  let v6: Option[String] = None
+                  let v7: String = "b"
+                  let v8: Option[String] = Some(v7)
+                  let v9: Array[Option[String]] = [v5, v6, v8]
+                  for v0: Option[String] in v9 {
                     match v0 {
-                      Some(v2) => {
+                      Some(v2: String) => {
                         write("[")
                         write_string(v2)
                         write("]")
@@ -7363,15 +7605,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Color::Green in {
-                    write_string(let v1 = v0 in {
-                      match v1 {
-                        Color::Red => { "red" }
-                        Color::Green => { "green" }
-                        Color::Blue => { "blue" }
-                      }
-                    })
+                  let v3: Color = Green
+                  let v7: String = match v3 {
+                    Color::Red => {
+                      let v4: String = "red"
+                      v4
+                    }
+                    Color::Green => {
+                      let v5: String = "green"
+                      v5
+                    }
+                    Color::Blue => {
+                      let v6: String = "blue"
+                      v6
+                    }
                   }
+                  write_string(v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -7424,18 +7673,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Outcome::Success {value: "hello"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Outcome::Success(value: v2) => {
-                          write("Ok: ")
-                          write_string(v2)
-                        }
-                        Outcome::Failure(message: v3) => {
-                          write("Err: ")
-                          write_string(v3)
-                        }
-                      }
+                  let v5: String = "hello"
+                  let v6: Outcome = Success {value: v5}
+                  match v6 {
+                    Outcome::Success {value@v2: String} => {
+                      write("Ok: ")
+                      write_string(v2)
+                    }
+                    Outcome::Failure {message@v3: String} => {
+                      write("Err: ")
+                      write_string(v3)
                     }
                   }
                 }
@@ -7488,17 +7735,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Item::Tagged {tag: "news"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Item::Tagged(tag: v2) => {
-                          write("tag: ")
-                          write_string(v2)
-                        }
-                        Item::Plain => {
-                          write("plain")
-                        }
-                      }
+                  let v4: String = "news"
+                  let v5: Item = Tagged {tag: v4}
+                  match v5 {
+                    Item::Tagged {tag@v2: String} => {
+                      write("tag: ")
+                      write_string(v2)
+                    }
+                    Item::Plain => {
+                      write("plain")
                     }
                   }
                 }
@@ -7553,15 +7798,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v3 = let v0 = Outcome::Success {value: "hi"} in {
-                    match v0 {
-                      Outcome::Success {value: v1} => { v1 }
-                      Outcome::Failure {message: v2} => { v2 }
+                  let v5: String = "hi"
+                  let v6: Outcome = Success {value: v5}
+                  let v7: String = match v6 {
+                    Outcome::Success {value@v1: String} => {
+                      v1
                     }
-                  } in {
-                    write("Got: ")
-                    write_string(v3)
+                    Outcome::Failure {message@v2: String} => {
+                      v2
+                    }
                   }
+                  write("Got: ")
+                  write_string(v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -7615,22 +7863,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Badge@f0(color@v0: Color) -> Html {
-                  let v1 = v0 in {
-                    match v1 {
-                      Color::Red => {
-                        write("red")
-                      }
-                      Color::Green => {
-                        write("green")
-                      }
-                      Color::Blue => {
-                        write("blue")
-                      }
+                  match v0 {
+                    Color::Red => {
+                      write("red")
+                    }
+                    Color::Green => {
+                      write("green")
+                    }
+                    Color::Blue => {
+                      write("blue")
                     }
                   }
                 }
                 page Test() {
-                  call Badge@f0(color = Color::Green)
+                  let v3: Color = Green
+                  write_function Badge@f0(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -7685,18 +7932,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Outcome::Failure {message: "something went wrong"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Outcome::Success(value: v2) => {
-                          write("Ok: ")
-                          write_string(v2)
-                        }
-                        Outcome::Failure(message: v3) => {
-                          write("Err: ")
-                          write_string(v3)
-                        }
-                      }
+                  let v5: String = "something went wrong"
+                  let v6: Outcome = Failure {message: v5}
+                  match v6 {
+                    Outcome::Success {value@v2: String} => {
+                      write("Ok: ")
+                      write_string(v2)
+                    }
+                    Outcome::Failure {message@v3: String} => {
+                      write("Err: ")
+                      write_string(v3)
                     }
                   }
                 }
@@ -7755,19 +8000,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Response::Success {code: "200", body: "OK"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Response::Success(code: v2, body: v3) => {
-                          write_string(v2)
-                          write(" ")
-                          write_string(v3)
-                        }
-                        Response::Failure(reason: v4) => {
-                          write("Error: ")
-                          write_string(v4)
-                        }
-                      }
+                  let v6: String = "200"
+                  let v7: String = "OK"
+                  let v8: Response = Success {code: v6, body: v7}
+                  match v8 {
+                    Response::Success {code@v2: String, body@v3: String} => {
+                      write_string(v2)
+                      write(" ")
+                      write_string(v3)
+                    }
+                    Response::Failure {reason@v4: String} => {
+                      write("Error: ")
+                      write_string(v4)
                     }
                   }
                 }
@@ -7822,18 +8066,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Outcome::Success {value: "hello"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Outcome::Success(value: v2) => {
-                          write("Ok: ")
-                          write_string(v2)
-                        }
-                        Outcome::Failure(message: v3) => {
-                          write("Err: ")
-                          write_string(v3)
-                        }
-                      }
+                  let v5: String = "hello"
+                  let v6: Outcome = Success {value: v5}
+                  match v6 {
+                    Outcome::Success {value@v2: String} => {
+                      write("Ok: ")
+                      write_string(v2)
+                    }
+                    Outcome::Failure {message@v3: String} => {
+                      write("Err: ")
+                      write_string(v3)
                     }
                   }
                 }
@@ -7876,9 +8118,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = ["a", "b", "c"] in {
-                    write_string(v0.len().to_string())
-                  }
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: String = "c"
+                  let v5: Array[String] = [v2, v3, v4]
+                  let v6: Int = v5.len()
+                  let v7: String = v6.to_string()
+                  write_string(v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -7919,9 +8165,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = [] in {
-                    write_string(v0.len().to_string())
-                  }
+                  let v2: Array[String] = []
+                  let v3: Int = v2.len()
+                  let v4: String = v3.to_string()
+                  write_string(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -7965,15 +8212,17 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = ["x", "y"] in {
-                    let v1 = (v0.len() == 2) in {
-                      match v1 {
-                        true => {
-                          write("has two")
-                        }
-                        false => {
-                        }
-                      }
+                  let v3: String = "x"
+                  let v4: String = "y"
+                  let v5: Array[String] = [v3, v4]
+                  let v6: Int = v5.len()
+                  let v7: Int = 2
+                  let v8: Bool = v6 == v7
+                  match v8 {
+                    true => {
+                      write("has two")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -8019,15 +8268,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = ["a"] in {
-                    let v1 = (v0.len() < 5) in {
-                      match v1 {
-                        true => {
-                          write("less than 5")
-                        }
-                        false => {
-                        }
-                      }
+                  let v3: String = "a"
+                  let v4: Array[String] = [v3]
+                  let v5: Int = v4.len()
+                  let v6: Int = 5
+                  let v7: Bool = v5 < v6
+                  match v7 {
+                    true => {
+                      write("less than 5")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -8070,9 +8320,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = [1, 2, 3, 4, 5] in {
-                    write_string(v0.len().to_string())
-                  }
+                  let v2: Int = 1
+                  let v3: Int = 2
+                  let v4: Int = 3
+                  let v5: Int = 4
+                  let v6: Int = 5
+                  let v7: Array[Int] = [v2, v3, v4, v5, v6]
+                  let v8: Int = v7.len()
+                  let v9: String = v8.to_string()
+                  write_string(v9)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -8116,16 +8372,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = [] in {
-                    let v1 = v0.is_empty() in {
-                      match v1 {
-                        true => {
-                          write("empty")
-                        }
-                        false => {
-                          write("not empty")
-                        }
-                      }
+                  let v3: Array[String] = []
+                  let v4: Bool = v3.is_empty()
+                  match v4 {
+                    true => {
+                      write("empty")
+                    }
+                    false => {
+                      write("not empty")
                     }
                   }
                 }
@@ -8171,16 +8425,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = ["a", "b"] in {
-                    let v1 = v0.is_empty() in {
-                      match v1 {
-                        true => {
-                          write("empty")
-                        }
-                        false => {
-                          write("not empty")
-                        }
-                      }
+                  let v3: String = "a"
+                  let v4: String = "b"
+                  let v5: Array[String] = [v3, v4]
+                  let v6: Bool = v5.is_empty()
+                  match v6 {
+                    true => {
+                      write("empty")
+                    }
+                    false => {
+                      write("not empty")
                     }
                   }
                 }
@@ -8226,16 +8480,17 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = [1, 2, 3] in {
-                    let v1 = v0.is_empty() in {
-                      match v1 {
-                        true => {
-                          write("no numbers")
-                        }
-                        false => {
-                          write("has numbers")
-                        }
-                      }
+                  let v3: Int = 1
+                  let v4: Int = 2
+                  let v5: Int = 3
+                  let v6: Array[Int] = [v3, v4, v5]
+                  let v7: Bool = v6.is_empty()
+                  match v7 {
+                    true => {
+                      write("no numbers")
+                    }
+                    false => {
+                      write("has numbers")
                     }
                   }
                 }
@@ -8278,9 +8533,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 42 in {
-                    write_string(v0.to_string())
-                  }
+                  let v2: Int = 42
+                  let v3: String = v2.to_string()
+                  write_string(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -8321,9 +8576,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 0 in {
-                    write_string(v0.to_string())
-                  }
+                  let v2: Int = 0
+                  let v3: String = v2.to_string()
+                  write_string(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -8365,14 +8620,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [3] {
-                    write_string(v0.to_float().to_int().to_string())
+                  let v2: Int = 3
+                  let v3: Array[Int] = [v2]
+                  for v0: Int in v3 {
+                    let v4: Float = v0.to_float()
+                    let v5: Int = v4.to_int()
+                    let v6: String = v5.to_string()
+                    write_string(v6)
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [3] {
-                    write_string(v0.to_float().to_int().to_string())
+                  let v2: Int = 3
+                  let v3: Array[Int] = [v2]
+                  for v0: Int in v3 {
+                    let v4: Float = v0.to_float()
+                    let v5: Int = v4.to_int()
+                    let v6: String = v5.to_string()
+                    write_string(v6)
                   }
                 }
                 -- expected output --
@@ -8411,13 +8676,17 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for _ in 0..=2 {
+                  let v1: Int = 0
+                  let v2: Int = 2
+                  for _ in v1..=v2 {
                     write("x")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for _ in 0..=2 {
+                  let v1: Int = 0
+                  let v2: Int = 2
+                  for _ in v1..=v2 {
                     write("x")
                   }
                 }
@@ -8463,14 +8732,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in ["a", "b"] {
-                    let v1 = false in {
-                      match v1 {
-                        true => {
-                          write_string(v0)
-                        }
-                        false => {
-                        }
+                  let v3: String = "a"
+                  let v4: String = "b"
+                  let v5: Array[String] = [v3, v4]
+                  for v0: String in v5 {
+                    let v6: Bool = false
+                    match v6 {
+                      true => {
+                        write_string(v0)
+                      }
+                      false => {
                       }
                     }
                     write("y")
@@ -8478,7 +8749,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for _ in ["a", "b"] {
+                  let v3: String = "a"
+                  let v4: String = "b"
+                  let v5: Array[String] = [v3, v4]
+                  for _ in v5 {
                     write("y")
                   }
                 }
@@ -8519,15 +8793,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = ["a", "b", "c"] in {
-                    for _ in v0 {
-                      write("*")
-                    }
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: String = "c"
+                  let v5: Array[String] = [v2, v3, v4]
+                  for _ in v5 {
+                    write("*")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for _ in ["a", "b", "c"] {
+                  let v2: String = "a"
+                  let v3: String = "b"
+                  let v4: String = "c"
+                  let v5: Array[String] = [v2, v3, v4]
+                  for _ in v5 {
                     write("*")
                   }
                 }
@@ -8569,16 +8849,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for _ in 0..=1 {
-                    for _ in 0..=2 {
+                  let v1: Int = 0
+                  let v2: Int = 1
+                  for _ in v1..=v2 {
+                    let v3: Int = 0
+                    let v4: Int = 2
+                    for _ in v3..=v4 {
                       write(".")
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for _ in 0..=1 {
-                    for _ in 0..=2 {
+                  let v1: Int = 0
+                  let v2: Int = 1
+                  for _ in v1..=v2 {
+                    let v3: Int = 0
+                    let v4: Int = 2
+                    for _ in v3..=v4 {
                       write(".")
                     }
                   }
@@ -8621,17 +8909,27 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in 1..=2 {
-                    for _ in 0..=1 {
-                      write_string(v0.to_string())
+                  let v2: Int = 1
+                  let v3: Int = 2
+                  for v0: Int in v2..=v3 {
+                    let v4: Int = 0
+                    let v5: Int = 1
+                    for _ in v4..=v5 {
+                      let v6: String = v0.to_string()
+                      write_string(v6)
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in 1..=2 {
-                    for _ in 0..=1 {
-                      write_string(v0.to_string())
+                  let v2: Int = 1
+                  let v3: Int = 2
+                  for v0: Int in v2..=v3 {
+                    let v4: Int = 0
+                    let v5: Int = 1
+                    for _ in v4..=v5 {
+                      let v6: String = v0.to_string()
+                      write_string(v6)
                     }
                   }
                 }
@@ -8671,7 +8969,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write_string([1, 2, 3].len().to_string())
+                  let v1: Int = 1
+                  let v2: Int = 2
+                  let v3: Int = 3
+                  let v4: Array[Int] = [v1, v2, v3]
+                  let v5: Int = v4.len()
+                  let v6: String = v5.to_string()
+                  write_string(v6)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -8713,7 +9017,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write_string((1 + 2).to_string())
+                  let v1: Int = 1
+                  let v2: Int = 2
+                  let v3: Int = v1 + v2
+                  let v4: String = v3.to_string()
+                  write_string(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -8755,7 +9063,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write_string(42.to_string())
+                  let v1: Int = 42
+                  let v2: String = v1.to_string()
+                  write_string(v2)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -8800,23 +9110,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(v2) => {
-                          match v2 {
-                            Some(v3) => {
-                              write_string(v3)
-                            }
-                            None => {
-                              write("some-none")
-                            }
-                          }
+                  let v5: String = "deep"
+                  let v6: Option[String] = Some(v5)
+                  let v7: Option[Option[String]] = Some(v6)
+                  match v7 {
+                    Some(v2: Option[String]) => {
+                      match v2 {
+                        Some(v3: String) => {
+                          write_string(v3)
                         }
                         None => {
-                          write("none")
+                          write("some-none")
                         }
                       }
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -8859,11 +9168,19 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("x") in {
-                    write_string(let v1 = v0 in {
-                      match v1 { Some(_) => { "some" } None => { "none" } }
-                    })
+                  let v3: String = "x"
+                  let v4: Option[String] = Some(v3)
+                  let v7: String = match v4 {
+                    Some(_) => {
+                      let v5: String = "some"
+                      v5
+                    }
+                    None => {
+                      let v6: String = "none"
+                      v6
+                    }
                   }
+                  write_string(v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -8904,11 +9221,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::None in {
-                    write_string(let v1 = v0 in {
-                      match v1 { Some(_) => { "some" } None => { "none" } }
-                    })
+                  let v3: Option[String] = None
+                  let v6: String = match v3 {
+                    Some(_) => {
+                      let v4: String = "some"
+                      v4
+                    }
+                    None => {
+                      let v5: String = "none"
+                      v5
+                    }
                   }
+                  write_string(v6)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -8953,23 +9277,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[Option[String]]::Some(Option[String]::Some("x")) in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(v2) => {
-                          match v2 {
-                            Some(_) => {
-                              write("some-some")
-                            }
-                            None => {
-                              write("some-none")
-                            }
-                          }
+                  let v4: String = "x"
+                  let v5: Option[String] = Some(v4)
+                  let v6: Option[Option[String]] = Some(v5)
+                  match v6 {
+                    Some(v2: Option[String]) => {
+                      match v2 {
+                        Some(_) => {
+                          write("some-some")
                         }
                         None => {
-                          write("none")
+                          write("some-none")
                         }
                       }
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -9015,16 +9338,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[Option[String]]::Some(Option[String]::Some("x")) in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
-                      }
+                  let v3: String = "x"
+                  let v4: Option[String] = Some(v3)
+                  let v5: Option[Option[String]] = Some(v4)
+                  match v5 {
+                    Some(_) => {
+                      write("some")
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -9079,16 +9401,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Outcome::Success {value: "Hello"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Outcome::Success => {
-                          write("ok")
-                        }
-                        Outcome::Failure => {
-                          write("err")
-                        }
-                      }
+                  let v3: String = "Hello"
+                  let v4: Outcome = Success {value: v3}
+                  match v4 {
+                    Outcome::Success => {
+                      write("ok")
+                    }
+                    Outcome::Failure => {
+                      write("err")
                     }
                   }
                 }
@@ -9143,16 +9463,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Outcome::Failure {message: "failed"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Outcome::Success => {
-                          write("ok")
-                        }
-                        Outcome::Failure => {
-                          write("err")
-                        }
-                      }
+                  let v3: String = "failed"
+                  let v4: Outcome = Failure {message: v3}
+                  match v4 {
+                    Outcome::Success => {
+                      write("ok")
+                    }
+                    Outcome::Failure => {
+                      write("err")
                     }
                   }
                 }
@@ -9202,14 +9520,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Person {name: "Alice", age: 30} in {
-                    let v1 = v0 in {
-                      let v2 = v1.age in {
-                        write("age: ")
-                        write_string(v2.to_string())
-                      }
-                    }
-                  }
+                  let v4: String = "Alice"
+                  let v5: Int = 30
+                  let v6: Person = {name: v4, age: v5}
+                  let v7: Int = v6.age
+                  let v9: String = v7.to_string()
+                  write("age: ")
+                  write_string(v9)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -9255,30 +9572,30 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(v2) => {
-                          match v2 {
-                            Some(v3) => {
-                              match v3 {
-                                Some(_) => {
-                                  write("sss")
-                                }
-                                None => {
-                                  write("ssn")
-                                }
-                              }
+                  let v5: String = "value"
+                  let v6: Option[String] = Some(v5)
+                  let v7: Option[Option[String]] = Some(v6)
+                  let v8: Option[Option[Option[String]]] = Some(v7)
+                  match v8 {
+                    Some(v2: Option[Option[String]]) => {
+                      match v2 {
+                        Some(v3: Option[String]) => {
+                          match v3 {
+                            Some(_) => {
+                              write("sss")
                             }
                             None => {
-                              write("sn")
+                              write("ssn")
                             }
                           }
                         }
                         None => {
-                          write("n")
+                          write("sn")
                         }
                       }
+                    }
+                    None => {
+                      write("n")
                     }
                   }
                 }
@@ -9345,23 +9662,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Outer::Success {value: Inner::Success {value: "deep"}} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Outer::Success(value: v2) => {
-                          match v2 {
-                            Inner::Success => {
-                              write("ok-ok")
-                            }
-                            Inner::Failure => {
-                              write("ok-err")
-                            }
-                          }
+                  let v4: String = "deep"
+                  let v5: Inner = Success {value: v4}
+                  let v6: Outer = Success {value: v5}
+                  match v6 {
+                    Outer::Success {value@v2: Inner} => {
+                      match v2 {
+                        Inner::Success => {
+                          write("ok-ok")
                         }
-                        Outer::Failure => {
-                          write("err")
+                        Inner::Failure => {
+                          write("ok-err")
                         }
                       }
+                    }
+                    Outer::Failure => {
+                      write("err")
                     }
                   }
                 }
@@ -9407,16 +9723,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = true in {
-                    let v1 = v0 in {
-                      match v1 {
-                        true => {
-                          write("t")
-                        }
-                        false => {
-                          write("f")
-                        }
-                      }
+                  let v3: Bool = true
+                  match v3 {
+                    true => {
+                      write("t")
+                    }
+                    false => {
+                      write("f")
                     }
                   }
                 }
@@ -9462,16 +9775,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = false in {
-                    let v1 = v0 in {
-                      match v1 {
-                        true => {
-                          write("t")
-                        }
-                        false => {
-                          write("f")
-                        }
-                      }
+                  let v3: Bool = false
+                  match v3 {
+                    true => {
+                      write("t")
+                    }
+                    false => {
+                      write("f")
                     }
                   }
                 }
@@ -9521,25 +9831,25 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("outer") in {
-                    match v0 {
-                      Some(v1) => {
-                        let v2 = Option[String]::Some("inner") in {
-                          match v2 {
-                            Some(v3) => {
-                              write_string(v1)
-                              write(":")
-                              write_string(v3)
-                            }
-                            None => {
-                              write("inner-none")
-                            }
-                          }
+                  let v5: String = "outer"
+                  let v6: Option[String] = Some(v5)
+                  match v6 {
+                    Some(v1: String) => {
+                      let v7: String = "inner"
+                      let v8: Option[String] = Some(v7)
+                      match v8 {
+                        Some(v3: String) => {
+                          write_string(v1)
+                          write(":")
+                          write_string(v3)
+                        }
+                        None => {
+                          write("inner-none")
                         }
                       }
-                      None => {
-                        write("outer-none")
-                      }
+                    }
+                    None => {
+                      write("outer-none")
                     }
                   }
                 }
@@ -9590,26 +9900,23 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[Option[String]]::Some(Option[String]::Some("hello")) in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(v2) => {
-                          let v3 = v2 in {
-                            match v3 {
-                              Some(v4) => {
-                                write("value:")
-                                write_string(v4)
-                              }
-                              None => {
-                                write("inner-none")
-                              }
-                            }
-                          }
+                  let v6: String = "hello"
+                  let v7: Option[String] = Some(v6)
+                  let v8: Option[Option[String]] = Some(v7)
+                  match v8 {
+                    Some(v2: Option[String]) => {
+                      match v2 {
+                        Some(v4: String) => {
+                          write("value:")
+                          write_string(v4)
                         }
                         None => {
-                          write("outer-none")
+                          write("inner-none")
                         }
                       }
+                    }
+                    None => {
+                      write("outer-none")
                     }
                   }
                 }
@@ -9700,14 +10007,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "hop" in {
-                    let v1 = 3 in {
-                      write("a: ")
-                      write_string(v0)
-                      write(", b: ")
-                      write_string(v1.to_string())
-                    }
-                  }
+                  let v4: Int = 3
+                  let v7: String = v4.to_string()
+                  write("a: hop, b: ")
+                  write_string(v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -9748,11 +10051,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "c" in {
-                    write("a{b")
-                    write_string(v0)
-                    write("d}e")
-                  }
+                  write("a{bcd}e")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -9793,11 +10092,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "c" in {
-                    write("a&quot;b\n")
-                    write_string(v0)
-                    write("\\d")
-                  }
+                  write("a&quot;b\nc\\d")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -9839,9 +10134,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "removed" in {
-                    write_string(v0)
-                  }
+                  write("removed")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -9882,11 +10175,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "my-class" in {
-                    write("<div class=\"")
-                    write_string(v0)
-                    write("\"></div>")
-                  }
+                  write("<div class=\"my-class\"></div>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -9929,11 +10218,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "on" in {
-                    write("<span>")
-                    write_string(v0)
-                    write("</span>")
-                  }
+                  write("<span>on</span>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -9974,11 +10259,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "button" in {
-                    write("<input type=\"")
-                    write_string(v0)
-                    write("\">")
-                  }
+                  write("<input type=\"button\">")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -10182,35 +10463,43 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Countdown@f0(delete@v0: Int) -> Html {
-                  write_string(v0.to_string())
-                  let v1 = (0 < v0) in {
-                    match v1 {
-                      true => {
-                        call Countdown@f0(delete = (v0 - 1))
-                      }
-                      false => {
-                      }
+                  let v5: String = v0.to_string()
+                  let v7: Int = 0
+                  let v8: Bool = v7 < v0
+                  write_string(v5)
+                  match v8 {
+                    true => {
+                      let v9: Int = 1
+                      let v10: Int = v0 - v9
+                      write_function Countdown@f0(v10)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown@f0(delete = 3)
+                  let v3: Int = 3
+                  write_function Countdown@f0(v3)
                 }
                 -- ir (optimized) --
                 fn Countdown@f0(delete@v0: Int) -> Html {
-                  write_string(v0.to_string())
-                  let v1 = (0 < v0) in {
-                    match v1 {
-                      true => {
-                        call Countdown@f0(delete = (v0 - 1))
-                      }
-                      false => {
-                      }
+                  let v5: String = v0.to_string()
+                  let v7: Int = 0
+                  let v8: Bool = v7 < v0
+                  write_string(v5)
+                  match v8 {
+                    true => {
+                      let v9: Int = 1
+                      let v10: Int = v0 - v9
+                      write_function Countdown@f0(v10)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown@f0(delete = 3)
+                  let v3: Int = 3
+                  write_function Countdown@f0(v3)
                 }
                 -- expected output --
                 3210
@@ -10256,35 +10545,43 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Countdown@f0(type@v0: Int) -> Html {
-                  write_string(v0.to_string())
-                  let v1 = (0 < v0) in {
-                    match v1 {
-                      true => {
-                        call Countdown@f0(type = (v0 - 1))
-                      }
-                      false => {
-                      }
+                  let v5: String = v0.to_string()
+                  let v7: Int = 0
+                  let v8: Bool = v7 < v0
+                  write_string(v5)
+                  match v8 {
+                    true => {
+                      let v9: Int = 1
+                      let v10: Int = v0 - v9
+                      write_function Countdown@f0(v10)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown@f0(type = 3)
+                  let v3: Int = 3
+                  write_function Countdown@f0(v3)
                 }
                 -- ir (optimized) --
                 fn Countdown@f0(type@v0: Int) -> Html {
-                  write_string(v0.to_string())
-                  let v1 = (0 < v0) in {
-                    match v1 {
-                      true => {
-                        call Countdown@f0(type = (v0 - 1))
-                      }
-                      false => {
-                      }
+                  let v5: String = v0.to_string()
+                  let v7: Int = 0
+                  let v8: Bool = v7 < v0
+                  write_string(v5)
+                  match v8 {
+                    true => {
+                      let v9: Int = 1
+                      let v10: Int = v0 - v9
+                      write_function Countdown@f0(v10)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown@f0(type = 3)
+                  let v3: Int = 3
+                  write_function Countdown@f0(v3)
                 }
                 -- expected output --
                 3210
@@ -10322,25 +10619,25 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [
-                    "\"",
-                    "\\",
-                    "foo\nbar",
-                    "foo\tbar",
-                    "C:\\Users\\name",
-                  ] {
+                  let v2: String = "\""
+                  let v3: String = "\\"
+                  let v4: String = "foo\nbar"
+                  let v5: String = "foo\tbar"
+                  let v6: String = "C:\\Users\\name"
+                  let v7: Array[String] = [v2, v3, v4, v5, v6]
+                  for v0: String in v7 {
                     write_string(v0)
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    "\"",
-                    "\\",
-                    "foo\nbar",
-                    "foo\tbar",
-                    "C:\\Users\\name",
-                  ] {
+                  let v2: String = "\""
+                  let v3: String = "\\"
+                  let v4: String = "foo\nbar"
+                  let v5: String = "foo\tbar"
+                  let v6: String = "C:\\Users\\name"
+                  let v7: Array[String] = [v2, v3, v4, v5, v6]
+                  for v0: String in v7 {
                     write_string(v0)
                   }
                 }
@@ -10393,30 +10690,34 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = [
-                    Item {name: "a", value: "1"},
-                    Item {name: "b", value: "2"},
-                  ] in {
-                    for v1 in v0 {
-                      let v2 = v1.name in {
-                        write("[")
-                        write_string(v2)
-                        write("]")
-                      }
-                    }
+                  let v4: String = "a"
+                  let v5: String = "1"
+                  let v6: Item = {name: v4, value: v5}
+                  let v7: String = "b"
+                  let v8: String = "2"
+                  let v9: Item = {name: v7, value: v8}
+                  let v10: Array[Item] = [v6, v9]
+                  for v1: Item in v10 {
+                    let v11: String = v1.name
+                    write("[")
+                    write_string(v11)
+                    write("]")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v1 in [
-                    Item {name: "a", value: "1"},
-                    Item {name: "b", value: "2"},
-                  ] {
-                    let v2 = v1.name in {
-                      write("[")
-                      write_string(v2)
-                      write("]")
-                    }
+                  let v4: String = "a"
+                  let v5: String = "1"
+                  let v6: Item = {name: v4, value: v5}
+                  let v7: String = "b"
+                  let v8: String = "2"
+                  let v9: Item = {name: v7, value: v8}
+                  let v10: Array[Item] = [v6, v9]
+                  for v1: Item in v10 {
+                    let v11: String = v1.name
+                    write("[")
+                    write_string(v11)
+                    write("]")
                   }
                 }
                 -- expected output --
@@ -10477,36 +10778,40 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = [
-                    Person {
-                      name: "alice",
-                      address: Address {city: "paris"},
-                    },
-                    Person {name: "bob", address: Address {city: "london"}},
-                  ] in {
-                    for v1 in v0 {
-                      let v2 = v1.address.city in {
-                        write("[")
-                        write_string(v2)
-                        write("]")
-                      }
-                    }
+                  let v4: String = "alice"
+                  let v5: String = "paris"
+                  let v6: Address = {city: v5}
+                  let v7: Person = {name: v4, address: v6}
+                  let v8: String = "bob"
+                  let v9: String = "london"
+                  let v10: Address = {city: v9}
+                  let v11: Person = {name: v8, address: v10}
+                  let v12: Array[Person] = [v7, v11]
+                  for v1: Person in v12 {
+                    let v13: Address = v1.address
+                    let v14: String = v13.city
+                    write("[")
+                    write_string(v14)
+                    write("]")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v1 in [
-                    Person {
-                      name: "alice",
-                      address: Address {city: "paris"},
-                    },
-                    Person {name: "bob", address: Address {city: "london"}},
-                  ] {
-                    let v2 = v1.address.city in {
-                      write("[")
-                      write_string(v2)
-                      write("]")
-                    }
+                  let v4: String = "alice"
+                  let v5: String = "paris"
+                  let v6: Address = {city: v5}
+                  let v7: Person = {name: v4, address: v6}
+                  let v8: String = "bob"
+                  let v9: String = "london"
+                  let v10: Address = {city: v9}
+                  let v11: Person = {name: v8, address: v10}
+                  let v12: Array[Person] = [v7, v11]
+                  for v1: Person in v12 {
+                    let v13: Address = v1.address
+                    let v14: String = v13.city
+                    write("[")
+                    write_string(v14)
+                    write("]")
                   }
                 }
                 -- expected output --
@@ -10561,30 +10866,36 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = [
-                    Source {name: "a", value: "1"},
-                    Source {name: "b", value: "2"},
-                  ] in {
-                    for v1 in v0 {
-                      let v2 = Target {label: v1.name} in {
-                        write("[")
-                        write_string(v2.label)
-                        write("]")
-                      }
-                    }
+                  let v4: String = "a"
+                  let v5: String = "1"
+                  let v6: Source = {name: v4, value: v5}
+                  let v7: String = "b"
+                  let v8: String = "2"
+                  let v9: Source = {name: v7, value: v8}
+                  let v10: Array[Source] = [v6, v9]
+                  for v1: Source in v10 {
+                    let v11: String = v1.name
+                    let v12: Target = {label: v11}
+                    let v14: String = v12.label
+                    write("[")
+                    write_string(v14)
+                    write("]")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v1 in [
-                    Source {name: "a", value: "1"},
-                    Source {name: "b", value: "2"},
-                  ] {
-                    let v2 = Target {label: v1.name} in {
-                      write("[")
-                      write_string(v2.label)
-                      write("]")
-                    }
+                  let v4: String = "a"
+                  let v5: String = "1"
+                  let v6: Source = {name: v4, value: v5}
+                  let v7: String = "b"
+                  let v8: String = "2"
+                  let v9: Source = {name: v7, value: v8}
+                  let v10: Array[Source] = [v6, v9]
+                  for v1: Source in v10 {
+                    let v11: String = v1.name
+                    write("[")
+                    write_string(v11)
+                    write("]")
                   }
                 }
                 -- expected output --
@@ -10639,40 +10950,38 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = [Item {name: "a"}, Item {name: "b"}] in {
-                    for v1 in v0 {
-                      let v2 = Option[String]::Some(v1.name) in {
-                        let v3 = v2 in {
-                          match v3 {
-                            Some(v4) => {
-                              write("[")
-                              write_string(v4)
-                              write("]")
-                            }
-                            None => {
-                              write("[-]")
-                            }
-                          }
-                        }
+                  let v6: String = "a"
+                  let v7: Item = {name: v6}
+                  let v8: String = "b"
+                  let v9: Item = {name: v8}
+                  let v10: Array[Item] = [v7, v9]
+                  for v1: Item in v10 {
+                    let v11: String = v1.name
+                    let v12: Option[String] = Some(v11)
+                    match v12 {
+                      Some(v4: String) => {
+                        write("[")
+                        write_string(v4)
+                        write("]")
+                      }
+                      None => {
+                        write("[-]")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v1 in [Item {name: "a"}, Item {name: "b"}] {
-                    let v2 = Option[String]::Some(v1.name) in {
-                      match v2 {
-                        Some(v4) => {
-                          write("[")
-                          write_string(v4)
-                          write("]")
-                        }
-                        None => {
-                          write("[-]")
-                        }
-                      }
-                    }
+                  let v6: String = "a"
+                  let v7: Item = {name: v6}
+                  let v8: String = "b"
+                  let v9: Item = {name: v8}
+                  let v10: Array[Item] = [v7, v9]
+                  for v1: Item in v10 {
+                    let v11: String = v1.name
+                    write("[")
+                    write_string(v11)
+                    write("]")
                   }
                 }
                 -- expected output --
@@ -10712,13 +11021,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "hello" in {
-                    let v1 = "world" in {
-                      let v2 = ((v0 + " ") + v1) in {
-                        write_string(v2)
-                      }
-                    }
-                  }
+                  write("hello world")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -10763,11 +11066,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Greeting {
-                    message: (("hello" + " ") + "world"),
-                  } in {
-                    write_string(v0.message)
-                  }
+                  let v2: String = "hello"
+                  let v3: String = " "
+                  let v4: String = concat(v2, v3)
+                  let v5: String = "world"
+                  let v6: String = concat(v4, v5)
+                  let v7: Greeting = {message: v6}
+                  let v8: String = v7.message
+                  write_string(v8)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -10809,11 +11115,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = 42 in {
-                    let v1 = v0.to_string() in {
-                      write_string(v1)
-                    }
-                  }
+                  let v3: Int = 42
+                  let v4: String = v3.to_string()
+                  write_string(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -10862,17 +11166,23 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Container {items: ["a", "b"]} in {
-                    for v1 in v0.items {
-                      write("[")
-                      write_string(v1)
-                      write("]")
-                    }
+                  let v3: String = "a"
+                  let v4: String = "b"
+                  let v5: Array[String] = [v3, v4]
+                  let v6: Container = {items: v5}
+                  let v7: Array[String] = v6.items
+                  for v1: String in v7 {
+                    write("[")
+                    write_string(v1)
+                    write("]")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v1 in ["a", "b"] {
+                  let v3: String = "a"
+                  let v4: String = "b"
+                  let v5: Array[String] = [v3, v4]
+                  for v1: String in v5 {
                     write("[")
                     write_string(v1)
                     write("]")
@@ -10917,9 +11227,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Label {text: 42.to_string()} in {
-                    write_string(v0.text)
-                  }
+                  let v2: Int = 42
+                  let v3: String = v2.to_string()
+                  let v4: Label = {text: v3}
+                  let v5: String = v4.text
+                  write_string(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -10972,17 +11284,25 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Outer {inner: Inner {values: ["x", "y"]}} in {
-                    for v1 in v0.inner.values {
-                      write("[")
-                      write_string(v1)
-                      write("]")
-                    }
+                  let v3: String = "x"
+                  let v4: String = "y"
+                  let v5: Array[String] = [v3, v4]
+                  let v6: Inner = {values: v5}
+                  let v7: Outer = {inner: v6}
+                  let v8: Inner = v7.inner
+                  let v9: Array[String] = v8.values
+                  for v1: String in v9 {
+                    write("[")
+                    write_string(v1)
+                    write("]")
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v1 in ["x", "y"] {
+                  let v3: String = "x"
+                  let v4: String = "y"
+                  let v5: Array[String] = [v3, v4]
+                  for v1: String in v5 {
                     write("[")
                     write_string(v1)
                     write("]")
@@ -11028,19 +11348,26 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Foo {a: "hello"} in {
-                    let v1 = Foo {a: v0.a} in {
-                      write("[")
-                      write_string(v0.a)
-                      write("][")
-                      write_string(v1.a)
-                      write("]")
-                    }
-                  }
+                  let v3: String = "hello"
+                  let v4: Foo = {a: v3}
+                  let v5: String = v4.a
+                  let v6: Foo = {a: v5}
+                  let v8: String = v4.a
+                  let v11: String = v6.a
+                  write("[")
+                  write_string(v8)
+                  write("][")
+                  write_string(v11)
+                  write("]")
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("[hello][hello]")
+                  let v3: String = "hello"
+                  write("[")
+                  write_string(v3)
+                  write("][")
+                  write_string(v3)
+                  write("]")
                 }
                 -- expected output --
                 [hello][hello]
@@ -11086,23 +11413,34 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Foo {a: "hello"} in {
-                    let v1 = true in {
-                      let v3 = let v2 = v1 in {
-                        match v2 { true => { v0.a } false => { "default" } }
-                      } in {
-                        write("[")
-                        write_string(v3)
-                        write("][")
-                        write_string(v0.a)
-                        write("]")
-                      }
+                  let v5: String = "hello"
+                  let v6: Foo = {a: v5}
+                  let v7: Bool = true
+                  let v10: String = match v7 {
+                    true => {
+                      let v8: String = v6.a
+                      v8
+                    }
+                    false => {
+                      let v9: String = "default"
+                      v9
                     }
                   }
+                  let v14: String = v6.a
+                  write("[")
+                  write_string(v10)
+                  write("][")
+                  write_string(v14)
+                  write("]")
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("[hello][hello]")
+                  let v5: String = "hello"
+                  write("[")
+                  write_string(v5)
+                  write("][")
+                  write_string(v5)
+                  write("]")
                 }
                 -- expected output --
                 [hello][hello]
@@ -11144,9 +11482,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = TreeNode {value: "leaf", children: []} in {
-                    write_string(v0.value)
-                  }
+                  let v2: String = "leaf"
+                  let v3: Array[TreeNode] = []
+                  let v4: TreeNode = {value: v2, children: v3}
+                  let v5: String = v4.value
+                  write_string(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11192,12 +11532,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Node {
-                    value: "first",
-                    next: Option[Node]::None,
-                  } in {
-                    write_string(v0.value)
-                  }
+                  let v2: String = "first"
+                  let v3: Option[Node] = None
+                  let v4: Node = {value: v2, next: v3}
+                  let v5: String = v4.value
+                  write_string(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11250,16 +11589,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Expr::Literal {value: "42"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Expr::Literal(value: v2) => {
-                          write_string(v2)
-                        }
-                        Expr::Neg => {
-                          write("neg")
-                        }
-                      }
+                  let v4: String = "42"
+                  let v5: Expr = Literal {value: v4}
+                  match v5 {
+                    Expr::Literal {value@v2: String} => {
+                      write_string(v2)
+                    }
+                    Expr::Neg => {
+                      write("neg")
                     }
                   }
                 }
@@ -11315,24 +11652,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [
-                    Expr::Neg {inner: Expr::Literal {value: "42"}},
-                  ] {
-                    let v1 = v0 in {
-                      match v1 {
-                        Expr::Literal => {
-                          write("lit")
-                        }
-                        Expr::Neg(inner: v2) => {
-                          let v3 = v2 in {
-                            match v3 {
-                              Expr::Literal(value: v4) => {
-                                write_string(v4)
-                              }
-                              Expr::Neg => {
-                                write("nested")
-                              }
-                            }
+                  let v6: String = "42"
+                  let v7: Expr = Literal {value: v6}
+                  let v8: Expr = Neg {inner: v7}
+                  let v9: Array[Expr] = [v8]
+                  for v0: Expr in v9 {
+                    match v0 {
+                      Expr::Literal => {
+                        write("lit")
+                      }
+                      Expr::Neg {inner@v2: Expr} => {
+                        match v2 {
+                          Expr::Literal {value@v4: String} => {
+                            write_string(v4)
+                          }
+                          Expr::Neg => {
+                            write("nested")
                           }
                         }
                       }
@@ -11341,16 +11676,18 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    Expr::Neg {inner: Expr::Literal {value: "42"}},
-                  ] {
+                  let v6: String = "42"
+                  let v7: Expr = Literal {value: v6}
+                  let v8: Expr = Neg {inner: v7}
+                  let v9: Array[Expr] = [v8]
+                  for v0: Expr in v9 {
                     match v0 {
                       Expr::Literal => {
                         write("lit")
                       }
-                      Expr::Neg(inner: v2) => {
+                      Expr::Neg {inner@v2: Expr} => {
                         match v2 {
-                          Expr::Literal(value: v4) => {
+                          Expr::Literal {value@v4: String} => {
                             write_string(v4)
                           }
                           Expr::Neg => {
@@ -11410,17 +11747,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Expr::Neg {inner: Expr::Literal {value: "42"}} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Expr::Literal(value: v2) => {
-                          write("lit:")
-                          write_string(v2)
-                        }
-                        Expr::Neg => {
-                          write("neg")
-                        }
-                      }
+                  let v4: String = "42"
+                  let v5: Expr = Literal {value: v4}
+                  let v6: Expr = Neg {inner: v5}
+                  match v6 {
+                    Expr::Literal {value@v2: String} => {
+                      write("lit:")
+                      write_string(v2)
+                    }
+                    Expr::Neg => {
+                      write("neg")
                     }
                   }
                 }
@@ -11472,12 +11808,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Folder {
-                    name: "root",
-                    parent: Option[File]::None,
-                  } in {
-                    write_string(v0.name)
-                  }
+                  let v2: String = "root"
+                  let v3: Option[File] = None
+                  let v4: Folder = {name: v2, parent: v3}
+                  let v5: String = v4.name
+                  write_string(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11538,16 +11873,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Leaf {back: Option[Expr]::None} in {
-                    let v1 = v0.back in {
-                      match v1 {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
-                      }
+                  let v3: Option[Expr] = None
+                  let v4: Leaf = {back: v3}
+                  let v5: Option[Expr] = v4.back
+                  match v5 {
+                    Some(_) => {
+                      write("some")
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -11596,11 +11930,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[Node]::None in {
-                    let v1 = Node {value: "head", next: v0} in {
-                      write_string(v1.value)
-                    }
-                  }
+                  let v3: Option[Node] = None
+                  let v4: String = "head"
+                  let v5: Node = {value: v4, next: v3}
+                  let v6: String = v5.value
+                  write_string(v6)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11653,22 +11987,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Node {
-                    value: "leaf",
-                    next: Option[Node]::None,
-                  } in {
-                    let v2 = Node {
-                      value: "head",
-                      next: let v1 = true in {
-                        match v1 {
-                          true => { Option[Node]::Some(v0) }
-                          false => { Option[Node]::None }
-                        }
-                      },
-                    } in {
-                      write_string(v2.value)
+                  let v4: String = "leaf"
+                  let v5: Option[Node] = None
+                  let v6: Node = {value: v4, next: v5}
+                  let v7: String = "head"
+                  let v8: Bool = true
+                  let v11: Option[Node] = match v8 {
+                    true => {
+                      let v9: Option[Node] = Some(v6)
+                      v9
+                    }
+                    false => {
+                      let v10: Option[Node] = None
+                      v10
                     }
                   }
+                  let v12: Node = {value: v7, next: v11}
+                  let v13: String = v12.value
+                  write_string(v13)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11714,12 +12050,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Node {
-                    value: "node",
-                    next: Option[Option[Node]]::None,
-                  } in {
-                    write_string(v0.value)
-                  }
+                  let v2: String = "node"
+                  let v3: Option[Option[Node]] = None
+                  let v4: Node = {value: v2, next: v3}
+                  let v5: String = v4.value
+                  write_string(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11776,31 +12111,28 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Node {
-                    value: "head",
-                    next: Option[Option[Node]]::Some(Option[Node]::Some(Node {
-                      value: "tail",
-                      next: Option[Option[Node]]::None,
-                    })),
-                  } in {
-                    let v1 = v0.next in {
-                      match v1 {
-                        Some(v2) => {
-                          let v3 = v2 in {
-                            match v3 {
-                              Some(v4) => {
-                                write_string(v4.value)
-                              }
-                              None => {
-                                write("inner-none")
-                              }
-                            }
-                          }
+                  let v6: String = "head"
+                  let v7: String = "tail"
+                  let v8: Option[Option[Node]] = None
+                  let v9: Node = {value: v7, next: v8}
+                  let v10: Option[Node] = Some(v9)
+                  let v11: Option[Option[Node]] = Some(v10)
+                  let v12: Node = {value: v6, next: v11}
+                  let v13: Option[Option[Node]] = v12.next
+                  match v13 {
+                    Some(v2: Option[Node]) => {
+                      match v2 {
+                        Some(v4: Node) => {
+                          let v14: String = v4.value
+                          write_string(v14)
                         }
                         None => {
-                          write("outer-none")
+                          write("inner-none")
                         }
                       }
+                    }
+                    None => {
+                      write("outer-none")
                     }
                   }
                 }
@@ -11856,21 +12188,19 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Node {
-                    value: "node",
-                    next: Option[Node]::None,
-                  } in {
-                    let v1 = Holder {held: v0.next} in {
-                      let v2 = v1.held in {
-                        match v2 {
-                          Some(_) => {
-                            write("some")
-                          }
-                          None => {
-                            write_string(v0.value)
-                          }
-                        }
-                      }
+                  let v4: String = "node"
+                  let v5: Option[Node] = None
+                  let v6: Node = {value: v4, next: v5}
+                  let v7: Option[Node] = v6.next
+                  let v8: Holder = {held: v7}
+                  let v9: Option[Node] = v8.held
+                  match v9 {
+                    Some(_) => {
+                      write("some")
+                    }
+                    None => {
+                      let v12: String = v6.value
+                      write_string(v12)
                     }
                   }
                 }
@@ -11928,17 +12258,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = A {b: B {name: "b", a: Option[A]::None}} in {
-                    write_string(v0.b.name)
-                    let v1 = v0.b.a in {
-                      match v1 {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
-                      }
+                  let v3: String = "b"
+                  let v4: Option[A] = None
+                  let v5: B = {name: v3, a: v4}
+                  let v6: A = {b: v5}
+                  let v7: B = v6.b
+                  let v8: String = v7.name
+                  let v10: B = v6.b
+                  let v11: Option[A] = v10.a
+                  write_string(v8)
+                  match v11 {
+                    Some(_) => {
+                      write("some")
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -12011,28 +12345,26 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Tree::Node {label: "a", left: Tree::Leaf, right: Option[Tree]::None} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Tree::Node(label: v2, left: v3, right: v4) => {
-                          let v5 = Step {t: v3, rest: v4} in {
-                            write_string(v2)
-                            let v6 = v5.rest in {
-                              match v6 {
-                                Some(_) => {
-                                  write("some")
-                                }
-                                None => {
-                                  write("none")
-                                }
-                              }
-                            }
-                          }
+                  let v8: String = "a"
+                  let v9: Tree = Leaf
+                  let v10: Option[Tree] = None
+                  let v11: Tree = Node {label: v8, left: v9, right: v10}
+                  match v11 {
+                    Tree::Node {label@v2: String, left@v3: Tree, right@v4: Option[Tree]} => {
+                      let v12: Step = {t: v3, rest: v4}
+                      let v14: Option[Tree] = v12.rest
+                      write_string(v2)
+                      match v14 {
+                        Some(_) => {
+                          write("some")
                         }
-                        Tree::Leaf => {
-                          write("empty")
+                        None => {
+                          write("none")
                         }
                       }
+                    }
+                    Tree::Leaf => {
+                      write("empty")
                     }
                   }
                 }
@@ -12097,26 +12429,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Contact::Email {address: "a@b.c", label: Option[String]::Some("work")} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Contact::Email(address: v2, label: v3) => {
-                          write_string(v2)
-                          let v4 = v3 in {
-                            match v4 {
-                              Some(v5) => {
-                                write_string(v5)
-                              }
-                              None => {
-                                write("no-label")
-                              }
-                            }
-                          }
+                  let v7: String = "a@b.c"
+                  let v8: String = "work"
+                  let v9: Option[String] = Some(v8)
+                  let v10: Contact = Email {address: v7, label: v9}
+                  match v10 {
+                    Contact::Email {address@v2: String, label@v3: Option[String]} => {
+                      write_string(v2)
+                      match v3 {
+                        Some(v5: String) => {
+                          write_string(v5)
                         }
-                        Contact::Anonymous => {
-                          write("anon")
+                        None => {
+                          write("no-label")
                         }
                       }
+                    }
+                    Contact::Anonymous => {
+                      write("anon")
                     }
                   }
                 }
@@ -12183,65 +12513,56 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [
-                    Tree::Node {label: "a", kid: Option[Tree]::None},
-                  ] {
-                    let v1 = v0 in {
-                      match v1 {
-                        Tree::Node(label: v2, kid: v3) => {
-                          let v4 = Tree::Node {label: "b", kid: v3} in {
-                            match v4 {
-                              Tree::Node(label: v5, kid: v6) => {
-                                write_string(v2)
-                                write_string(v5)
-                                let v7 = v6 in {
-                                  match v7 {
-                                    Some(_) => {
-                                      write("s")
-                                    }
-                                    None => {
-                                      write("n")
-                                    }
-                                  }
-                                }
+                  let v9: String = "a"
+                  let v10: Option[Tree] = None
+                  let v11: Tree = Node {label: v9, kid: v10}
+                  let v12: Array[Tree] = [v11]
+                  for v0: Tree in v12 {
+                    match v0 {
+                      Tree::Node {label@v2: String, kid@v3: Option[Tree]} => {
+                        let v13: String = "b"
+                        let v14: Tree = Node {label: v13, kid: v3}
+                        match v14 {
+                          Tree::Node {label@v5: String, kid@v6: Option[Tree]} => {
+                            write_string(v2)
+                            write_string(v5)
+                            match v6 {
+                              Some(_) => {
+                                write("s")
                               }
-                              Tree::Leaf => {
-                                write("x")
+                              None => {
+                                write("n")
                               }
                             }
                           }
+                          Tree::Leaf => {
+                            write("x")
+                          }
                         }
-                        Tree::Leaf => {
-                          write("empty")
-                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    Tree::Node {label: "a", kid: Option[Tree]::None},
-                  ] {
+                  let v9: String = "a"
+                  let v10: Option[Tree] = None
+                  let v11: Tree = Node {label: v9, kid: v10}
+                  let v12: Array[Tree] = [v11]
+                  for v0: Tree in v12 {
                     match v0 {
-                      Tree::Node(label: v2, kid: v3) => {
-                        let v4 = Tree::Node {label: "b", kid: v3} in {
-                          match v4 {
-                            Tree::Node(label: v5, kid: v6) => {
-                              write_string(v2)
-                              write_string(v5)
-                              match v6 {
-                                Some(_) => {
-                                  write("s")
-                                }
-                                None => {
-                                  write("n")
-                                }
-                              }
-                            }
-                            Tree::Leaf => {
-                              write("x")
-                            }
+                      Tree::Node {label@v2: String, kid@v3: Option[Tree]} => {
+                        write_string(v2)
+                        write("b")
+                        match v3 {
+                          Some(_) => {
+                            write("s")
+                          }
+                          None => {
+                            write("n")
                           }
                         }
                       }
@@ -12306,45 +12627,42 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [Tree::Node {label: "a", kid: Tree::Leaf}] {
-                    let v1 = v0 in {
-                      match v1 {
-                        Tree::Node(label: v2, kid: v3) => {
-                          let v4 = Tree::Node {label: "b", kid: v3} in {
-                            match v4 {
-                              Tree::Node(label: v5) => {
-                                write_string(v2)
-                                write_string(v5)
-                              }
-                              Tree::Leaf => {
-                                write("x")
-                              }
-                            }
+                  let v7: String = "a"
+                  let v8: Tree = Leaf
+                  let v9: Tree = Node {label: v7, kid: v8}
+                  let v10: Array[Tree] = [v9]
+                  for v0: Tree in v10 {
+                    match v0 {
+                      Tree::Node {label@v2: String, kid@v3: Tree} => {
+                        let v11: String = "b"
+                        let v12: Tree = Node {label: v11, kid: v3}
+                        match v12 {
+                          Tree::Node {label@v5: String} => {
+                            write_string(v2)
+                            write_string(v5)
+                          }
+                          Tree::Leaf => {
+                            write("x")
                           }
                         }
-                        Tree::Leaf => {
-                          write("empty")
-                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [Tree::Node {label: "a", kid: Tree::Leaf}] {
+                  let v7: String = "a"
+                  let v8: Tree = Leaf
+                  let v9: Tree = Node {label: v7, kid: v8}
+                  let v10: Array[Tree] = [v9]
+                  for v0: Tree in v10 {
                     match v0 {
-                      Tree::Node(label: v2, kid: v3) => {
-                        let v4 = Tree::Node {label: "b", kid: v3} in {
-                          match v4 {
-                            Tree::Node(label: v5) => {
-                              write_string(v2)
-                              write_string(v5)
-                            }
-                            Tree::Leaf => {
-                              write("x")
-                            }
-                          }
-                        }
+                      Tree::Node {label@v2: String} => {
+                        write_string(v2)
+                        write("b")
                       }
                       Tree::Leaf => {
                         write("empty")
@@ -12407,49 +12725,42 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [
-                    Tree::Node {label: "a", kid: Option[Option[Tree]]::None},
-                  ] {
-                    let v1 = v0 in {
-                      match v1 {
-                        Tree::Node(label: v2, kid: v3) => {
-                          let v4 = Tree::Node {label: "b", kid: v3} in {
-                            match v4 {
-                              Tree::Node(label: v5) => {
-                                write_string(v2)
-                                write_string(v5)
-                              }
-                              Tree::Leaf => {
-                                write("x")
-                              }
-                            }
+                  let v7: String = "a"
+                  let v8: Option[Option[Tree]] = None
+                  let v9: Tree = Node {label: v7, kid: v8}
+                  let v10: Array[Tree] = [v9]
+                  for v0: Tree in v10 {
+                    match v0 {
+                      Tree::Node {label@v2: String, kid@v3: Option[Option[Tree]]} => {
+                        let v11: String = "b"
+                        let v12: Tree = Node {label: v11, kid: v3}
+                        match v12 {
+                          Tree::Node {label@v5: String} => {
+                            write_string(v2)
+                            write_string(v5)
+                          }
+                          Tree::Leaf => {
+                            write("x")
                           }
                         }
-                        Tree::Leaf => {
-                          write("empty")
-                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    Tree::Node {label: "a", kid: Option[Option[Tree]]::None},
-                  ] {
+                  let v7: String = "a"
+                  let v8: Option[Option[Tree]] = None
+                  let v9: Tree = Node {label: v7, kid: v8}
+                  let v10: Array[Tree] = [v9]
+                  for v0: Tree in v10 {
                     match v0 {
-                      Tree::Node(label: v2, kid: v3) => {
-                        let v4 = Tree::Node {label: "b", kid: v3} in {
-                          match v4 {
-                            Tree::Node(label: v5) => {
-                              write_string(v2)
-                              write_string(v5)
-                            }
-                            Tree::Leaf => {
-                              write("x")
-                            }
-                          }
-                        }
+                      Tree::Node {label@v2: String} => {
+                        write_string(v2)
+                        write("b")
                       }
                       Tree::Leaf => {
                         write("empty")
@@ -12518,57 +12829,51 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [Wrap::Full {h: Option[Holder]::None}] {
-                    let v1 = v0 in {
-                      match v1 {
-                        Wrap::Full(h: v2) => {
-                          let v3 = Wrap::Full {h: v2} in {
-                            match v3 {
-                              Wrap::Full(h: v4) => {
-                                let v5 = v4 in {
-                                  match v5 {
-                                    Some(v6) => {
-                                      write_string(v6.tag)
-                                    }
-                                    None => {
-                                      write("re")
-                                    }
-                                  }
-                                }
+                  let v8: Option[Holder] = None
+                  let v9: Wrap = Full {h: v8}
+                  let v10: Array[Wrap] = [v9]
+                  for v0: Wrap in v10 {
+                    match v0 {
+                      Wrap::Full {h@v2: Option[Holder]} => {
+                        let v11: Wrap = Full {h: v2}
+                        match v11 {
+                          Wrap::Full {h@v4: Option[Holder]} => {
+                            match v4 {
+                              Some(v6: Holder) => {
+                                let v12: String = v6.tag
+                                write_string(v12)
                               }
-                              Wrap::Empty => {
-                                write("x")
+                              None => {
+                                write("re")
                               }
                             }
                           }
+                          Wrap::Empty => {
+                            write("x")
+                          }
                         }
-                        Wrap::Empty => {
-                          write("empty")
-                        }
+                      }
+                      Wrap::Empty => {
+                        write("empty")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [Wrap::Full {h: Option[Holder]::None}] {
+                  let v8: Option[Holder] = None
+                  let v9: Wrap = Full {h: v8}
+                  let v10: Array[Wrap] = [v9]
+                  for v0: Wrap in v10 {
                     match v0 {
-                      Wrap::Full(h: v2) => {
-                        let v3 = Wrap::Full {h: v2} in {
-                          match v3 {
-                            Wrap::Full(h: v4) => {
-                              match v4 {
-                                Some(v6) => {
-                                  write_string(v6.tag)
-                                }
-                                None => {
-                                  write("re")
-                                }
-                              }
-                            }
-                            Wrap::Empty => {
-                              write("x")
-                            }
+                      Wrap::Full {h@v2: Option[Holder]} => {
+                        match v2 {
+                          Some(v6: Holder) => {
+                            let v12: String = v6.tag
+                            write_string(v12)
+                          }
+                          None => {
+                            write("re")
                           }
                         }
                       }
@@ -12632,45 +12937,56 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn pick@f0(t@v2: Tree) -> Option[Tree] {
-                  let v3 = v2 in {
-                    match v3 {
-                      Tree::Node {kid: v4} => { v4 }
-                      Tree::Leaf => { Option[Tree]::None }
+                  let v18: Option[Tree] = match v2 {
+                    Tree::Node {kid@v4: Option[Tree]} => {
+                      v4
+                    }
+                    Tree::Leaf => {
+                      let v17: Option[Tree] = None
+                      v17
                     }
                   }
+                  v18
                 }
                 page Test() {
-                  for v0 in [
-                    Tree::Node {label: "a", kid: Option[Tree]::None},
-                  ] {
-                    let v1 = call pick@f0(t = v0) in {
-                      match v1 {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
+                  let v6: String = "a"
+                  let v7: Option[Tree] = None
+                  let v8: Tree = Node {label: v6, kid: v7}
+                  let v9: Array[Tree] = [v8]
+                  for v0: Tree in v9 {
+                    let v10: Option[Tree] = call pick@f0(v0)
+                    match v10 {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    Tree::Node {label: "a", kid: Option[Tree]::None},
-                  ] {
-                    let v1 = match v0 {
-                      Tree::Node {kid: v7} => { v7 }
-                      Tree::Leaf => { Option[Tree]::None }
-                    } in {
-                      match v1 {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
+                  let v6: String = "a"
+                  let v7: Option[Tree] = None
+                  let v8: Tree = Node {label: v6, kid: v7}
+                  let v9: Array[Tree] = [v8]
+                  for v0: Tree in v9 {
+                    let v21: Option[Tree] = match v0 {
+                      Tree::Node {kid@v19: Option[Tree]} => {
+                        v19
+                      }
+                      Tree::Leaf => {
+                        let v20: Option[Tree] = None
+                        v20
+                      }
+                    }
+                    match v21 {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
@@ -12729,37 +13045,57 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn depth@f0(t@v3: Option[Tree]) -> Int {
-                  let v4 = v3 in {
-                    match v4 { Some(_) => { 1 } None => { 0 } }
+                  let v20: Int = match v3 {
+                    Some(_) => {
+                      let v18: Int = 1
+                      v18
+                    }
+                    None => {
+                      let v19: Int = 0
+                      v19
+                    }
                   }
+                  v20
                 }
                 page Test() {
-                  for v0 in [
-                    Tree::Node {label: "a", kid: Option[Tree]::None},
-                  ] {
-                    let v1 = v0 in {
-                      match v1 {
-                        Tree::Node(kid: v2) => {
-                          write_string(call depth@f0(t = v2).to_string())
-                        }
-                        Tree::Leaf => {
-                          write("empty")
-                        }
+                  let v6: String = "a"
+                  let v7: Option[Tree] = None
+                  let v8: Tree = Node {label: v6, kid: v7}
+                  let v9: Array[Tree] = [v8]
+                  for v0: Tree in v9 {
+                    match v0 {
+                      Tree::Node {kid@v2: Option[Tree]} => {
+                        let v10: Int = call depth@f0(v2)
+                        let v11: String = v10.to_string()
+                        write_string(v11)
+                      }
+                      Tree::Leaf => {
+                        write("empty")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [
-                    Tree::Node {label: "a", kid: Option[Tree]::None},
-                  ] {
+                  let v6: String = "a"
+                  let v7: Option[Tree] = None
+                  let v8: Tree = Node {label: v6, kid: v7}
+                  let v9: Array[Tree] = [v8]
+                  for v0: Tree in v9 {
                     match v0 {
-                      Tree::Node(kid: v2) => {
-                        write_string(match v2 {
-                          Some(_) => { 1 }
-                          None => { 0 }
-                        }.to_string())
+                      Tree::Node {kid@v2: Option[Tree]} => {
+                        let v23: Int = match v2 {
+                          Some(_) => {
+                            let v21: Int = 1
+                            v21
+                          }
+                          None => {
+                            let v22: Int = 0
+                            v22
+                          }
+                        }
+                        let v11: String = v23.to_string()
+                        write_string(v11)
                       }
                       Tree::Leaf => {
                         write("empty")
@@ -12810,7 +13146,8 @@ mod tests {
                   write("!")
                 }
                 page Test() {
-                  call Greeting@f0(name = "World")
+                  let v2: String = "World"
+                  write_function Greeting@f0(v2)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -12873,9 +13210,11 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card@f0(title = "Hello", children = {
+                  let v3: String = "Hello"
+                  let v7: Html = html {
                     write("<p>world</p>")
-                  })
+                  }
+                  write_function Card@f0(v3, v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -12938,16 +13277,18 @@ mod tests {
                   write("</div>")
                 }
                 fn Outer@f0(children@v0: Html) -> Html {
-                  write("<div class=\"outer\">")
-                  call Inner@f1(children = {
+                  let v12: Html = html {
                     write_html(v0)
-                  })
+                  }
+                  write("<div class=\"outer\">")
+                  write_function Inner@f1(v12)
                   write("</div>")
                 }
                 page Test() {
-                  call Outer@f0(children = {
+                  let v6: Html = html {
                     write("<p>hello</p>")
-                  })
+                  }
+                  write_function Outer@f0(v6)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13031,11 +13372,13 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Layout@f2(children = {
-                    call Header@f0(title = "Welcome")
+                  let v3: String = "Welcome"
+                  let v11: Html = html {
+                    write_function Header@f0(v3)
                     write("<main><p>Hello world</p></main>")
-                    call Footer@f1()
-                  })
+                    write_function Footer@f1()
+                  }
+                  write_function Layout@f2(v11)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13099,21 +13442,21 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Repeat@f0(children = {
+                  let v5: Html = html {
                     write("<span>hi</span>")
-                  })
+                  }
+                  write_function Repeat@f0(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
-                  let v1 = {
+                  let v4: Html = html {
                     write("<span>hi</span>")
-                  } in {
-                    write("<div class=\"first\">")
-                    write_html(v1)
-                    write("</div><div class=\"second\">")
-                    write_html(v1)
-                    write("</div>")
                   }
+                  write("<div class=\"first\">")
+                  write_html(v4)
+                  write("</div><div class=\"second\">")
+                  write_html(v4)
+                  write("</div>")
                 }
                 -- expected output --
                 <div class="first"><span>hi</span></div><div class="second"><span>hi</span></div>
@@ -13181,51 +13524,49 @@ mod tests {
                   write("</strong>")
                 }
                 fn NodeView@f0(node@v1: Node) -> Html {
-                  call Badge@f1(text = v1.value)
-                  let v2 = v1.next in {
-                    match v2 {
-                      Some(v3) => {
-                        call NodeView@f0(node = v3)
-                      }
-                      None => {
-                      }
+                  let v16: String = v1.value
+                  let v18: Option[Node] = v1.next
+                  write_function Badge@f1(v16)
+                  match v18 {
+                    Some(v3: Node) => {
+                      write_function NodeView@f0(v3)
+                    }
+                    None => {
                     }
                   }
                 }
                 page Test() {
-                  let v0 = Node {
-                    value: "a",
-                    next: Option[Node]::Some(Node {
-                      value: "b",
-                      next: Option[Node]::None,
-                    }),
-                  } in {
-                    call NodeView@f0(node = v0)
-                  }
+                  let v6: String = "a"
+                  let v7: String = "b"
+                  let v8: Option[Node] = None
+                  let v9: Node = {value: v7, next: v8}
+                  let v10: Option[Node] = Some(v9)
+                  let v11: Node = {value: v6, next: v10}
+                  write_function NodeView@f0(v11)
                 }
                 -- ir (optimized) --
                 fn NodeView@f0(node@v1: Node) -> Html {
+                  let v16: String = v1.value
+                  let v18: Option[Node] = v1.next
                   write("<strong>")
-                  write_string(v1.value)
+                  write_string(v16)
                   write("</strong>")
-                  let v2 = v1.next in {
-                    match v2 {
-                      Some(v3) => {
-                        call NodeView@f0(node = v3)
-                      }
-                      None => {
-                      }
+                  match v18 {
+                    Some(v3: Node) => {
+                      write_function NodeView@f0(v3)
+                    }
+                    None => {
                     }
                   }
                 }
                 page Test() {
-                  call NodeView@f0(node = Node {
-                    value: "a",
-                    next: Option[Node]::Some(Node {
-                      value: "b",
-                      next: Option[Node]::None,
-                    }),
-                  })
+                  let v6: String = "a"
+                  let v7: String = "b"
+                  let v8: Option[Node] = None
+                  let v9: Node = {value: v7, next: v8}
+                  let v10: Option[Node] = Some(v9)
+                  let v11: Node = {value: v6, next: v10}
+                  write_function NodeView@f0(v11)
                 }
                 -- expected output --
                 <strong>a</strong><strong>b</strong>
@@ -13289,59 +13630,57 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn NodeView@f0(node@v1: Node) -> Html {
+                  let v15: String = v1.value
+                  let v19: Option[Node] = v1.next
                   write("<span>")
-                  write_string(v1.value)
+                  write_string(v15)
                   write("</span>")
-                  let v2 = v1.next in {
-                    match v2 {
-                      Some(v3) => {
-                        call NodeView@f0(node = v3)
-                      }
-                      None => {
-                      }
+                  match v19 {
+                    Some(v3: Node) => {
+                      write_function NodeView@f0(v3)
+                    }
+                    None => {
                     }
                   }
                 }
                 page Test() {
-                  let v0 = Node {
-                    value: "a",
-                    next: Option[Node]::Some(Node {
-                      value: "b",
-                      next: Option[Node]::Some(Node {
-                        value: "c",
-                        next: Option[Node]::None,
-                      }),
-                    }),
-                  } in {
-                    call NodeView@f0(node = v0)
-                  }
+                  let v5: String = "a"
+                  let v6: String = "b"
+                  let v7: String = "c"
+                  let v8: Option[Node] = None
+                  let v9: Node = {value: v7, next: v8}
+                  let v10: Option[Node] = Some(v9)
+                  let v11: Node = {value: v6, next: v10}
+                  let v12: Option[Node] = Some(v11)
+                  let v13: Node = {value: v5, next: v12}
+                  write_function NodeView@f0(v13)
                 }
                 -- ir (optimized) --
                 fn NodeView@f0(node@v1: Node) -> Html {
+                  let v15: String = v1.value
+                  let v19: Option[Node] = v1.next
                   write("<span>")
-                  write_string(v1.value)
+                  write_string(v15)
                   write("</span>")
-                  let v2 = v1.next in {
-                    match v2 {
-                      Some(v3) => {
-                        call NodeView@f0(node = v3)
-                      }
-                      None => {
-                      }
+                  match v19 {
+                    Some(v3: Node) => {
+                      write_function NodeView@f0(v3)
+                    }
+                    None => {
                     }
                   }
                 }
                 page Test() {
-                  call NodeView@f0(node = Node {
-                    value: "a",
-                    next: Option[Node]::Some(Node {
-                      value: "b",
-                      next: Option[Node]::Some(Node {
-                        value: "c",
-                        next: Option[Node]::None,
-                      }),
-                    }),
-                  })
+                  let v5: String = "a"
+                  let v6: String = "b"
+                  let v7: String = "c"
+                  let v8: Option[Node] = None
+                  let v9: Node = {value: v7, next: v8}
+                  let v10: Option[Node] = Some(v9)
+                  let v11: Node = {value: v6, next: v10}
+                  let v12: Option[Node] = Some(v11)
+                  let v13: Node = {value: v5, next: v12}
+                  write_function NodeView@f0(v13)
                 }
                 -- expected output --
                 <span>a</span><span>b</span><span>c</span>
@@ -13388,7 +13727,8 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card@f0(title = "New card")
+                  let v2: String = "New card"
+                  write_function Card@f0(v2)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13434,14 +13774,23 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Offset@f0(dx@v0: Int, scale@v1: Float) -> Html {
+                  let v6: Int = 3
+                  let v7: Int = v0 * v6
+                  let v8: String = v7.to_string()
+                  let v11: Float = 2
+                  let v12: Float = v1 * v11
+                  let v13: Int = v12.to_int()
+                  let v14: String = v13.to_string()
                   write("<div>")
-                  write_string((v0 * 3).to_string())
+                  write_string(v8)
                   write(" ")
-                  write_string((v1 * 2).to_int().to_string())
+                  write_string(v14)
                   write("</div>")
                 }
                 page Test() {
-                  call Offset@f0(dx = -1, scale = -2.5)
+                  let v3: Int = -1
+                  let v4: Float = -2.5
+                  write_function Offset@f0(v3, v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13492,7 +13841,8 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card@f0(title = "Custom title")
+                  let v2: String = "Custom title"
+                  write_function Card@f0(v2)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13548,7 +13898,9 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card@f0(title = "Hello", subtitle = "No subtitle")
+                  let v3: String = "Hello"
+                  let v4: String = "No subtitle"
+                  write_function Card@f0(v3, v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13604,7 +13956,9 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card@f0(title = "Hello", subtitle = "World")
+                  let v3: String = "Hello"
+                  let v4: String = "World"
+                  write_function Card@f0(v3, v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13653,11 +14007,7 @@ mod tests {
             r#"<div>Default - Custom - End</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(
-                  title@v0: String,
-                  subtitle@v1: String,
-                  footer@v2: String,
-                ) -> Html {
+                fn Card@f0(title@v0: String, subtitle@v1: String, footer@v2: String) -> Html {
                   write("<div>")
                   write_string(v0)
                   write(" - ")
@@ -13667,7 +14017,10 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card@f0(title = "Default", subtitle = "Custom", footer = "End")
+                  let v4: String = "Default"
+                  let v5: String = "Custom"
+                  let v6: String = "End"
+                  write_function Card@f0(v4, v5, v6)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13726,7 +14079,10 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card@f0(title = "Hello", children = {})
+                  let v3: String = "Hello"
+                  let v4: Html = html {
+                  }
+                  write_function Card@f0(v3, v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13792,10 +14148,15 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card@f0(title = "With", children = {
+                  let v3: String = "With"
+                  let v7: Html = html {
                     write("<p>body</p>")
-                  })
-                  call Card@f0(title = "Without", children = {})
+                  }
+                  let v9: String = "Without"
+                  let v10: Html = html {
+                  }
+                  write_function Card@f0(v3, v7)
+                  write_function Card@f0(v9, v10)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13840,16 +14201,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "" in {
-                    let v1 = v0.is_empty() in {
-                      match v1 {
-                        true => {
-                          write("empty")
-                        }
-                        false => {
-                          write("not empty")
-                        }
-                      }
+                  let v3: String = ""
+                  let v4: Bool = v3.is_empty()
+                  match v4 {
+                    true => {
+                      write("empty")
+                    }
+                    false => {
+                      write("not empty")
                     }
                   }
                 }
@@ -13895,16 +14254,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = "hello" in {
-                    let v1 = v0.is_empty() in {
-                      match v1 {
-                        true => {
-                          write("empty")
-                        }
-                        false => {
-                          write("not empty")
-                        }
-                      }
+                  let v3: String = "hello"
+                  let v4: Bool = v3.is_empty()
+                  match v4 {
+                    true => {
+                      write("empty")
+                    }
+                    false => {
+                      write("not empty")
                     }
                   }
                 }
@@ -13950,16 +14307,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("hello") in {
-                    let v1 = v0.is_some() in {
-                      match v1 {
-                        true => {
-                          write("yes")
-                        }
-                        false => {
-                          write("no")
-                        }
-                      }
+                  let v3: String = "hello"
+                  let v4: Option[String] = Some(v3)
+                  let v5: Bool = v4.is_some()
+                  match v5 {
+                    true => {
+                      write("yes")
+                    }
+                    false => {
+                      write("no")
                     }
                   }
                 }
@@ -14005,16 +14361,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::None in {
-                    let v1 = v0.is_some() in {
-                      match v1 {
-                        true => {
-                          write("yes")
-                        }
-                        false => {
-                          write("no")
-                        }
-                      }
+                  let v3: Option[String] = None
+                  let v4: Bool = v3.is_some()
+                  match v4 {
+                    true => {
+                      write("yes")
+                    }
+                    false => {
+                      write("no")
                     }
                   }
                 }
@@ -14060,16 +14414,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::None in {
-                    let v1 = v0.is_none() in {
-                      match v1 {
-                        true => {
-                          write("yes")
-                        }
-                        false => {
-                          write("no")
-                        }
-                      }
+                  let v3: Option[String] = None
+                  let v4: Bool = v3.is_none()
+                  match v4 {
+                    true => {
+                      write("yes")
+                    }
+                    false => {
+                      write("no")
                     }
                   }
                 }
@@ -14115,16 +14467,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("hello") in {
-                    let v1 = v0.is_none() in {
-                      match v1 {
-                        true => {
-                          write("yes")
-                        }
-                        false => {
-                          write("no")
-                        }
-                      }
+                  let v3: String = "hello"
+                  let v4: Option[String] = Some(v3)
+                  let v5: Bool = v4.is_none()
+                  match v5 {
+                    true => {
+                      write("yes")
+                    }
+                    false => {
+                      write("no")
                     }
                   }
                 }
@@ -14170,15 +14521,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[Bool]::None in {
-                    let v1 = (true == v0.is_none()) in {
-                      match v1 {
-                        true => {
-                          write("x")
-                        }
-                        false => {
-                        }
-                      }
+                  let v3: Option[Bool] = None
+                  let v4: Bool = true
+                  let v5: Bool = v3.is_none()
+                  let v6: Bool = v4 == v5
+                  match v6 {
+                    true => {
+                      write("x")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -14221,12 +14572,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[String]::Some("Alice") in {
-                    write_string(match v0 {
-                      Some(v1) => { v1 }
-                      None => { "anonymous" }
-                    })
+                  let v3: String = "Alice"
+                  let v4: Option[String] = Some(v3)
+                  let v6: String = match v4 {
+                    Some(v1: String) => {
+                      v1
+                    }
+                    None => {
+                      let v5: String = "anonymous"
+                      v5
+                    }
                   }
+                  write_string(v6)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14270,13 +14627,20 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Greeting@f0(name@v0: Option[String]) -> Html {
-                  write_string(match v0 {
-                    Some(v1) => { v1 }
-                    None => { "anonymous" }
-                  })
+                  let v6: String = match v0 {
+                    Some(v1: String) => {
+                      v1
+                    }
+                    None => {
+                      let v5: String = "anonymous"
+                      v5
+                    }
+                  }
+                  write_string(v6)
                 }
                 page Test() {
-                  call Greeting@f0(name = Option[String]::None)
+                  let v3: Option[String] = None
+                  write_function Greeting@f0(v3)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14319,13 +14683,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = ("a".is_empty() == "b".is_empty()) in {
-                    match v0 {
-                      true => {
-                        write("x")
-                      }
-                      false => {
-                      }
+                  let v2: String = "a"
+                  let v3: Bool = v2.is_empty()
+                  let v4: String = "b"
+                  let v5: Bool = v4.is_empty()
+                  let v6: Bool = v3 == v5
+                  match v6 {
+                    true => {
+                      write("x")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -14485,36 +14852,37 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn RenderItem@f0(item@v0: Item) -> Html {
-                  let v1 = v0 in {
-                    match v1 {
-                      Item::Todo(label: v2, done: v3) => {
-                        let v4 = v3 in {
-                          match v4 {
-                            true => {
-                              write("[x]")
-                            }
-                            false => {
-                            }
-                          }
+                  match v0 {
+                    Item::Todo {label@v2: String, done@v3: Bool} => {
+                      let v21: Bool = !v3
+                      match v3 {
+                        true => {
+                          write("[x]")
                         }
-                        let v5 = (!v3) in {
-                          match v5 {
-                            true => {
-                              write("[ ]")
-                            }
-                            false => {
-                            }
-                          }
+                        false => {
                         }
-                        write_string(v2)
                       }
+                      match v21 {
+                        true => {
+                          write("[ ]")
+                        }
+                        false => {
+                        }
+                      }
+                      write_string(v2)
                     }
                   }
                 }
                 page Test() {
-                  call RenderItem@f0(item = Item::Todo {label: "Buy milk", done: true})
+                  let v7: String = "Buy milk"
+                  let v8: Bool = true
+                  let v9: Item = Todo {label: v7, done: v8}
+                  let v12: String = "Walk dog"
+                  let v13: Bool = false
+                  let v14: Item = Todo {label: v12, done: v13}
+                  write_function RenderItem@f0(v9)
                   write(",")
-                  call RenderItem@f0(item = Item::Todo {label: "Walk dog", done: false})
+                  write_function RenderItem@f0(v14)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14586,43 +14954,49 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Render@f0(time@v0: TimeAgo) -> Html {
-                  let v1 = v0 in {
-                    match v1 {
-                      TimeAgo::MinutesAgo(count: v2) => {
-                        let v3 = (v2 == 1) in {
-                          match v3 {
-                            true => {
-                              write("1 minute ago")
-                            }
-                            false => {
-                              write_string(v2.to_string())
-                              write(" minutes ago")
-                            }
-                          }
+                  match v0 {
+                    TimeAgo::MinutesAgo {count@v2: Int} => {
+                      let v19: Int = 1
+                      let v20: Bool = v2 == v19
+                      match v20 {
+                        true => {
+                          write("1 minute ago")
+                        }
+                        false => {
+                          let v23: String = v2.to_string()
+                          write_string(v23)
+                          write(" minutes ago")
                         }
                       }
-                      TimeAgo::HoursAgo(count: v4) => {
-                        let v5 = (v4 == 1) in {
-                          match v5 {
-                            true => {
-                              write("1 hour ago")
-                            }
-                            false => {
-                              write_string(v4.to_string())
-                              write(" hours ago")
-                            }
-                          }
+                    }
+                    TimeAgo::HoursAgo {count@v4: Int} => {
+                      let v29: Int = 1
+                      let v30: Bool = v4 == v29
+                      match v30 {
+                        true => {
+                          write("1 hour ago")
+                        }
+                        false => {
+                          let v33: String = v4.to_string()
+                          write_string(v33)
+                          write(" hours ago")
                         }
                       }
                     }
                   }
                 }
                 page Test() {
-                  call Render@f0(time = TimeAgo::MinutesAgo {count: 1})
+                  let v7: Int = 1
+                  let v8: TimeAgo = MinutesAgo {count: v7}
+                  let v11: Int = 5
+                  let v12: TimeAgo = MinutesAgo {count: v11}
+                  let v15: Int = 1
+                  let v16: TimeAgo = HoursAgo {count: v15}
+                  write_function Render@f0(v8)
                   write(",")
-                  call Render@f0(time = TimeAgo::MinutesAgo {count: 5})
+                  write_function Render@f0(v12)
                   write(",")
-                  call Render@f0(time = TimeAgo::HoursAgo {count: 1})
+                  write_function Render@f0(v16)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14679,18 +15053,19 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn RenderCode@f0(block@v0: CodeBlock) -> Html {
-                  let v1 = v0 in {
-                    match v1 {
-                      CodeBlock::Snippet(code: v2) => {
-                        write("<code>")
-                        write_string(v2)
-                        write("</code>")
-                      }
+                  match v0 {
+                    CodeBlock::Snippet {code@v2: String} => {
+                      write("<code>")
+                      write_string(v2)
+                      write("</code>")
                     }
                   }
                 }
                 page Test() {
-                  call RenderCode@f0(block = CodeBlock::Snippet {language: "rust", code: "fn main()"})
+                  let v4: String = "rust"
+                  let v5: String = "fn main()"
+                  let v6: CodeBlock = Snippet {language: v4, code: v5}
+                  write_function RenderCode@f0(v6)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14757,23 +15132,24 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Render@f0(el@v0: ButtonElement) -> Html {
-                  let v1 = v0 in {
-                    match v1 {
-                      ButtonElement::Link(href: v2) => {
-                        write("<a href=\"")
-                        write_string(v2)
-                        write("\">link</a>")
-                      }
-                      ButtonElement::Button(type: v3) => {
-                        write("<button type=\"")
-                        write_string(v3)
-                        write("\">btn</button>")
-                      }
+                  match v0 {
+                    ButtonElement::Link {href@v2: String} => {
+                      write("<a href=\"")
+                      write_string(v2)
+                      write("\">link</a>")
+                    }
+                    ButtonElement::Button {type@v3: String} => {
+                      write("<button type=\"")
+                      write_string(v3)
+                      write("\">btn</button>")
                     }
                   }
                 }
                 page Test() {
-                  call Render@f0(el = ButtonElement::Button {disabled: false, type: "submit"})
+                  let v5: Bool = false
+                  let v6: String = "submit"
+                  let v7: ButtonElement = Button {disabled: v5, type: v6}
+                  write_function Render@f0(v7)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14848,48 +15224,25 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[Target]::Some(Target {
-                    id: "1",
-                    title: "hello",
-                  }) in {
-                    let v3 = [
-                      let v1 = v0 in {
-                        match v1 {
-                          Some(v2) => { Option[String]::Some(v2.title) }
-                          None => { Option[String]::None }
-                        }
-                      },
-                    ] in {
-                      for v4 in v3 {
-                        let v5 = v4 in {
-                          match v5 {
-                            Some(v6) => {
-                              write("[")
-                              write_string(v6)
-                              write("]")
-                            }
-                            None => {
-                            }
-                          }
-                        }
-                      }
-                      let v7 = v0 in {
-                        match v7 {
-                          Some(v8) => {
-                            write_string(v8.title)
-                          }
-                          None => {
-                          }
-                        }
-                      }
+                  let v10: String = "1"
+                  let v11: String = "hello"
+                  let v12: Target = {id: v10, title: v11}
+                  let v13: Option[Target] = Some(v12)
+                  let v17: Option[String] = match v13 {
+                    Some(v2: Target) => {
+                      let v14: String = v2.title
+                      let v15: Option[String] = Some(v14)
+                      v15
+                    }
+                    None => {
+                      let v16: Option[String] = None
+                      v16
                     }
                   }
-                }
-                -- ir (optimized) --
-                page Test() {
-                  for v4 in [Option[String]::Some("hello")] {
+                  let v18: Array[Option[String]] = [v17]
+                  for v4: Option[String] in v18 {
                     match v4 {
-                      Some(v6) => {
+                      Some(v6: String) => {
                         write("[")
                         write_string(v6)
                         write("]")
@@ -14898,7 +15251,32 @@ mod tests {
                       }
                     }
                   }
-                  write("hello")
+                  match v13 {
+                    Some(v8: Target) => {
+                      let v26: String = v8.title
+                      write_string(v26)
+                    }
+                    None => {
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  let v11: String = "hello"
+                  let v15: Option[String] = Some(v11)
+                  let v18: Array[Option[String]] = [v15]
+                  for v4: Option[String] in v18 {
+                    match v4 {
+                      Some(v6: String) => {
+                        write("[")
+                        write_string(v6)
+                        write("]")
+                      }
+                      None => {
+                      }
+                    }
+                  }
+                  write_string(v11)
                 }
                 -- expected output --
                 [hello]hello
@@ -15041,45 +15419,54 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Nest@f0(depth@v0: Int, children@v1: Html) -> Html {
-                  let v2 = (0 < v0) in {
-                    match v2 {
-                      true => {
-                        write("<div>")
-                        call Nest@f0(depth = (v0 - 1), children = {
-                          write_html(v1)
-                        })
-                        write("</div>")
-                      }
-                      false => {
+                  let v10: Int = 0
+                  let v11: Bool = v10 < v0
+                  match v11 {
+                    true => {
+                      let v12: Int = 1
+                      let v13: Int = v0 - v12
+                      let v14: Html = html {
                         write_html(v1)
                       }
+                      write("<div>")
+                      write_function Nest@f0(v13, v14)
+                      write("</div>")
+                    }
+                    false => {
+                      write_html(v1)
                     }
                   }
                 }
                 page Test() {
-                  call Nest@f0(depth = 2, children = {
+                  let v4: Int = 2
+                  let v8: Html = html {
                     write("<b>x</b>")
-                  })
+                  }
+                  write_function Nest@f0(v4, v8)
                 }
                 -- ir (optimized) --
                 fn Nest@f0(depth@v0: Int, children@v1: Html) -> Html {
-                  let v2 = (0 < v0) in {
-                    match v2 {
-                      true => {
-                        write("<div>")
-                        call Nest@f0(depth = (v0 - 1), children = v1)
-                        write("</div>")
-                      }
-                      false => {
-                        write_html(v1)
-                      }
+                  let v10: Int = 0
+                  let v11: Bool = v10 < v0
+                  match v11 {
+                    true => {
+                      let v12: Int = 1
+                      let v13: Int = v0 - v12
+                      write("<div>")
+                      write_function Nest@f0(v13, v1)
+                      write("</div>")
+                    }
+                    false => {
+                      write_html(v1)
                     }
                   }
                 }
                 page Test() {
-                  call Nest@f0(depth = 2, children = {
+                  let v4: Int = 2
+                  let v7: Html = html {
                     write("<b>x</b>")
-                  })
+                  }
+                  write_function Nest@f0(v4, v7)
                 }
                 -- expected output --
                 <div><div><b>x</b></div></div>
@@ -15126,26 +15513,19 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Foo@f0(children@v0: Html) -> Html {
-                  let v1 = v0 in {
-                    write("<div>")
-                    write_html(v1)
-                    write("</div>")
-                  }
+                  write("<div>")
+                  write_html(v0)
+                  write("</div>")
                 }
                 page Test() {
-                  call Foo@f0(children = {
+                  let v6: Html = html {
                     write("<b>hi</b>")
-                  })
+                  }
+                  write_function Foo@f0(v6)
                 }
                 -- ir (optimized) --
                 page Test() {
-                  let v3 = {
-                    write("<b>hi</b>")
-                  } in {
-                    write("<div>")
-                    write_html(v3)
-                    write("</div>")
-                  }
+                  write("<div><b>hi</b></div>")
                 }
                 -- expected output --
                 <div><b>hi</b></div>
@@ -15202,16 +15582,18 @@ mod tests {
                   write("</em>")
                 }
                 fn Outer@f0(children@v0: Html) -> Html {
-                  write("<section>")
-                  call Inner@f1(children = {
+                  let v8: Html = html {
                     write_html(v0)
-                  })
+                  }
+                  write("<section>")
+                  write_function Inner@f1(v8)
                   write("</section>")
                 }
                 page Test() {
-                  call Outer@f0(children = {
+                  let v4: Html = html {
                     write("z")
-                  })
+                  }
+                  write_function Outer@f0(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -15263,53 +15645,62 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Nest@f0(n@v0: Int, id@v1: String) -> Html {
+                  let v9: Int = 0
+                  let v10: Bool = v9 < v0
                   write("<div id=\"")
                   write_string(v1)
                   write("\">")
-                  let v2 = (0 < v0) in {
-                    match v2 {
-                      true => {
-                        call Nest@f1(n = (v0 - 1))
-                      }
-                      false => {
-                      }
+                  match v10 {
+                    true => {
+                      let v11: Int = 1
+                      let v12: Int = v0 - v11
+                      write_function Nest@f1(v12)
+                    }
+                    false => {
                     }
                   }
                   write("</div>")
                 }
                 fn Nest@f1(n@v3: Int) -> Html {
+                  let v18: Int = 0
+                  let v19: Bool = v18 < v3
                   write("<div>")
-                  let v4 = (0 < v3) in {
-                    match v4 {
-                      true => {
-                        call Nest@f1(n = (v3 - 1))
-                      }
-                      false => {
-                      }
+                  match v19 {
+                    true => {
+                      let v20: Int = 1
+                      let v21: Int = v3 - v20
+                      write_function Nest@f1(v21)
+                    }
+                    false => {
                     }
                   }
                   write("</div>")
                 }
                 page Test() {
-                  call Nest@f0(n = 2, id = "root")
+                  let v6: Int = 2
+                  let v7: String = "root"
+                  write_function Nest@f0(v6, v7)
                 }
                 -- ir (optimized) --
                 fn Nest@f1(n@v3: Int) -> Html {
+                  let v18: Int = 0
+                  let v19: Bool = v18 < v3
                   write("<div>")
-                  let v4 = (0 < v3) in {
-                    match v4 {
-                      true => {
-                        call Nest@f1(n = (v3 - 1))
-                      }
-                      false => {
-                      }
+                  match v19 {
+                    true => {
+                      let v20: Int = 1
+                      let v21: Int = v3 - v20
+                      write_function Nest@f1(v21)
+                    }
+                    false => {
                     }
                   }
                   write("</div>")
                 }
                 page Test() {
+                  let v30: Int = 1
                   write("<div id=\"root\">")
-                  call Nest@f1(n = 1)
+                  write_function Nest@f1(v30)
                   write("</div>")
                 }
                 -- expected output --
@@ -15356,35 +15747,43 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Countdown@f0(n@v0: Int) -> Html {
-                  write_string(v0.to_string())
-                  let v1 = (0 < v0) in {
-                    match v1 {
-                      true => {
-                        call Countdown@f0(n = (v0 - 1))
-                      }
-                      false => {
-                      }
+                  let v5: String = v0.to_string()
+                  let v7: Int = 0
+                  let v8: Bool = v7 < v0
+                  write_string(v5)
+                  match v8 {
+                    true => {
+                      let v9: Int = 1
+                      let v10: Int = v0 - v9
+                      write_function Countdown@f0(v10)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown@f0(n = 3)
+                  let v3: Int = 3
+                  write_function Countdown@f0(v3)
                 }
                 -- ir (optimized) --
                 fn Countdown@f0(n@v0: Int) -> Html {
-                  write_string(v0.to_string())
-                  let v1 = (0 < v0) in {
-                    match v1 {
-                      true => {
-                        call Countdown@f0(n = (v0 - 1))
-                      }
-                      false => {
-                      }
+                  let v5: String = v0.to_string()
+                  let v7: Int = 0
+                  let v8: Bool = v7 < v0
+                  write_string(v5)
+                  match v8 {
+                    true => {
+                      let v9: Int = 1
+                      let v10: Int = v0 - v9
+                      write_function Countdown@f0(v10)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown@f0(n = 3)
+                  let v3: Int = 3
+                  write_function Countdown@f0(v3)
                 }
                 -- expected output --
                 3210
@@ -15436,51 +15835,59 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Loop@f0(n@v0: Int, label@v1: Option[String]) -> Html {
-                  let v2 = v1 in {
-                    match v2 {
-                      Some(v3) => {
-                        write_string(v3)
-                      }
-                      None => {
-                        write("x")
-                      }
-                    }
-                  }
-                  let v4 = (0 < v0) in {
-                    match v4 {
-                      true => {
-                        call Loop@f0(n = (v0 - 1), label = v1)
-                      }
-                      false => {
-                      }
-                    }
-                  }
-                }
-                page Test() {
-                  call Loop@f0(n = 2, label = Option[String]::Some("a"))
-                }
-                -- ir (optimized) --
-                fn Loop@f0(n@v0: Int, label@v1: Option[String]) -> Html {
+                  let v15: Int = 0
+                  let v16: Bool = v15 < v0
                   match v1 {
-                    Some(v3) => {
+                    Some(v3: String) => {
                       write_string(v3)
                     }
                     None => {
                       write("x")
                     }
                   }
-                  let v4 = (0 < v0) in {
-                    match v4 {
-                      true => {
-                        call Loop@f0(n = (v0 - 1), label = v1)
-                      }
-                      false => {
-                      }
+                  match v16 {
+                    true => {
+                      let v17: Int = 1
+                      let v18: Int = v0 - v17
+                      write_function Loop@f0(v18, v1)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Loop@f0(n = 2, label = Option[String]::Some("a"))
+                  let v6: Int = 2
+                  let v7: String = "a"
+                  let v8: Option[String] = Some(v7)
+                  write_function Loop@f0(v6, v8)
+                }
+                -- ir (optimized) --
+                fn Loop@f0(n@v0: Int, label@v1: Option[String]) -> Html {
+                  let v15: Int = 0
+                  let v16: Bool = v15 < v0
+                  match v1 {
+                    Some(v3: String) => {
+                      write_string(v3)
+                    }
+                    None => {
+                      write("x")
+                    }
+                  }
+                  match v16 {
+                    true => {
+                      let v17: Int = 1
+                      let v18: Int = v0 - v17
+                      write_function Loop@f0(v18, v1)
+                    }
+                    false => {
+                    }
+                  }
+                }
+                page Test() {
+                  let v6: Int = 2
+                  let v7: String = "a"
+                  let v8: Option[String] = Some(v7)
+                  write_function Loop@f0(v6, v8)
                 }
                 -- expected output --
                 aaa
@@ -15527,37 +15934,37 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn C@f0(x@v1: Option[String]) -> Html {
-                  let v2 = v1.is_none() in {
-                    match v2 {
-                      true => {
-                        call C@f0(x = v1)
-                      }
-                      false => {
-                      }
+                  let v9: Bool = v1.is_none()
+                  match v9 {
+                    true => {
+                      write_function C@f0(v1)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  let v0 = Option[String]::Some("a") in {
-                    call C@f0(x = v0)
-                    call C@f0(x = v0)
-                  }
+                  let v4: String = "a"
+                  let v5: Option[String] = Some(v4)
+                  write_function C@f0(v5)
+                  write_function C@f0(v5)
                 }
                 -- ir (optimized) --
                 fn C@f0(x@v1: Option[String]) -> Html {
-                  let v2 = v1.is_none() in {
-                    match v2 {
-                      true => {
-                        call C@f0(x = v1)
-                      }
-                      false => {
-                      }
+                  let v9: Bool = v1.is_none()
+                  match v9 {
+                    true => {
+                      write_function C@f0(v1)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call C@f0(x = Option[String]::Some("a"))
-                  call C@f0(x = Option[String]::Some("a"))
+                  let v4: String = "a"
+                  let v5: Option[String] = Some(v4)
+                  write_function C@f0(v5)
+                  write_function C@f0(v5)
                 }
                 -- expected output --
 
@@ -15619,91 +16026,101 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Even@f0(n@v0: Int) -> Html {
-                  let v1 = (v0 == 0) in {
-                    match v1 {
-                      true => {
-                        write("even")
-                      }
-                      false => {
-                      }
+                  let v9: Int = 0
+                  let v10: Bool = v0 == v9
+                  let v15: Int = 0
+                  let v16: Bool = v15 < v0
+                  match v10 {
+                    true => {
+                      write("even")
+                    }
+                    false => {
                     }
                   }
-                  let v2 = (0 < v0) in {
-                    match v2 {
-                      true => {
-                        call Odd@f1(n = (v0 - 1))
-                      }
-                      false => {
-                      }
+                  match v16 {
+                    true => {
+                      let v17: Int = 1
+                      let v18: Int = v0 - v17
+                      write_function Odd@f1(v18)
+                    }
+                    false => {
                     }
                   }
                 }
                 fn Odd@f1(n@v3: Int) -> Html {
-                  let v4 = (v3 == 0) in {
-                    match v4 {
-                      true => {
-                        write("odd")
-                      }
-                      false => {
-                      }
+                  let v23: Int = 0
+                  let v24: Bool = v3 == v23
+                  let v29: Int = 0
+                  let v30: Bool = v29 < v3
+                  match v24 {
+                    true => {
+                      write("odd")
+                    }
+                    false => {
                     }
                   }
-                  let v5 = (0 < v3) in {
-                    match v5 {
-                      true => {
-                        call Even@f0(n = (v3 - 1))
-                      }
-                      false => {
-                      }
+                  match v30 {
+                    true => {
+                      let v31: Int = 1
+                      let v32: Int = v3 - v31
+                      write_function Even@f0(v32)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Even@f0(n = 4)
+                  let v7: Int = 4
+                  write_function Even@f0(v7)
                 }
                 -- ir (optimized) --
                 fn Even@f0(n@v0: Int) -> Html {
-                  let v1 = (v0 == 0) in {
-                    match v1 {
-                      true => {
-                        write("even")
-                      }
-                      false => {
-                      }
+                  let v9: Int = 0
+                  let v10: Bool = v0 == v9
+                  let v15: Int = 0
+                  let v16: Bool = v15 < v0
+                  match v10 {
+                    true => {
+                      write("even")
+                    }
+                    false => {
                     }
                   }
-                  let v2 = (0 < v0) in {
-                    match v2 {
-                      true => {
-                        call Odd@f1(n = (v0 - 1))
-                      }
-                      false => {
-                      }
+                  match v16 {
+                    true => {
+                      let v17: Int = 1
+                      let v18: Int = v0 - v17
+                      write_function Odd@f1(v18)
+                    }
+                    false => {
                     }
                   }
                 }
                 fn Odd@f1(n@v3: Int) -> Html {
-                  let v4 = (v3 == 0) in {
-                    match v4 {
-                      true => {
-                        write("odd")
-                      }
-                      false => {
-                      }
+                  let v23: Int = 0
+                  let v24: Bool = v3 == v23
+                  let v29: Int = 0
+                  let v30: Bool = v29 < v3
+                  match v24 {
+                    true => {
+                      write("odd")
+                    }
+                    false => {
                     }
                   }
-                  let v5 = (0 < v3) in {
-                    match v5 {
-                      true => {
-                        call Even@f0(n = (v3 - 1))
-                      }
-                      false => {
-                      }
+                  match v30 {
+                    true => {
+                      let v31: Int = 1
+                      let v32: Int = v3 - v31
+                      write_function Even@f0(v32)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call Even@f0(n = 4)
+                  let v7: Int = 4
+                  write_function Even@f0(v7)
                 }
                 -- expected output --
                 even
@@ -15746,13 +16163,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = R {f: true}.f in {
-                    match v0 {
-                      true => {
-                        write("x")
-                      }
-                      false => {
-                      }
+                  let v2: Bool = true
+                  let v3: R = {f: v2}
+                  let v4: Bool = v3.f
+                  match v4 {
+                    true => {
+                      write("x")
+                    }
+                    false => {
                     }
                   }
                 }
@@ -15801,20 +16219,26 @@ mod tests {
                 -- ir (unoptimized) --
                 fn C@f0(p@v0: Array[String]) -> Html {
                   for _ in v0 {
-                    call C@f0(p = [])
+                    let v5: Array[String] = []
+                    write_function C@f0(v5)
                   }
                 }
                 page Test() {
-                  call C@f0(p = ["a"])
+                  let v2: String = "a"
+                  let v3: Array[String] = [v2]
+                  write_function C@f0(v3)
                 }
                 -- ir (optimized) --
                 fn C@f0(p@v0: Array[String]) -> Html {
                   for _ in v0 {
-                    call C@f0(p = [])
+                    let v5: Array[String] = []
+                    write_function C@f0(v5)
                   }
                 }
                 page Test() {
-                  call C@f0(p = ["a"])
+                  let v2: String = "a"
+                  let v3: Array[String] = [v2]
+                  write_function C@f0(v3)
                 }
                 -- expected output --
 
@@ -15861,33 +16285,39 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn C@f0(p@v0: Array[String]) -> Html {
-                  let v1 = R {f: v0}.f.is_empty() in {
-                    match v1 {
-                      true => {
-                        call C@f0(p = [])
-                      }
-                      false => {
-                      }
+                  let v6: R = {f: v0}
+                  let v7: Array[String] = v6.f
+                  let v8: Bool = v7.is_empty()
+                  match v8 {
+                    true => {
+                      let v9: Array[String] = []
+                      write_function C@f0(v9)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call C@f0(p = ["a"])
+                  let v3: String = "a"
+                  let v4: Array[String] = [v3]
+                  write_function C@f0(v4)
                 }
                 -- ir (optimized) --
                 fn C@f0(p@v0: Array[String]) -> Html {
-                  let v1 = v0.is_empty() in {
-                    match v1 {
-                      true => {
-                        call C@f0(p = [])
-                      }
-                      false => {
-                      }
+                  let v8: Bool = v0.is_empty()
+                  match v8 {
+                    true => {
+                      let v9: Array[String] = []
+                      write_function C@f0(v9)
+                    }
+                    false => {
                     }
                   }
                 }
                 page Test() {
-                  call C@f0(p = ["a"])
+                  let v3: String = "a"
+                  let v4: Array[String] = [v3]
+                  write_function C@f0(v4)
                 }
                 -- expected output --
 
@@ -15939,25 +16369,25 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn OptBool@f0(checked@v0: Option[Bool]) -> Html {
-                  let v1 = v0 in {
-                    match v1 {
-                      Some(v2) => {
-                        match v2 {
-                          true => {
-                            write("<span>yes</span>")
-                          }
-                          false => {
-                            write("<span>no</span>")
-                          }
+                  match v0 {
+                    Some(v2: Bool) => {
+                      match v2 {
+                        true => {
+                          write("<span>yes</span>")
+                        }
+                        false => {
+                          write("<span>no</span>")
                         }
                       }
-                      None => {
-                      }
+                    }
+                    None => {
                     }
                   }
                 }
                 page Test() {
-                  call OptBool@f0(checked = Option[Bool]::Some(true))
+                  let v4: Bool = true
+                  let v5: Option[Bool] = Some(v4)
+                  write_function OptBool@f0(v5)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -16003,30 +16433,29 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[Option[Bool]]::Some(Option[Bool]::Some(true)) in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Some(v2) => {
-                          match v2 {
-                            Some(v3) => {
-                              match v3 {
-                                true => {
-                                  write("tt")
-                                }
-                                false => {
-                                  write("tf")
-                                }
-                              }
+                  let v5: Bool = true
+                  let v6: Option[Bool] = Some(v5)
+                  let v7: Option[Option[Bool]] = Some(v6)
+                  match v7 {
+                    Some(v2: Option[Bool]) => {
+                      match v2 {
+                        Some(v3: Bool) => {
+                          match v3 {
+                            true => {
+                              write("tt")
                             }
-                            None => {
-                              write("some-none")
+                            false => {
+                              write("tf")
                             }
                           }
                         }
                         None => {
-                          write("none")
+                          write("some-none")
                         }
                       }
+                    }
+                    None => {
+                      write("none")
                     }
                   }
                 }
@@ -16073,28 +16502,38 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [1, 2, 3] {
-                    let v1 = (1 < v0) in {
-                      match v1 {
-                        true => {
-                          write_string(v0.to_string())
-                        }
-                        false => {
-                        }
+                  let v3: Int = 1
+                  let v4: Int = 2
+                  let v5: Int = 3
+                  let v6: Array[Int] = [v3, v4, v5]
+                  for v0: Int in v6 {
+                    let v7: Int = 1
+                    let v8: Bool = v7 < v0
+                    match v8 {
+                      true => {
+                        let v9: String = v0.to_string()
+                        write_string(v9)
+                      }
+                      false => {
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [1, 2, 3] {
-                    let v1 = (1 < v0) in {
-                      match v1 {
-                        true => {
-                          write_string(v0.to_string())
-                        }
-                        false => {
-                        }
+                  let v3: Int = 1
+                  let v4: Int = 2
+                  let v5: Int = 3
+                  let v6: Array[Int] = [v3, v4, v5]
+                  for v0: Int in v6 {
+                    let v7: Int = 1
+                    let v8: Bool = v7 < v0
+                    match v8 {
+                      true => {
+                        let v9: String = v0.to_string()
+                        write_string(v9)
+                      }
+                      false => {
                       }
                     }
                   }
@@ -16138,28 +16577,34 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in ["a", "b"] {
-                    let v1 = (v0 == "a") in {
-                      match v1 {
-                        true => {
-                          write_string(v0)
-                        }
-                        false => {
-                        }
+                  let v3: String = "a"
+                  let v4: String = "b"
+                  let v5: Array[String] = [v3, v4]
+                  for v0: String in v5 {
+                    let v6: String = "a"
+                    let v7: Bool = v0 == v6
+                    match v7 {
+                      true => {
+                        write_string(v0)
+                      }
+                      false => {
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in ["a", "b"] {
-                    let v1 = (v0 == "a") in {
-                      match v1 {
-                        true => {
-                          write_string(v0)
-                        }
-                        false => {
-                        }
+                  let v3: String = "a"
+                  let v4: String = "b"
+                  let v5: Array[String] = [v3, v4]
+                  for v0: String in v5 {
+                    let v6: String = "a"
+                    let v7: Bool = v0 == v6
+                    match v7 {
+                      true => {
+                        write_string(v0)
+                      }
+                      false => {
                       }
                     }
                   }
@@ -16203,28 +16648,34 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [1.5, 2.5] {
-                    let v1 = (2 < v0) in {
-                      match v1 {
-                        true => {
-                          write("big")
-                        }
-                        false => {
-                        }
+                  let v3: Float = 1.5
+                  let v4: Float = 2.5
+                  let v5: Array[Float] = [v3, v4]
+                  for v0: Float in v5 {
+                    let v6: Float = 2
+                    let v7: Bool = v6 < v0
+                    match v7 {
+                      true => {
+                        write("big")
+                      }
+                      false => {
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [1.5, 2.5] {
-                    let v1 = (2 < v0) in {
-                      match v1 {
-                        true => {
-                          write("big")
-                        }
-                        false => {
-                        }
+                  let v3: Float = 1.5
+                  let v4: Float = 2.5
+                  let v5: Array[Float] = [v3, v4]
+                  for v0: Float in v5 {
+                    let v6: Float = 2
+                    let v7: Bool = v6 < v0
+                    match v7 {
+                      true => {
+                        write("big")
+                      }
+                      false => {
                       }
                     }
                   }
@@ -16268,28 +16719,48 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [true, false] {
-                    let v1 = (v0 && true) in {
-                      match v1 {
-                        true => {
-                          write("x")
-                        }
-                        false => {
-                        }
+                  let v3: Bool = true
+                  let v4: Bool = false
+                  let v5: Array[Bool] = [v3, v4]
+                  for v0: Bool in v5 {
+                    let v7: Bool = match v0 {
+                      true => {
+                        let v6: Bool = true
+                        v6
+                      }
+                      false => {
+                        v0
+                      }
+                    }
+                    match v7 {
+                      true => {
+                        write("x")
+                      }
+                      false => {
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [true, false] {
-                    let v1 = (v0 && true) in {
-                      match v1 {
-                        true => {
-                          write("x")
-                        }
-                        false => {
-                        }
+                  let v3: Bool = true
+                  let v4: Bool = false
+                  let v5: Array[Bool] = [v3, v4]
+                  for v0: Bool in v5 {
+                    let v7: Bool = match v0 {
+                      true => {
+                        let v6: Bool = true
+                        v6
+                      }
+                      false => {
+                        v0
+                      }
+                    }
+                    match v7 {
+                      true => {
+                        write("x")
+                      }
+                      false => {
                       }
                     }
                   }
@@ -16344,30 +16815,36 @@ mod tests {
                   write("</span>")
                 }
                 page Test() {
-                  for v0 in ["a", "b"] {
-                    let v1 = (v0 == "a") in {
-                      match v1 {
-                        true => {
-                          call Show@f0(label = v0)
-                        }
-                        false => {
-                        }
+                  let v4: String = "a"
+                  let v5: String = "b"
+                  let v6: Array[String] = [v4, v5]
+                  for v0: String in v6 {
+                    let v7: String = "a"
+                    let v8: Bool = v0 == v7
+                    match v8 {
+                      true => {
+                        write_function Show@f0(v0)
+                      }
+                      false => {
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in ["a", "b"] {
-                    let v1 = (v0 == "a") in {
-                      match v1 {
-                        true => {
-                          write("<span>")
-                          write_string(v0)
-                          write("</span>")
-                        }
-                        false => {
-                        }
+                  let v4: String = "a"
+                  let v5: String = "b"
+                  let v6: Array[String] = [v4, v5]
+                  for v0: String in v6 {
+                    let v7: String = "a"
+                    let v8: Bool = v0 == v7
+                    match v8 {
+                      true => {
+                        write("<span>")
+                        write_string(v0)
+                        write("</span>")
+                      }
+                      false => {
                       }
                     }
                   }
@@ -16413,11 +16890,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Foo {class: "a"} in {
-                    write("<div>")
-                    write_string(v0.class)
-                    write("</div>")
-                  }
+                  let v2: String = "a"
+                  let v3: Foo = {class: v2}
+                  let v4: String = v3.class
+                  write("<div>")
+                  write_string(v4)
+                  write("</div>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -16464,11 +16942,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Foo {function: "a"} in {
-                    write("<div>")
-                    write_string(v0.function)
-                    write("</div>")
-                  }
+                  let v2: String = "a"
+                  let v3: Foo = {function: v2}
+                  let v4: String = v3.function
+                  write("<div>")
+                  write_string(v4)
+                  write("</div>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -16515,11 +16994,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Foo {protected: "a"} in {
-                    write("<div>")
-                    write_string(v0.protected)
-                    write("</div>")
-                  }
+                  let v2: String = "a"
+                  let v3: Foo = {protected: v2}
+                  let v4: String = v3.protected
+                  write("<div>")
+                  write_string(v4)
+                  write("</div>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -16566,11 +17046,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Foo {eval: "a"} in {
-                    write("<div>")
-                    write_string(v0.eval)
-                    write("</div>")
-                  }
+                  let v2: String = "a"
+                  let v3: Foo = {eval: v2}
+                  let v4: String = v3.eval
+                  write("<div>")
+                  write_string(v4)
+                  write("</div>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -16623,15 +17104,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = E::A {class: "a"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        E::A(class: v2) => {
-                          write("<div>")
-                          write_string(v2)
-                          write("</div>")
-                        }
-                      }
+                  let v4: String = "a"
+                  let v5: E = A {class: v4}
+                  match v5 {
+                    E::A {class@v2: String} => {
+                      write("<div>")
+                      write_string(v2)
+                      write("</div>")
                     }
                   }
                 }
@@ -16679,11 +17158,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Math {x: 4} in {
-                    let v1 = 5 in {
-                      write_string((v0.x * v1).to_string())
-                    }
-                  }
+                  let v3: Int = 4
+                  let v4: Math = {x: v3}
+                  let v5: Int = 5
+                  let v6: Int = v4.x
+                  let v7: Int = v6 * v5
+                  let v8: String = v7.to_string()
+                  write_string(v8)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -16728,9 +17209,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Number {x: 3.7} in {
-                    write_string(v0.x.to_int().to_string())
-                  }
+                  let v2: Float = 3.7
+                  let v3: Number = {x: v2}
+                  let v4: Float = v3.x
+                  let v5: Int = v4.to_int()
+                  let v6: String = v5.to_string()
+                  write_string(v6)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -16780,14 +17264,17 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = State {query: "a", num: 1} in {
-                    let v2 = let v1 = v0 in {
-                      State {query: v1.query, num: 2}
-                    } in {
-                      write_string(v2.query)
-                      write_string(v2.num.to_string())
-                    }
-                  }
+                  let v4: String = "a"
+                  let v5: Int = 1
+                  let v6: State = {query: v4, num: v5}
+                  let v7: String = v6.query
+                  let v8: Int = 2
+                  let v9: State = {query: v7, num: v8}
+                  let v10: String = v9.query
+                  let v12: Int = v9.num
+                  let v13: String = v12.to_string()
+                  write_string(v10)
+                  write_string(v13)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -16837,14 +17324,17 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = State {query: "a", num: 1} in {
-                    let v2 = let v1 = v0 in {
-                      State {query: "b", num: 2}
-                    } in {
-                      write_string(v2.query)
-                      write_string(v2.num.to_string())
-                    }
-                  }
+                  let v4: String = "a"
+                  let v5: Int = 1
+                  let v6: State = {query: v4, num: v5}
+                  let v7: String = "b"
+                  let v8: Int = 2
+                  let v9: State = {query: v7, num: v8}
+                  let v10: String = v9.query
+                  let v12: Int = v9.num
+                  let v13: String = v12.to_string()
+                  write_string(v10)
+                  write_string(v13)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -16894,23 +17384,35 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  for v0 in [State {query: "a", num: 7}] {
-                    write_string(let v1 = v0 in {
-                      State {query: "x", num: v1.num}
-                    }.query)
-                    write_string(let v2 = v0 in {
-                      State {query: "x", num: v2.num}
-                    }.num.to_string())
+                  let v4: String = "a"
+                  let v5: Int = 7
+                  let v6: State = {query: v4, num: v5}
+                  let v7: Array[State] = [v6]
+                  for v0: State in v7 {
+                    let v8: String = "x"
+                    let v9: Int = v0.num
+                    let v10: State = {query: v8, num: v9}
+                    let v11: String = v10.query
+                    let v13: String = "x"
+                    let v14: Int = v0.num
+                    let v15: State = {query: v13, num: v14}
+                    let v16: Int = v15.num
+                    let v17: String = v16.to_string()
+                    write_string(v11)
+                    write_string(v17)
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [State {query: "a", num: 7}] {
-                    write_string(State {query: "x", num: v0.num}.query)
-                    write_string(State {
-                      query: "x",
-                      num: v0.num,
-                    }.num.to_string())
+                  let v4: String = "a"
+                  let v5: Int = 7
+                  let v6: State = {query: v4, num: v5}
+                  let v7: Array[State] = [v6]
+                  for v0: State in v7 {
+                    let v14: Int = v0.num
+                    let v17: String = v14.to_string()
+                    write("x")
+                    write_string(v17)
                   }
                 }
                 -- expected output --
@@ -16967,49 +17469,48 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Row@f0(item@v4: Item) -> Html {
+                  let v21: String = v4.label
                   write("<div>")
-                  write_string(v4.label)
+                  write_string(v21)
                   write("</div>")
                 }
                 page Test() {
-                  for v0 in [Item {label: "a", selected: false}] {
-                    let v1 = v0.selected in {
-                      match v1 {
-                        true => {
-                          call Row@f0(item = let v2 = v0 in {
-                            Item {label: "on", selected: v2.selected}
-                          })
-                        }
-                        false => {
-                          call Row@f0(item = let v3 = v0 in {
-                            Item {label: "off", selected: v3.selected}
-                          })
-                        }
+                  let v6: String = "a"
+                  let v7: Bool = false
+                  let v8: Item = {label: v6, selected: v7}
+                  let v9: Array[Item] = [v8]
+                  for v0: Item in v9 {
+                    let v10: Bool = v0.selected
+                    match v10 {
+                      true => {
+                        let v11: String = "on"
+                        let v12: Bool = v0.selected
+                        let v13: Item = {label: v11, selected: v12}
+                        write_function Row@f0(v13)
+                      }
+                      false => {
+                        let v15: String = "off"
+                        let v16: Bool = v0.selected
+                        let v17: Item = {label: v15, selected: v16}
+                        write_function Row@f0(v17)
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 page Test() {
-                  for v0 in [Item {label: "a", selected: false}] {
-                    let v1 = v0.selected in {
-                      match v1 {
-                        true => {
-                          write("<div>")
-                          write_string(Item {
-                            label: "on",
-                            selected: v0.selected,
-                          }.label)
-                          write("</div>")
-                        }
-                        false => {
-                          write("<div>")
-                          write_string(Item {
-                            label: "off",
-                            selected: v0.selected,
-                          }.label)
-                          write("</div>")
-                        }
+                  let v6: String = "a"
+                  let v7: Bool = false
+                  let v8: Item = {label: v6, selected: v7}
+                  let v9: Array[Item] = [v8]
+                  for v0: Item in v9 {
+                    let v10: Bool = v0.selected
+                    match v10 {
+                      true => {
+                        write("<div>on</div>")
+                      }
+                      false => {
+                        write("<div>off</div>")
                       }
                     }
                   }
@@ -17068,21 +17569,25 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Dark@f0(s@v1: State) -> Html {
-                  let v3 = let v2 = v1.settings in {
-                    Settings {theme: "dark", compact: v2.compact}
-                  } in {
-                    let v5 = let v4 = v1 in {
-                      State {query: v4.query, settings: v3}
-                    } in {
-                      write_string(v5.query)
-                      write_string(v5.settings.theme)
-                    }
-                  }
+                  let v13: Settings = v1.settings
+                  let v14: String = "dark"
+                  let v15: Bool = v13.compact
+                  let v16: Settings = {theme: v14, compact: v15}
+                  let v17: String = v1.query
+                  let v18: State = {query: v17, settings: v16}
+                  let v19: String = v18.query
+                  let v21: Settings = v18.settings
+                  let v22: String = v21.theme
+                  write_string(v19)
+                  write_string(v22)
                 }
                 page Test() {
-                  let v0 = Settings {theme: "light", compact: true} in {
-                    call Dark@f0(s = State {query: "q", settings: v0})
-                  }
+                  let v7: String = "light"
+                  let v8: Bool = true
+                  let v9: Settings = {theme: v7, compact: v8}
+                  let v10: String = "q"
+                  let v11: State = {query: v10, settings: v9}
+                  write_function Dark@f0(v11)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -17129,9 +17634,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write_string(let v0 = Foo {x: "bar", y: "baz"} in {
-                    Foo {x: v0.x, y: "foo"}
-                  }.x)
+                  let v2: String = "bar"
+                  let v3: String = "baz"
+                  let v4: Foo = {x: v2, y: v3}
+                  let v5: String = v4.x
+                  let v6: String = "foo"
+                  let v7: Foo = {x: v5, y: v6}
+                  let v8: String = v7.x
+                  write_string(v8)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -17177,11 +17687,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn label@f0(prefix@v0: String, count@v1: Int) -> String {
-                  (v0 + v1.to_string())
+                  let v9: String = v1.to_string()
+                  let v10: String = concat(v0, v9)
+                  v10
                 }
                 page Test() {
+                  let v3: String = "a"
+                  let v4: Int = 1
+                  let v5: String = call label@f0(v3, v4)
                   write("<div>")
-                  write_string(call label@f0(prefix = "a", count = 1))
+                  write_string(v5)
                   write("</div>")
                 }
                 -- ir (optimized) --
@@ -17232,18 +17747,31 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn label@f0(prefix@v1: String, count@v2: Int) -> String {
-                  (v1 + v2.to_string())
+                  let v24: String = v2.to_string()
+                  let v25: String = concat(v1, v24)
+                  v25
                 }
                 page Test() {
+                  let v4: String = "x"
+                  let v5: Int = 1
+                  let v6: String = call label@f0(v4, v5)
+                  let v8: String = "x"
+                  let v9: Int = 2
+                  let v10: String = call label@f0(v8, v9)
+                  let v12: String = "y"
+                  let v13: Int = 1
+                  let v14: String = call label@f0(v12, v13)
                   write("<div>")
-                  write_string(call label@f0(prefix = "x", count = 1))
-                  write_string(call label@f0(prefix = "x", count = 2))
-                  write_string(call label@f0(prefix = "y", count = 1))
+                  write_string(v6)
+                  write_string(v10)
+                  write_string(v14)
                   write("</div>")
                 }
                 page Other(prefix@v0: String) {
+                  let v19: Int = 1
+                  let v20: String = call label@f0(v0, v19)
                   write("<div>")
-                  write_string(call label@f0(prefix = v0, count = 1))
+                  write_string(v20)
                   write("</div>")
                 }
                 -- ir (optimized) --
@@ -17305,25 +17833,37 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Wrapper@f0() -> Html {
+                  let v4: Int = 0
+                  let v5: Int = -7
+                  let v6: Int = call foo@f1(v5)
+                  let v12: Int = 10
+                  let v13: Int = call foo@f1(v12)
+                  let v14: String = v13.to_string()
                   write("<div>")
-                  for v0 in 0..=call foo@f1(x = -7) {
-                    write_string(v0.to_string())
+                  for v0: Int in v4..=v6 {
+                    let v7: String = v0.to_string()
+                    write_string(v7)
                     write(",")
                   }
-                  write_string(call foo@f1(x = 10).to_string())
+                  write_string(v14)
                   write("</div>")
                 }
                 fn foo@f1(x@v1: Int) -> Int {
-                  (v1 + 10)
+                  let v18: Int = 10
+                  let v19: Int = v1 + v18
+                  v19
                 }
                 page Test() {
-                  call Wrapper@f0()
+                  write_function Wrapper@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
+                  let v24: Int = 0
+                  let v27: Int = 3
                   write("<div>")
-                  for v4 in 0..=3 {
-                    write_string(v4.to_string())
+                  for v28: Int in v24..=v27 {
+                    let v29: String = v28.to_string()
+                    write_string(v29)
                     write(",")
                   }
                   write("20</div>")
@@ -17371,7 +17911,8 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call card@f0(label = "hello")
+                  let v2: String = "hello"
+                  write_function card@f0(v2)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -17460,9 +18001,10 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call wrap@f0(children = {
+                  let v4: Html = html {
                     write("<span>hello</span>")
-                  })
+                  }
+                  write_function wrap@f0(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -17511,9 +18053,10 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card@f0(slot = {
+                  let v4: Html = html {
                     write("<span>hello</span>")
-                  })
+                  }
+                  write_function Card@f0(v4)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -17557,21 +18100,21 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn badge@f0(on@v0: Bool) -> Html {
-                  let v1 = v0 in {
-                    match v1 {
-                      true => {
-                        write("<b>yes</b>")
-                      }
-                      false => {
-                        write("<i>no</i>")
-                      }
+                  match v0 {
+                    true => {
+                      write("<b>yes</b>")
+                    }
+                    false => {
+                      write("<i>no</i>")
                     }
                   }
                 }
                 page Test() {
+                  let v3: Bool = true
+                  let v5: Bool = false
                   write("<div>")
-                  call badge@f0(on = true)
-                  call badge@f0(on = false)
+                  write_function badge@f0(v3)
+                  write_function badge@f0(v5)
                   write("</div>")
                 }
                 -- ir (optimized) --
@@ -17620,7 +18163,8 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Outer@f0() -> Html {
-                  call card@f1(label = "hello")
+                  let v3: String = "hello"
+                  write_function card@f1(v3)
                 }
                 fn card@f1(label@v0: String) -> Html {
                   write("<div>")
@@ -17628,7 +18172,7 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Outer@f0()
+                  write_function Outer@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -17687,26 +18231,37 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn f@f0() -> Int {
-                  let v0 = call mk@f1() in {
-                    match v0 {
-                      Shape::Circle => { 1 }
-                      Shape::Square => {
-                        let v1 = v0 in {
-                          match v1 {
-                            Shape::Circle => { 3 }
-                            Shape::Square => { 2 }
-                          }
+                  let v8: Shape = call mk@f1()
+                  let v13: Int = match v8 {
+                    Shape::Circle => {
+                      let v9: Int = 1
+                      v9
+                    }
+                    Shape::Square => {
+                      let v12: Int = match v8 {
+                        Shape::Circle => {
+                          let v10: Int = 3
+                          v10
+                        }
+                        Shape::Square => {
+                          let v11: Int = 2
+                          v11
                         }
                       }
+                      v12
                     }
                   }
+                  v13
                 }
                 fn mk@f1() -> Shape {
-                  Shape::Square
+                  let v14: Shape = Square
+                  v14
                 }
                 page Test() {
+                  let v3: Int = call f@f0()
+                  let v4: String = v3.to_string()
                   write("<div>")
-                  write_string(call f@f0().to_string())
+                  write_string(v4)
                   write("</div>")
                 }
                 -- ir (optimized) --
@@ -17764,24 +18319,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn mk@f0() -> Shape {
-                  Shape::Square
+                  let v12: Shape = Square
+                  v12
                 }
                 page Test() {
-                  let v0 = call mk@f0() in {
-                    match v0 {
-                      Shape::Circle => {
-                        write("circle")
-                      }
-                      Shape::Square => {
-                        let v1 = v0 in {
-                          match v1 {
-                            Shape::Circle => {
-                              write("never")
-                            }
-                            Shape::Square => {
-                              write("square")
-                            }
-                          }
+                  let v3: Shape = call mk@f0()
+                  match v3 {
+                    Shape::Circle => {
+                      write("circle")
+                    }
+                    Shape::Square => {
+                      match v3 {
+                        Shape::Circle => {
+                          write("never")
+                        }
+                        Shape::Square => {
+                          write("square")
                         }
                       }
                     }
@@ -17839,26 +18392,36 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn f@f0() -> String {
-                  let v0 = call mk@f1() in {
-                    match v0 {
-                      Some(_) => {
-                        let v1 = v0 in {
-                          match v1 {
-                            Some(v2) => { v2 }
-                            None => { "never" }
-                          }
+                  let v8: Option[String] = call mk@f1()
+                  let v12: String = match v8 {
+                    Some(_) => {
+                      let v10: String = match v8 {
+                        Some(v2: String) => {
+                          v2
+                        }
+                        None => {
+                          let v9: String = "never"
+                          v9
                         }
                       }
-                      None => { "none" }
+                      v10
+                    }
+                    None => {
+                      let v11: String = "none"
+                      v11
                     }
                   }
+                  v12
                 }
                 fn mk@f1() -> Option[String] {
-                  Option[String]::Some("hi")
+                  let v13: String = "hi"
+                  let v14: Option[String] = Some(v13)
+                  v14
                 }
                 page Test() {
+                  let v4: String = call f@f0()
                   write("<div>")
-                  write_string(call f@f0())
+                  write_string(v4)
                   write("</div>")
                 }
                 -- ir (optimized) --
@@ -17919,10 +18482,10 @@ mod tests {
                   write("<span>B</span>")
                 }
                 page Test() {
-                  call Card@f0()
+                  write_function Card@f0()
                 }
                 page Other() {
-                  call Card@f1()
+                  write_function Card@f1()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -17979,9 +18542,12 @@ mod tests {
                   v0
                 }
                 page Test() {
+                  let v3: Int = 1
+                  let v4: Int = call nav_bar@f1(v3)
+                  let v5: String = v4.to_string()
                   write("<div>")
-                  call NavBar@f0()
-                  write_string(call nav_bar@f1(x = 1).to_string())
+                  write_function NavBar@f0()
+                  write_string(v5)
                   write("</div>")
                 }
                 -- ir (optimized) --
@@ -18026,11 +18592,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn label@f0(prefix@v0: String, count@v1: Int) -> String {
-                  (v0 + v1.to_string())
+                  let v9: String = v1.to_string()
+                  let v10: String = concat(v0, v9)
+                  v10
                 }
                 page Test() {
+                  let v3: String = "n"
+                  let v4: Int = 2
+                  let v5: String = call label@f0(v3, v4)
                   write("<div>")
-                  write_string(call label@f0(prefix = "n", count = 2))
+                  write_string(v5)
                   write("</div>")
                 }
                 -- ir (optimized) --

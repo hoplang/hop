@@ -14,15 +14,11 @@ pub enum EvalError {
     },
     #[error("Function '{function}' not found in module")]
     FunctionNotFound { function: IrFunction },
-    #[error("Missing required parameter '{param}' for function '{function}'")]
-    MissingFunctionParameter {
+    #[error("Function '{function}' takes {expected} arguments but was given {found}")]
+    ArgumentCount {
         function: IrFunction,
-        param: AttributeName,
-    },
-    #[error("Unknown argument '{name}' for function '{function}'")]
-    UnknownArgument {
-        function: IrFunction,
-        name: AttributeName,
+        expected: usize,
+        found: usize,
     },
     #[error("Function '{function}' exceeded the call depth limit of {limit}")]
     RecursionLimit { function: IrFunction, limit: usize },

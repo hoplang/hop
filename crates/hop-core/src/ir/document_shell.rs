@@ -17,7 +17,7 @@ pub enum TailwindInjection<'a> {
 /// The fixed markup is what the language reference lists under rendering.
 /// What the host adds to the end of the head, a stylesheet or a script, is
 /// not part of the language, so neither is part of the IR. The shell is
-/// written around a page where the page becomes output, in lower_pure and
+/// written around a page where the page becomes output, in flat_to_writer and
 /// in the evaluator.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentShell {
