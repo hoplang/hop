@@ -210,7 +210,11 @@ impl TypedAstBuilder {
     }
 
     pub fn text(&mut self, s: &str) {
-        self.children.push(TypedExpr::HtmlRaw {
+        assert!(
+            !s.contains(['<', '{', '}']),
+            "builder text() called with text containing '<', '{{' or '}}': {s:?}"
+        );
+        self.children.push(TypedExpr::HtmlText {
             value: CheapString::new(s.to_string()),
         });
     }
@@ -376,7 +380,7 @@ mod tests {
             expect![[r#"
                 page Hello() {
                   fn body() -> Html {
-                    concat(raw("Hello, World!"))
+                    concat(text("Hello, World!"))
                   }
                 }
             "#]],
@@ -398,7 +402,7 @@ mod tests {
                       html(
                         tag: "div",
                         attrs: [class: escape("container")],
-                        children: concat(raw("Content")),
+                        children: concat(text("Content")),
                       ),
                     )
                   }
@@ -417,7 +421,7 @@ mod tests {
             expect![[r#"
                 page Greeting(name: String) {
                   fn body() -> Html {
-                    concat(raw("Hello, "), escape(name))
+                    concat(text("Hello, "), escape(name))
                   }
                 }
             "#]],
@@ -485,7 +489,7 @@ mod tests {
                           html(
                             tag: "div",
                             attrs: [],
-                            children: concat(raw("Shown")),
+                            children: concat(text("Shown")),
                           ),
                         ),
                         false => concat(),

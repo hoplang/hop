@@ -732,7 +732,7 @@ impl<'a> Compiler<'a> {
                     id: expr_id,
                 }
             }
-            TypedExpr::HtmlRaw { value } => PureExpr::HtmlRaw {
+            TypedExpr::HtmlText { value } => PureExpr::HtmlRaw {
                 content: value.to_string(),
                 id: expr_id,
             },
@@ -934,8 +934,9 @@ mod tests {
 
     use super::*;
     use crate::hop::typing::{
-        TypeRegistryBuilder, build_page, build_page_no_params, build_page_with_types,
+        TypeRegistryBuilder, TypedAttrs, build_page, build_page_no_params, build_page_with_types,
     };
+    use crate::html::HtmlElementKind;
     use expect_test::{Expect, expect};
 
     fn check(page: TypedPageDeclaration, expected: Expect) {
@@ -956,8 +957,17 @@ mod tests {
             t.text("Hello World");
         });
         page.head = TypedExpr::HtmlConcat {
-            parts: vec![TypedExpr::HtmlRaw {
-                value: CheapString::new("<title>Hi</title>".to_string()),
+            parts: vec![TypedExpr::Element {
+                element: HtmlElementKind::Title,
+                attrs: TypedAttrs {
+                    attributes: vec![],
+                    spread: None,
+                },
+                children: Box::new(TypedExpr::HtmlConcat {
+                    parts: vec![TypedExpr::HtmlText {
+                        value: CheapString::new("Hi".to_string()),
+                    }],
+                }),
             }],
         };
         check(
@@ -966,17 +976,30 @@ mod tests {
                 -- before --
                 page MainComp() {
                   fn head() -> Html {
-                    concat(raw("<title>Hi</title>"))
+                    concat(
+                      html(
+                        tag: "title",
+                        attrs: [],
+                        children: concat(text("Hi")),
+                      ),
+                    )
                   }
                   fn body() -> Html {
-                    concat(raw("Hello World"))
+                    concat(text("Hello World"))
                   }
                 }
 
                 -- after --
                 page MainComp() {
                   fn head() -> Html {
-                    concat(raw("<title>Hi</title>"))
+                    concat(
+                      concat(
+                        raw("<title"),
+                        raw(">"),
+                        concat(raw("Hi")),
+                        raw("</title>"),
+                      ),
+                    )
                   }
                   fn body() -> Html {
                     concat(raw("Hello World"))
@@ -996,7 +1019,7 @@ mod tests {
                 -- before --
                 page MainComp() {
                   fn body() -> Html {
-                    concat(raw("Hello World"))
+                    concat(text("Hello World"))
                   }
                 }
 
@@ -1019,7 +1042,7 @@ mod tests {
                 -- before --
                 page MainComp(name: String) {
                   fn body() -> Html {
-                    concat(raw("Hello "), escape(name))
+                    concat(text("Hello "), escape(name))
                   }
                 }
 
@@ -1047,7 +1070,7 @@ mod tests {
                       html(
                         tag: "div",
                         attrs: [],
-                        children: concat(raw("Content")),
+                        children: concat(text("Content")),
                       ),
                     )
                   }
@@ -1088,7 +1111,7 @@ mod tests {
                           html(
                             tag: "div",
                             attrs: [],
-                            children: concat(raw("Visible")),
+                            children: concat(text("Visible")),
                           ),
                         ),
                         false => concat(),
@@ -1209,7 +1232,7 @@ mod tests {
                       html(
                         tag: "div",
                         attrs: [class: escape("base"), id: escape("test")],
-                        children: concat(raw("Content")),
+                        children: concat(text("Content")),
                       ),
                     )
                   }
@@ -1261,7 +1284,7 @@ mod tests {
                           class: escape("base"),
                           data-value: escape(cls),
                         ],
-                        children: concat(raw("Content")),
+                        children: concat(text("Content")),
                       ),
                     )
                   }
@@ -1312,9 +1335,9 @@ mod tests {
                         tag: "div",
                         attrs: [],
                         children: concat(
-                          raw("Hello "),
+                          text("Hello "),
                           escape(name),
-                          raw(", count: "),
+                          text(", count: "),
                           escape(count),
                         ),
                       ),
@@ -1362,8 +1385,8 @@ mod tests {
                   fn body() -> Html {
                     concat(
                       match flag {
-                        true => concat(raw("yes")),
-                        false => concat(raw("no")),
+                        true => concat(text("yes")),
+                        false => concat(text("no")),
                       },
                     )
                   }
@@ -1400,7 +1423,7 @@ mod tests {
                       html(
                         tag: "script",
                         attrs: [],
-                        children: concat(raw("alert(\"hi\")")),
+                        children: concat(text("alert(\"hi\")")),
                       ),
                     )
                   }

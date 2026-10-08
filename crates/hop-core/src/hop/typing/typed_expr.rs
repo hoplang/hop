@@ -226,8 +226,8 @@ pub enum TypedExpr {
     HtmlConcat { parts: Vec<Self> },
 
     /// Literal markup text, e.g. `Hello`.
-    /// Trusted and emitted without escaping.
-    HtmlRaw { value: CheapString },
+    /// Contains no `<`, `{` or `}` and is emitted without escaping.
+    HtmlText { value: CheapString },
 
     /// An interpolation in markup, e.g. `{name}`.
     /// HTML-escapes a String-typed expression into Html.
@@ -393,7 +393,7 @@ impl TypedExpr {
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Type::Int,
 
             TypedExpr::HtmlConcat { .. }
-            | TypedExpr::HtmlRaw { .. }
+            | TypedExpr::HtmlText { .. }
             | TypedExpr::HtmlEscape { .. }
             | TypedExpr::Element { .. } => Type::Html,
         }
@@ -680,7 +680,7 @@ impl TypedExpr {
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
             TypedExpr::HtmlConcat { parts } => concat_to_doc(parts),
-            TypedExpr::HtmlRaw { value } => BoxDoc::text("raw(")
+            TypedExpr::HtmlText { value } => BoxDoc::text("text(")
                 .append(BoxDoc::text(format!("{:?}", value.as_str())))
                 .append(")"),
             TypedExpr::HtmlEscape { expr } => {

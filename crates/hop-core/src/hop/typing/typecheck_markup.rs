@@ -330,11 +330,11 @@ pub fn typecheck_markup(
             }
         }
 
-        ParsedMarkup::Text { range } => Some(TypedExpr::HtmlRaw {
+        ParsedMarkup::Text { range } => Some(TypedExpr::HtmlText {
             value: range.to_cheap_string(),
         }),
 
-        ParsedMarkup::Newline { .. } => Some(TypedExpr::HtmlRaw {
+        ParsedMarkup::Newline { .. } => Some(TypedExpr::HtmlText {
             value: CheapString::new(" ".to_string()),
         }),
     }
