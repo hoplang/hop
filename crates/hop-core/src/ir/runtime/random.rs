@@ -1,6 +1,8 @@
+use super::html_node::HtmlNode;
 use super::value::Value;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::typing::{EnumVariant, ResolvedType, Type, TypeRegistry};
+use crate::html::HtmlElementKind;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
@@ -131,7 +133,11 @@ fn generate(
             Value::Int(rng.random_range(min..=max))
         }
         ResolvedType::Float => Value::Float(rng.random_range(0.0..100.0)),
-        ResolvedType::Html => Value::String("<span>sample</span>".to_string()),
+        ResolvedType::Html => Value::Html(vec![HtmlNode::Element {
+            element: HtmlElementKind::Span,
+            attributes: Vec::new(),
+            children: vec![HtmlNode::Text("sample".to_string())],
+        }]),
         ResolvedType::Array(inner) => {
             let len = if depth >= MAX_DEPTH {
                 0

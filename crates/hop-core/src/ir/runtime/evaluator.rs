@@ -1,7 +1,7 @@
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
-use crate::html::write_escaped_html;
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::pure_module::PureExpr;
+use crate::ir::runtime::html_node::{HtmlAttribute, HtmlNode, write_html};
 use crate::ir::runtime::value::Value;
 use crate::ir::var_id::VarId;
 use crate::symbols::attribute_name::AttributeName;
@@ -12,12 +12,18 @@ use thiserror::Error;
 use crate::ir::ir_match::{EnumPattern, Match};
 use crate::ir::pure_module::{PureAttribute, PureForSource, PureFunctionDeclaration, PureModule};
 
-pub fn evaluate_page(
+/// The head and body of an evaluated page, as trees.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EvaluatedPage {
+    pub head: Vec<HtmlNode>,
+    pub body: Vec<HtmlNode>,
+}
+
+pub fn evaluate_page_tree(
     module: &PureModule,
     page_name: &TypeName,
     args: HashMap<AttributeName, Value>,
-    shell: Option<&DocumentShell>,
-) -> Result<String, EvalError> {
+) -> Result<EvaluatedPage, EvalError> {
     let page = module
         .pages
         .iter()
@@ -39,25 +45,35 @@ pub fn evaluate_page(
         }
     }
 
-    let Value::String(head) = evaluate_expr(&page.head, &mut env, &module.functions)? else {
+    let Value::Html(head) = evaluate_expr(&page.head, &mut env, &module.functions)? else {
         panic!("Page head must evaluate to Html");
     };
-    let Value::String(body) = evaluate_expr(&page.body, &mut env, &module.functions)? else {
+    let Value::Html(body) = evaluate_expr(&page.body, &mut env, &module.functions)? else {
         panic!("Page body must evaluate to Html");
     };
+    Ok(EvaluatedPage { head, body })
+}
+
+pub fn evaluate_page(
+    module: &PureModule,
+    page_name: &TypeName,
+    args: HashMap<AttributeName, Value>,
+    shell: Option<&DocumentShell>,
+) -> Result<String, EvalError> {
+    let page = evaluate_page_tree(module, page_name, args)?;
 
     let mut html = String::new();
     match shell {
         Some(shell) => {
             html.push_str(shell.before_head);
-            html.push_str(&head);
+            write_html(&page.head, &mut html);
             html.push_str(&shell.after_head);
-            html.push_str(&body);
+            write_html(&page.body, &mut html);
             html.push_str(shell.after_body);
         }
         None => {
-            html.push_str(&head);
-            html.push_str(&body);
+            write_html(&page.head, &mut html);
+            write_html(&page.body, &mut html);
         }
     }
     Ok(html)
@@ -132,7 +148,9 @@ fn evaluate_expr(
         }
         PureExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
 
-        PureExpr::HtmlText { content, .. } => Ok(Value::String(content.to_string())),
+        PureExpr::HtmlText { content, .. } => {
+            Ok(Value::Html(vec![HtmlNode::Text(content.to_string())]))
+        }
 
         PureExpr::HtmlElement {
             element,
@@ -140,7 +158,7 @@ fn evaluate_expr(
             children,
             ..
         } => {
-            let mut html = format!("<{}", element.as_str());
+            let mut rendered = Vec::new();
             for attribute in attributes {
                 match attribute {
                     PureAttribute::Value { name, value } => {
@@ -148,62 +166,63 @@ fn evaluate_expr(
                         else {
                             panic!("Attribute value must be a String");
                         };
-                        html.push(' ');
-                        html.push_str(name.as_str());
-                        html.push_str("=\"");
-                        write_escaped_html(&value, &mut html);
-                        html.push('"');
+                        rendered.push(HtmlAttribute {
+                            name: name.clone(),
+                            value: Some(value),
+                        });
                     }
                     PureAttribute::Presence { name, present } => {
                         let present = evaluate_expr(present, env, function_decls)?
                             .as_bool()
                             .expect("Attribute condition must be a Bool");
                         if present {
-                            html.push(' ');
-                            html.push_str(name.as_str());
+                            rendered.push(HtmlAttribute {
+                                name: name.clone(),
+                                value: None,
+                            });
                         }
                     }
                 }
             }
-            html.push('>');
-            if !element.is_void() {
-                let Value::String(children) = evaluate_expr(children, env, function_decls)? else {
+            let children = if element.is_void() {
+                Vec::new()
+            } else {
+                let Value::Html(children) = evaluate_expr(children, env, function_decls)? else {
                     panic!("Element children must be Html");
                 };
-                html.push_str(&children);
-                html.push_str("</");
-                html.push_str(element.as_str());
-                html.push('>');
-            }
-            Ok(Value::String(html))
+                children
+            };
+            Ok(Value::Html(vec![HtmlNode::Element {
+                element: element.clone(),
+                attributes: rendered,
+                children,
+            }]))
         }
 
         PureExpr::HtmlEscape { expr, .. } => {
             let value = evaluate_expr(expr, env, function_decls)?;
-            let Value::String(s) = value else {
+            let Value::String(text) = value else {
                 panic!("HtmlEscape requires a string value");
             };
-            let mut escaped = String::new();
-            write_escaped_html(&s, &mut escaped);
-            Ok(Value::String(escaped))
+            Ok(Value::Html(vec![HtmlNode::Escape(text)]))
         }
 
         PureExpr::HtmlConcat { parts, .. } => {
-            let mut result = String::new();
+            let mut nodes = Vec::new();
             for part in parts {
                 let value = evaluate_expr(part, env, function_decls)?;
-                let Value::String(s) = value else {
+                let Value::Html(part) = value else {
                     panic!("HtmlConcat requires Html parts");
                 };
-                result.push_str(&s);
+                nodes.extend(part);
             }
-            Ok(Value::String(result))
+            Ok(Value::Html(nodes))
         }
 
         PureExpr::HtmlFor {
             var, source, body, ..
         } => {
-            let mut result = String::new();
+            let mut nodes = Vec::new();
             match source.as_ref() {
                 PureForSource::Array(array) => {
                     let array_value = evaluate_expr(array, env, function_decls)?;
@@ -217,10 +236,10 @@ fn evaluate_expr(
                             env.insert(var.id, item);
                         }
                         let value = evaluate_expr(body, env, function_decls)?;
-                        let Value::String(s) = value else {
+                        let Value::Html(iteration) = value else {
                             panic!("HtmlFor requires a Html body");
                         };
-                        result.push_str(&s);
+                        nodes.extend(iteration);
                         if let Some(var) = var {
                             env.remove(&var.id);
                         }
@@ -237,17 +256,17 @@ fn evaluate_expr(
                             env.insert(var.id, Value::Int(i));
                         }
                         let value = evaluate_expr(body, env, function_decls)?;
-                        let Value::String(s) = value else {
+                        let Value::Html(iteration) = value else {
                             panic!("HtmlFor requires a Html body");
                         };
-                        result.push_str(&s);
+                        nodes.extend(iteration);
                         if let Some(var) = var {
                             env.remove(&var.id);
                         }
                     }
                 }
             }
-            Ok(Value::String(result))
+            Ok(Value::Html(nodes))
         }
 
         PureExpr::Call { function, args, .. } => {

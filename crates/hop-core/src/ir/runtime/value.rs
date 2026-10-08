@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
+use crate::ir::runtime::html_node::HtmlNode;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
 
 /// Runtime value for the evaluator.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     String(String),
+    Html(Vec<HtmlNode>),
     Bool(bool),
     Int(i32),
     Float(f64),
