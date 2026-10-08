@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::ir::runtime::html_node::HtmlNode;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
 
@@ -13,12 +11,12 @@ pub enum Value {
     Float(f64),
     Array(Vec<Value>),
     Tuple(Vec<Value>),
-    Record(HashMap<FieldName, Value>),
+    Record(Vec<(FieldName, Value)>),
     Option(Option<Box<Value>>),
     /// Enum variant with name and optional fields
     Enum {
         variant_name: TypeName,
-        fields: HashMap<FieldName, Value>,
+        fields: Vec<(FieldName, Value)>,
     },
 }
 
@@ -80,7 +78,7 @@ impl Value {
     }
 
     /// Panics if the value is not a Record.
-    pub fn unwrap_record(self) -> HashMap<FieldName, Value> {
+    pub fn unwrap_record(self) -> Vec<(FieldName, Value)> {
         match self {
             Value::Record(rec) => rec,
             _ => panic!("Expected a Record value, found {self:?}"),
@@ -96,7 +94,7 @@ impl Value {
     }
 
     /// Panics if the value is not an Enum.
-    pub fn unwrap_enum(self) -> (TypeName, HashMap<FieldName, Value>) {
+    pub fn unwrap_enum(self) -> (TypeName, Vec<(FieldName, Value)>) {
         match self {
             Value::Enum {
                 variant_name,

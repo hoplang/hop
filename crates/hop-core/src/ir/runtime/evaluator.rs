@@ -133,12 +133,15 @@ fn evaluate_expr(
                 variant_name
             );
             for (field_name, var) in &arm.bindings {
-                let field = fields.get(field_name).unwrap_or_else(|| {
-                    panic!(
-                        "Field '{}' not found in enum variant '{}'",
-                        field_name, variant_name
-                    )
-                });
+                let (_, field) = fields
+                    .iter()
+                    .find(|(name, _)| name == field_name)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Field '{}' not found in enum variant '{}'",
+                            field_name, variant_name
+                        )
+                    });
                 env.insert(var.id, field.clone());
             }
             let result = evaluate_expr(&arm.body, env, function_decls);
@@ -190,10 +193,12 @@ fn evaluate_expr(
         PureExpr::VariableReference { value, .. } => env.get(&value.id).clone(),
 
         PureExpr::FieldAccess { record, field, .. } => {
-            let mut record = evaluate_expr(record, env, function_decls).unwrap_record();
-            record
-                .remove(field)
-                .unwrap_or_else(|| panic!("Field '{}' not found in record", field))
+            let record = evaluate_expr(record, env, function_decls).unwrap_record();
+            let (_, value) = record
+                .into_iter()
+                .find(|(name, _)| name == field)
+                .unwrap_or_else(|| panic!("Field '{}' not found in record", field));
+            value
         }
 
         PureExpr::StringLiteral { value, .. } => Value::String(value.to_string()),
@@ -325,10 +330,10 @@ fn evaluate_expr(
         }
 
         PureExpr::Record { fields, .. } => {
-            let mut record = HashMap::new();
+            let mut record = Vec::new();
             for (field_name, field) in fields {
                 let field = evaluate_expr(field, env, function_decls);
-                record.insert(field_name.clone(), field);
+                record.push((field_name.clone(), field));
             }
             Value::Record(record)
         }
@@ -338,10 +343,10 @@ fn evaluate_expr(
             fields,
             ..
         } => {
-            let mut field_values = HashMap::new();
+            let mut field_values = Vec::new();
             for (field_name, field) in fields {
                 let field = evaluate_expr(field, env, function_decls);
-                field_values.insert(field_name.clone(), field);
+                field_values.push((field_name.clone(), field));
             }
             Value::Enum {
                 variant_name: variant_name.clone(),
