@@ -238,19 +238,19 @@ mod tests {
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
                     t.html_for(Some("unused"), t.array(vec![t.str("a"), t.str("b")]), |t| {
-                        t.raw("Hello")
+                        t.text("Hello")
                     })
                 })
                 .build(),
             expect![[r#"
                 -- before --
                 page Test() {
-                  for v0 in ["a", "b"] { raw("Hello") }
+                  for v0 in ["a", "b"] { text("Hello") }
                 }
 
                 -- after --
                 page Test() {
-                  for _ in ["a", "b"] { raw("Hello") }
+                  for _ in ["a", "b"] { text("Hello") }
                 }
             "#]],
         );
@@ -285,18 +285,18 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
-                    t.let_expr("unused", t.str("value"), |t| t.raw("Hello"))
+                    t.let_expr("unused", t.str("value"), |t| t.text("Hello"))
                 })
                 .build(),
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "value" in { raw("Hello") }
+                  let v0 = "value" in { text("Hello") }
                 }
 
                 -- after --
                 page Test() {
-                  raw("Hello")
+                  text("Hello")
                 }
             "#]],
         );
@@ -332,19 +332,19 @@ mod tests {
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
                     t.let_expr("x", t.str("a"), |t| {
-                        t.let_expr("y", t.var("x"), |t| t.raw("Hello"))
+                        t.let_expr("y", t.var("x"), |t| t.text("Hello"))
                     })
                 })
                 .build(),
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "a" in { let v1 = v0 in { raw("Hello") } }
+                  let v0 = "a" in { let v1 = v0 in { text("Hello") } }
                 }
 
                 -- after --
                 page Test() {
-                  raw("Hello")
+                  text("Hello")
                 }
             "#]],
         );
@@ -384,8 +384,8 @@ mod tests {
                     t.option_match_expr_with_binding(
                         t.some(t.str("x")),
                         "v",
-                        |t| t.raw("some"),
-                        t.raw("none"),
+                        |t| t.text("some"),
+                        t.text("none"),
                     )
                 })
                 .build(),
@@ -393,16 +393,16 @@ mod tests {
                 -- before --
                 page Test() {
                   match Option[String]::Some("x") {
-                    Some(v0) => { raw("some") }
-                    None => { raw("none") }
+                    Some(v0) => { text("some") }
+                    None => { text("none") }
                   }
                 }
 
                 -- after --
                 page Test() {
                   match Option[String]::Some("x") {
-                    Some(_) => { raw("some") }
-                    None => { raw("none") }
+                    Some(_) => { text("some") }
+                    None => { text("none") }
                   }
                 }
             "#]],
@@ -418,7 +418,7 @@ mod tests {
                         t.some(t.str("x")),
                         "v",
                         |t| t.escape(t.var("v")),
-                        t.raw("none"),
+                        t.text("none"),
                     )
                 })
                 .build(),
@@ -427,7 +427,7 @@ mod tests {
                 page Test() {
                   match Option[String]::Some("x") {
                     Some(v0) => { escape(v0) }
-                    None => { raw("none") }
+                    None => { text("none") }
                   }
                 }
 
@@ -435,7 +435,7 @@ mod tests {
                 page Test() {
                   match Option[String]::Some("x") {
                     Some(v0) => { escape(v0) }
-                    None => { raw("none") }
+                    None => { text("none") }
                   }
                 }
             "#]],
@@ -458,8 +458,8 @@ mod tests {
                             vec![("since", t.str("now"))],
                         ),
                         |arms| {
-                            arms.arm_bound("Active", [("since", "s")], |t| t.raw("active"));
-                            arms.arm("Inactive", |t| t.raw("inactive"));
+                            arms.arm_bound("Active", [("since", "s")], |t| t.text("active"));
+                            arms.arm("Inactive", |t| t.text("inactive"));
                         },
                     )
                 })
@@ -468,16 +468,16 @@ mod tests {
                 -- before --
                 page Test() {
                   match Status::Active {since: "now"} {
-                    Status::Active {since: v0} => { raw("active") }
-                    Status::Inactive => { raw("inactive") }
+                    Status::Active {since: v0} => { text("active") }
+                    Status::Inactive => { text("inactive") }
                   }
                 }
 
                 -- after --
                 page Test() {
                   match Status::Active {since: "now"} {
-                    Status::Active => { raw("active") }
-                    Status::Inactive => { raw("inactive") }
+                    Status::Active => { text("active") }
+                    Status::Inactive => { text("inactive") }
                   }
                 }
             "#]],
@@ -501,7 +501,7 @@ mod tests {
                         ),
                         |arms| {
                             arms.arm_bound("Active", [("since", "s")], |t| t.escape(t.var("s")));
-                            arms.arm("Inactive", |t| t.raw("inactive"));
+                            arms.arm("Inactive", |t| t.text("inactive"));
                         },
                     )
                 })
@@ -511,7 +511,7 @@ mod tests {
                 page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active {since: v0} => { escape(v0) }
-                    Status::Inactive => { raw("inactive") }
+                    Status::Inactive => { text("inactive") }
                   }
                 }
 
@@ -519,7 +519,7 @@ mod tests {
                 page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active {since: v0} => { escape(v0) }
-                    Status::Inactive => { raw("inactive") }
+                    Status::Inactive => { text("inactive") }
                   }
                 }
             "#]],

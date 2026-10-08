@@ -32,6 +32,27 @@ const FLOATS: &[f64] = &[
     f64::NAN,
 ];
 
+/// Elements to generate, each with whether it is void.
+const ELEMENTS: &[(&str, bool)] = &[
+    ("div", false),
+    ("span", false),
+    ("p", false),
+    ("my-widget", false),
+    ("br", true),
+    ("input", true),
+];
+
+/// Markup text to generate, which never contains `<`, `{` or `}`.
+const TEXTS: &[&str] = &[
+    "",
+    "foo",
+    "&amp;",
+    "a\"b'c",
+    "back\\slash",
+    "line\nbreak",
+    "cr\rtab\t",
+];
+
 const STRING_LITERALS: &[&str] = &[
     "",
     "foo",
@@ -371,8 +392,9 @@ impl PureGenerator<'_, '_> {
             Add,
             Sub,
             Mul,
-            Raw,
+            Text,
             Escape,
+            Element,
             HtmlConcat,
             HtmlForArray,
             HtmlForRange,
@@ -424,8 +446,9 @@ impl PureGenerator<'_, '_> {
             }
             if *target == Type::Html {
                 productions.extend([
-                    P::Raw,
+                    P::Text,
                     P::Escape,
+                    P::Element,
                     P::HtmlConcat,
                     P::HtmlForArray,
                     P::HtmlForRange,
@@ -616,10 +639,34 @@ impl PureGenerator<'_, '_> {
                 let right = self.expr(b, target, depth - 1);
                 b.mul(left, right)
             }
-            P::Raw => b.raw(self.u.choose(STRING_LITERALS).unwrap()),
+            P::Text => b.text(self.u.choose(TEXTS).unwrap()),
             P::Escape => {
                 let operand = self.expr(b, &Type::String, depth - 1);
                 b.escape(operand)
+            }
+            P::Element => {
+                let (tag, void) = *self.u.choose(ELEMENTS).unwrap();
+                // Attribute names are unique within an element, so each
+                // candidate is included at most once.
+                let mut attributes = Vec::new();
+                for name in ["class", "id", "data-x"] {
+                    if self.coin() {
+                        let value = self.expr(b, &Type::String, depth - 1);
+                        attributes.push(b.attr(name, value));
+                    }
+                }
+                if self.coin() {
+                    let present = self.expr(b, &Type::Bool, depth - 1);
+                    attributes.push(b.presence("disabled", present));
+                }
+                let children = if void {
+                    Vec::new()
+                } else {
+                    (0..self.count(0..=3))
+                        .map(|_| self.expr(b, &Type::Html, depth - 1))
+                        .collect()
+                };
+                b.element(tag, attributes, children)
             }
             P::HtmlConcat => {
                 let parts = (0..self.count(0..=4))

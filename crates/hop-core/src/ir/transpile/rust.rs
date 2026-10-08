@@ -2212,7 +2212,7 @@ mod tests {
             PureModuleBuilder::new().page("Row", [("cell", "(Int, String)")], |t| {
                 t.concat(vec![
                     t.escape(t.int_to_string(t.tuple_index(t.var("cell"), 0))),
-                    t.raw(": "),
+                    t.text(": "),
                     t.escape(t.tuple_index(t.var("cell"), 1)),
                 ])
             }),
@@ -2271,7 +2271,12 @@ mod tests {
     #[test]
     fn simple_page() {
         check(
-            PureModuleBuilder::new().page_no_params("Test", |t| t.raw("<h1>Hello, World!</h1>\n")),
+            PureModuleBuilder::new().page_no_params("Test", |t| {
+                t.concat(vec![
+                    t.element("h1", vec![], vec![t.text("Hello, World!")]),
+                    t.text("\n"),
+                ])
+            }),
             expect![[r#"
                 -- before --
                 page Test() {
@@ -2309,7 +2314,7 @@ mod tests {
     fn page_structs_grouped_above_impls() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("First", |t| t.raw("<h1>First</h1>"))
+                .page_no_params("First", |t| t.element("h1", vec![], vec![t.text("First")]))
                 .page("Second", [("title", "String")], |t| {
                     t.escape(t.var("title"))
                 }),
@@ -2382,7 +2387,11 @@ mod tests {
     fn conditional_display() {
         check(
             PureModuleBuilder::new().page("Test", [("show", "Bool")], |t| {
-                t.bool_match_expr(t.var("show"), t.raw("<h1>Visible</h1>"), t.concat(vec![]))
+                t.bool_match_expr(
+                    t.var("show"),
+                    t.element("h1", vec![], vec![t.text("Visible")]),
+                    t.concat(vec![]),
+                )
             }),
             expect![[r#"
                 -- before --
@@ -2492,8 +2501,8 @@ mod tests {
                 t.option_match_expr_with_binding(
                     t.some(t.str("x")),
                     "value",
-                    |t| t.concat(vec![t.raw("some: "), t.escape(t.var("value"))]),
-                    t.raw("none"),
+                    |t| t.concat(vec![t.text("some: "), t.escape(t.var("value"))]),
+                    t.text("none"),
                 )
             }),
             expect![[r#"
@@ -2564,8 +2573,8 @@ mod tests {
                 t.option_match_expr_with_binding(
                     t.var("opt"),
                     "value",
-                    |t| t.concat(vec![t.raw("some: "), t.escape(t.var("value"))]),
-                    t.raw("none"),
+                    |t| t.concat(vec![t.text("some: "), t.escape(t.var("value"))]),
+                    t.text("none"),
                 )
             }),
             expect![[r#"
@@ -2705,7 +2714,7 @@ mod tests {
                         ("Nil", vec![]),
                     ],
                 )
-                .page_no_params("Test", |t| t.raw("hello")),
+                .page_no_params("Test", |t| t.text("hello")),
             expect![[r#"
                 -- before --
                 page Test() {
@@ -2834,10 +2843,10 @@ mod tests {
                         m.arm_bound("Neg", [("inner", "i")], |t| {
                             t.enum_match_expr(t.var("i"), |m| {
                                 m.arm_bound("Literal", [("value", "v")], |t| t.escape(t.var("v")));
-                                m.arm("Neg", |t| t.raw("nested"));
+                                m.arm("Neg", |t| t.text("nested"));
                             })
                         });
-                        m.arm("Literal", |t| t.raw("lit"));
+                        m.arm("Literal", |t| t.text("lit"));
                     })
                 }),
             expect![[r#"
@@ -2932,7 +2941,7 @@ mod tests {
                         t.field_access(t.var("node"), "next"),
                         "n",
                         |t| t.escape(t.field_access(t.var("n"), "value")),
-                        t.raw("end"),
+                        t.text("end"),
                     )
                 }),
             expect![[r#"
@@ -3014,9 +3023,9 @@ mod tests {
                 .page("Test", [("c", "Chain")], |t| {
                     t.enum_match_expr(t.var("c"), |m| {
                         m.arm_bound("Link", [("next", "n")], |t| {
-                            t.option_match_expr(t.var("n"), t.raw("more"), t.raw("last"))
+                            t.option_match_expr(t.var("n"), t.text("more"), t.text("last"))
                         });
-                        m.arm("End", |t| t.raw("end"));
+                        m.arm("End", |t| t.text("end"));
                     })
                 }),
             expect![[r#"
@@ -3109,7 +3118,7 @@ mod tests {
                             ("tail", t.enum_variant("IntList", "Nil")),
                         ],
                     );
-                    t.let_expr("list", list, |t| t.raw("done"))
+                    t.let_expr("list", list, |t| t.text("done"))
                 }),
             expect![[r#"
                 -- before --
@@ -3163,7 +3172,7 @@ mod tests {
                     let inner_b = t.record("B", vec![("a", t.none("A"))]);
                     let a = t.record("A", vec![("b", inner_b)]);
                     let b = t.record("B", vec![("a", t.some(a))]);
-                    t.let_expr("b", b, |t| t.raw("done"))
+                    t.let_expr("b", b, |t| t.text("done"))
                 }),
             expect![[r#"
                 -- before --
@@ -3406,9 +3415,9 @@ mod tests {
                 .enum_unit("Color", ["Red", "Green", "Blue"])
                 .function("Badge", [("color", "Color")], "Html", |t| {
                     t.enum_match_expr(t.var("color"), |m| {
-                        m.arm("Red", |t| t.raw("red"));
-                        m.arm("Green", |t| t.raw("green"));
-                        m.arm("Blue", |t| t.raw("blue"));
+                        m.arm("Red", |t| t.text("red"));
+                        m.arm("Green", |t| t.text("green"));
+                        m.arm("Blue", |t| t.text("blue"));
                     })
                 })
                 .page_no_params("Test", |t| {
@@ -3787,8 +3796,8 @@ mod tests {
                 .function("Role", [("role", "String")], "Html", |t| {
                     t.bool_match_expr(
                         t.eq(t.var("role"), t.str("admin")),
-                        t.raw("yes"),
-                        t.raw("no"),
+                        t.text("yes"),
+                        t.text("no"),
                     )
                 })
                 .page("Test", [("role", "String")], |t| {
@@ -3861,7 +3870,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn Greet@f0(name@v0: String) -> Html {
-                  write_string(("hello " + v0))
+                  write("hello ")
+                  write_string(v0)
                 }
                 page Test(who@v1: String) {
                   call Greet@f0(name = v1)
@@ -3894,12 +3904,8 @@ mod tests {
                 }
 
                 fn render_greet_0(output: &mut String, v_0: &str) {
-                    write_escaped_html(&{
-                        let mut s = String::new();
-                        s.push_str("hello ");
-                        s.push_str(v_0);
-                        s
-                    }, output);
+                    output.push_str("hello ");
+                    write_escaped_html(v_0, output);
                 }
 
                 impl View for Test {
@@ -3927,7 +3933,7 @@ mod tests {
                         t.var("text"),
                         "value",
                         |t| t.escape(t.var("value")),
-                        t.raw("none"),
+                        t.text("none"),
                     )
                 })
                 .page("Test", [("label", "Option[String]")], |t| {
@@ -4006,7 +4012,9 @@ mod tests {
     fn transpiles_let_fragment_as_rust_block() {
         check(
             PureModuleBuilder::new().page_no_params("Test", |t| {
-                t.let_expr("v_0", t.raw("<b>hi</b>"), |t| t.var("v_0"))
+                t.let_expr("v_0", t.element("b", vec![], vec![t.text("hi")]), |t| {
+                    t.var("v_0")
+                })
             }),
             expect![[r#"
                 -- before --
@@ -4058,7 +4066,9 @@ mod tests {
     fn fragment_returning_function_called_in_value_position() {
         check(
             PureModuleBuilder::new()
-                .function("Frag", [], "Html", |t| t.raw("<b>hi</b>"))
+                .function("Frag", [], "Html", |t| {
+                    t.element("b", vec![], vec![t.text("hi")])
+                })
                 .page_no_params("Test", |t| {
                     t.let_expr("x", t.call("Frag", vec![]), |t| t.var("x"))
                 }),
@@ -4185,17 +4195,24 @@ mod tests {
                     t.add(t.var("x"), t.int(10))
                 })
                 .page_no_params("Test", |t| {
-                    t.concat(vec![
-                        t.raw("<div>"),
-                        t.html_for_range(
-                            Some("x"),
-                            t.int(0),
-                            t.call("foo", vec![("x", t.int(-7))]),
-                            |t| t.concat(vec![t.escape(t.int_to_string(t.var("x"))), t.raw(",")]),
-                        ),
-                        t.escape(t.int_to_string(t.call("foo", vec![("x", t.int(10))]))),
-                        t.raw("</div>"),
-                    ])
+                    t.element(
+                        "div",
+                        vec![],
+                        vec![
+                            t.html_for_range(
+                                Some("x"),
+                                t.int(0),
+                                t.call("foo", vec![("x", t.int(-7))]),
+                                |t| {
+                                    t.concat(vec![
+                                        t.escape(t.int_to_string(t.var("x"))),
+                                        t.text(","),
+                                    ])
+                                },
+                            ),
+                            t.escape(t.int_to_string(t.call("foo", vec![("x", t.int(10))]))),
+                        ],
+                    )
                 }),
             expect![[r#"
                 -- before --

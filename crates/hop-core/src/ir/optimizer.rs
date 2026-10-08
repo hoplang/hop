@@ -4,8 +4,7 @@ use crate::ir::{expr_id::ExprIdCounter, transform};
 fn optimize_body(body: PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
     let body = transform::perform_partial_evaluation(body, expr_ids);
     let body = transform::propagate_variable_names(body);
-    let body = transform::eliminate_unused_variable_declarations(body);
-    transform::normalize_html(body, expr_ids, 60)
+    transform::eliminate_unused_variable_declarations(body)
 }
 
 pub fn optimize(module: PureModule) -> PureModule {
@@ -112,7 +111,7 @@ mod tests {
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
                     t.let_expr("unused", t.str("value"), |t| {
-                        t.concat(vec![t.raw("Hello"), t.raw(" "), t.raw("World")])
+                        t.concat(vec![t.text("Hello"), t.text(" "), t.text("World")])
                     })
                 })
                 .build(),
@@ -120,13 +119,13 @@ mod tests {
                 -- before --
                 page Test() {
                   let v0 = "value" in {
-                    concat(raw("Hello"), raw(" "), raw("World"))
+                    concat(text("Hello"), text(" "), text("World"))
                   }
                 }
 
                 -- after --
                 page Test() {
-                  concat(raw("Hello World"))
+                  concat(text("Hello"), text(" "), text("World"))
                 }
             "#]],
         );
@@ -138,13 +137,13 @@ mod tests {
             PureModuleBuilder::new()
                 .page_no_params("First", |t| {
                     t.let_expr("unused", t.str("x"), |t| {
-                        t.concat(vec![t.raw("A"), t.raw("B")])
+                        t.concat(vec![t.text("A"), t.text("B")])
                     })
                 })
                 .page_no_params("Second", |t| {
                     t.concat(vec![t.bool_match_expr(
                         t.bool(true),
-                        t.concat(vec![t.raw("C"), t.raw("D")]),
+                        t.concat(vec![t.text("C"), t.text("D")]),
                         t.concat(vec![]),
                     )])
                 })
@@ -152,12 +151,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page First() {
-                  let v0 = "x" in { concat(raw("A"), raw("B")) }
+                  let v0 = "x" in { concat(text("A"), text("B")) }
                 }
                 page Second() {
                   concat(
                     match true {
-                      true => { concat(raw("C"), raw("D")) }
+                      true => { concat(text("C"), text("D")) }
                       false => { concat() }
                     },
                   )
@@ -165,10 +164,10 @@ mod tests {
 
                 -- after --
                 page First() {
-                  concat(raw("AB"))
+                  concat(text("A"), text("B"))
                 }
                 page Second() {
-                  concat(raw("CD"))
+                  concat(text("C"), text("D"))
                 }
             "#]],
         );
@@ -182,7 +181,7 @@ mod tests {
                     t.let_expr("flag", t.bool(true), |t| {
                         t.concat(vec![t.bool_match_expr(
                             t.var("flag"),
-                            t.concat(vec![t.raw("yes")]),
+                            t.concat(vec![t.text("yes")]),
                             t.concat(vec![]),
                         )])
                     })
@@ -194,7 +193,7 @@ mod tests {
                   let v0 = true in {
                     concat(
                       match v0 {
-                        true => { concat(raw("yes")) }
+                        true => { concat(text("yes")) }
                         false => { concat() }
                       },
                     )
@@ -203,7 +202,7 @@ mod tests {
 
                 -- after --
                 page Test() {
-                  concat(raw("yes"))
+                  text("yes")
                 }
             "#]],
         );
@@ -221,7 +220,7 @@ mod tests {
                         t.let_expr("unused", t.var("x"), |t| {
                             t.concat(vec![t.bool_match_expr(
                                 t.bool(true),
-                                t.concat(vec![t.raw("A"), t.raw("B")]),
+                                t.concat(vec![t.text("A"), t.text("B")]),
                                 t.concat(vec![]),
                             )])
                         })
@@ -235,7 +234,7 @@ mod tests {
                     let v1 = v0 in {
                       concat(
                         match true {
-                          true => { concat(raw("A"), raw("B")) }
+                          true => { concat(text("A"), text("B")) }
                           false => { concat() }
                         },
                       )
@@ -245,21 +244,21 @@ mod tests {
 
                 -- after --
                 page Test() {
-                  concat(raw("AB"))
+                  concat(text("A"), text("B"))
                 }
             "#]],
         );
     }
 
     #[test]
-    fn should_escape_propagated_constants_at_compile_time() {
-        // Partial evaluation inlines the constant, elimination drops the
-        // let, and normalization escapes and merges the result.
+    fn should_propagate_a_constant_into_an_escape() {
+        // Partial evaluation inlines the constant and elimination drops the
+        // let. The lowering escapes the constant.
         check(
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
                     t.let_expr("name", t.str("<Ada>"), |t| {
-                        t.concat(vec![t.raw("<p>"), t.escape(t.var("name")), t.raw("</p>")])
+                        t.element("p", vec![], vec![t.escape(t.var("name"))])
                     })
                 })
                 .build(),
@@ -267,13 +266,13 @@ mod tests {
                 -- before --
                 page Test() {
                   let v0 = "<Ada>" in {
-                    concat(raw("<p>"), escape(v0), raw("</p>"))
+                    html(tag: "p", attrs: [], children: concat(escape(v0)))
                   }
                 }
 
                 -- after --
                 page Test() {
-                  concat(raw("<p>&lt;Ada&gt;</p>"))
+                  html(tag: "p", attrs: [], children: escape("<Ada>"))
                 }
             "#]],
         );

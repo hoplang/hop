@@ -19,6 +19,8 @@ use crate::ir::var_id::VarId;
 ///   arm's bindings turned into ordinary lets.
 /// - A field access on a record literal projects the field, and a tuple
 ///   index on a tuple literal projects the element.
+/// - A concat takes the parts of a nested concat as its own, and a concat
+///   of one part is that part.
 pub fn perform_partial_evaluation(expr: PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
     let mut env = HashMap::new();
     eval(expr, &mut env, expr_ids)
@@ -411,6 +413,23 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             }
         }
 
+        PureExpr::HtmlConcat { parts, id } => {
+            let mut flattened: Vec<PureExpr> = Vec::with_capacity(parts.len());
+            for part in parts {
+                match part {
+                    PureExpr::HtmlConcat { parts, .. } => flattened.extend(parts),
+                    part => flattened.push(part),
+                }
+            }
+            match flattened.len() {
+                1 => flattened.pop().unwrap(),
+                _ => PureExpr::HtmlConcat {
+                    parts: flattened,
+                    id,
+                },
+            }
+        }
+
         PureExpr::BoolLogicalAnd { left, right, id } => match (*left, *right) {
             (PureExpr::BoolLiteral { value: l, .. }, PureExpr::BoolLiteral { value: r, .. }) => {
                 PureExpr::BoolLiteral { value: l && r, id }
@@ -566,8 +585,9 @@ fn is_const(expr: &PureExpr) -> bool {
         | PureExpr::VariableReference { .. }
         | PureExpr::FieldAccess { .. }
         | PureExpr::TupleIndex { .. }
-        | PureExpr::HtmlRaw { .. }
+        | PureExpr::HtmlText { .. }
         | PureExpr::HtmlEscape { .. }
+        | PureExpr::HtmlElement { .. }
         | PureExpr::HtmlConcat { .. }
         | PureExpr::HtmlFor { .. }
         | PureExpr::Call { .. }
@@ -672,8 +692,9 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
         | PureExpr::VariableReference { .. }
         | PureExpr::FieldAccess { .. }
         | PureExpr::TupleIndex { .. }
-        | PureExpr::HtmlRaw { .. }
+        | PureExpr::HtmlText { .. }
         | PureExpr::HtmlEscape { .. }
+        | PureExpr::HtmlElement { .. }
         | PureExpr::HtmlConcat { .. }
         | PureExpr::HtmlFor { .. }
         | PureExpr::Call { .. }
@@ -807,8 +828,8 @@ mod tests {
                 .page_no_params("Test", |t| {
                     t.concat(vec![t.bool_match_expr(
                         t.not(t.not(t.bool(true))),
-                        t.raw("yes"),
-                        t.raw("no"),
+                        t.text("yes"),
+                        t.text("no"),
                     )])
                 })
                 .build(),
@@ -817,15 +838,15 @@ mod tests {
                 page Test() {
                   concat(
                     match (!(!true)) {
-                      true => { raw("yes") }
-                      false => { raw("no") }
+                      true => { text("yes") }
+                      false => { text("no") }
                     },
                   )
                 }
 
                 -- after --
                 page Test() {
-                  concat(raw("yes"))
+                  text("yes")
                 }
             "#]],
         );
@@ -838,8 +859,8 @@ mod tests {
                 .page("Test", [("flag", "Bool")], |t| {
                     t.concat(vec![t.bool_match_expr(
                         t.var("flag"),
-                        t.raw("yes"),
-                        t.raw("no"),
+                        t.text("yes"),
+                        t.text("no"),
                     )])
                 })
                 .build(),
@@ -848,20 +869,18 @@ mod tests {
                 page Test(flag@v0: Bool) {
                   concat(
                     match v0 {
-                      true => { raw("yes") }
-                      false => { raw("no") }
+                      true => { text("yes") }
+                      false => { text("no") }
                     },
                   )
                 }
 
                 -- after --
                 page Test(flag@v0: Bool) {
-                  concat(
-                    match v0 {
-                      true => { raw("yes") }
-                      false => { raw("no") }
-                    },
-                  )
+                  match v0 {
+                    true => { text("yes") }
+                    false => { text("no") }
+                  }
                 }
             "#]],
         );
@@ -983,7 +1002,7 @@ mod tests {
 
                 -- after --
                 page Test() {
-                  concat(escape("Hello, World"))
+                  escape("Hello, World")
                 }
             "#]],
         );
@@ -996,8 +1015,8 @@ mod tests {
                 .page_no_params("Test", |t| {
                     t.concat(vec![t.bool_match_expr(
                         t.eq(t.str("a"), t.str("b")),
-                        t.raw("equal"),
-                        t.raw("different"),
+                        t.text("equal"),
+                        t.text("different"),
                     )])
                 })
                 .build(),
@@ -1006,15 +1025,15 @@ mod tests {
                 page Test() {
                   concat(
                     match ("a" == "b") {
-                      true => { raw("equal") }
-                      false => { raw("different") }
+                      true => { text("equal") }
+                      false => { text("different") }
                     },
                   )
                 }
 
                 -- after --
                 page Test() {
-                  concat(raw("different"))
+                  text("different")
                 }
             "#]],
         );
@@ -1038,7 +1057,7 @@ mod tests {
 
                 -- after --
                 page Test() {
-                  concat(escape("-2147483648"))
+                  escape("-2147483648")
                 }
             "#]],
         );
@@ -1064,7 +1083,7 @@ mod tests {
 
                 -- after --
                 page Test() {
-                  concat(escape("2147483647"))
+                  escape("2147483647")
                 }
             "#]],
         );
@@ -1079,7 +1098,7 @@ mod tests {
                         t.some(t.str("present")),
                         "v",
                         |t| t.escape(t.var("v")),
-                        t.raw("none"),
+                        t.text("none"),
                     )])
                 })
                 .build(),
@@ -1089,14 +1108,14 @@ mod tests {
                   concat(
                     match Option[String]::Some("present") {
                       Some(v0) => { escape(v0) }
-                      None => { raw("none") }
+                      None => { text("none") }
                     },
                   )
                 }
 
                 -- after --
                 page Test() {
-                  concat(escape("present"))
+                  escape("present")
                 }
             "#]],
         );
@@ -1111,7 +1130,7 @@ mod tests {
                         t.none("String"),
                         "v",
                         |t| t.escape(t.var("v")),
-                        t.raw("none"),
+                        t.text("none"),
                     )])
                 })
                 .build(),
@@ -1121,14 +1140,14 @@ mod tests {
                   concat(
                     match Option[String]::None {
                       Some(v0) => { escape(v0) }
-                      None => { raw("none") }
+                      None => { text("none") }
                     },
                   )
                 }
 
                 -- after --
                 page Test() {
-                  concat(raw("none"))
+                  text("none")
                 }
             "#]],
         );
@@ -1159,7 +1178,7 @@ mod tests {
                                     t.string_concat(vec![t.str(" / "), t.var("b")]),
                                 ]))
                             });
-                            arms.arm("Inactive", |t| t.raw("inactive"));
+                            arms.arm("Inactive", |t| t.text("inactive"));
                         },
                     )])
                 })
@@ -1172,14 +1191,14 @@ mod tests {
                       Status::Active {since: v0, by: v1} => {
                         escape((v0 + (" / " + v1)))
                       }
-                      Status::Inactive => { raw("inactive") }
+                      Status::Inactive => { text("inactive") }
                     },
                   )
                 }
 
                 -- after --
                 page Test() {
-                  concat(escape("today / admin"))
+                  escape("today / admin")
                 }
             "#]],
         );
@@ -1206,7 +1225,7 @@ mod tests {
                                 arms.arm_bound("Active", [("since", "s")], |t| {
                                     t.escape(t.var("s"))
                                 });
-                                arms.arm("Inactive", |t| t.raw("inactive"));
+                                arms.arm("Inactive", |t| t.text("inactive"));
                             })])
                         },
                     )
@@ -1219,7 +1238,7 @@ mod tests {
                     concat(
                       match v0 {
                         Status::Active {since: v1} => { escape(v1) }
-                        Status::Inactive => { raw("inactive") }
+                        Status::Inactive => { text("inactive") }
                       },
                     )
                   }
@@ -1227,7 +1246,7 @@ mod tests {
 
                 -- after --
                 page Test() {
-                  concat(escape("now"))
+                  escape("now")
                 }
             "#]],
         );
@@ -1261,7 +1280,7 @@ mod tests {
 
                 -- after --
                 page Test(x@v0: String) {
-                  concat(let v1 = v0 in { escape(v1) })
+                  let v1 = v0 in { escape(v1) }
                 }
             "#]],
         );
@@ -1290,7 +1309,7 @@ mod tests {
 
                 -- after --
                 page Test(dynamic@v0: String) {
-                  concat(escape("Ada"))
+                  escape("Ada")
                 }
             "#]],
         );
@@ -1314,7 +1333,7 @@ mod tests {
 
                 -- after --
                 page Test(dynamic@v0: String) {
-                  concat(escape("Ada"))
+                  escape("Ada")
                 }
             "#]],
         );
@@ -1345,7 +1364,7 @@ mod tests {
 
                 -- after --
                 page Test(dynamic@v0: String) {
-                  concat(escape("deep"))
+                  escape("deep")
                 }
             "#]],
         );
@@ -1367,7 +1386,7 @@ mod tests {
 
                 -- after --
                 page Test(pair@v0: (String, Int)) {
-                  concat(escape(v0.0))
+                  escape(v0.0)
                 }
             "#]],
         );
@@ -1391,7 +1410,7 @@ mod tests {
 
                 -- after --
                 page Test(x@v0: Int) {
-                  concat(escape("2"))
+                  escape("2")
                 }
             "#]],
         );

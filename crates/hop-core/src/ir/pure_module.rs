@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::document::CheapString;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
+use crate::html::HtmlElementKind;
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
@@ -71,6 +72,27 @@ pub struct PureArgument {
     pub expr: PureExpr,
 }
 
+/// An attribute of a HtmlElement.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PureAttribute {
+    /// An attribute with a value, which renders escaped between quotes.
+    ///
+    /// Must hold a String.
+    Value {
+        name: AttributeName,
+        value: PureExpr,
+    },
+
+    /// A boolean attribute, which renders without a value when present is
+    /// true and does not render when it is false.
+    ///
+    /// Must hold a Bool.
+    Presence {
+        name: AttributeName,
+        present: PureExpr,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PureExpr {
     /// A Let expression.
@@ -112,10 +134,10 @@ pub enum PureExpr {
     /// A StringLiteral expression.
     StringLiteral { value: CheapString, id: ExprId },
 
-    /// A HtmlRaw expression.
+    /// A HtmlText expression.
     ///
-    /// A trusted, already-escaped HTML atom.
-    HtmlRaw { content: String, id: ExprId },
+    /// Text that renders as written, without escaping.
+    HtmlText { content: CheapString, id: ExprId },
 
     /// A HtmlEscape expression.
     ///
@@ -123,6 +145,20 @@ pub enum PureExpr {
     ///
     /// Must hold a String.
     HtmlEscape { expr: Box<PureExpr>, id: ExprId },
+
+    /// A HtmlElement expression.
+    ///
+    /// An element with its attributes, in the order they render, and its
+    /// content. Attribute names are unique within an element.
+    ///
+    /// The children must be Html. A void element has no content, so it
+    /// renders without its children and without an end tag.
+    HtmlElement {
+        element: HtmlElementKind,
+        attributes: Vec<PureAttribute>,
+        children: Box<PureExpr>,
+        id: ExprId,
+    },
 
     /// A HtmlConcat expression.
     ///
@@ -391,8 +427,9 @@ impl PureExpr {
             PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => Type::Float,
             PureExpr::IntLiteral { .. } => Type::Int,
 
-            PureExpr::HtmlRaw { .. }
+            PureExpr::HtmlText { .. }
             | PureExpr::HtmlEscape { .. }
+            | PureExpr::HtmlElement { .. }
             | PureExpr::HtmlConcat { .. }
             | PureExpr::HtmlFor { .. } => Type::Html,
 
@@ -435,8 +472,9 @@ impl PureExpr {
             | PureExpr::VariableReference { id, .. }
             | PureExpr::FieldAccess { id, .. }
             | PureExpr::StringLiteral { id, .. }
-            | PureExpr::HtmlRaw { id, .. }
+            | PureExpr::HtmlText { id, .. }
             | PureExpr::HtmlEscape { id, .. }
+            | PureExpr::HtmlElement { id, .. }
             | PureExpr::HtmlConcat { id, .. }
             | PureExpr::HtmlFor { id, .. }
             | PureExpr::Call { id, .. }
@@ -527,6 +565,20 @@ impl PureExpr {
 
             PureExpr::HtmlEscape { expr, .. } => f(expr),
 
+            PureExpr::HtmlElement {
+                attributes,
+                children,
+                ..
+            } => {
+                for attribute in attributes {
+                    match attribute {
+                        PureAttribute::Value { value, .. } => f(value),
+                        PureAttribute::Presence { present, .. } => f(present),
+                    }
+                }
+                f(children);
+            }
+
             PureExpr::HtmlConcat { parts, .. } | PureExpr::StringConcat { parts, .. } => {
                 for part in parts {
                     f(part);
@@ -589,7 +641,7 @@ impl PureExpr {
 
             PureExpr::VariableReference { .. }
             | PureExpr::StringLiteral { .. }
-            | PureExpr::HtmlRaw { .. }
+            | PureExpr::HtmlText { .. }
             | PureExpr::BoolLiteral { .. }
             | PureExpr::FloatLiteral { .. }
             | PureExpr::IntLiteral { .. } => {}
@@ -690,6 +742,30 @@ impl PureExpr {
 
             PureExpr::HtmlEscape { expr, id } => PureExpr::HtmlEscape {
                 expr: Box::new(f(*expr)),
+                id,
+            },
+
+            PureExpr::HtmlElement {
+                element,
+                attributes,
+                children,
+                id,
+            } => PureExpr::HtmlElement {
+                element,
+                attributes: attributes
+                    .into_iter()
+                    .map(|attribute| match attribute {
+                        PureAttribute::Value { name, value } => PureAttribute::Value {
+                            name,
+                            value: f(value),
+                        },
+                        PureAttribute::Presence { name, present } => PureAttribute::Presence {
+                            name,
+                            present: f(present),
+                        },
+                    })
+                    .collect(),
+                children: Box::new(f(*children)),
                 id,
             },
 
@@ -924,10 +1000,24 @@ impl PureExpr {
 
             PureExpr::VariableReference { .. }
             | PureExpr::StringLiteral { .. }
-            | PureExpr::HtmlRaw { .. }
+            | PureExpr::HtmlText { .. }
             | PureExpr::BoolLiteral { .. }
             | PureExpr::FloatLiteral { .. }
             | PureExpr::IntLiteral { .. } => self,
+        }
+    }
+}
+
+impl PureAttribute {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            PureAttribute::Value { name, value: expr }
+            | PureAttribute::Presence {
+                name,
+                present: expr,
+            } => BoxDoc::text(name.as_str())
+                .append(BoxDoc::text(": "))
+                .append(expr.to_doc()),
         }
     }
 }
@@ -1015,11 +1105,55 @@ impl PureExpr {
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
             PureExpr::StringLiteral { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
-            PureExpr::HtmlRaw { content, .. } => BoxDoc::text("raw(")
+            PureExpr::HtmlText { content, .. } => BoxDoc::text("text(")
                 .append(BoxDoc::text(format!("{:?}", content)))
                 .append(")"),
             PureExpr::HtmlEscape { expr, .. } => {
                 BoxDoc::text("escape(").append(expr.to_doc()).append(")")
+            }
+            PureExpr::HtmlElement {
+                element,
+                attributes,
+                children,
+                ..
+            } => {
+                let attrs = if attributes.is_empty() {
+                    BoxDoc::text("[]")
+                } else {
+                    BoxDoc::text("[")
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    attributes.iter().map(|attribute| attribute.to_doc()),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text("]"))
+                };
+                let mut sections = vec![
+                    BoxDoc::text(format!("tag: {:?}", element.as_str())),
+                    BoxDoc::text("attrs: ").append(attrs),
+                ];
+                if !element.is_void() {
+                    sections.push(BoxDoc::text("children: ").append(children.to_doc()));
+                }
+                BoxDoc::text("html(")
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                sections,
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text(")"))
             }
             PureExpr::HtmlConcat { parts, .. } => {
                 if parts.is_empty() {

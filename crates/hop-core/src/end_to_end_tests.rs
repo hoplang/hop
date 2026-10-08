@@ -621,8 +621,7 @@ mod tests {
                           None => { "" }
                         }
                       } in {
-                        write("<p")
-                        write(">")
+                        write("<p>")
                         write_string(let v6 = (v5 + v0) in { v6 })
                         write("</p>")
                       }
@@ -689,25 +688,17 @@ mod tests {
                           true => {
                             match v4 {
                               Some(v5) => {
-                                write("<p")
-                                write(">")
-                                write("admin ")
+                                write("<p>admin ")
                                 write_string(v5)
                                 write("</p>")
                               }
                               None => {
-                                write("<p")
-                                write(">")
-                                write("admin")
-                                write("</p>")
+                                write("<p>admin</p>")
                               }
                             }
                           }
                           false => {
-                            write("<p")
-                            write(">")
-                            write("guest")
-                            write("</p>")
+                            write("<p>guest</p>")
                           }
                         }
                       }
@@ -775,8 +766,7 @@ mod tests {
                             true => {
                               let v5 = v2.0 in {
                                 let v6 = v2.1 in {
-                                  write("<p")
-                                  write(">")
+                                  write("<p>")
                                   write_string(v5)
                                   write(": ")
                                   write_string(v6.to_string())
@@ -786,8 +776,7 @@ mod tests {
                             }
                             false => {
                               let v7 = v2.0 in {
-                                write("<p")
-                                write(">")
+                                write("<p>")
                                 write_string(v7)
                                 write("</p>")
                               }
@@ -846,17 +835,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<ul")
-                  write(">")
+                  write("<ul>")
                   let v0 = "Item" in {
                     let v1 = 2 in {
-                      write("<li")
-                      write(" class=\"")
+                      write("<li class=\"")
                       write_string(let v2 = "row" in {
                         ((v2 + "-") + "odd")
                       })
-                      write("\"")
-                      write(">")
+                      write("\">")
                       write_string(v0)
                       write(": ")
                       write_string(v1.to_string())
@@ -1054,14 +1040,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Button@f0(label@v0: String, id@v1: String) -> Html {
-                  write("<button")
-                  write(" class=\"")
-                  write_string("btn")
-                  write("\"")
-                  write(" id=\"")
+                  write("<button class=\"btn\" id=\"")
                   write_string(v1)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   write_string(v0)
                   write("</button>")
                 }
@@ -1137,8 +1118,7 @@ mod tests {
                   call Second@f1(n = v0, title = v1)
                 }
                 fn Leaf@f2(title@v5: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v5)
                   write("</div>")
                 }
@@ -1229,25 +1209,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Base@f1(id@v3: String, data-k@v4: String) -> Html {
-                  write("<div")
-                  write(" id=\"")
+                  write("<div id=\"")
                   write_string(v3)
-                  write("\"")
-                  write(" data-k=\"")
+                  write("\" data-k=\"")
                   write_string(v4)
-                  write("\"")
-                  write(">")
-                  write("</div>")
+                  write("\"></div>")
                 }
                 fn Card@f0(
                   title@v0: String,
                   id@v1: String,
                   data-k@v2: String,
                 ) -> Html {
-                  write("<section")
-                  write(">")
-                  write("<h1")
-                  write(">")
+                  write("<section><h1>")
                   write_string(v0)
                   write("</h1>")
                   call Base@f1(id = v1, data-k = v2)
@@ -1310,12 +1283,9 @@ mod tests {
                   let v2 = v0 in {
                     match v2 {
                       true => {
-                        write("<div")
-                        write(" id=\"")
+                        write("<div id=\"")
                         write_string(v1)
-                        write("\"")
-                        write(">")
-                        write("</div>")
+                        write("\"></div>")
                       }
                       false => {
                       }
@@ -1385,8 +1355,7 @@ mod tests {
                     false => {
                     }
                   }
-                  write(">")
-                  write("</button>")
+                  write("></button>")
                 }
                 fn Field@f0(required@v0: Bool) -> Html {
                   write("<input")
@@ -1460,12 +1429,9 @@ mod tests {
                   let v2 = v0 in {
                     match v2 {
                       true => {
-                        write("<div")
-                        write(" id=\"")
+                        write("<div id=\"")
                         write_string(v1)
-                        write("\"")
-                        write(">")
-                        write("</div>")
+                        write("\"></div>")
                       }
                       false => {
                       }
@@ -1518,12 +1484,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Panel@f0(title@v0: String) -> Html {
-                  write("<div")
-                  write(" title=\"")
+                  write("<div title=\"")
                   write_string(v0)
-                  write("\"")
-                  write(">")
-                  write("</div>")
+                  write("\"></div>")
                 }
                 page Test() {
                   call Panel@f0(title = "a'b<c&d")
@@ -1569,23 +1532,8 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<span")
-                  write(" title=\"")
-                  write_string("Tom &amp; Jerry")
-                  write("\"")
-                  write(" data-x=\"")
-                  write_string("x<y")
-                  write("\"")
-                  write(">")
-                  write("</span>")
-                  write("<input")
-                  write(" pattern=\"")
-                  write_string("\\d+")
-                  write("\"")
-                  write(" title=\"")
-                  write_string("say \"hi\"")
-                  write("\"")
-                  write(">")
+                  write("<span title=\"Tom &amp;amp; Jerry\" data-x=\"x&lt;y\"></span>")
+                  write("<input pattern=\"\\d+\" title=\"say &quot;hi&quot;\">")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1631,12 +1579,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Panel@f0(title@v0: String) -> Html {
-                  write("<div")
-                  write(" title=\"")
+                  write("<div title=\"")
                   write_string(v0)
-                  write("\"")
-                  write(">")
-                  write("</div>")
+                  write("\"></div>")
                 }
                 page Test() {
                   call Panel@f0(title = "a &amp; b")
@@ -1683,14 +1628,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Icon@f0(src@v0: String, alt@v1: String) -> Html {
-                  write("<img")
-                  write(" src=\"")
+                  write("<img src=\"")
                   write_string(v0)
-                  write("\"")
-                  write(" alt=\"")
+                  write("\" alt=\"")
                   write_string(v1)
-                  write("\"")
-                  write(">")
+                  write("\">")
                 }
                 page Test() {
                   call Icon@f0(src = "a.png", alt = "a")
@@ -1738,9 +1680,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn A@f0() -> Html {
-                  write("<div")
-                  write(">")
-                  write("</div>")
+                  write("<div></div>")
                 }
                 page Test() {
                   call A@f0()
@@ -1788,9 +1728,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn A@f0() -> Html {
-                  write("<div")
-                  write(">")
-                  write("</div>")
+                  write("<div></div>")
                 }
                 page Test() {
                   call A@f0()
@@ -1850,17 +1788,13 @@ mod tests {
                   id@v3: String,
                   aria-label@v4: String,
                 ) -> Html {
-                  write("<button")
-                  write(" class=\"")
+                  write("<button class=\"")
                   write_string(v2)
-                  write("\"")
-                  write(" id=\"")
+                  write("\" id=\"")
                   write_string(v3)
-                  write("\"")
-                  write(" aria-label=\"")
+                  write("\" aria-label=\"")
                   write_string(v4)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   write_string(v2)
                   write("</button>")
                 }
@@ -1928,14 +1862,11 @@ mod tests {
                   children@v1: Html,
                   data-foo@v2: String,
                 ) -> Html {
-                  write("<button")
-                  write(" class=\"")
+                  write("<button class=\"")
                   write_string(v0)
-                  write("\"")
-                  write(" data-foo=\"")
+                  write("\" data-foo=\"")
                   write_string(v2)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   write_html(v1)
                   write("</button>")
                 }
@@ -1993,14 +1924,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Button@f0(children@v0: Html, data-x@v1: String) -> Html {
-                  write("<button")
-                  write(" class=\"")
-                  write_string("builtin")
-                  write("\"")
-                  write(" data-x=\"")
+                  write("<button class=\"builtin\" data-x=\"")
                   write_string(v1)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   write_html(v0)
                   write("</button>")
                 }
@@ -2049,15 +1975,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<svg")
-                  write(">")
-                  write("<path")
-                  write(" d=\"")
-                  write_string("M0 0")
-                  write("\"")
-                  write(">")
-                  write("</path>")
-                  write("</svg>")
+                  write("<svg><path d=\"M0 0\"></path></svg>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2102,12 +2020,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Svg@f0(viewBox@v0: String) -> Html {
-                  write("<svg")
-                  write(" viewBox=\"")
+                  write("<svg viewBox=\"")
                   write_string(v0)
-                  write("\"")
-                  write(">")
-                  write("</svg>")
+                  write("\"></svg>")
                 }
                 page Test() {
                   call Svg@f0(viewBox = "0 0 100 100")
@@ -2160,8 +2075,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f1(title@v1: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v1)
                   write("</div>")
                 }
@@ -2219,8 +2133,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f1(title@v0: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v0)
                   write("</div>")
                 }
@@ -2283,8 +2196,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f1(user@v2: User) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v2.name)
                   write("</div>")
                 }
@@ -2422,8 +2334,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Bar@f1(name@v2: String, title@v3: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v2)
                   call Card@f2(title = v3)
                   write("</div>")
@@ -2432,8 +2343,7 @@ mod tests {
                   call Bar@f1(name = v0, title = v1)
                 }
                 fn Card@f2(title@v4: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v4)
                   write("</div>")
                 }
@@ -2496,10 +2406,7 @@ mod tests {
                   let v2 = (0 < v1) in {
                     match v2 {
                       true => {
-                        write("<div")
-                        write(">")
-                        write("positive")
-                        write("</div>")
+                        write("<div>positive</div>")
                       }
                       false => {
                       }
@@ -2566,11 +2473,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn A@f1(count@v2: Int, data-foo@v3: String) -> Html {
-                  write("<div")
-                  write(" data-foo=\"")
+                  write("<div data-foo=\"")
                   write_string(v3)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   let v4 = (0 < v2) in {
                     match v4 {
                       true => {
@@ -2648,8 +2553,7 @@ mod tests {
                   call Bar@f1(children = v0)
                 }
                 fn Foo@f2(children@v2: Html) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_html(v2)
                   write("</div>")
                 }
@@ -2713,19 +2617,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Inner@f1(class@v1: String) -> Html {
-                  write("<span")
-                  write(" class=\"")
+                  write("<span class=\"")
                   write_string(v1)
-                  write("\"")
-                  write(">")
-                  write("</span>")
+                  write("\"></span>")
                 }
                 fn Outer@f0(class@v0: String) -> Html {
-                  write("<div")
-                  write(" class=\"")
+                  write("<div class=\"")
                   write_string(v0)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   call Inner@f1(class = "x")
                   write("</div>")
                 }
@@ -2797,11 +2696,9 @@ mod tests {
                   }, class = v1)
                 }
                 fn Foo@f1(children@v2: Html, class@v3: String) -> Html {
-                  write("<div")
-                  write(" class=\"")
+                  write("<div class=\"")
                   write_string(v3)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   write_html(v2)
                   write("</div>")
                 }
@@ -2860,12 +2757,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Inner@f1(class@v1: String) -> Html {
-                  write("<span")
-                  write(" class=\"")
+                  write("<span class=\"")
                   write_string(v1)
-                  write("\"")
-                  write(">")
-                  write("</span>")
+                  write("\"></span>")
                 }
                 fn Wrapper@f0(class@v0: String) -> Html {
                   call Inner@f1(class = v0)
@@ -2926,12 +2820,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn A@f1(class@v1: String) -> Html {
-                  write("<div")
-                  write(" class=\"")
+                  write("<div class=\"")
                   write_string(v1)
-                  write("\"")
-                  write(">")
-                  write("</div>")
+                  write("\"></div>")
                 }
                 fn B@f0(class@v0: String) -> Html {
                   call A@f1(class = v0)
@@ -2992,12 +2883,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn A@f1(class@v1: String) -> Html {
-                  write("<div")
-                  write(" class=\"")
+                  write("<div class=\"")
                   write_string(v1)
-                  write("\"")
-                  write(">")
-                  write("</div>")
+                  write("\"></div>")
                 }
                 fn B@f0(class@v0: String) -> Html {
                   call A@f1(class = v0)
@@ -3056,8 +2944,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn A@f1(label@v1: String) -> Html {
-                  write("<span")
-                  write(">")
+                  write("<span>")
                   write_string(v1)
                   write("</span>")
                 }
@@ -3122,8 +3009,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Leaf@f2(label@v2: String) -> Html {
-                  write("<span")
-                  write(">")
+                  write("<span>")
                   write_string(v2)
                   write("</span>")
                 }
@@ -3183,15 +3069,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Inner@f1(title@v1: String, lang@v2: String) -> Html {
-                  write("<span")
-                  write(" title=\"")
+                  write("<span title=\"")
                   write_string(v1)
-                  write("\"")
-                  write(" lang=\"")
+                  write("\" lang=\"")
                   write_string(v2)
-                  write("\"")
-                  write(">")
-                  write("</span>")
+                  write("\"></span>")
                 }
                 fn Wrapper@f0(lang@v0: String) -> Html {
                   call Inner@f1(title = "a", lang = v0)
@@ -3251,15 +3133,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f1(title@v2: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v2)
                   write("</div>")
                 }
                 fn Wrapper@f0(title@v0: String) -> Html {
                   let v1 = "local" in {
-                    write("<section")
-                    write(">")
+                    write("<section>")
                     write_string(v1)
                     call Card@f1(title = v0)
                     write("</section>")
@@ -3321,15 +3201,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f1(title@v2: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v2)
                   write("</div>")
                 }
                 fn Wrapper@f0(title@v0: String) -> Html {
                   for v1 in ["a", "b"] {
-                    write("<p")
-                    write(">")
+                    write("<p>")
                     write_string(v1)
                     call Card@f1(title = v0)
                     write("</p>")
@@ -3398,8 +3276,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f1(title@v3: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v3)
                   write("</div>")
                 }
@@ -3407,8 +3284,7 @@ mod tests {
                   let v1 = Option[String]::Some("m") in {
                     match v1 {
                       Some(v2) => {
-                        write("<p")
-                        write(">")
+                        write("<p>")
                         write_string(v2)
                         call Card@f1(title = v0)
                         write("</p>")
@@ -3467,16 +3343,11 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Wrapper@f0(id@v0: String) -> Html {
                   let v1 = {
-                    write("<b")
-                    write(">")
-                    write("x")
-                    write("</b>")
+                    write("<b>x</b>")
                   } in {
-                    write("<div")
-                    write(" id=\"")
+                    write("<div id=\"")
                     write_string(v0)
-                    write("\"")
-                    write(">")
+                    write("\">")
                     write_html(v1)
                     write("</div>")
                   }
@@ -3545,18 +3416,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f1(title@v2: String, id@v3: String) -> Html {
-                  write("<div")
-                  write(" id=\"")
+                  write("<div id=\"")
                   write_string(v3)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   write_string(v2)
                   write("</div>")
                 }
                 fn Wrapper@f0(id@v0: String) -> Html {
                   let v1 = "local" in {
-                    write("<section")
-                    write(">")
+                    write("<section>")
                     write_string(v1)
                     call Card@f1(title = "t", id = v0)
                     write("</section>")
@@ -3619,11 +3487,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn A@f1(tabindex@v2: Int, data-x@v3: String) -> Html {
-                  write("<div")
-                  write(" data-x=\"")
+                  write("<div data-x=\"")
                   write_string(v3)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   let v4 = (0 < v2) in {
                     match v4 {
                       true => {
@@ -3994,8 +3860,7 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Tag@f0(text@v0: String) -> Html {
                   let v1 = v0 in {
-                    write("<div")
-                    write(">")
+                    write("<div>")
                     write_string(v1)
                     write("</div>")
                   }
@@ -4053,8 +3918,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Swap@f0(a@v2: String, b@v3: String) -> Html {
-                  write("<p")
-                  write(">")
+                  write("<p>")
                   write_string(v2)
                   write(" ")
                   write_string(v3)
@@ -4118,11 +3982,9 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Rows@f0(items@v1: Array[String], id@v2: String) -> Html {
                   for v3 in v1 {
-                    write("<div")
-                    write(" id=\"")
+                    write("<div id=\"")
                     write_string(v2)
-                    write("\"")
-                    write(">")
+                    write("\">")
                     write_string(v3)
                     write("</div>")
                   }
@@ -5192,10 +5054,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<h1")
-                  write(">")
-                  write("Hello, World!")
-                  write("</h1>")
+                  write("<h1>Hello, World!</h1>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -5241,10 +5100,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<h1")
-                  write(">")
-                  write("Hello, World!")
-                  write("</h1>")
+                  write("<h1>Hello, World!</h1>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -5291,8 +5147,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "Alice" in {
-                    write("Hello,")
-                    write_string(" ")
+                    write("Hello, ")
                     write_string(v0)
                     write("!")
                   }
@@ -5974,13 +5829,11 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   for v0 in ["a", "b"] {
-                    write("<span")
-                    write(" class=\"")
-                    write_string((v0 + " " + "px-2" + " " + "py-1"))
-                    write("\"")
-                    write(">")
-                    write_string(((v0 + "!") + "?"))
-                    write("</span>")
+                    write("<span class=\"")
+                    write_string(v0)
+                    write(" px-2 py-1\">")
+                    write_string(v0)
+                    write("!?</span>")
                   }
                 }
                 -- ir (optimized) --
@@ -6031,7 +5884,8 @@ mod tests {
                 page Test() {
                   let v0 = "Hello" in {
                     let v1 = " World" in {
-                      write_string((v0 + v1))
+                      write_string(v0)
+                      write_string(v1)
                     }
                   }
                 }
@@ -7387,7 +7241,9 @@ mod tests {
                     let v1 = v0 in {
                       match v1 {
                         Some(v2) => {
-                          write_string(("[" + v2 + "]"))
+                          write("[")
+                          write_string(v2)
+                          write("]")
                         }
                         None => {
                           write("[_]")
@@ -7567,10 +7423,12 @@ mod tests {
                     let v1 = v0 in {
                       match v1 {
                         Outcome::Success(value: v2) => {
-                          write_string(("Ok: " + v2))
+                          write("Ok: ")
+                          write_string(v2)
                         }
                         Outcome::Failure(message: v3) => {
-                          write_string(("Err: " + v3))
+                          write("Err: ")
+                          write_string(v3)
                         }
                       }
                     }
@@ -7629,7 +7487,8 @@ mod tests {
                     let v1 = v0 in {
                       match v1 {
                         Item::Tagged(tag: v2) => {
-                          write_string(("tag: " + v2))
+                          write("tag: ")
+                          write_string(v2)
                         }
                         Item::Plain => {
                           write("plain")
@@ -7695,7 +7554,8 @@ mod tests {
                       Outcome::Failure {message: v2} => { v2 }
                     }
                   } in {
-                    write_string(("Got: " + v3))
+                    write("Got: ")
+                    write_string(v3)
                   }
                 }
                 -- ir (optimized) --
@@ -7824,10 +7684,12 @@ mod tests {
                     let v1 = v0 in {
                       match v1 {
                         Outcome::Success(value: v2) => {
-                          write_string(("Ok: " + v2))
+                          write("Ok: ")
+                          write_string(v2)
                         }
                         Outcome::Failure(message: v3) => {
-                          write_string(("Err: " + v3))
+                          write("Err: ")
+                          write_string(v3)
                         }
                       }
                     }
@@ -7892,10 +7754,13 @@ mod tests {
                     let v1 = v0 in {
                       match v1 {
                         Response::Success(code: v2, body: v3) => {
-                          write_string((v2 + " " + v3))
+                          write_string(v2)
+                          write(" ")
+                          write_string(v3)
                         }
                         Response::Failure(reason: v4) => {
-                          write_string(("Error: " + v4))
+                          write("Error: ")
+                          write_string(v4)
                         }
                       }
                     }
@@ -7956,10 +7821,12 @@ mod tests {
                     let v1 = v0 in {
                       match v1 {
                         Outcome::Success(value: v2) => {
-                          write_string(("Ok: " + v2))
+                          write("Ok: ")
+                          write_string(v2)
                         }
                         Outcome::Failure(message: v3) => {
-                          write_string(("Err: " + v3))
+                          write("Err: ")
+                          write_string(v3)
                         }
                       }
                     }
@@ -9333,7 +9200,8 @@ mod tests {
                   let v0 = Person {name: "Alice", age: 30} in {
                     let v1 = v0 in {
                       let v2 = v1.age in {
-                        write_string(("age: " + v2.to_string()))
+                        write("age: ")
+                        write_string(v2.to_string())
                       }
                     }
                   }
@@ -9785,12 +9653,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<div")
-                  write(" class=\"")
-                  write_string(("foo" + " " + "bar" + " " + "baz"))
-                  write("\"")
-                  write(">")
-                  write("</div>")
+                  write("<div class=\"foo bar baz\"></div>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -9834,7 +9697,10 @@ mod tests {
                 page Test() {
                   let v0 = "hop" in {
                     let v1 = 3 in {
-                      write_string(("a: " + v0 + ", b: " + v1.to_string()))
+                      write("a: ")
+                      write_string(v0)
+                      write(", b: ")
+                      write_string(v1.to_string())
                     }
                   }
                 }
@@ -9878,7 +9744,9 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "c" in {
-                    write_string(("a{b" + v0 + "d}e"))
+                    write("a{b")
+                    write_string(v0)
+                    write("d}e")
                   }
                 }
                 -- ir (optimized) --
@@ -9921,7 +9789,9 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "c" in {
-                    write_string(("a\"b\n" + v0 + "\\d"))
+                    write("a&quot;b\n")
+                    write_string(v0)
+                    write("\\d")
                   }
                 }
                 -- ir (optimized) --
@@ -10008,12 +9878,9 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "my-class" in {
-                    write("<div")
-                    write(" class=\"")
+                    write("<div class=\"")
                     write_string(v0)
-                    write("\"")
-                    write(">")
-                    write("</div>")
+                    write("\"></div>")
                   }
                 }
                 -- ir (optimized) --
@@ -10058,8 +9925,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "on" in {
-                    write("<span")
-                    write(">")
+                    write("<span>")
                     write_string(v0)
                     write("</span>")
                   }
@@ -10104,11 +9970,9 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "button" in {
-                    write("<input")
-                    write(" type=\"")
+                    write("<input type=\"")
                     write_string(v0)
-                    write("\"")
-                    write(">")
+                    write("\">")
                   }
                 }
                 -- ir (optimized) --
@@ -10151,13 +10015,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<label")
-                  write(" for=\"")
-                  write_string("email")
-                  write("\"")
-                  write(">")
-                  write("Email")
-                  write("</label>")
+                  write("<label for=\"email\">Email</label>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13003,13 +12861,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String, children@v1: Html) -> Html {
-                  write("<div")
-                  write(" class=\"")
-                  write_string("card")
-                  write("\"")
-                  write(">")
-                  write("<h2")
-                  write(">")
+                  write("<div class=\"card\"><h2>")
                   write_string(v0)
                   write("</h2>")
                   write_html(v1)
@@ -13017,10 +12869,7 @@ mod tests {
                 }
                 page Test() {
                   call Card@f0(title = "Hello", children = {
-                    write("<p")
-                    write(">")
-                    write("world")
-                    write("</p>")
+                    write("<p>world</p>")
                   })
                 }
                 -- ir (optimized) --
@@ -13079,20 +12928,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Inner@f1(children@v1: Html) -> Html {
-                  write("<div")
-                  write(" class=\"")
-                  write_string("inner")
-                  write("\"")
-                  write(">")
+                  write("<div class=\"inner\">")
                   write_html(v1)
                   write("</div>")
                 }
                 fn Outer@f0(children@v0: Html) -> Html {
-                  write("<div")
-                  write(" class=\"")
-                  write_string("outer")
-                  write("\"")
-                  write(">")
+                  write("<div class=\"outer\">")
                   call Inner@f1(children = {
                     write_html(v0)
                   })
@@ -13100,10 +12941,7 @@ mod tests {
                 }
                 page Test() {
                   call Outer@f0(children = {
-                    write("<p")
-                    write(">")
-                    write("hello")
-                    write("</p>")
+                    write("<p>hello</p>")
                   })
                 }
                 -- ir (optimized) --
@@ -13175,42 +13013,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Footer@f1() -> Html {
-                  write("<footer")
-                  write(">")
-                  write("<p")
-                  write(">")
-                  write("Copyright 2024")
-                  write("</p>")
-                  write("</footer>")
+                  write("<footer><p>Copyright 2024</p></footer>")
                 }
                 fn Header@f0(title@v0: String) -> Html {
-                  write("<header")
-                  write(">")
-                  write("<h1")
-                  write(">")
+                  write("<header><h1>")
                   write_string(v0)
-                  write("</h1>")
-                  write("</header>")
+                  write("</h1></header>")
                 }
                 fn Layout@f2(children@v1: Html) -> Html {
-                  write("<div")
-                  write(" class=\"")
-                  write_string("layout")
-                  write("\"")
-                  write(">")
+                  write("<div class=\"layout\">")
                   write_html(v1)
                   write("</div>")
                 }
                 page Test() {
                   call Layout@f2(children = {
                     call Header@f0(title = "Welcome")
-                    write("<main")
-                    write(">")
-                    write("<p")
-                    write(">")
-                    write("Hello world")
-                    write("</p>")
-                    write("</main>")
+                    write("<main><p>Hello world</p></main>")
                     call Footer@f1()
                   })
                 }
@@ -13269,27 +13087,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Repeat@f0(children@v0: Html) -> Html {
-                  write("<div")
-                  write(" class=\"")
-                  write_string("first")
-                  write("\"")
-                  write(">")
+                  write("<div class=\"first\">")
                   write_html(v0)
-                  write("</div>")
-                  write("<div")
-                  write(" class=\"")
-                  write_string("second")
-                  write("\"")
-                  write(">")
+                  write("</div><div class=\"second\">")
                   write_html(v0)
                   write("</div>")
                 }
                 page Test() {
                   call Repeat@f0(children = {
-                    write("<span")
-                    write(">")
-                    write("hi")
-                    write("</span>")
+                    write("<span>hi</span>")
                   })
                 }
                 -- ir (optimized) --
@@ -13365,8 +13171,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Badge@f1(text@v4: String) -> Html {
-                  write("<strong")
-                  write(">")
+                  write("<strong>")
                   write_string(v4)
                   write("</strong>")
                 }
@@ -13479,8 +13284,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn NodeView@f0(node@v1: Node) -> Html {
-                  write("<span")
-                  write(">")
+                  write("<span>")
                   write_string(v1.value)
                   write("</span>")
                   let v2 = v1.next in {
@@ -13574,8 +13378,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v0)
                   write("</div>")
                 }
@@ -13626,8 +13429,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Offset@f0(dx@v0: Int, scale@v1: Float) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string((v0 * 3).to_string())
                   write(" ")
                   write_string((v1 * 2).to_int().to_string())
@@ -13680,8 +13482,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v0)
                   write("</div>")
                 }
@@ -13735,8 +13536,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String, subtitle@v1: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v0)
                   write(" - ")
                   write_string(v1)
@@ -13792,8 +13592,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String, subtitle@v1: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v0)
                   write(" - ")
                   write_string(v1)
@@ -13854,8 +13653,7 @@ mod tests {
                   subtitle@v1: String,
                   footer@v2: String,
                 ) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v0)
                   write(" - ")
                   write_string(v1)
@@ -13916,13 +13714,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String, children@v1: Html) -> Html {
-                  write("<div")
-                  write(" class=\"")
-                  write_string("card")
-                  write("\"")
-                  write(">")
-                  write("<h2")
-                  write(">")
+                  write("<div class=\"card\"><h2>")
                   write_string(v0)
                   write("</h2>")
                   write_html(v1)
@@ -13988,13 +13780,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0(title@v0: String, children@v1: Html) -> Html {
-                  write("<div")
-                  write(" class=\"")
-                  write_string("card")
-                  write("\"")
-                  write(">")
-                  write("<h2")
-                  write(">")
+                  write("<div class=\"card\"><h2>")
                   write_string(v0)
                   write("</h2>")
                   write_html(v1)
@@ -14002,10 +13788,7 @@ mod tests {
                 }
                 page Test() {
                   call Card@f0(title = "With", children = {
-                    write("<p")
-                    write(">")
-                    write("body")
-                    write("</p>")
+                    write("<p>body</p>")
                   })
                   call Card@f0(title = "Without", children = {})
                 }
@@ -14624,9 +14407,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("hello")
-                  write(" ")
-                  write("world")
+                  write("hello world")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14809,7 +14590,8 @@ mod tests {
                               write("1 minute ago")
                             }
                             false => {
-                              write_string((v2.to_string() + " minutes ago"))
+                              write_string(v2.to_string())
+                              write(" minutes ago")
                             }
                           }
                         }
@@ -14821,7 +14603,8 @@ mod tests {
                               write("1 hour ago")
                             }
                             false => {
-                              write_string((v4.to_string() + " hours ago"))
+                              write_string(v4.to_string())
+                              write(" hours ago")
                             }
                           }
                         }
@@ -14894,8 +14677,7 @@ mod tests {
                   let v1 = v0 in {
                     match v1 {
                       CodeBlock::Snippet(code: v2) => {
-                        write("<code")
-                        write(">")
+                        write("<code>")
                         write_string(v2)
                         write("</code>")
                       }
@@ -14973,22 +14755,14 @@ mod tests {
                   let v1 = v0 in {
                     match v1 {
                       ButtonElement::Link(href: v2) => {
-                        write("<a")
-                        write(" href=\"")
+                        write("<a href=\"")
                         write_string(v2)
-                        write("\"")
-                        write(">")
-                        write("link")
-                        write("</a>")
+                        write("\">link</a>")
                       }
                       ButtonElement::Button(type: v3) => {
-                        write("<button")
-                        write(" type=\"")
+                        write("<button type=\"")
                         write_string(v3)
-                        write("\"")
-                        write(">")
-                        write("btn")
-                        write("</button>")
+                        write("\">btn</button>")
                       }
                     }
                   }
@@ -15158,11 +14932,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<img")
-                  write(" src=\"")
-                  write_string("/hop_assets/logo.svg")
-                  write("\"")
-                  write(">")
+                  write("<img src=\"/hop_assets/logo.svg\">")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -15206,11 +14976,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<img")
-                  write(" src=\"")
-                  write_string("/static/v1/logo-a1b2c3d4.svg")
-                  write("\"")
-                  write(">")
+                  write("<img src=\"/static/v1/logo-a1b2c3d4.svg\">")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -15273,8 +15039,7 @@ mod tests {
                   let v2 = (0 < v0) in {
                     match v2 {
                       true => {
-                        write("<div")
-                        write(">")
+                        write("<div>")
                         call Nest@f0(depth = (v0 - 1), children = {
                           write_html(v1)
                         })
@@ -15288,10 +15053,7 @@ mod tests {
                 }
                 page Test() {
                   call Nest@f0(depth = 2, children = {
-                    write("<b")
-                    write(">")
-                    write("x")
-                    write("</b>")
+                    write("<b>x</b>")
                   })
                 }
                 -- ir (optimized) --
@@ -15300,9 +15062,7 @@ mod tests {
                     match v2 {
                       true => {
                         write("<div>")
-                        call Nest@f0(depth = (v0 - 1), children = {
-                          write_html(v1)
-                        })
+                        call Nest@f0(depth = (v0 - 1), children = v1)
                         write("</div>")
                       }
                       false => {
@@ -15362,18 +15122,14 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Foo@f0(children@v0: Html) -> Html {
                   let v1 = v0 in {
-                    write("<div")
-                    write(">")
+                    write("<div>")
                     write_html(v1)
                     write("</div>")
                   }
                 }
                 page Test() {
                   call Foo@f0(children = {
-                    write("<b")
-                    write(">")
-                    write("hi")
-                    write("</b>")
+                    write("<b>hi</b>")
                   })
                 }
                 -- ir (optimized) --
@@ -15436,14 +15192,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Inner@f1(children@v1: Html) -> Html {
-                  write("<em")
-                  write(">")
+                  write("<em>")
                   write_html(v1)
                   write("</em>")
                 }
                 fn Outer@f0(children@v0: Html) -> Html {
-                  write("<section")
-                  write(">")
+                  write("<section>")
                   call Inner@f1(children = {
                     write_html(v0)
                   })
@@ -15504,11 +15258,9 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Nest@f0(n@v0: Int, id@v1: String) -> Html {
-                  write("<div")
-                  write(" id=\"")
+                  write("<div id=\"")
                   write_string(v1)
-                  write("\"")
-                  write(">")
+                  write("\">")
                   let v2 = (0 < v0) in {
                     match v2 {
                       true => {
@@ -15521,8 +15273,7 @@ mod tests {
                   write("</div>")
                 }
                 fn Nest@f1(n@v3: Int) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   let v4 = (0 < v3) in {
                     match v4 {
                       true => {
@@ -16188,16 +15939,10 @@ mod tests {
                       Some(v2) => {
                         match v2 {
                           true => {
-                            write("<span")
-                            write(">")
-                            write("yes")
-                            write("</span>")
+                            write("<span>yes</span>")
                           }
                           false => {
-                            write("<span")
-                            write(">")
-                            write("no")
-                            write("</span>")
+                            write("<span>no</span>")
                           }
                         }
                       }
@@ -16589,8 +16334,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Show@f0(label@v2: String) -> Html {
-                  write("<span")
-                  write(">")
+                  write("<span>")
                   write_string(v2)
                   write("</span>")
                 }
@@ -16665,8 +16409,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Foo {class: "a"} in {
-                    write("<div")
-                    write(">")
+                    write("<div>")
                     write_string(v0.class)
                     write("</div>")
                   }
@@ -16717,8 +16460,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Foo {function: "a"} in {
-                    write("<div")
-                    write(">")
+                    write("<div>")
                     write_string(v0.function)
                     write("</div>")
                   }
@@ -16769,8 +16511,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Foo {protected: "a"} in {
-                    write("<div")
-                    write(">")
+                    write("<div>")
                     write_string(v0.protected)
                     write("</div>")
                   }
@@ -16821,8 +16562,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Foo {eval: "a"} in {
-                    write("<div")
-                    write(">")
+                    write("<div>")
                     write_string(v0.eval)
                     write("</div>")
                   }
@@ -16882,8 +16622,7 @@ mod tests {
                     let v1 = v0 in {
                       match v1 {
                         E::A(class: v2) => {
-                          write("<div")
-                          write(">")
+                          write("<div>")
                           write_string(v2)
                           write("</div>")
                         }
@@ -17223,8 +16962,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Row@f0(item@v4: Item) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v4.label)
                   write("</div>")
                 }
@@ -17437,8 +17175,7 @@ mod tests {
                   (v0 + v1.to_string())
                 }
                 page Test() {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(call label@f0(prefix = "a", count = 1))
                   write("</div>")
                 }
@@ -17493,16 +17230,14 @@ mod tests {
                   (v1 + v2.to_string())
                 }
                 page Test() {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(call label@f0(prefix = "x", count = 1))
                   write_string(call label@f0(prefix = "x", count = 2))
                   write_string(call label@f0(prefix = "y", count = 1))
                   write("</div>")
                 }
                 page Other(prefix@v0: String) {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(call label@f0(prefix = v0, count = 1))
                   write("</div>")
                 }
@@ -17565,8 +17300,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Wrapper@f0() -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   for v0 in 0..=call foo@f1(x = -7) {
                     write_string(v0.to_string())
                     write(",")
@@ -17627,8 +17361,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn card@f0(label@v0: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v0)
                   write("</div>")
                 }
@@ -17673,13 +17406,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  write("<div")
-                  write(">")
-                  write("<span")
-                  write(">")
-                  write("hello")
-                  write("</span>")
-                  write("</div>")
+                  write("<div><span>hello</span></div>")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -17723,17 +17450,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn wrap@f0(children@v0: Html) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_html(v0)
                   write("</div>")
                 }
                 page Test() {
                   call wrap@f0(children = {
-                    write("<span")
-                    write(">")
-                    write("hello")
-                    write("</span>")
+                    write("<span>hello</span>")
                   })
                 }
                 -- ir (optimized) --
@@ -17778,17 +17501,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0(slot@v0: Html) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_html(v0)
                   write("</div>")
                 }
                 page Test() {
                   call Card@f0(slot = {
-                    write("<span")
-                    write(">")
-                    write("hello")
-                    write("</span>")
+                    write("<span>hello</span>")
                   })
                 }
                 -- ir (optimized) --
@@ -17836,23 +17555,16 @@ mod tests {
                   let v1 = v0 in {
                     match v1 {
                       true => {
-                        write("<b")
-                        write(">")
-                        write("yes")
-                        write("</b>")
+                        write("<b>yes</b>")
                       }
                       false => {
-                        write("<i")
-                        write(">")
-                        write("no")
-                        write("</i>")
+                        write("<i>no</i>")
                       }
                     }
                   }
                 }
                 page Test() {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   call badge@f0(on = true)
                   call badge@f0(on = false)
                   write("</div>")
@@ -17906,8 +17618,7 @@ mod tests {
                   call card@f1(label = "hello")
                 }
                 fn card@f1(label@v0: String) -> Html {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(v0)
                   write("</div>")
                 }
@@ -17989,8 +17700,7 @@ mod tests {
                   Shape::Square
                 }
                 page Test() {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(call f@f0().to_string())
                   write("</div>")
                 }
@@ -18142,8 +17852,7 @@ mod tests {
                   Option[String]::Some("hi")
                 }
                 page Test() {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(call f@f0())
                   write("</div>")
                 }
@@ -18199,16 +17908,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Card@f0() -> Html {
-                  write("<span")
-                  write(">")
-                  write("A")
-                  write("</span>")
+                  write("<span>A</span>")
                 }
                 fn Card@f1() -> Html {
-                  write("<span")
-                  write(">")
-                  write("B")
-                  write("</span>")
+                  write("<span>B</span>")
                 }
                 page Test() {
                   call Card@f0()
@@ -18265,17 +17968,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn NavBar@f0() -> Html {
-                  write("<b")
-                  write(">")
-                  write("nav")
-                  write("</b>")
+                  write("<b>nav</b>")
                 }
                 fn nav_bar@f1(x@v0: Int) -> Int {
                   v0
                 }
                 page Test() {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   call NavBar@f0()
                   write_string(call nav_bar@f1(x = 1).to_string())
                   write("</div>")
@@ -18325,8 +18024,7 @@ mod tests {
                   (v0 + v1.to_string())
                 }
                 page Test() {
-                  write("<div")
-                  write(">")
+                  write("<div>")
                   write_string(call label@f0(prefix = "n", count = 2))
                   write("</div>")
                 }

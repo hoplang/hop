@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 use crate::ir::ir_match::{EnumPattern, Match};
-use crate::ir::pure_module::{PureForSource, PureFunctionDeclaration, PureModule};
+use crate::ir::pure_module::{PureAttribute, PureForSource, PureFunctionDeclaration, PureModule};
 
 pub fn evaluate_page(
     module: &PureModule,
@@ -132,7 +132,51 @@ fn evaluate_expr(
         }
         PureExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
 
-        PureExpr::HtmlRaw { content, .. } => Ok(Value::String(content.clone())),
+        PureExpr::HtmlText { content, .. } => Ok(Value::String(content.to_string())),
+
+        PureExpr::HtmlElement {
+            element,
+            attributes,
+            children,
+            ..
+        } => {
+            let mut html = format!("<{}", element.as_str());
+            for attribute in attributes {
+                match attribute {
+                    PureAttribute::Value { name, value } => {
+                        let Value::String(value) = evaluate_expr(value, env, function_decls)?
+                        else {
+                            panic!("Attribute value must be a String");
+                        };
+                        html.push(' ');
+                        html.push_str(name.as_str());
+                        html.push_str("=\"");
+                        write_escaped_html(&value, &mut html);
+                        html.push('"');
+                    }
+                    PureAttribute::Presence { name, present } => {
+                        let present = evaluate_expr(present, env, function_decls)?
+                            .as_bool()
+                            .expect("Attribute condition must be a Bool");
+                        if present {
+                            html.push(' ');
+                            html.push_str(name.as_str());
+                        }
+                    }
+                }
+            }
+            html.push('>');
+            if !element.is_void() {
+                let Value::String(children) = evaluate_expr(children, env, function_decls)? else {
+                    panic!("Element children must be Html");
+                };
+                html.push_str(&children);
+                html.push_str("</");
+                html.push_str(element.as_str());
+                html.push('>');
+            }
+            Ok(Value::String(html))
+        }
 
         PureExpr::HtmlEscape { expr, .. } => {
             let value = evaluate_expr(expr, env, function_decls)?;
@@ -838,20 +882,61 @@ mod tests {
     }
 
     #[test]
-    fn should_evaluate_simple_raw() {
+    fn should_evaluate_an_element() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| t.raw("<div>Hello World</div>"))
+                .page_no_params("Test", |t| {
+                    t.element("div", vec![], vec![t.text("Hello World")])
+                })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 page Test() {
-                  raw("<div>Hello World</div>")
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(text("Hello World")),
+                  )
                 }
 
                 -- after --
                 <div>Hello World</div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_escape_attribute_values_and_settle_boolean_attributes() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("cls", "String"), ("flag", "Bool")], |t| {
+                    t.element(
+                        "input",
+                        vec![
+                            t.attr("class", t.var("cls")),
+                            t.presence("disabled", t.var("flag")),
+                            t.presence("checked", t.bool(false)),
+                        ],
+                        vec![],
+                    )
+                })
+                .build(),
+            vec![
+                ("cls", Value::String("a\"b".to_string())),
+                ("flag", Value::Bool(true)),
+            ],
+            expect![[r#"
+                -- before --
+                page Test(cls@v0: String, flag@v1: Bool) {
+                  html(
+                    tag: "input",
+                    attrs: [class: v0, disabled: v1, checked: false],
+                  )
+                }
+
+                -- after --
+                <input class="a&quot;b" disabled>
             "#]],
         );
     }
@@ -885,7 +970,11 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .page("Test", [("show", "Bool")], |t| {
-                    t.bool_match_expr(t.var("show"), t.raw("<div>Visible</div>"), t.concat(vec![]))
+                    t.bool_match_expr(
+                        t.var("show"),
+                        t.element("div", vec![], vec![t.text("Visible")]),
+                        t.concat(vec![]),
+                    )
                 })
                 .build(),
             vec![("show", Value::Bool(true))],
@@ -893,7 +982,13 @@ mod tests {
                 -- before --
                 page Test(show@v0: Bool) {
                   match v0 {
-                    true => { raw("<div>Visible</div>") }
+                    true => {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat(text("Visible")),
+                      )
+                    }
                     false => { concat() }
                   }
                 }
@@ -909,7 +1004,11 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .page("Test", [("show", "Bool")], |t| {
-                    t.bool_match_expr(t.var("show"), t.raw("<div>Hidden</div>"), t.concat(vec![]))
+                    t.bool_match_expr(
+                        t.var("show"),
+                        t.element("div", vec![], vec![t.text("Hidden")]),
+                        t.concat(vec![]),
+                    )
                 })
                 .build(),
             vec![("show", Value::Bool(false))],
@@ -917,7 +1016,13 @@ mod tests {
                 -- before --
                 page Test(show@v0: Bool) {
                   match v0 {
-                    true => { raw("<div>Hidden</div>") }
+                    true => {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat(text("Hidden")),
+                      )
+                    }
                     false => { concat() }
                   }
                 }
@@ -935,9 +1040,8 @@ mod tests {
                 .page("Test", [("items", "Array[String]")], |t| {
                     t.html_for(Some("item"), t.var("items"), |t| {
                         t.concat(vec![
-                            t.raw("<li>"),
-                            t.escape(t.var("item")),
-                            t.raw("</li>\n"),
+                            t.element("li", vec![], vec![t.escape(t.var("item"))]),
+                            t.text("\n"),
                         ])
                     })
                 })
@@ -954,7 +1058,14 @@ mod tests {
                 -- before --
                 page Test(items@v0: Array[String]) {
                   for v1 in v0 {
-                    concat(raw("<li>"), escape(v1), raw("</li>\n"))
+                    concat(
+                      html(
+                        tag: "li",
+                        attrs: [],
+                        children: concat(escape(v1)),
+                      ),
+                      text("\n"),
+                    )
                   }
                 }
 
@@ -972,14 +1083,22 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .page_no_params("Test", |t| {
-                    t.let_expr("v_0", t.raw("<b>hi</b>"), |t| t.var("v_0"))
+                    t.let_expr("v_0", t.element("b", vec![], vec![t.text("hi")]), |t| {
+                        t.var("v_0")
+                    })
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = raw("<b>hi</b>") in { v0 }
+                  let v0 = html(
+                    tag: "b",
+                    attrs: [],
+                    children: concat(text("hi")),
+                  ) in {
+                    v0
+                  }
                 }
 
                 -- after --

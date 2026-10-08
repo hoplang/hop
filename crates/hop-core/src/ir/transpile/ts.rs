@@ -1857,8 +1857,12 @@ mod tests {
     #[test]
     fn simple_page() {
         check(
-            PureModuleBuilder::new()
-                .page_no_params("HelloWorld", |t| t.raw("<h1>Hello, World!</h1>\n")),
+            PureModuleBuilder::new().page_no_params("HelloWorld", |t| {
+                t.concat(vec![
+                    t.element("h1", vec![], vec![t.text("Hello, World!")]),
+                    t.text("\n"),
+                ])
+            }),
             expect![[r#"
                 -- before --
                 page HelloWorld() {
@@ -1934,7 +1938,7 @@ mod tests {
             PureModuleBuilder::new().page("Row", [("cell", "(Int, String)")], |t| {
                 t.concat(vec![
                     t.escape(t.int_to_string(t.tuple_index(t.var("cell"), 0))),
-                    t.raw(": "),
+                    t.text(": "),
                     t.escape(t.tuple_index(t.var("cell"), 1)),
                 ])
             }),
@@ -1976,28 +1980,37 @@ mod tests {
                 [("name", "String"), ("age", "String")],
                 |t| {
                     t.concat(vec![
-                        t.raw("<div>\n"),
-                        t.raw("<h2>Name: "),
-                        t.escape(t.var("name")),
-                        t.raw("</h2>\n"),
-                        t.raw("<p>Age: "),
-                        t.escape(t.var("age")),
-                        t.raw("</p>\n"),
-                        t.raw("</div>\n"),
+                        t.element(
+                            "div",
+                            vec![],
+                            vec![
+                                t.text("\n"),
+                                t.element(
+                                    "h2",
+                                    vec![],
+                                    vec![t.text("Name: "), t.escape(t.var("name"))],
+                                ),
+                                t.text("\n"),
+                                t.element(
+                                    "p",
+                                    vec![],
+                                    vec![t.text("Age: "), t.escape(t.var("age"))],
+                                ),
+                                t.text("\n"),
+                            ],
+                        ),
+                        t.text("\n"),
                     ])
                 },
             ),
             expect![[r#"
                 -- before --
                 page UserInfo(name@v0: String, age@v1: String) {
-                  write("<div>\n")
-                  write("<h2>Name: ")
+                  write("<div>\n<h2>Name: ")
                   write_string(v0)
-                  write("</h2>\n")
-                  write("<p>Age: ")
+                  write("</h2>\n<p>Age: ")
                   write_string(v1)
-                  write("</p>\n")
-                  write("</div>\n")
+                  write("</p>\n</div>\n")
                 }
 
                 -- after --
@@ -2019,14 +2032,11 @@ mod tests {
                     age: string
                 }): string {
                     let output: string = "";
-                    output += "<div>\n";
-                    output += "<h2>Name: ";
+                    output += "<div>\n<h2>Name: ";
                     output += escapeHtml(v_0);
-                    output += "</h2>\n";
-                    output += "<p>Age: ";
+                    output += "</h2>\n<p>Age: ";
                     output += escapeHtml(v_1);
-                    output += "</p>\n";
-                    output += "</div>\n";
+                    output += "</p>\n</div>\n";
                     return output;
                 }
             "#]],
@@ -2043,9 +2053,8 @@ mod tests {
                     t.bool_match_expr(
                         t.var("show"),
                         t.concat(vec![
-                            t.raw("<h1>"),
-                            t.escape(t.var("title")),
-                            t.raw("</h1>\n"),
+                            t.element("h1", vec![], vec![t.escape(t.var("title"))]),
+                            t.text("\n"),
                         ]),
                         t.concat(vec![]),
                     )
@@ -2100,15 +2109,20 @@ mod tests {
         check(
             PureModuleBuilder::new().page("ListItems", [("items", "Array[String]")], |t| {
                 t.concat(vec![
-                    t.raw("<ul>\n"),
-                    t.html_for(Some("item"), t.var("items"), |t| {
-                        t.concat(vec![
-                            t.raw("<li>"),
-                            t.escape(t.var("item")),
-                            t.raw("</li>\n"),
-                        ])
-                    }),
-                    t.raw("</ul>\n"),
+                    t.element(
+                        "ul",
+                        vec![],
+                        vec![
+                            t.text("\n"),
+                            t.html_for(Some("item"), t.var("items"), |t| {
+                                t.concat(vec![
+                                    t.element("li", vec![], vec![t.escape(t.var("item"))]),
+                                    t.text("\n"),
+                                ])
+                            }),
+                        ],
+                    ),
+                    t.text("\n"),
                 ])
             }),
             expect![[r#"
@@ -2155,7 +2169,7 @@ mod tests {
         check(
             PureModuleBuilder::new().page_no_params("Counter", |t| {
                 t.html_for_range(Some("i"), t.int(1), t.int(3), |t| {
-                    t.concat(vec![t.escape(t.int_to_string(t.var("i"))), t.raw(" ")])
+                    t.concat(vec![t.escape(t.int_to_string(t.var("i"))), t.text(" ")])
                 })
             }),
             expect![[r#"
@@ -2198,11 +2212,16 @@ mod tests {
             PureModuleBuilder::new().page_no_params("GreetingCard", |t| {
                 t.let_expr("greeting", t.str("Hello from hop!"), |t| {
                     t.concat(vec![
-                        t.raw("<div class=\"card\">\n"),
-                        t.raw("<p>"),
-                        t.escape(t.var("greeting")),
-                        t.raw("</p>\n"),
-                        t.raw("</div>\n"),
+                        t.element(
+                            "div",
+                            vec![t.attr("class", t.str("card"))],
+                            vec![
+                                t.text("\n"),
+                                t.element("p", vec![], vec![t.escape(t.var("greeting"))]),
+                                t.text("\n"),
+                            ],
+                        ),
+                        t.text("\n"),
                     ])
                 })
             }),
@@ -2210,11 +2229,9 @@ mod tests {
                 -- before --
                 page GreetingCard() {
                   let v0 = "Hello from hop!" in {
-                    write("<div class=\"card\">\n")
-                    write("<p>")
+                    write("<div class=\"card\">\n<p>")
                     write_string(v0)
-                    write("</p>\n")
-                    write("</div>\n")
+                    write("</p>\n</div>\n")
                   }
                 }
 
@@ -2232,11 +2249,9 @@ mod tests {
                 export function GreetingCard(): string {
                     let output: string = "";
                     const v_0: string = ("Hello from hop!" as string);
-                    output += "<div class=\"card\">\n";
-                    output += "<p>";
+                    output += "<div class=\"card\">\n<p>";
                     output += escapeHtml(v_0);
-                    output += "</p>\n";
-                    output += "</div>\n";
+                    output += "</p>\n</div>\n";
                     return output;
                 }
             "#]],
@@ -2247,17 +2262,13 @@ mod tests {
     fn nested_functions_with_let_bindings() {
         check(
             PureModuleBuilder::new().page_no_params("TestMainComp", |t| {
-                t.concat(vec![
-                    t.raw("<div data-hop-id=\"test/card-comp\">"),
-                    t.let_expr("title", t.str("Hello World"), |t| {
-                        t.concat(vec![
-                            t.raw("<h2>"),
-                            t.escape(t.var("title")),
-                            t.raw("</h2>"),
-                        ])
-                    }),
-                    t.raw("</div>"),
-                ])
+                t.element(
+                    "div",
+                    vec![t.attr("data-hop-id", t.str("test/card-comp"))],
+                    vec![t.let_expr("title", t.str("Hello World"), |t| {
+                        t.element("h2", vec![], vec![t.escape(t.var("title"))])
+                    })],
+                )
             }),
             expect![[r#"
                 -- before --
@@ -2300,15 +2311,16 @@ mod tests {
     fn fragment_type() {
         check(
             PureModuleBuilder::new().page("RenderHtml", [("user_input", "String")], |t| {
-                t.let_expr("safe_content", t.raw("<b>hi</b>"), |t| {
-                    t.concat(vec![
-                        t.raw("<div>"),
-                        t.var("safe_content"),
-                        t.raw("</div><div>"),
-                        t.escape(t.var("user_input")),
-                        t.raw("</div>"),
-                    ])
-                })
+                t.let_expr(
+                    "safe_content",
+                    t.element("b", vec![], vec![t.text("hi")]),
+                    |t| {
+                        t.concat(vec![
+                            t.element("div", vec![], vec![t.var("safe_content")]),
+                            t.element("div", vec![], vec![t.escape(t.var("user_input"))]),
+                        ])
+                    },
+                )
             }),
             expect![[r#"
                 -- before --
@@ -2365,11 +2377,11 @@ mod tests {
                 )
                 .record("Address", [("street", "String"), ("city", "String")])
                 .page("UserProfile", [("user", "User")], |t| {
-                    t.concat(vec![
-                        t.raw("<div>"),
-                        t.escape(t.field_access(t.var("user"), "name")),
-                        t.raw("</div>"),
-                    ])
+                    t.element(
+                        "div",
+                        vec![],
+                        vec![t.escape(t.field_access(t.var("user"), "name"))],
+                    )
                 }),
             expect![[r#"
                 -- before --
@@ -2430,11 +2442,7 @@ mod tests {
                 .record("User", [("name", "String"), ("age", "Int")])
                 .page_no_params("CreateUser", |t| {
                     let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
-                    t.concat(vec![
-                        t.raw("<div>"),
-                        t.escape(t.field_access(user, "name")),
-                        t.raw("</div>"),
-                    ])
+                    t.element("div", vec![], vec![t.escape(t.field_access(user, "name"))])
                 }),
             expect![[r#"
                 -- before --
@@ -2545,7 +2553,7 @@ mod tests {
                         ("Nil", vec![]),
                     ],
                 )
-                .page_no_params("Test", |t| t.raw("hello")),
+                .page_no_params("Test", |t| t.text("hello")),
             expect![[r#"
                 -- before --
                 page Test() {
@@ -2655,7 +2663,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .enum_unit("Color", [])
-                .page_no_params("Test", |t| t.raw("hi")),
+                .page_no_params("Test", |t| t.text("hi")),
             expect![[r#"
                 -- before --
                 page Test() {
@@ -2979,13 +2987,13 @@ mod tests {
                     t.var("opt"),
                     "value",
                     |t| {
-                        t.concat(vec![
-                            t.raw("<span>Found: "),
-                            t.escape(t.var("value")),
-                            t.raw("</span>"),
-                        ])
+                        t.element(
+                            "span",
+                            vec![],
+                            vec![t.text("Found: "), t.escape(t.var("value"))],
+                        )
                     },
-                    t.concat(vec![t.raw("<span>Nothing</span>")]),
+                    t.element("span", vec![], vec![t.text("Nothing")]),
                 )
             }),
             expect![[r#"
@@ -3141,8 +3149,8 @@ mod tests {
                     t.option_match_expr_with_binding(
                         t.var("opt"),
                         "val",
-                        |t| t.concat(vec![t.raw("Got:"), t.escape(t.var("val"))]),
-                        t.concat(vec![t.raw("Empty")]),
+                        |t| t.concat(vec![t.text("Got:"), t.escape(t.var("val"))]),
+                        t.concat(vec![t.text("Empty")]),
                     )
                 })
             }),
@@ -3218,10 +3226,10 @@ mod tests {
                             t.some(t.var("value")),
                             "inner",
                             |t| t.escape(t.var("inner")),
-                            t.concat(vec![t.raw("none2")]),
+                            t.concat(vec![t.text("none2")]),
                         )
                     },
-                    t.concat(vec![t.raw("none1")]),
+                    t.concat(vec![t.text("none1")]),
                 )
             }),
             expect![[r#"
@@ -3351,32 +3359,24 @@ mod tests {
                         "Success",
                         vec![("value", t.int(42))],
                     );
-                    t.concat(vec![
-                        t.raw("<div>"),
-                        t.let_expr("ok", ok, |t| t.escape(t.str("Created Ok!"))),
-                        t.raw("</div>"),
-                    ])
+                    t.element(
+                        "div",
+                        vec![],
+                        vec![t.let_expr("ok", ok, |t| t.escape(t.str("Created Ok!")))],
+                    )
                 }),
             expect![[r#"
                 -- before --
                 page ShowOutcome(r@v0: Outcome) {
                   write("<div>")
                   let v1 = Outcome::Success {value: 42} in {
-                    write_string("Created Ok!")
+                    write("Created Ok!")
                   }
                   write("</div>")
                 }
 
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
-
-                function escapeHtml(str: string): string {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;');
-                }
 
                 export namespace Outcome {
                     export type Outcome = { readonly _tag: "Success", readonly value: number } | { readonly _tag: "Failure", readonly message: string };
@@ -3393,7 +3393,7 @@ mod tests {
                     let output: string = "";
                     output += "<div>";
                     const v_1: Outcome.Outcome = Outcome.Success({value: (42 as number)});
-                    output += escapeHtml(("Created Ok!" as string));
+                    output += "Created Ok!";
                     output += "</div>";
                     return output;
                 }
@@ -3415,10 +3415,10 @@ mod tests {
                 .page("ShowOutcome", [("r", "Outcome")], |t| {
                     t.enum_match_expr(t.var("r"), |m| {
                         m.arm_bound("Success", [("value", "v")], |t| {
-                            t.concat(vec![t.raw("Value: "), t.escape(t.var("v"))])
+                            t.concat(vec![t.text("Value: "), t.escape(t.var("v"))])
                         });
                         m.arm_bound("Failure", [("message", "m")], |t| {
-                            t.concat(vec![t.raw("Error: "), t.escape(t.var("m"))])
+                            t.concat(vec![t.text("Error: "), t.escape(t.var("m"))])
                         });
                     })
                 }),
@@ -3486,7 +3486,11 @@ mod tests {
     fn transpiles_let_fragment_as_nested_buffer() {
         check(
             PureModuleBuilder::new().page_no_params("Test", |t| {
-                t.let_expr("v_0", t.concat(vec![t.raw("<b>hi</b>")]), |t| t.var("v_0"))
+                t.let_expr(
+                    "v_0",
+                    t.concat(vec![t.element("b", vec![], vec![t.text("hi")])]),
+                    |t| t.var("v_0"),
+                )
             }),
             expect![[r#"
                 -- before --
@@ -3521,7 +3525,9 @@ mod tests {
     fn fragment_returning_function_called_in_value_position() {
         check(
             PureModuleBuilder::new()
-                .function("Frag", [], "Html", |t| t.raw("<b>hi</b>"))
+                .function("Frag", [], "Html", |t| {
+                    t.element("b", vec![], vec![t.text("hi")])
+                })
                 .page_no_params("Test", |t| {
                     t.let_expr("x", t.call("Frag", vec![]), |t| t.var("x"))
                 }),
@@ -3614,17 +3620,24 @@ mod tests {
                     t.add(t.var("x"), t.int(10))
                 })
                 .page_no_params("Test", |t| {
-                    t.concat(vec![
-                        t.raw("<div>"),
-                        t.html_for_range(
-                            Some("x"),
-                            t.int(0),
-                            t.call("foo", vec![("x", t.int(-7))]),
-                            |t| t.concat(vec![t.escape(t.int_to_string(t.var("x"))), t.raw(",")]),
-                        ),
-                        t.escape(t.int_to_string(t.call("foo", vec![("x", t.int(10))]))),
-                        t.raw("</div>"),
-                    ])
+                    t.element(
+                        "div",
+                        vec![],
+                        vec![
+                            t.html_for_range(
+                                Some("x"),
+                                t.int(0),
+                                t.call("foo", vec![("x", t.int(-7))]),
+                                |t| {
+                                    t.concat(vec![
+                                        t.escape(t.int_to_string(t.var("x"))),
+                                        t.text(","),
+                                    ])
+                                },
+                            ),
+                            t.escape(t.int_to_string(t.call("foo", vec![("x", t.int(10))]))),
+                        ],
+                    )
                 }),
             expect![[r#"
                 -- before --
@@ -3678,11 +3691,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .function("Button", [("data-x", "String")], "Html", |t| {
-                    t.concat(vec![
-                        t.raw("<button data-x=\""),
-                        t.escape(t.var("data-x")),
-                        t.raw("\"></button>"),
-                    ])
+                    t.element("button", vec![t.attr("data-x", t.var("data-x"))], vec![])
                 })
                 .page_no_params("Test", |t| t.call("Button", vec![("data-x", t.str("1"))])),
             expect![[r#"

@@ -1,9 +1,11 @@
 use crate::hop::typing::Type;
+use crate::html::write_escaped_html;
 use crate::ir::ir_match::{EnumMatchArm, Match};
 
 use super::document_shell::DocumentShell;
 use super::pure_module::{
-    PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
+    PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
+    PurePageDeclaration,
 };
 use super::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
@@ -73,16 +75,102 @@ fn lower_function(decl: PureFunctionDeclaration) -> WriterFunctionDeclaration {
     }
 }
 
+/// The longest a constant write grows by merging with the write before it,
+/// which keeps the string literals in generated code short.
+const WRITE_LIMIT: usize = 60;
+
+/// Append a constant write, merged into the write before it while the
+/// combined length stays below the limit.
+fn write(out: &mut Vec<WriterStatement>, content: &str) {
+    if let Some(WriterStatement::Write { content: previous }) = out.last_mut() {
+        if previous.len() + content.len() < WRITE_LIMIT {
+            previous.push_str(content);
+            return;
+        }
+    }
+    out.push(WriterStatement::Write {
+        content: content.to_string(),
+    });
+}
+
+/// Lower a String-typed PureExpr written escaped in output position. A
+/// constant is escaped now and a concat part by part, so only what varies
+/// is escaped when the page renders.
+fn lower_escaped(expr: PureExpr, out: &mut Vec<WriterStatement>) {
+    match expr {
+        PureExpr::StringLiteral { value, .. } => {
+            let mut content = String::new();
+            write_escaped_html(value.as_str(), &mut content);
+            write(out, &content);
+        }
+        PureExpr::StringConcat { parts, .. } => {
+            for part in parts {
+                lower_escaped(part, out);
+            }
+        }
+        expr => out.push(WriterStatement::WriteString {
+            expr: lower_value(expr),
+        }),
+    }
+}
+
 /// Lower a Html-typed PureExpr in output position.
 fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
     match expr {
-        PureExpr::HtmlRaw { content, .. } => {
-            out.push(WriterStatement::Write { content });
-        }
+        PureExpr::HtmlText { content, .. } => write(out, content.as_str()),
 
-        PureExpr::HtmlEscape { expr, .. } => {
-            let expr = lower_value(*expr);
-            out.push(WriterStatement::WriteString { expr });
+        PureExpr::HtmlEscape { expr, .. } => lower_escaped(*expr, out),
+
+        PureExpr::HtmlElement {
+            element,
+            attributes,
+            children,
+            ..
+        } => {
+            // The element's writes merge among themselves first, so a
+            // constant write grows across an element boundary only where
+            // the whole element fits.
+            let mut unit = Vec::new();
+            write(&mut unit, &format!("<{}", element.as_str()));
+            for attribute in attributes {
+                match attribute {
+                    PureAttribute::Value { name, value } => {
+                        write(&mut unit, &format!(" {}=\"", name.as_str()));
+                        lower_escaped(value, &mut unit);
+                        write(&mut unit, "\"");
+                    }
+                    // A constant condition settles now whether the attribute
+                    // renders.
+                    PureAttribute::Presence { name, present } => match present {
+                        PureExpr::BoolLiteral { value: true, .. } => {
+                            write(&mut unit, &format!(" {}", name.as_str()));
+                        }
+                        PureExpr::BoolLiteral { value: false, .. } => {}
+                        present => {
+                            let mut true_body = Vec::new();
+                            write(&mut true_body, &format!(" {}", name.as_str()));
+                            unit.push(WriterStatement::Match {
+                                match_: Match::Bool {
+                                    subject: Box::new(lower_value(present)),
+                                    true_body: Box::new(true_body),
+                                    false_body: Box::new(Vec::new()),
+                                },
+                            });
+                        }
+                    },
+                }
+            }
+            write(&mut unit, ">");
+            if !element.is_void() {
+                lower_output(*children, &mut unit);
+                write(&mut unit, &format!("</{}>", element.as_str()));
+            }
+            for statement in unit {
+                match statement {
+                    WriterStatement::Write { content } => write(out, &content),
+                    statement => out.push(statement),
+                }
+            }
         }
 
         PureExpr::HtmlConcat { parts, .. } => {
@@ -294,8 +382,9 @@ fn lower_match_value(match_: Match<PureExpr, PureExpr>) -> Match<WriterExpr, Wri
 /// Lower a PureExpr in value position.
 fn lower_value(expr: PureExpr) -> WriterExpr {
     match expr {
-        expr @ (PureExpr::HtmlRaw { .. }
+        expr @ (PureExpr::HtmlText { .. }
         | PureExpr::HtmlEscape { .. }
+        | PureExpr::HtmlElement { .. }
         | PureExpr::HtmlConcat { .. }
         | PureExpr::HtmlFor { .. }) => {
             let mut body = Vec::new();
@@ -562,10 +651,7 @@ mod tests {
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use expect_test::{Expect, expect};
 
-    fn check(shell: Option<&DocumentShell>, expected: Expect) {
-        let module = PureModuleBuilder::new()
-            .page_no_params("Main", |t| t.raw("<p>Hello</p>"))
-            .build();
+    fn check(module: PureModule, shell: Option<&DocumentShell>, expected: Expect) {
         let before = module.to_string();
         let after = lower_pure(module, shell).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
@@ -574,11 +660,14 @@ mod tests {
     #[test]
     fn writes_the_shell_around_the_page() {
         check(
+            PureModuleBuilder::new()
+                .page_no_params("Main", |t| t.element("p", vec![], vec![t.text("Hello")]))
+                .build(),
             Some(&DocumentShell::new(None, Some("/scripts-deadbeef.js"))),
             expect![[r#"
                 -- before --
                 page Main() {
-                  raw("<p>Hello</p>")
+                  html(tag: "p", attrs: [], children: concat(text("Hello")))
                 }
 
                 -- after --
@@ -595,18 +684,313 @@ mod tests {
     #[test]
     fn writes_the_page_alone_without_a_shell() {
         check(
+            PureModuleBuilder::new()
+                .page_no_params("Main", |t| t.element("p", vec![], vec![t.text("Hello")]))
+                .build(),
             None,
             expect![[r#"
-            -- before --
-            page Main() {
-              raw("<p>Hello</p>")
-            }
+                -- before --
+                page Main() {
+                  html(tag: "p", attrs: [], children: concat(text("Hello")))
+                }
 
-            -- after --
-            page Main() {
-              write("<p>Hello</p>")
-            }
-        "#]],
+                -- after --
+                page Main() {
+                  write("<p>Hello</p>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_write_an_element_with_constant_attributes_as_one_write() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    t.element(
+                        "div",
+                        vec![t.attr("class", t.str("base")), t.attr("id", t.str("a<b"))],
+                        vec![t.text("Content")],
+                    )
+                })
+                .build(),
+            None,
+            expect![[r#"
+                -- before --
+                page Test() {
+                  html(
+                    tag: "div",
+                    attrs: [class: "base", id: "a<b"],
+                    children: concat(text("Content")),
+                  )
+                }
+
+                -- after --
+                page Test() {
+                  write("<div class=\"base\" id=\"a&lt;b\">Content</div>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_escape_a_dynamic_attribute_value_when_rendering() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("cls", "String")], |t| {
+                    t.element("div", vec![t.attr("data-value", t.var("cls"))], vec![])
+                })
+                .build(),
+            None,
+            expect![[r#"
+                -- before --
+                page Test(cls@v0: String) {
+                  html(
+                    tag: "div",
+                    attrs: [data-value: v0],
+                    children: concat(),
+                  )
+                }
+
+                -- after --
+                page Test(cls@v0: String) {
+                  write("<div data-value=\"")
+                  write_string(v0)
+                  write("\"></div>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_settle_a_constant_boolean_attribute_and_match_on_a_dynamic_one() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("flag", "Bool")], |t| {
+                    t.element(
+                        "input",
+                        vec![
+                            t.presence("disabled", t.bool(true)),
+                            t.presence("checked", t.bool(false)),
+                            t.presence("required", t.var("flag")),
+                        ],
+                        vec![],
+                    )
+                })
+                .build(),
+            None,
+            expect![[r#"
+                -- before --
+                page Test(flag@v0: Bool) {
+                  html(
+                    tag: "input",
+                    attrs: [disabled: true, checked: false, required: v0],
+                  )
+                }
+
+                -- after --
+                page Test(flag@v0: Bool) {
+                  write("<input disabled")
+                  match v0 {
+                    true => {
+                      write(" required")
+                    }
+                    false => {
+                    }
+                  }
+                  write(">")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_nest_elements() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("name", "String")], |t| {
+                    t.element(
+                        "ul",
+                        vec![],
+                        vec![t.element(
+                            "li",
+                            vec![],
+                            vec![
+                                t.text("Hi "),
+                                t.escape(t.var("name")),
+                                t.element("br", vec![], vec![]),
+                            ],
+                        )],
+                    )
+                })
+                .build(),
+            None,
+            expect![[r#"
+                -- before --
+                page Test(name@v0: String) {
+                  html(
+                    tag: "ul",
+                    attrs: [],
+                    children: concat(
+                      html(
+                        tag: "li",
+                        attrs: [],
+                        children: concat(
+                          text("Hi "),
+                          escape(v0),
+                          html(tag: "br", attrs: []),
+                        ),
+                      ),
+                    ),
+                  )
+                }
+
+                -- after --
+                page Test(name@v0: String) {
+                  write("<ul><li>Hi ")
+                  write_string(v0)
+                  write("<br></li></ul>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_escape_a_constant_string_when_lowering() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| t.concat(vec![t.escape(t.str("<b> & \"q\""))]))
+                .build(),
+            None,
+            expect![[r#"
+                -- before --
+                page Test() {
+                  concat(escape("<b> & \"q\""))
+                }
+
+                -- after --
+                page Test() {
+                  write("&lt;b&gt; &amp; &quot;q&quot;")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_escape_the_constant_parts_of_a_concat_when_lowering() {
+        check(
+            PureModuleBuilder::new()
+                .page("Test", [("name", "String")], |t| {
+                    t.element(
+                        "p",
+                        vec![],
+                        vec![t.escape(t.string_concat(vec![
+                            t.str("Hi <"),
+                            t.var("name"),
+                            t.str("!"),
+                        ]))],
+                    )
+                })
+                .build(),
+            None,
+            expect![[r#"
+                -- before --
+                page Test(name@v0: String) {
+                  html(
+                    tag: "p",
+                    attrs: [],
+                    children: concat(escape(("Hi <" + v0 + "!"))),
+                  )
+                }
+
+                -- after --
+                page Test(name@v0: String) {
+                  write("<p>Hi &lt;")
+                  write_string(v0)
+                  write("!</p>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_merge_adjacent_writes_while_they_stay_below_the_limit() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    t.concat(vec![
+                        t.text(&"a".repeat(30)),
+                        t.text(&"b".repeat(29)),
+                        t.text(&"c".repeat(30)),
+                        t.text("d"),
+                    ])
+                })
+                .build(),
+            None,
+            expect![[r#"
+                -- before --
+                page Test() {
+                  concat(
+                    text("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                    text("bbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+                    text("cccccccccccccccccccccccccccccc"),
+                    text("d"),
+                  )
+                }
+
+                -- after --
+                page Test() {
+                  write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+                  write("ccccccccccccccccccccccccccccccd")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_keep_the_writes_of_a_loop_body_apart_from_those_around_it() {
+        check(
+            PureModuleBuilder::new()
+                .page_no_params("Test", |t| {
+                    t.element(
+                        "ul",
+                        vec![],
+                        vec![t.html_for(Some("item"), t.array(vec![t.str("a")]), |t| {
+                            t.element("li", vec![], vec![t.escape(t.var("item"))])
+                        })],
+                    )
+                })
+                .build(),
+            None,
+            expect![[r#"
+                -- before --
+                page Test() {
+                  html(
+                    tag: "ul",
+                    attrs: [],
+                    children: concat(
+                      for v0 in ["a"] {
+                        html(
+                          tag: "li",
+                          attrs: [],
+                          children: concat(escape(v0)),
+                        )
+                      },
+                    ),
+                  )
+                }
+
+                -- after --
+                page Test() {
+                  write("<ul>")
+                  for v0 in ["a"] {
+                    write("<li>")
+                    write_string(v0)
+                    write("</li>")
+                  }
+                  write("</ul>")
+                }
+            "#]],
         );
     }
 }

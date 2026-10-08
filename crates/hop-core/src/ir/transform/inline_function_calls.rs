@@ -186,7 +186,7 @@ fn is_trivial(expr: &PureExpr) -> bool {
             | PureExpr::IntLiteral { .. }
             | PureExpr::FloatLiteral { .. }
             | PureExpr::BoolLiteral { .. }
-            | PureExpr::HtmlRaw { .. }
+            | PureExpr::HtmlText { .. }
     )
 }
 
@@ -330,6 +330,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::document::CheapString;
     use crate::hop::typing::Type;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
@@ -455,7 +456,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .function("Badge", [("label", "String")], "Html", |t| {
-                    t.concat(vec![t.raw("<b>"), t.escape(t.var("label")), t.raw("</b>")])
+                    t.element("b", vec![], vec![t.escape(t.var("label"))])
                 })
                 .page("Main", [("title", "String")], |t| {
                     t.call("Badge", vec![("label", t.var("title"))])
@@ -464,7 +465,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn Badge@f0(label@v0: String) -> Html {
-                  concat(raw("<b>"), escape(v0), raw("</b>"))
+                  html(tag: "b", attrs: [], children: concat(escape(v0)))
                 }
                 page Main(title@v1: String) {
                   call Badge@f0(label = v1)
@@ -472,7 +473,7 @@ mod tests {
 
                 -- after --
                 page Main(title@v1: String) {
-                  concat(raw("<b>"), escape(v1), raw("</b>"))
+                  html(tag: "b", attrs: [], children: concat(escape(v1)))
                 }
             "#]],
         );
@@ -541,14 +542,10 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .function("Inner", [("x", "String")], "Html", |t| {
-                    t.concat(vec![t.raw("["), t.escape(t.var("x")), t.raw("]")])
+                    t.concat(vec![t.text("["), t.escape(t.var("x")), t.text("]")])
                 })
                 .function("Outer", [("x", "String")], "Html", |t| {
-                    t.concat(vec![
-                        t.raw("<i>"),
-                        t.call("Inner", vec![("x", t.var("x"))]),
-                        t.raw("</i>"),
-                    ])
+                    t.element("i", vec![], vec![t.call("Inner", vec![("x", t.var("x"))])])
                 })
                 .page("Main", [("name", "String")], |t| {
                     t.call("Outer", vec![("x", t.var("name"))])
@@ -557,10 +554,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn Inner@f0(x@v0: String) -> Html {
-                  concat(raw("["), escape(v0), raw("]"))
+                  concat(text("["), escape(v0), text("]"))
                 }
                 fn Outer@f1(x@v1: String) -> Html {
-                  concat(raw("<i>"), call Inner@f0(x = v1), raw("</i>"))
+                  html(
+                    tag: "i",
+                    attrs: [],
+                    children: concat(call Inner@f0(x = v1)),
+                  )
                 }
                 page Main(name@v2: String) {
                   call Outer@f1(x = v2)
@@ -568,17 +569,19 @@ mod tests {
 
                 -- after --
                 page Main(name@v2: String) {
-                  concat(
-                    raw("<i>"),
-                    concat(raw("["), escape(v2), raw("]")),
-                    raw("</i>"),
+                  html(
+                    tag: "i",
+                    attrs: [],
+                    children: concat(
+                      concat(text("["), escape(v2), text("]")),
+                    ),
                   )
                 }
             "#]],
         );
     }
 
-    /// Rewrite `caller`'s body to `raw(marker)` followed by a call to
+    /// Rewrite `caller`'s body to `text(marker)` followed by a call to
     /// `callee`, forwarding the caller's own first parameter.
     ///
     /// The builder only lets a body call an already-declared function, so a
@@ -601,8 +604,8 @@ mod tests {
         let name = param.name.clone();
         decl.body = PureExpr::HtmlConcat {
             parts: vec![
-                PureExpr::HtmlRaw {
-                    content: marker.to_string(),
+                PureExpr::HtmlText {
+                    content: CheapString::new(marker.to_string()),
                     id: expr_ids.next(),
                 },
                 PureExpr::Call {
@@ -627,16 +630,16 @@ mod tests {
     #[test]
     fn should_leave_a_self_recursive_function_alone() {
         let mut module = PureModuleBuilder::new()
-            .function("Loop", [("n", "Int")], "Html", |t| t.raw("placeholder"))
+            .function("Loop", [("n", "Int")], "Html", |t| t.text("placeholder"))
             .page_no_params("Main", |t| t.call("Loop", vec![("n", t.int(3))]))
             .build();
-        patch_to_call(&mut module, "Loop", "Loop", "<li>");
+        patch_to_call(&mut module, "Loop", "Loop", "loop:");
         check(
             module,
             expect![[r#"
                 -- before --
                 fn Loop@f0(n@v0: Int) -> Html {
-                  concat(raw("<li>"), call Loop@f0(n = v0))
+                  concat(text("loop:"), call Loop@f0(n = v0))
                 }
                 page Main() {
                   call Loop@f0(n = 3)
@@ -644,7 +647,7 @@ mod tests {
 
                 -- after --
                 fn Loop@f0(n@v0: Int) -> Html {
-                  concat(raw("<li>"), call Loop@f0(n = v0))
+                  concat(text("loop:"), call Loop@f0(n = v0))
                 }
                 page Main() {
                   call Loop@f0(n = 3)
@@ -656,19 +659,19 @@ mod tests {
     #[test]
     fn should_leave_mutually_recursive_functions_alone() {
         let mut module = PureModuleBuilder::new()
-            .function("Ping", [("n", "Int")], "Html", |t| t.raw("placeholder"))
+            .function("Ping", [("n", "Int")], "Html", |t| t.text("placeholder"))
             .function("Pong", [("n", "Int")], "Html", |t| {
                 t.call("Ping", vec![("n", t.var("n"))])
             })
             .page_no_params("Main", |t| t.call("Pong", vec![("n", t.int(3))]))
             .build();
-        patch_to_call(&mut module, "Ping", "Pong", "<ping>");
+        patch_to_call(&mut module, "Ping", "Pong", "ping:");
         check(
             module,
             expect![[r#"
                 -- before --
                 fn Ping@f0(n@v0: Int) -> Html {
-                  concat(raw("<ping>"), call Pong@f1(n = v0))
+                  concat(text("ping:"), call Pong@f1(n = v0))
                 }
                 fn Pong@f1(n@v1: Int) -> Html {
                   call Ping@f0(n = v1)
@@ -679,7 +682,7 @@ mod tests {
 
                 -- after --
                 fn Ping@f0(n@v0: Int) -> Html {
-                  concat(raw("<ping>"), call Pong@f1(n = v0))
+                  concat(text("ping:"), call Pong@f1(n = v0))
                 }
                 fn Pong@f1(n@v1: Int) -> Html {
                   call Ping@f0(n = v1)

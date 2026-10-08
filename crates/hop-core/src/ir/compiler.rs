@@ -21,7 +21,7 @@ use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
 use super::pure_module::{
-    PureArgument, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
+    PureArgument, PureAttribute, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
 use super::writer_module::WriterParameter;
 
@@ -423,54 +423,6 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    /// Append the parts that render one attribute of an element. A Bool
-    /// value is a boolean attribute, present without a value when it is true
-    /// and absent when it is false. Any other value is a String, escaped
-    /// between quotes.
-    fn compile_attribute(
-        &mut self,
-        name: &AttributeName,
-        typ: &Type,
-        value: PureExpr,
-        output: &mut Vec<PureExpr>,
-    ) {
-        match typ {
-            Type::Bool => {
-                let true_body = Box::new(PureExpr::HtmlRaw {
-                    content: format!(" {}", name.as_str()),
-                    id: self.next_expr_id(),
-                });
-                let false_body = Box::new(PureExpr::HtmlConcat {
-                    parts: Vec::new(),
-                    id: self.next_expr_id(),
-                });
-                output.push(PureExpr::Match {
-                    match_: Match::Bool {
-                        subject: Box::new(value),
-                        true_body,
-                        false_body,
-                    },
-                    typ: Type::Html,
-                    id: self.next_expr_id(),
-                });
-            }
-            _ => {
-                output.push(PureExpr::HtmlRaw {
-                    content: format!(" {}=\"", name.as_str()),
-                    id: self.next_expr_id(),
-                });
-                output.push(PureExpr::HtmlEscape {
-                    expr: Box::new(value),
-                    id: self.next_expr_id(),
-                });
-                output.push(PureExpr::HtmlRaw {
-                    content: "\"".to_string(),
-                    id: self.next_expr_id(),
-                });
-            }
-        }
-    }
-
     fn compile_expr(&mut self, expr: &TypedExpr) -> PureExpr {
         let expr_id = self.next_expr_id();
 
@@ -780,8 +732,8 @@ impl<'a> Compiler<'a> {
                     id: expr_id,
                 }
             }
-            TypedExpr::HtmlText { value } => PureExpr::HtmlRaw {
-                content: value.to_string(),
+            TypedExpr::HtmlText { value } => PureExpr::HtmlText {
+                content: value.clone(),
                 id: expr_id,
             },
             TypedExpr::HtmlEscape { expr } => {
@@ -800,23 +752,22 @@ impl<'a> Compiler<'a> {
                 attrs,
                 children,
             } => {
-                let mut parts = vec![PureExpr::HtmlRaw {
-                    content: format!("<{}", element.as_str()),
-                    id: self.next_expr_id(),
-                }];
+                let mut attributes = Vec::with_capacity(attrs.attributes.len() + self.rest.len());
                 for attr in &attrs.attributes {
-                    let (name, typ, value) = match attr {
-                        TypedAttribute::Value { name, value } => {
-                            (name, Type::String, self.compile_expr(value))
-                        }
-                        TypedAttribute::Presence { name, present } => {
-                            (name, Type::Bool, self.compile_expr(present))
-                        }
-                    };
-                    self.compile_attribute(name, &typ, value, &mut parts);
+                    attributes.push(match attr {
+                        TypedAttribute::Value { name, value } => PureAttribute::Value {
+                            name: name.clone(),
+                            value: self.compile_expr(value),
+                        },
+                        TypedAttribute::Presence { name, present } => PureAttribute::Presence {
+                            name: name.clone(),
+                            present: self.compile_expr(present),
+                        },
+                    });
                 }
                 // The spread places the attributes the rest receives after
-                // those written on the element.
+                // those written on the element. A Bool is a boolean
+                // attribute, any other type a value.
                 if attrs.spread.is_some() {
                     for (name, typ, var) in self.rest.clone() {
                         let value = PureExpr::VariableReference {
@@ -824,21 +775,21 @@ impl<'a> Compiler<'a> {
                             typ: typ.clone(),
                             id: self.next_expr_id(),
                         };
-                        self.compile_attribute(&name, &typ, value, &mut parts);
+                        attributes.push(match typ {
+                            Type::Bool => PureAttribute::Presence {
+                                name,
+                                present: value,
+                            },
+                            _ => PureAttribute::Value { name, value },
+                        });
                     }
                 }
-                parts.push(PureExpr::HtmlRaw {
-                    content: ">".to_string(),
-                    id: self.next_expr_id(),
-                });
-                if !element.is_void() {
-                    parts.push(self.compile_expr(children));
-                    parts.push(PureExpr::HtmlRaw {
-                        content: format!("</{}>", element.as_str()),
-                        id: self.next_expr_id(),
-                    });
+                PureExpr::HtmlElement {
+                    element: element.clone(),
+                    attributes,
+                    children: Box::new(self.compile_expr(children)),
+                    id: expr_id,
                 }
-                PureExpr::HtmlConcat { parts, id: expr_id }
             }
             TypedExpr::Call {
                 function_name,
@@ -1099,16 +1050,15 @@ mod tests {
                 page MainComp() {
                   fn head() -> Html {
                     concat(
-                      concat(
-                        raw("<title"),
-                        raw(">"),
-                        concat(raw("Hi")),
-                        raw("</title>"),
+                      html(
+                        tag: "title",
+                        attrs: [],
+                        children: concat(text("Hi")),
                       ),
                     )
                   }
                   fn body() -> Html {
-                    concat(raw("Hello World"))
+                    concat(text("Hello World"))
                   }
                 }
             "#]],
@@ -1131,7 +1081,7 @@ mod tests {
 
                 -- after --
                 page MainComp() {
-                  concat(raw("Hello World"))
+                  concat(text("Hello World"))
                 }
             "#]],
         );
@@ -1154,7 +1104,7 @@ mod tests {
 
                 -- after --
                 page MainComp(name@v0: String) {
-                  concat(raw("Hello "), escape(v0))
+                  concat(text("Hello "), escape(v0))
                 }
             "#]],
         );
@@ -1185,11 +1135,10 @@ mod tests {
                 -- after --
                 page MainComp() {
                   concat(
-                    concat(
-                      raw("<div"),
-                      raw(">"),
-                      concat(raw("Content")),
-                      raw("</div>"),
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(text("Content")),
                     ),
                   )
                 }
@@ -1233,11 +1182,10 @@ mod tests {
                       match v1 {
                         true => {
                           concat(
-                            concat(
-                              raw("<div"),
-                              raw(">"),
-                              concat(raw("Visible")),
-                              raw("</div>"),
+                            html(
+                              tag: "div",
+                              attrs: [],
+                              children: concat(text("Visible")),
                             ),
                           )
                         }
@@ -1293,22 +1241,20 @@ mod tests {
                 -- after --
                 page MainComp(items@v0: Array[String]) {
                   concat(
-                    concat(
-                      raw("<ul"),
-                      raw(">"),
-                      concat(
+                    html(
+                      tag: "ul",
+                      attrs: [],
+                      children: concat(
                         for v1 in v0 {
                           concat(
-                            concat(
-                              raw("<li"),
-                              raw(">"),
-                              concat(escape(v1)),
-                              raw("</li>"),
+                            html(
+                              tag: "li",
+                              attrs: [],
+                              children: concat(escape(v1)),
                             ),
                           )
                         },
                       ),
-                      raw("</ul>"),
                     ),
                   )
                 }
@@ -1347,17 +1293,10 @@ mod tests {
                 -- after --
                 page MainComp() {
                   concat(
-                    concat(
-                      raw("<div"),
-                      raw(" class=\""),
-                      escape("base"),
-                      raw("\""),
-                      raw(" id=\""),
-                      escape("test"),
-                      raw("\""),
-                      raw(">"),
-                      concat(raw("Content")),
-                      raw("</div>"),
+                    html(
+                      tag: "div",
+                      attrs: [class: "base", id: "test"],
+                      children: concat(text("Content")),
                     ),
                   )
                 }
@@ -1399,17 +1338,10 @@ mod tests {
                 -- after --
                 page MainComp(cls@v0: String) {
                   concat(
-                    concat(
-                      raw("<div"),
-                      raw(" class=\""),
-                      escape("base"),
-                      raw("\""),
-                      raw(" data-value=\""),
-                      escape(v0),
-                      raw("\""),
-                      raw(">"),
-                      concat(raw("Content")),
-                      raw("</div>"),
+                    html(
+                      tag: "div",
+                      attrs: [class: "base", data-value: v0],
+                      children: concat(text("Content")),
                     ),
                   )
                 }
@@ -1454,16 +1386,15 @@ mod tests {
                 -- after --
                 page TestComp(name@v0: String, count@v1: String) {
                   concat(
-                    concat(
-                      raw("<div"),
-                      raw(">"),
-                      concat(
-                        raw("Hello "),
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(
+                        text("Hello "),
                         escape(v0),
-                        raw(", count: "),
+                        text(", count: "),
                         escape(v1),
                       ),
-                      raw("</div>"),
                     ),
                   )
                 }
@@ -1503,8 +1434,8 @@ mod tests {
                   concat(
                     let v1 = v0 in {
                       match v1 {
-                        true => { concat(raw("yes")) }
-                        false => { concat(raw("no")) }
+                        true => { concat(text("yes")) }
+                        false => { concat(text("no")) }
                       }
                     },
                   )
@@ -1538,11 +1469,10 @@ mod tests {
                 -- after --
                 page MainComp() {
                   concat(
-                    concat(
-                      raw("<script"),
-                      raw(">"),
-                      concat(raw("alert(\"hi\")")),
-                      raw("</script>"),
+                    html(
+                      tag: "script",
+                      attrs: [],
+                      children: concat(text("alert(\"hi\")")),
                     ),
                   )
                 }
@@ -1566,7 +1496,7 @@ mod tests {
 
                 -- after --
                 page MainComp() {
-                  concat(concat(raw("<br"), raw(">")))
+                  concat(html(tag: "br", attrs: []))
                 }
             "#]],
         );
@@ -1686,29 +1616,17 @@ mod tests {
             "#},
             expect![[r#"
                 fn Button@f0(id@v0: String) -> Html {
-                  concat(
-                    raw("<button"),
-                    raw(" id=\""),
-                    escape(v0),
-                    raw("\""),
-                    raw(">"),
-                    concat(raw("Go")),
-                    raw("</button>"),
+                  html(
+                    tag: "button",
+                    attrs: [id: v0],
+                    children: concat(text("Go")),
                   )
                 }
                 fn Button@f1(class@v1: String, disabled@v2: Bool) -> Html {
-                  concat(
-                    raw("<button"),
-                    raw(" class=\""),
-                    escape(v1),
-                    raw("\""),
-                    match v2 {
-                      true => { raw(" disabled") }
-                      false => { concat() }
-                    },
-                    raw(">"),
-                    concat(raw("Go")),
-                    raw("</button>"),
+                  html(
+                    tag: "button",
+                    attrs: [class: v1, disabled: v2],
+                    children: concat(text("Go")),
                   )
                 }
                 page Test() {
@@ -1751,17 +1669,10 @@ mod tests {
                   id@v3: String,
                   class@v4: String,
                 ) -> Html {
-                  concat(
-                    raw("<div"),
-                    raw(" id=\""),
-                    escape(v3),
-                    raw("\""),
-                    raw(" class=\""),
-                    escape(v4),
-                    raw("\""),
-                    raw(">"),
-                    concat(escape(v2)),
-                    raw("</div>"),
+                  html(
+                    tag: "div",
+                    attrs: [id: v3, class: v4],
+                    children: concat(escape(v2)),
                   )
                 }
                 fn Panel@f0(title@v0: String, class@v1: String) -> Html {
@@ -1798,13 +1709,10 @@ mod tests {
             "#},
             expect![[r#"
                 fn Nest@f0(depth@v0: Int, id@v1: String) -> Html {
-                  concat(
-                    raw("<div"),
-                    raw(" id=\""),
-                    escape(v1),
-                    raw("\""),
-                    raw(">"),
-                    concat(
+                  html(
+                    tag: "div",
+                    attrs: [id: v1],
+                    children: concat(
                       let v2 = (0 < v0) in {
                         match v2 {
                           true => {
@@ -1814,17 +1722,13 @@ mod tests {
                         }
                       },
                     ),
-                    raw("</div>"),
                   )
                 }
                 fn Nest@f1(depth@v3: Int, class@v4: String) -> Html {
-                  concat(
-                    raw("<div"),
-                    raw(" class=\""),
-                    escape(v4),
-                    raw("\""),
-                    raw(">"),
-                    concat(
+                  html(
+                    tag: "div",
+                    attrs: [class: v4],
+                    children: concat(
                       let v5 = (0 < v3) in {
                         match v5 {
                           true => {
@@ -1834,7 +1738,6 @@ mod tests {
                         }
                       },
                     ),
-                    raw("</div>"),
                   )
                 }
                 page Test() {
@@ -1865,17 +1768,10 @@ mod tests {
                   data-x@v0: String,
                   aria-label@v1: String,
                 ) -> Html {
-                  concat(
-                    raw("<button"),
-                    raw(" data-x=\""),
-                    escape(v0),
-                    raw("\""),
-                    raw(" aria-label=\""),
-                    escape(v1),
-                    raw("\""),
-                    raw(">"),
-                    concat(raw("Go")),
-                    raw("</button>"),
+                  html(
+                    tag: "button",
+                    attrs: [data-x: v0, aria-label: v1],
+                    children: concat(text("Go")),
                   )
                 }
                 page Test() {
@@ -1910,12 +1806,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Used@f0() -> Html {
-                  concat(
-                    raw("<p"),
-                    raw(">"),
-                    concat(raw("used")),
-                    raw("</p>"),
-                  )
+                  html(tag: "p", attrs: [], children: concat(text("used")))
                 }
                 page Test() {
                   call Used@f0()

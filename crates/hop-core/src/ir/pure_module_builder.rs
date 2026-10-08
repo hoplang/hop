@@ -3,13 +3,15 @@ use crate::hop::typing::{
     ComparableType, EnumVariant, EquatableType, NumericType, ResolvedType, TestTypes, Type,
     TypeRegistry, TypeRegistryBuilder,
 };
+use crate::html::HtmlElementKind;
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::{
-    PureArgument, PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
+    PureArgument, PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
+    PurePageDeclaration,
 };
 use crate::ir::var_id::VarIdCounter;
 use crate::ir::writer_module::WriterParameter;
@@ -1029,11 +1031,64 @@ impl PureBuilder {
         }
     }
 
-    /// A trusted, already-escaped HTML atom.
-    pub fn raw(&self, content: &str) -> PureExpr {
-        PureExpr::HtmlRaw {
-            content: content.to_string(),
+    /// Text that renders as written. Markup text never contains `<`, `{`
+    /// or `}`, so an element is built with `element`, not written out.
+    pub fn text(&self, content: &str) -> PureExpr {
+        assert!(
+            !content.contains(['<', '{', '}']),
+            "builder text() called with text containing '<', '{{' or '}}': {content:?}"
+        );
+        PureExpr::HtmlText {
+            content: CheapString::new(content.to_string()),
             id: self.next_expr_id(),
+        }
+    }
+
+    /// An element. A void element takes no children.
+    pub fn element(
+        &self,
+        tag: &str,
+        attributes: Vec<PureAttribute>,
+        children: Vec<PureExpr>,
+    ) -> PureExpr {
+        let element =
+            HtmlElementKind::parse(tag).unwrap_or_else(|| panic!("unknown element {tag}"));
+        assert!(
+            !element.is_void() || children.is_empty(),
+            "void element {tag} takes no children"
+        );
+        let children = self.concat(children);
+        PureExpr::HtmlElement {
+            element,
+            attributes,
+            children: Box::new(children),
+            id: self.next_expr_id(),
+        }
+    }
+
+    /// An attribute with a String value.
+    pub fn attr(&self, name: &str, value: PureExpr) -> PureAttribute {
+        assert_eq!(
+            value.typ(),
+            Type::String,
+            "attribute {name} expects a String value, got: {value}"
+        );
+        PureAttribute::Value {
+            name: AttributeName::parse(name).unwrap(),
+            value,
+        }
+    }
+
+    /// A boolean attribute, present when the condition is true.
+    pub fn presence(&self, name: &str, present: PureExpr) -> PureAttribute {
+        assert_eq!(
+            present.typ(),
+            Type::Bool,
+            "attribute {name} expects a Bool condition, got: {present}"
+        );
+        PureAttribute::Presence {
+            name: AttributeName::parse(name).unwrap(),
+            present,
         }
     }
 
