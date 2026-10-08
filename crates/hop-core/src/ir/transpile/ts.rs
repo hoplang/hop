@@ -1845,7 +1845,7 @@ mod tests {
     use crate::ir::pure_module_builder::{PureModuleBodiesBuilder, PureModuleBuilder};
     use expect_test::{Expect, expect};
 
-    fn check(builder: impl Into<PureModuleBodiesBuilder>, expected: Expect) {
+    fn check<'a>(builder: impl Into<PureModuleBodiesBuilder<'a>>, expected: Expect) {
         let (module, registry) = builder.into().build_with_registry();
         let module = lower_pure(module, None);
         let before = module.to_string();

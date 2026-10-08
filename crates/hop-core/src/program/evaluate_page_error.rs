@@ -17,4 +17,7 @@ pub enum EvaluatePageError {
 
     #[error("Missing required parameter '{param}' for page '{page}'")]
     MissingParameter { page: String, param: String },
+
+    #[error("Function '{function}' exceeded the call depth limit of {limit}")]
+    RecursionLimit { function: String, limit: usize },
 }

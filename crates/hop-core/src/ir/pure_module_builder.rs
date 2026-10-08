@@ -65,46 +65,43 @@ impl PureModuleBuilder {
     }
 
     /// Freeze the declared types, enabling page and function bodies.
-    pub fn freeze(self) -> PureModuleBodiesBuilder {
+    pub fn freeze<'a>(self) -> PureModuleBodiesBuilder<'a> {
         PureModuleBodiesBuilder {
             types: Rc::new(self.types_builder.build()),
-            expr_ids: Rc::new(RefCell::new(ExprIdCounter::new())),
-            var_ids: Rc::new(RefCell::new(VarIdCounter::new())),
-            function_ids: Rc::new(RefCell::new(FunctionIdCounter::new())),
-            pages: Vec::new(),
-            functions: Vec::new(),
-            callees: Rc::new(RefCell::new(HashMap::new())),
+            function_ids: FunctionIdCounter::new(),
+            callees: HashMap::new(),
+            deferred: Vec::new(),
         }
     }
 
-    pub fn page_no_params<F>(self, name: &str, body_fn: F) -> PureModuleBodiesBuilder
+    pub fn page_no_params<'a, F>(self, name: &str, body_fn: F) -> PureModuleBodiesBuilder<'a>
     where
-        F: FnOnce(&PureBuilder) -> PureExpr,
+        F: FnOnce(&PureBuilder) -> PureExpr + 'a,
     {
         self.freeze().page_no_params(name, body_fn)
     }
 
-    pub fn page<'a, F>(
+    pub fn page<'p, 'a, F>(
         self,
         name: &str,
-        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        params: impl IntoIterator<Item = (&'p str, &'p str)>,
         body_fn: F,
-    ) -> PureModuleBodiesBuilder
+    ) -> PureModuleBodiesBuilder<'a>
     where
-        F: FnOnce(&PureBuilder) -> PureExpr,
+        F: FnOnce(&PureBuilder) -> PureExpr + 'a,
     {
         self.freeze().page(name, params, body_fn)
     }
 
-    pub fn function<'a, F>(
+    pub fn function<'p, 'a, F>(
         self,
         name: &str,
-        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        params: impl IntoIterator<Item = (&'p str, &'p str)>,
         return_type: &str,
         body_fn: F,
-    ) -> PureModuleBodiesBuilder
+    ) -> PureModuleBodiesBuilder<'a>
     where
-        F: FnOnce(&PureBuilder) -> PureExpr,
+        F: FnOnce(&PureBuilder) -> PureExpr + 'a,
     {
         self.freeze().function(name, params, return_type, body_fn)
     }
@@ -116,128 +113,99 @@ impl Default for PureModuleBuilder {
     }
 }
 
-impl From<PureModuleBuilder> for PureModuleBodiesBuilder {
+impl<'a> From<PureModuleBuilder> for PureModuleBodiesBuilder<'a> {
     fn from(builder: PureModuleBuilder) -> Self {
         builder.freeze()
     }
 }
 
-/// A function's parameters and return type, keyed by name so call sites can
-/// look up the callee's return type.
-type FunctionSignature = (IrFunction, Vec<WriterParameter>, Type);
+type FunctionSignature = (IrFunction, Type);
 
-/// Collects page and function bodies against a frozen set of types.
-pub struct PureModuleBodiesBuilder {
-    types: Rc<TestTypes>,
-    expr_ids: Rc<RefCell<ExprIdCounter>>,
-    var_ids: Rc<RefCell<VarIdCounter>>,
-    pages: Vec<PurePageDeclaration>,
-    functions: Vec<PureFunctionDeclaration>,
-    function_ids: Rc<RefCell<FunctionIdCounter>>,
-    callees: Rc<RefCell<HashMap<String, FunctionSignature>>>,
+enum DeferredDeclaration {
+    Page {
+        name: TypeName,
+    },
+    Function {
+        function: IrFunction,
+        return_type: Type,
+    },
 }
 
-impl PureModuleBodiesBuilder {
+struct Deferred<'a> {
+    declaration: DeferredDeclaration,
+    parameters: Vec<(AttributeName, Type)>,
+    body_fn: Box<dyn FnOnce(&PureBuilder) -> PureExpr + 'a>,
+}
+
+/// Collects page and function bodies against a frozen set of types.
+pub struct PureModuleBodiesBuilder<'a> {
+    types: Rc<TestTypes>,
+    function_ids: FunctionIdCounter,
+    callees: HashMap<String, FunctionSignature>,
+    deferred: Vec<Deferred<'a>>,
+}
+
+impl<'a> PureModuleBodiesBuilder<'a> {
     pub fn page_no_params<F>(self, name: &str, body_fn: F) -> Self
     where
-        F: FnOnce(&PureBuilder) -> PureExpr,
+        F: FnOnce(&PureBuilder) -> PureExpr + 'a,
     {
         self.page(name, [], body_fn)
     }
 
-    pub fn page<'a, F>(
+    pub fn page<'p, F>(
         mut self,
         name: &str,
-        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        params: impl IntoIterator<Item = (&'p str, &'p str)>,
         body_fn: F,
     ) -> Self
     where
-        F: FnOnce(&PureBuilder) -> PureExpr,
+        F: FnOnce(&PureBuilder) -> PureExpr + 'a,
     {
-        let (parameters, body) = self.declaration(params, Type::Html, body_fn);
-        let head = PureExpr::HtmlConcat {
-            parts: Vec::new(),
-            id: self.expr_ids.borrow_mut().next(),
-        };
-        self.pages.push(PurePageDeclaration {
-            name: TypeName::parse(name).expect("Test page name should be valid"),
+        let parameters = params
+            .into_iter()
+            .map(|(name, typ)| (AttributeName::parse(name).unwrap(), self.types.resolve(typ)))
+            .collect();
+        self.deferred.push(Deferred {
+            declaration: DeferredDeclaration::Page {
+                name: TypeName::parse(name).expect("Test page name should be valid"),
+            },
             parameters,
-            head,
-            body,
+            body_fn: Box::new(body_fn),
         });
         self
     }
 
-    pub fn function<'a, F>(
+    pub fn function<'p, F>(
         mut self,
         name: &str,
-        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        params: impl IntoIterator<Item = (&'p str, &'p str)>,
         return_type: &str,
         body_fn: F,
     ) -> Self
     where
-        F: FnOnce(&PureBuilder) -> PureExpr,
+        F: FnOnce(&PureBuilder) -> PureExpr + 'a,
     {
-        let return_type = self.types.resolve(return_type);
-        let (parameters, body) = self.declaration(params, return_type.clone(), body_fn);
         let function = IrFunction::new(
-            self.function_ids.borrow_mut().next(),
+            self.function_ids.next(),
             FunctionName::parse(name).expect("Test function name should be valid"),
         );
-        self.callees.borrow_mut().insert(
-            name.to_string(),
-            (function.clone(), parameters.clone(), return_type.clone()),
-        );
-        self.functions.push(PureFunctionDeclaration {
-            function,
+        let return_type = self.types.resolve(return_type);
+        let parameters = params
+            .into_iter()
+            .map(|(name, typ)| (AttributeName::parse(name).unwrap(), self.types.resolve(typ)))
+            .collect();
+        self.callees
+            .insert(name.to_string(), (function.clone(), return_type.clone()));
+        self.deferred.push(Deferred {
+            declaration: DeferredDeclaration::Function {
+                function,
+                return_type,
+            },
             parameters,
-            return_type,
-            body,
+            body_fn: Box::new(body_fn),
         });
         self
-    }
-
-    fn declaration<'a, F>(
-        &self,
-        params: impl IntoIterator<Item = (&'a str, &'a str)>,
-        expected_type: Type,
-        body_fn: F,
-    ) -> (Vec<WriterParameter>, PureExpr)
-    where
-        F: FnOnce(&PureBuilder) -> PureExpr,
-    {
-        let parameters: Vec<WriterParameter> = params
-            .into_iter()
-            .map(|(name, typ)| {
-                let id = self.var_ids.borrow_mut().next();
-                WriterParameter {
-                    name: AttributeName::parse(name).unwrap(),
-                    var: IrVar::new(id),
-                    typ: self.types.resolve(typ),
-                }
-            })
-            .collect();
-        let vars = parameters
-            .iter()
-            .map(|p| (p.name.as_str().to_string(), p.var, p.typ.clone()))
-            .collect();
-        let builder = PureBuilder {
-            var_stack: vars,
-            types: self.types.clone(),
-            expr_ids: self.expr_ids.clone(),
-            var_ids: self.var_ids.clone(),
-            function_ids: self.function_ids.clone(),
-            callees: self.callees.clone(),
-        };
-        let body = body_fn(&builder);
-        assert_eq!(
-            body.typ(),
-            expected_type,
-            "Declaration body must be of type {:?}, got: {}",
-            expected_type,
-            body
-        );
-        (parameters, body)
     }
 
     pub fn build(self) -> PureModule {
@@ -245,11 +213,74 @@ impl PureModuleBodiesBuilder {
     }
 
     pub fn build_with_registry(self) -> (PureModule, TypeRegistry) {
+        let expr_ids = Rc::new(RefCell::new(ExprIdCounter::new()));
+        let var_ids = Rc::new(RefCell::new(VarIdCounter::new()));
+        let callees = Rc::new(self.callees);
+        let mut pages = Vec::new();
+        let mut functions = Vec::new();
+        for deferred in self.deferred {
+            let parameters: Vec<WriterParameter> = deferred
+                .parameters
+                .into_iter()
+                .map(|(name, typ)| WriterParameter {
+                    name,
+                    var: IrVar::new(var_ids.borrow_mut().next()),
+                    typ,
+                })
+                .collect();
+            let builder = PureBuilder {
+                var_stack: parameters
+                    .iter()
+                    .map(|p| (p.name.as_str().to_string(), p.var, p.typ.clone()))
+                    .collect(),
+                types: self.types.clone(),
+                expr_ids: expr_ids.clone(),
+                var_ids: var_ids.clone(),
+                callees: callees.clone(),
+            };
+            let body = (deferred.body_fn)(&builder);
+            let expected_type = match &deferred.declaration {
+                DeferredDeclaration::Page { .. } => Type::Html,
+                DeferredDeclaration::Function { return_type, .. } => return_type.clone(),
+            };
+            assert_eq!(
+                body.typ(),
+                expected_type,
+                "Declaration body must be of type {:?}, got: {}",
+                expected_type,
+                body
+            );
+            match deferred.declaration {
+                DeferredDeclaration::Page { name } => {
+                    let head = PureExpr::HtmlConcat {
+                        parts: Vec::new(),
+                        id: expr_ids.borrow_mut().next(),
+                    };
+                    pages.push(PurePageDeclaration {
+                        name,
+                        parameters,
+                        head,
+                        body,
+                    });
+                }
+                DeferredDeclaration::Function {
+                    function,
+                    return_type,
+                } => {
+                    functions.push(PureFunctionDeclaration {
+                        function,
+                        parameters,
+                        return_type,
+                        body,
+                    });
+                }
+            }
+        }
         let module = PureModule {
-            pages: self.pages,
-            functions: self.functions,
-            expr_ids: *self.expr_ids.borrow(),
-            var_ids: *self.var_ids.borrow(),
+            pages,
+            functions,
+            expr_ids: *expr_ids.borrow(),
+            var_ids: *var_ids.borrow(),
         };
         (module, self.types.registry().clone())
     }
@@ -262,8 +293,7 @@ pub struct PureBuilder {
     types: Rc<TestTypes>,
     expr_ids: Rc<RefCell<ExprIdCounter>>,
     var_ids: Rc<RefCell<VarIdCounter>>,
-    function_ids: Rc<RefCell<FunctionIdCounter>>,
-    callees: Rc<RefCell<HashMap<String, FunctionSignature>>>,
+    callees: Rc<HashMap<String, FunctionSignature>>,
 }
 
 impl PureBuilder {
@@ -283,7 +313,6 @@ impl PureBuilder {
             types: self.types.clone(),
             expr_ids: self.expr_ids.clone(),
             var_ids: self.var_ids.clone(),
-            function_ids: self.function_ids.clone(),
             callees: self.callees.clone(),
         }
     }
@@ -1199,9 +1228,8 @@ impl PureBuilder {
     }
 
     pub fn call(&self, name: &str, args: Vec<(&str, PureExpr)>) -> PureExpr {
-        let (function, _, return_type) = self
+        let (function, return_type) = self
             .callees
-            .borrow()
             .get(name)
             .cloned()
             .unwrap_or_else(|| panic!("Call to undeclared function '{}'", name));

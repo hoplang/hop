@@ -330,10 +330,9 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::document::CheapString;
-    use crate::hop::typing::Type;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
+    use crate::ir::runtime::EvalError;
     use crate::ir::runtime::evaluator::evaluate_page;
     use crate::ir::runtime::random::random_value;
     use crate::ir::runtime::value::Value;
@@ -422,10 +421,14 @@ mod tests {
                 .collect();
 
             let before_module = module.to_string();
-            let before: Vec<String> = page_args
+            let before: Vec<Option<String>> = page_args
                 .iter()
                 .map(|(page_name, args)| {
-                    evaluate_page(&module, page_name, args.clone(), None).unwrap()
+                    match evaluate_page(&module, page_name, args.clone(), None) {
+                        Ok(output) => Some(output),
+                        Err(EvalError::RecursionLimit { .. }) => None,
+                        Err(error) => panic!("{error}"),
+                    }
                 })
                 .collect();
 
@@ -433,6 +436,11 @@ mod tests {
             assert_every_read_is_bound(&module);
 
             for ((page_name, args), before_output) in page_args.iter().zip(&before) {
+                // A page that hit the call depth limit has no output to
+                // preserve, and the pass may drop the diverging call.
+                let Some(before_output) = before_output else {
+                    continue;
+                };
                 let after_output = evaluate_page(&module, page_name, args.clone(), None).unwrap();
                 assert_eq!(
                     before_output, &after_output,
@@ -581,61 +589,18 @@ mod tests {
         );
     }
 
-    /// Rewrite `caller`'s body to `text(marker)` followed by a call to
-    /// `callee`, forwarding the caller's own first parameter.
-    ///
-    /// The builder only lets a body call an already-declared function, so a
-    /// cycle has to be closed after the fact.
-    fn patch_to_call(module: &mut PureModule, caller: &str, callee: &str, marker: &str) {
-        let mut expr_ids = module.expr_ids;
-        let callee = module
-            .functions
-            .iter()
-            .find(|f| f.function.name.as_str() == callee)
-            .unwrap_or_else(|| panic!("{callee} is declared"))
-            .function
-            .clone();
-        let decl = module
-            .functions
-            .iter_mut()
-            .find(|f| f.function.name.as_str() == caller)
-            .unwrap_or_else(|| panic!("{caller} is declared"));
-        let param = decl.parameters[0].clone();
-        let name = param.name.clone();
-        decl.body = PureExpr::HtmlConcat {
-            parts: vec![
-                PureExpr::HtmlText {
-                    content: CheapString::new(marker.to_string()),
-                    id: expr_ids.next(),
-                },
-                PureExpr::Call {
-                    function: callee,
-                    args: vec![PureArgument {
-                        name,
-                        expr: PureExpr::VariableReference {
-                            value: param.var,
-                            typ: param.typ,
-                            id: expr_ids.next(),
-                        },
-                    }],
-                    typ: Type::Html,
-                    id: expr_ids.next(),
-                },
-            ],
-            id: expr_ids.next(),
-        };
-        module.expr_ids = expr_ids;
-    }
-
     #[test]
     fn should_leave_a_self_recursive_function_alone() {
-        let mut module = PureModuleBuilder::new()
-            .function("Loop", [("n", "Int")], "Html", |t| t.text("placeholder"))
-            .page_no_params("Main", |t| t.call("Loop", vec![("n", t.int(3))]))
-            .build();
-        patch_to_call(&mut module, "Loop", "Loop", "loop:");
         check(
-            module,
+            PureModuleBuilder::new()
+                .function("Loop", [("n", "Int")], "Html", |t| {
+                    t.concat(vec![
+                        t.text("loop:"),
+                        t.call("Loop", vec![("n", t.var("n"))]),
+                    ])
+                })
+                .page_no_params("Main", |t| t.call("Loop", vec![("n", t.int(3))]))
+                .build(),
             expect![[r#"
                 -- before --
                 fn Loop@f0(n@v0: Int) -> Html {
@@ -658,16 +623,19 @@ mod tests {
 
     #[test]
     fn should_leave_mutually_recursive_functions_alone() {
-        let mut module = PureModuleBuilder::new()
-            .function("Ping", [("n", "Int")], "Html", |t| t.text("placeholder"))
-            .function("Pong", [("n", "Int")], "Html", |t| {
-                t.call("Ping", vec![("n", t.var("n"))])
-            })
-            .page_no_params("Main", |t| t.call("Pong", vec![("n", t.int(3))]))
-            .build();
-        patch_to_call(&mut module, "Ping", "Pong", "ping:");
         check(
-            module,
+            PureModuleBuilder::new()
+                .function("Ping", [("n", "Int")], "Html", |t| {
+                    t.concat(vec![
+                        t.text("ping:"),
+                        t.call("Pong", vec![("n", t.var("n"))]),
+                    ])
+                })
+                .function("Pong", [("n", "Int")], "Html", |t| {
+                    t.call("Ping", vec![("n", t.var("n"))])
+                })
+                .page_no_params("Main", |t| t.call("Pong", vec![("n", t.int(3))]))
+                .build(),
             expect![[r#"
                 -- before --
                 fn Ping@f0(n@v0: Int) -> Html {

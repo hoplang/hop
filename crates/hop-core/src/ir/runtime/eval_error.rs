@@ -24,4 +24,6 @@ pub enum EvalError {
         function: IrFunction,
         name: AttributeName,
     },
+    #[error("Function '{function}' exceeded the call depth limit of {limit}")]
+    RecursionLimit { function: IrFunction, limit: usize },
 }

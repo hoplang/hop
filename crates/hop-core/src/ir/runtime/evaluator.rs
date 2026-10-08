@@ -13,6 +13,12 @@ use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
 
+/// The most function frames that may be active at once. A call that would
+/// open one more fails with a recursion limit error, so a function that
+/// never stops calling itself reports an error instead of overflowing the
+/// stack.
+const MAX_CALL_DEPTH: usize = 12;
+
 pub fn evaluate_page(
     module: &PureModule,
     page_name: &TypeName,
@@ -40,8 +46,8 @@ pub fn evaluate_page(
         }
     }
 
-    let head = evaluate_expr(&page.head, &mut env, &module.functions).unwrap_html();
-    let body = evaluate_expr(&page.body, &mut env, &module.functions).unwrap_html();
+    let head = evaluate_expr(&page.head, &mut env, &module.functions, 0)?.unwrap_html();
+    let body = evaluate_expr(&page.body, &mut env, &module.functions, 0)?.unwrap_html();
 
     let mut html = String::new();
     match shell {
@@ -60,7 +66,9 @@ pub fn evaluate_page(
     Ok(html)
 }
 
-/// Evaluate a function on its arguments, given by parameter name.
+/// Evaluate a function on its arguments, given by parameter name, with
+/// `depth` function frames already active. A call from outside any
+/// function has depth zero.
 ///
 /// Every parameter must have an argument and every argument must name a
 /// parameter.
@@ -68,7 +76,14 @@ pub fn evaluate_function(
     function_decls: &[PureFunctionDeclaration],
     function: &IrFunction,
     mut args: HashMap<AttributeName, Value>,
+    depth: usize,
 ) -> Result<Value, EvalError> {
+    if depth >= MAX_CALL_DEPTH {
+        return Err(EvalError::RecursionLimit {
+            function: function.clone(),
+            limit: MAX_CALL_DEPTH,
+        });
+    }
     let decl = function_decls
         .iter()
         .find(|decl| decl.function.id == function.id)
@@ -93,21 +108,22 @@ pub fn evaluate_function(
             name,
         });
     }
-    Ok(evaluate_expr(&decl.body, &mut env, function_decls))
+    evaluate_expr(&decl.body, &mut env, function_decls, depth + 1)
 }
 
 fn evaluate_expr(
     expr: &PureExpr,
     env: &mut VariableEnv,
     function_decls: &[PureFunctionDeclaration],
-) -> Value {
+    depth: usize,
+) -> Result<Value, EvalError> {
     match expr {
         PureExpr::Let {
             var, value, body, ..
         } => {
-            let value = evaluate_expr(value, env, function_decls);
+            let value = evaluate_expr(value, env, function_decls, depth)?;
             env.insert(var.id, value);
-            let result = evaluate_expr(body, env, function_decls);
+            let result = evaluate_expr(body, env, function_decls, depth);
             env.remove(&var.id);
             result
         }
@@ -116,7 +132,8 @@ fn evaluate_expr(
             match_: Match::Enum { subject, arms },
             ..
         } => {
-            let (variant_name, fields) = evaluate_expr(subject, env, function_decls).unwrap_enum();
+            let (variant_name, fields) =
+                evaluate_expr(subject, env, function_decls, depth)?.unwrap_enum();
             let mut matching_arms = arms.iter().filter(|arm| {
                 let EnumPattern::Variant {
                     variant_name: pattern_variant,
@@ -144,7 +161,7 @@ fn evaluate_expr(
                     });
                 env.insert(var.id, field.clone());
             }
-            let result = evaluate_expr(&arm.body, env, function_decls);
+            let result = evaluate_expr(&arm.body, env, function_decls, depth);
             for (_, var) in &arm.bindings {
                 env.remove(&var.id);
             }
@@ -160,10 +177,10 @@ fn evaluate_expr(
                 },
             ..
         } => {
-            if evaluate_expr(subject, env, function_decls).unwrap_bool() {
-                evaluate_expr(true_body, env, function_decls)
+            if evaluate_expr(subject, env, function_decls, depth)?.unwrap_bool() {
+                evaluate_expr(true_body, env, function_decls, depth)
             } else {
-                evaluate_expr(false_body, env, function_decls)
+                evaluate_expr(false_body, env, function_decls, depth)
             }
         }
 
@@ -176,40 +193,40 @@ fn evaluate_expr(
                     none_arm_body,
                 },
             ..
-        } => match evaluate_expr(subject, env, function_decls).unwrap_option() {
+        } => match evaluate_expr(subject, env, function_decls, depth)?.unwrap_option() {
             Some(inner) => {
                 if let Some(var) = some_arm_binding {
                     env.insert(var.id, *inner);
                 }
-                let result = evaluate_expr(some_arm_body, env, function_decls);
+                let result = evaluate_expr(some_arm_body, env, function_decls, depth);
                 if let Some(var) = some_arm_binding {
                     env.remove(&var.id);
                 }
                 result
             }
-            None => evaluate_expr(none_arm_body, env, function_decls),
+            None => evaluate_expr(none_arm_body, env, function_decls, depth),
         },
 
-        PureExpr::VariableReference { value, .. } => env.get(&value.id).clone(),
+        PureExpr::VariableReference { value, .. } => Ok(env.get(&value.id).clone()),
 
         PureExpr::FieldAccess { record, field, .. } => {
-            let record = evaluate_expr(record, env, function_decls).unwrap_record();
+            let record = evaluate_expr(record, env, function_decls, depth)?.unwrap_record();
             let (_, value) = record
                 .into_iter()
                 .find(|(name, _)| name == field)
                 .unwrap_or_else(|| panic!("Field '{}' not found in record", field));
-            value
+            Ok(value)
         }
 
-        PureExpr::StringLiteral { value, .. } => Value::String(value.to_string()),
+        PureExpr::StringLiteral { value, .. } => Ok(Value::String(value.to_string())),
 
         PureExpr::HtmlText { content, .. } => {
-            Value::Html(vec![HtmlNode::Text(content.to_string())])
+            Ok(Value::Html(vec![HtmlNode::Text(content.to_string())]))
         }
 
         PureExpr::HtmlEscape { expr, .. } => {
-            let text = evaluate_expr(expr, env, function_decls).unwrap_string();
-            Value::Html(vec![HtmlNode::Escape(text)])
+            let text = evaluate_expr(expr, env, function_decls, depth)?.unwrap_string();
+            Ok(Value::Html(vec![HtmlNode::Escape(text)]))
         }
 
         PureExpr::HtmlElement {
@@ -222,14 +239,15 @@ fn evaluate_expr(
             for attribute in attributes {
                 match attribute {
                     PureAttribute::Value { name, value } => {
-                        let value = evaluate_expr(value, env, function_decls).unwrap_string();
+                        let value =
+                            evaluate_expr(value, env, function_decls, depth)?.unwrap_string();
                         rendered.push(HtmlAttribute {
                             name: name.clone(),
                             value: Some(value),
                         });
                     }
                     PureAttribute::Presence { name, present } => {
-                        if evaluate_expr(present, env, function_decls).unwrap_bool() {
+                        if evaluate_expr(present, env, function_decls, depth)?.unwrap_bool() {
                             rendered.push(HtmlAttribute {
                                 name: name.clone(),
                                 value: None,
@@ -241,21 +259,21 @@ fn evaluate_expr(
             let children = if element.is_void() {
                 Vec::new()
             } else {
-                evaluate_expr(children, env, function_decls).unwrap_html()
+                evaluate_expr(children, env, function_decls, depth)?.unwrap_html()
             };
-            Value::Html(vec![HtmlNode::Element {
+            Ok(Value::Html(vec![HtmlNode::Element {
                 element: element.clone(),
                 attributes: rendered,
                 children,
-            }])
+            }]))
         }
 
         PureExpr::HtmlConcat { parts, .. } => {
             let mut nodes = Vec::new();
             for part in parts {
-                nodes.extend(evaluate_expr(part, env, function_decls).unwrap_html());
+                nodes.extend(evaluate_expr(part, env, function_decls, depth)?.unwrap_html());
             }
-            Value::Html(nodes)
+            Ok(Value::Html(nodes))
         }
 
         PureExpr::HtmlFor {
@@ -263,11 +281,11 @@ fn evaluate_expr(
         } => {
             let items = match source.as_ref() {
                 PureForSource::Array(array) => {
-                    evaluate_expr(array, env, function_decls).unwrap_array()
+                    evaluate_expr(array, env, function_decls, depth)?.unwrap_array()
                 }
                 PureForSource::RangeInclusive { start, end } => {
-                    let start = evaluate_expr(start, env, function_decls).unwrap_int();
-                    let end = evaluate_expr(end, env, function_decls).unwrap_int();
+                    let start = evaluate_expr(start, env, function_decls, depth)?.unwrap_int();
+                    let end = evaluate_expr(end, env, function_decls, depth)?.unwrap_int();
                     (start..=end).map(Value::Int).collect()
                 }
             };
@@ -276,18 +294,18 @@ fn evaluate_expr(
                 if let Some(var) = var {
                     env.insert(var.id, item);
                 }
-                nodes.extend(evaluate_expr(body, env, function_decls).unwrap_html());
+                nodes.extend(evaluate_expr(body, env, function_decls, depth)?.unwrap_html());
                 if let Some(var) = var {
                     env.remove(&var.id);
                 }
             }
-            Value::Html(nodes)
+            Ok(Value::Html(nodes))
         }
 
         PureExpr::Call { function, args, .. } => {
             let mut values = HashMap::new();
             for arg in args {
-                let value = evaluate_expr(&arg.expr, env, function_decls);
+                let value = evaluate_expr(&arg.expr, env, function_decls, depth)?;
                 assert!(
                     values.insert(arg.name.clone(), value).is_none(),
                     "Duplicate argument '{}' for function '{}'",
@@ -295,47 +313,46 @@ fn evaluate_expr(
                     function
                 );
             }
-            evaluate_function(function_decls, function, values)
-                .unwrap_or_else(|error| panic!("{error}"))
+            evaluate_function(function_decls, function, values, depth)
         }
 
-        PureExpr::BoolLiteral { value, .. } => Value::Bool(*value),
+        PureExpr::BoolLiteral { value, .. } => Ok(Value::Bool(*value)),
 
-        PureExpr::FloatLiteral { value, .. } => Value::Float(*value),
+        PureExpr::FloatLiteral { value, .. } => Ok(Value::Float(*value)),
 
-        PureExpr::IntLiteral { value, .. } => Value::Int(*value),
+        PureExpr::IntLiteral { value, .. } => Ok(Value::Int(*value)),
 
         PureExpr::Array { elements, .. } => {
             let mut array = Vec::new();
             for element in elements {
-                array.push(evaluate_expr(element, env, function_decls));
+                array.push(evaluate_expr(element, env, function_decls, depth)?);
             }
-            Value::Array(array)
+            Ok(Value::Array(array))
         }
 
         PureExpr::Tuple { elements, .. } => {
             let mut tuple = Vec::new();
             for element in elements {
-                tuple.push(evaluate_expr(element, env, function_decls));
+                tuple.push(evaluate_expr(element, env, function_decls, depth)?);
             }
-            Value::Tuple(tuple)
+            Ok(Value::Tuple(tuple))
         }
 
         PureExpr::TupleIndex { tuple, index, .. } => {
-            let tuple = evaluate_expr(tuple, env, function_decls).unwrap_tuple();
-            tuple
+            let tuple = evaluate_expr(tuple, env, function_decls, depth)?.unwrap_tuple();
+            Ok(tuple
                 .into_iter()
                 .nth(*index)
-                .unwrap_or_else(|| panic!("Index {} is out of range for the tuple", index))
+                .unwrap_or_else(|| panic!("Index {} is out of range for the tuple", index)))
         }
 
         PureExpr::Record { fields, .. } => {
             let mut record = Vec::new();
             for (field_name, field) in fields {
-                let field = evaluate_expr(field, env, function_decls);
+                let field = evaluate_expr(field, env, function_decls, depth)?;
                 record.push((field_name.clone(), field));
             }
-            Value::Record(record)
+            Ok(Value::Record(record))
         }
 
         PureExpr::Enum {
@@ -345,27 +362,26 @@ fn evaluate_expr(
         } => {
             let mut field_values = Vec::new();
             for (field_name, field) in fields {
-                let field = evaluate_expr(field, env, function_decls);
+                let field = evaluate_expr(field, env, function_decls, depth)?;
                 field_values.push((field_name.clone(), field));
             }
-            Value::Enum {
+            Ok(Value::Enum {
                 variant_name: variant_name.clone(),
                 fields: field_values,
-            }
+            })
         }
 
-        PureExpr::Option { value, .. } => Value::Option(
-            value
-                .as_ref()
-                .map(|inner| Box::new(evaluate_expr(inner, env, function_decls))),
-        ),
+        PureExpr::Option { value, .. } => Ok(Value::Option(match value {
+            Some(inner) => Some(Box::new(evaluate_expr(inner, env, function_decls, depth)?)),
+            None => None,
+        })),
 
         PureExpr::StringConcat { parts, .. } => {
             let mut result = String::new();
             for part in parts {
-                result.push_str(&evaluate_expr(part, env, function_decls).unwrap_string());
+                result.push_str(&evaluate_expr(part, env, function_decls, depth)?.unwrap_string());
             }
-            Value::String(result)
+            Ok(Value::String(result))
         }
 
         PureExpr::NumericAdd {
@@ -374,12 +390,12 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left = evaluate_expr(left, env, function_decls);
-            let right = evaluate_expr(right, env, function_decls);
-            match operand_types {
+            let left = evaluate_expr(left, env, function_decls, depth)?;
+            let right = evaluate_expr(right, env, function_decls, depth)?;
+            Ok(match operand_types {
                 NumericType::Int => Value::Int(left.unwrap_int().wrapping_add(right.unwrap_int())),
                 NumericType::Float => Value::Float(left.unwrap_float() + right.unwrap_float()),
-            }
+            })
         }
 
         PureExpr::NumericSubtract {
@@ -388,12 +404,12 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left = evaluate_expr(left, env, function_decls);
-            let right = evaluate_expr(right, env, function_decls);
-            match operand_types {
+            let left = evaluate_expr(left, env, function_decls, depth)?;
+            let right = evaluate_expr(right, env, function_decls, depth)?;
+            Ok(match operand_types {
                 NumericType::Int => Value::Int(left.unwrap_int().wrapping_sub(right.unwrap_int())),
                 NumericType::Float => Value::Float(left.unwrap_float() - right.unwrap_float()),
-            }
+            })
         }
 
         PureExpr::NumericMultiply {
@@ -402,12 +418,12 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left = evaluate_expr(left, env, function_decls);
-            let right = evaluate_expr(right, env, function_decls);
-            match operand_types {
+            let left = evaluate_expr(left, env, function_decls, depth)?;
+            let right = evaluate_expr(right, env, function_decls, depth)?;
+            Ok(match operand_types {
                 NumericType::Int => Value::Int(left.unwrap_int().wrapping_mul(right.unwrap_int())),
                 NumericType::Float => Value::Float(left.unwrap_float() * right.unwrap_float()),
-            }
+            })
         }
 
         PureExpr::NumericNegation {
@@ -415,33 +431,33 @@ fn evaluate_expr(
             operand_type,
             ..
         } => {
-            let operand = evaluate_expr(operand, env, function_decls);
-            match operand_type {
+            let operand = evaluate_expr(operand, env, function_decls, depth)?;
+            Ok(match operand_type {
                 NumericType::Int => Value::Int(operand.unwrap_int().wrapping_neg()),
                 NumericType::Float => Value::Float(-operand.unwrap_float()),
-            }
+            })
         }
 
         PureExpr::BoolNegation { operand, .. } => {
-            let operand = evaluate_expr(operand, env, function_decls).unwrap_bool();
-            Value::Bool(!operand)
+            let operand = evaluate_expr(operand, env, function_decls, depth)?.unwrap_bool();
+            Ok(Value::Bool(!operand))
         }
 
         PureExpr::BoolLogicalAnd { left, right, .. } => {
-            if evaluate_expr(left, env, function_decls).unwrap_bool() {
-                let right = evaluate_expr(right, env, function_decls).unwrap_bool();
-                Value::Bool(right)
+            if evaluate_expr(left, env, function_decls, depth)?.unwrap_bool() {
+                let right = evaluate_expr(right, env, function_decls, depth)?.unwrap_bool();
+                Ok(Value::Bool(right))
             } else {
-                Value::Bool(false)
+                Ok(Value::Bool(false))
             }
         }
 
         PureExpr::BoolLogicalOr { left, right, .. } => {
-            if evaluate_expr(left, env, function_decls).unwrap_bool() {
-                Value::Bool(true)
+            if evaluate_expr(left, env, function_decls, depth)?.unwrap_bool() {
+                Ok(Value::Bool(true))
             } else {
-                let right = evaluate_expr(right, env, function_decls).unwrap_bool();
-                Value::Bool(right)
+                let right = evaluate_expr(right, env, function_decls, depth)?.unwrap_bool();
+                Ok(Value::Bool(right))
             }
         }
 
@@ -451,14 +467,14 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left = evaluate_expr(left, env, function_decls);
-            let right = evaluate_expr(right, env, function_decls);
-            match operand_types {
+            let left = evaluate_expr(left, env, function_decls, depth)?;
+            let right = evaluate_expr(right, env, function_decls, depth)?;
+            Ok(match operand_types {
                 EquatableType::Bool => Value::Bool(left.unwrap_bool() == right.unwrap_bool()),
                 EquatableType::String => Value::Bool(left.unwrap_string() == right.unwrap_string()),
                 EquatableType::Int => Value::Bool(left.unwrap_int() == right.unwrap_int()),
                 EquatableType::Float => Value::Bool(left.unwrap_float() == right.unwrap_float()),
-            }
+            })
         }
 
         PureExpr::LessThan {
@@ -467,12 +483,12 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left = evaluate_expr(left, env, function_decls);
-            let right = evaluate_expr(right, env, function_decls);
-            match operand_types {
+            let left = evaluate_expr(left, env, function_decls, depth)?;
+            let right = evaluate_expr(right, env, function_decls, depth)?;
+            Ok(match operand_types {
                 ComparableType::Int => Value::Bool(left.unwrap_int() < right.unwrap_int()),
                 ComparableType::Float => Value::Bool(left.unwrap_float() < right.unwrap_float()),
-            }
+            })
         }
 
         PureExpr::LessThanOrEqual {
@@ -481,52 +497,52 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left = evaluate_expr(left, env, function_decls);
-            let right = evaluate_expr(right, env, function_decls);
-            match operand_types {
+            let left = evaluate_expr(left, env, function_decls, depth)?;
+            let right = evaluate_expr(right, env, function_decls, depth)?;
+            Ok(match operand_types {
                 ComparableType::Int => Value::Bool(left.unwrap_int() <= right.unwrap_int()),
                 ComparableType::Float => Value::Bool(left.unwrap_float() <= right.unwrap_float()),
-            }
+            })
         }
 
         PureExpr::ArrayLength { array, .. } => {
-            let array = evaluate_expr(array, env, function_decls).unwrap_array();
-            Value::Int(array.len() as i32)
+            let array = evaluate_expr(array, env, function_decls, depth)?.unwrap_array();
+            Ok(Value::Int(array.len() as i32))
         }
 
         PureExpr::ArrayIsEmpty { array, .. } => {
-            let array = evaluate_expr(array, env, function_decls).unwrap_array();
-            Value::Bool(array.is_empty())
+            let array = evaluate_expr(array, env, function_decls, depth)?.unwrap_array();
+            Ok(Value::Bool(array.is_empty()))
         }
 
         PureExpr::StringIsEmpty { string, .. } => {
-            let string = evaluate_expr(string, env, function_decls).unwrap_string();
-            Value::Bool(string.is_empty())
+            let string = evaluate_expr(string, env, function_decls, depth)?.unwrap_string();
+            Ok(Value::Bool(string.is_empty()))
         }
 
         PureExpr::OptionIsSome { option, .. } => {
-            let option = evaluate_expr(option, env, function_decls).unwrap_option();
-            Value::Bool(option.is_some())
+            let option = evaluate_expr(option, env, function_decls, depth)?.unwrap_option();
+            Ok(Value::Bool(option.is_some()))
         }
 
         PureExpr::OptionIsNone { option, .. } => {
-            let option = evaluate_expr(option, env, function_decls).unwrap_option();
-            Value::Bool(option.is_none())
+            let option = evaluate_expr(option, env, function_decls, depth)?.unwrap_option();
+            Ok(Value::Bool(option.is_none()))
         }
 
         PureExpr::IntToString { value, .. } => {
-            let value = evaluate_expr(value, env, function_decls).unwrap_int();
-            Value::String(value.to_string())
+            let value = evaluate_expr(value, env, function_decls, depth)?.unwrap_int();
+            Ok(Value::String(value.to_string()))
         }
 
         PureExpr::FloatToInt { value, .. } => {
-            let value = evaluate_expr(value, env, function_decls).unwrap_float();
-            Value::Int(value as i32)
+            let value = evaluate_expr(value, env, function_decls, depth)?.unwrap_float();
+            Ok(Value::Int(value as i32))
         }
 
         PureExpr::IntToFloat { value, .. } => {
-            let value = evaluate_expr(value, env, function_decls).unwrap_int();
-            Value::Float(value as f64)
+            let value = evaluate_expr(value, env, function_decls, depth)?.unwrap_int();
+            Ok(Value::Float(value as f64))
         }
     }
 }
@@ -557,7 +573,10 @@ mod tests {
                         )
                     })
                     .collect();
-                evaluate_page(&module, &page.name, args, None).unwrap();
+                match evaluate_page(&module, &page.name, args, None) {
+                    Ok(_) | Err(EvalError::RecursionLimit { .. }) => {}
+                    Err(error) => panic!("{error}"),
+                }
             }
             Ok(())
         });
@@ -896,7 +915,7 @@ mod tests {
             })
             .build();
         let args = HashMap::from([(AttributeName::parse("n").unwrap(), Value::Int(21))]);
-        let result = evaluate_function(&module.functions, &module.functions[0].function, args);
+        let result = evaluate_function(&module.functions, &module.functions[0].function, args, 0);
         assert_eq!(result.unwrap(), Value::Int(42));
     }
 
@@ -911,10 +930,65 @@ mod tests {
             (AttributeName::parse("n").unwrap(), Value::Int(21)),
             (AttributeName::parse("m").unwrap(), Value::Int(1)),
         ]);
-        let result = evaluate_function(&module.functions, &module.functions[0].function, args);
+        let result = evaluate_function(&module.functions, &module.functions[0].function, args, 0);
         assert_eq!(
             result.unwrap_err().to_string(),
             "Unknown argument 'm' for function 'Double@f0'"
+        );
+    }
+
+    #[test]
+    fn should_evaluate_a_recursive_function() {
+        check(
+            PureModuleBuilder::new()
+                .function("Sum", [("n", "Int")], "Int", |t| {
+                    t.bool_match_expr(
+                        t.lte(t.var("n"), t.int(0)),
+                        t.int(0),
+                        t.add(
+                            t.var("n"),
+                            t.call("Sum", vec![("n", t.sub(t.var("n"), t.int(1)))]),
+                        ),
+                    )
+                })
+                .page_no_params("Test", |t| {
+                    t.escape(t.int_to_string(t.call("Sum", vec![("n", t.int(10))])))
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                fn Sum@f0(n@v0: Int) -> Int {
+                  match (v0 <= 0) {
+                    true => { 0 }
+                    false => { (v0 + call Sum@f0(n = (v0 - 1))) }
+                  }
+                }
+                page Test() {
+                  escape(call Sum@f0(n = 10).to_string())
+                }
+
+                -- after --
+                55
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_error_when_a_function_never_stops_calling_itself() {
+        let module = PureModuleBuilder::new()
+            .function("Loop", [("n", "Int")], "Int", |t| {
+                t.call("Loop", vec![("n", t.add(t.var("n"), t.int(1)))])
+            })
+            .page_no_params("Test", |t| {
+                t.escape(t.int_to_string(t.call("Loop", vec![("n", t.int(0))])))
+            })
+            .build();
+        let page_name = TypeName::parse("Test").unwrap();
+        let result = evaluate_page(&module, &page_name, HashMap::new(), None);
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Function 'Loop@f0' exceeded the call depth limit of 12"
         );
     }
 

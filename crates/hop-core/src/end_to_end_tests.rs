@@ -354,6 +354,7 @@ fn check_with_asset_path_rewriter(
 mod tests {
     use super::*;
     use crate::ir::pure_module_generator::random_module_with_test_view;
+    use crate::ir::runtime::EvalError;
     use expect_test::expect;
     use indoc::indoc;
 
@@ -364,10 +365,12 @@ mod tests {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
             let page_name = TypeName::parse("Test").unwrap();
-            let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new(), None)
-                .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
-                .trim()
-                .to_string();
+            let expected = match evaluator::evaluate_page(&module, &page_name, HashMap::new(), None)
+            {
+                Ok(output) => output.trim().to_string(),
+                Err(EvalError::RecursionLimit { .. }) => return Ok(()),
+                Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
+            };
             let module = lower_pure(module, None);
             let ir = module.to_string();
             let ts_code = TsTranspiler::new().transpile_module(&module, &registry);
@@ -394,10 +397,12 @@ mod tests {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
             let page_name = TypeName::parse("Test").unwrap();
-            let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new(), None)
-                .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
-                .trim()
-                .to_string();
+            let expected = match evaluator::evaluate_page(&module, &page_name, HashMap::new(), None)
+            {
+                Ok(output) => output.trim().to_string(),
+                Err(EvalError::RecursionLimit { .. }) => return Ok(()),
+                Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
+            };
             let module = lower_pure(module, None);
             let ir = module.to_string();
             let rust_code = RustTranspiler::new().transpile_module(&module, &registry);

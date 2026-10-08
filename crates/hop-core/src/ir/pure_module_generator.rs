@@ -2,6 +2,7 @@ use crate::hop::typing::{Type, TypeRegistry};
 use crate::ir::pure_module::{PureExpr, PureModule};
 use crate::ir::pure_module_builder::{PureBuilder, PureModuleBuilder};
 use arbitrary::Unstructured;
+use std::cell::RefCell;
 use std::ops::RangeInclusive;
 
 /// Expression recursion budget.
@@ -182,43 +183,54 @@ fn random_module_inner(
         }
     }
 
+    let generator = RefCell::new(g);
+    let g = &generator;
     let mut bodies = builder.freeze();
 
     // Generate functions
-    for i in 0..g.count(0..=2) {
-        let name = format!("C{i}");
-        let params: Vec<(String, String)> = (0..g.count(0..=3))
-            .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
-            .collect();
-        let return_type = g.random_type_string(2);
+    let function_count = g.borrow_mut().count(0..=2);
+    for i in 0..function_count {
+        let info = {
+            let mut g = g.borrow_mut();
+            let params = (0..g.count(0..=3))
+                .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
+                .collect();
+            let info = FunctionInfo {
+                name: format!("C{i}"),
+                params,
+                return_type: g.random_type_string(2),
+            };
+            g.functions.push(info.clone());
+            info
+        };
         bodies = bodies.function(
-            &name,
-            params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
-            &return_type,
-            |b| {
-                let target = b.resolve_type(&return_type);
+            &info.name,
+            info.params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
+            &info.return_type,
+            move |b| {
+                let mut g = g.borrow_mut();
+                let target = b.resolve_type(&g.functions[i].return_type);
                 g.expr(b, &target, DEPTH)
             },
         );
-        g.functions.push(FunctionInfo {
-            name,
-            params,
-            return_type,
-        });
     }
 
     // Generate pages
     if single_test_page {
-        bodies = bodies.page_no_params("Test", |b| g.expr(b, &Type::Html, DEPTH));
+        bodies = bodies.page_no_params("Test", |b| g.borrow_mut().expr(b, &Type::Html, DEPTH));
     } else {
-        for i in 0..g.count(1..=3) {
-            let params: Vec<(String, String)> = (0..g.count(0..=3))
-                .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
-                .collect();
+        let page_count = g.borrow_mut().count(1..=3);
+        for i in 0..page_count {
+            let params: Vec<(String, String)> = {
+                let mut g = g.borrow_mut();
+                (0..g.count(0..=3))
+                    .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
+                    .collect()
+            };
             bodies = bodies.page(
                 &format!("V{i}"),
                 params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
-                |b| g.expr(b, &Type::Html, DEPTH),
+                |b| g.borrow_mut().expr(b, &Type::Html, DEPTH),
             );
         }
     }

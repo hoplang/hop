@@ -45,6 +45,7 @@ mod tests {
     use super::*;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
+    use crate::ir::runtime::EvalError;
     use crate::ir::runtime::evaluator::evaluate_page;
     use crate::ir::runtime::{random::random_value, value::Value};
     use crate::symbols::attribute_name::AttributeName;
@@ -77,16 +78,25 @@ mod tests {
                 .collect();
 
             let before_module = module.to_string();
-            let before_outputs: Vec<String> = page_args
+            let before_outputs: Vec<Option<String>> = page_args
                 .iter()
                 .map(|(page_name, args)| {
-                    evaluate_page(&module, page_name, args.clone(), None).unwrap()
+                    match evaluate_page(&module, page_name, args.clone(), None) {
+                        Ok(output) => Some(output),
+                        Err(EvalError::RecursionLimit { .. }) => None,
+                        Err(error) => panic!("{error}"),
+                    }
                 })
                 .collect();
 
             let module = optimize(module);
 
             for ((page_name, args), before_output) in page_args.iter().zip(&before_outputs) {
+                // A page that hit the call depth limit has no output to
+                // preserve, and the pass may drop the diverging call.
+                let Some(before_output) = before_output else {
+                    continue;
+                };
                 let after_output = evaluate_page(&module, page_name, args.clone(), None).unwrap();
                 assert_eq!(
                     before_output, &after_output,

@@ -63,10 +63,14 @@ impl Program {
                 page: page.to_string(),
                 param: param.to_string(),
             },
+            EvalError::RecursionLimit { function, limit } => EvaluatePageError::RecursionLimit {
+                function: function.name.as_str().to_string(),
+                limit,
+            },
             EvalError::FunctionNotFound { .. }
             | EvalError::MissingFunctionParameter { .. }
             | EvalError::UnknownArgument { .. } => {
-                unreachable!("evaluating a page panics on an invalid call instead")
+                unreachable!("a call in a typechecked module matches its declaration")
             }
         })
     }
