@@ -1,7 +1,9 @@
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::document_shell::DocumentShell;
+use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumPattern, Match};
+use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::pure_module::{
     PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
 };
@@ -364,63 +366,74 @@ fn evaluate_expr(
             Ok(Value::String(result))
         }
 
-        PureExpr::NumericAdd {
-            left,
-            right,
-            operand_types,
-            ..
-        } => {
+        PureExpr::Binary { op, left, right } => {
             let left = evaluate_expr(left, env, function_decls, depth)?;
             let right = evaluate_expr(right, env, function_decls, depth)?;
-            Ok(match operand_types {
-                NumericType::Int => Value::Int(left.unwrap_int().wrapping_add(right.unwrap_int())),
-                NumericType::Float => Value::Float(left.unwrap_float() + right.unwrap_float()),
+            Ok(match op {
+                IrBinaryOp::NumericAdd(NumericType::Int) => {
+                    Value::Int(left.unwrap_int().wrapping_add(right.unwrap_int()))
+                }
+                IrBinaryOp::NumericAdd(NumericType::Float) => {
+                    Value::Float(left.unwrap_float() + right.unwrap_float())
+                }
+                IrBinaryOp::NumericSubtract(NumericType::Int) => {
+                    Value::Int(left.unwrap_int().wrapping_sub(right.unwrap_int()))
+                }
+                IrBinaryOp::NumericSubtract(NumericType::Float) => {
+                    Value::Float(left.unwrap_float() - right.unwrap_float())
+                }
+                IrBinaryOp::NumericMultiply(NumericType::Int) => {
+                    Value::Int(left.unwrap_int().wrapping_mul(right.unwrap_int()))
+                }
+                IrBinaryOp::NumericMultiply(NumericType::Float) => {
+                    Value::Float(left.unwrap_float() * right.unwrap_float())
+                }
+                IrBinaryOp::Equals(EquatableType::Bool) => {
+                    Value::Bool(left.unwrap_bool() == right.unwrap_bool())
+                }
+                IrBinaryOp::Equals(EquatableType::String) => {
+                    Value::Bool(left.unwrap_string() == right.unwrap_string())
+                }
+                IrBinaryOp::Equals(EquatableType::Int) => {
+                    Value::Bool(left.unwrap_int() == right.unwrap_int())
+                }
+                IrBinaryOp::Equals(EquatableType::Float) => {
+                    Value::Bool(left.unwrap_float() == right.unwrap_float())
+                }
+                IrBinaryOp::LessThan(ComparableType::Int) => {
+                    Value::Bool(left.unwrap_int() < right.unwrap_int())
+                }
+                IrBinaryOp::LessThan(ComparableType::Float) => {
+                    Value::Bool(left.unwrap_float() < right.unwrap_float())
+                }
+                IrBinaryOp::LessThanOrEqual(ComparableType::Int) => {
+                    Value::Bool(left.unwrap_int() <= right.unwrap_int())
+                }
+                IrBinaryOp::LessThanOrEqual(ComparableType::Float) => {
+                    Value::Bool(left.unwrap_float() <= right.unwrap_float())
+                }
             })
         }
 
-        PureExpr::NumericSubtract {
-            left,
-            right,
-            operand_types,
-            ..
-        } => {
-            let left = evaluate_expr(left, env, function_decls, depth)?;
-            let right = evaluate_expr(right, env, function_decls, depth)?;
-            Ok(match operand_types {
-                NumericType::Int => Value::Int(left.unwrap_int().wrapping_sub(right.unwrap_int())),
-                NumericType::Float => Value::Float(left.unwrap_float() - right.unwrap_float()),
-            })
-        }
-
-        PureExpr::NumericMultiply {
-            left,
-            right,
-            operand_types,
-            ..
-        } => {
-            let left = evaluate_expr(left, env, function_decls, depth)?;
-            let right = evaluate_expr(right, env, function_decls, depth)?;
-            Ok(match operand_types {
-                NumericType::Int => Value::Int(left.unwrap_int().wrapping_mul(right.unwrap_int())),
-                NumericType::Float => Value::Float(left.unwrap_float() * right.unwrap_float()),
-            })
-        }
-
-        PureExpr::NumericNegation {
-            operand,
-            operand_type,
-            ..
-        } => {
+        PureExpr::Unary { op, operand } => {
             let operand = evaluate_expr(operand, env, function_decls, depth)?;
-            Ok(match operand_type {
-                NumericType::Int => Value::Int(operand.unwrap_int().wrapping_neg()),
-                NumericType::Float => Value::Float(-operand.unwrap_float()),
+            Ok(match op {
+                IrUnaryOp::NumericNegation(NumericType::Int) => {
+                    Value::Int(operand.unwrap_int().wrapping_neg())
+                }
+                IrUnaryOp::NumericNegation(NumericType::Float) => {
+                    Value::Float(-operand.unwrap_float())
+                }
+                IrUnaryOp::BoolNegation => Value::Bool(!operand.unwrap_bool()),
+                IrUnaryOp::ArrayLength => Value::Int(operand.unwrap_array().len() as i32),
+                IrUnaryOp::ArrayIsEmpty => Value::Bool(operand.unwrap_array().is_empty()),
+                IrUnaryOp::StringIsEmpty => Value::Bool(operand.unwrap_string().is_empty()),
+                IrUnaryOp::OptionIsSome => Value::Bool(operand.unwrap_option().is_some()),
+                IrUnaryOp::OptionIsNone => Value::Bool(operand.unwrap_option().is_none()),
+                IrUnaryOp::IntToString => Value::String(operand.unwrap_int().to_string()),
+                IrUnaryOp::FloatToInt => Value::Int(operand.unwrap_float() as i32),
+                IrUnaryOp::IntToFloat => Value::Float(operand.unwrap_int() as f64),
             })
-        }
-
-        PureExpr::BoolNegation { operand, .. } => {
-            let operand = evaluate_expr(operand, env, function_decls, depth)?.unwrap_bool();
-            Ok(Value::Bool(!operand))
         }
 
         PureExpr::BoolLogicalAnd { left, right, .. } => {
@@ -439,90 +452,6 @@ fn evaluate_expr(
                 let right = evaluate_expr(right, env, function_decls, depth)?.unwrap_bool();
                 Ok(Value::Bool(right))
             }
-        }
-
-        PureExpr::Equals {
-            left,
-            right,
-            operand_types,
-            ..
-        } => {
-            let left = evaluate_expr(left, env, function_decls, depth)?;
-            let right = evaluate_expr(right, env, function_decls, depth)?;
-            Ok(match operand_types {
-                EquatableType::Bool => Value::Bool(left.unwrap_bool() == right.unwrap_bool()),
-                EquatableType::String => Value::Bool(left.unwrap_string() == right.unwrap_string()),
-                EquatableType::Int => Value::Bool(left.unwrap_int() == right.unwrap_int()),
-                EquatableType::Float => Value::Bool(left.unwrap_float() == right.unwrap_float()),
-            })
-        }
-
-        PureExpr::LessThan {
-            left,
-            right,
-            operand_types,
-            ..
-        } => {
-            let left = evaluate_expr(left, env, function_decls, depth)?;
-            let right = evaluate_expr(right, env, function_decls, depth)?;
-            Ok(match operand_types {
-                ComparableType::Int => Value::Bool(left.unwrap_int() < right.unwrap_int()),
-                ComparableType::Float => Value::Bool(left.unwrap_float() < right.unwrap_float()),
-            })
-        }
-
-        PureExpr::LessThanOrEqual {
-            left,
-            right,
-            operand_types,
-            ..
-        } => {
-            let left = evaluate_expr(left, env, function_decls, depth)?;
-            let right = evaluate_expr(right, env, function_decls, depth)?;
-            Ok(match operand_types {
-                ComparableType::Int => Value::Bool(left.unwrap_int() <= right.unwrap_int()),
-                ComparableType::Float => Value::Bool(left.unwrap_float() <= right.unwrap_float()),
-            })
-        }
-
-        PureExpr::ArrayLength { array, .. } => {
-            let array = evaluate_expr(array, env, function_decls, depth)?.unwrap_array();
-            Ok(Value::Int(array.len() as i32))
-        }
-
-        PureExpr::ArrayIsEmpty { array, .. } => {
-            let array = evaluate_expr(array, env, function_decls, depth)?.unwrap_array();
-            Ok(Value::Bool(array.is_empty()))
-        }
-
-        PureExpr::StringIsEmpty { string, .. } => {
-            let string = evaluate_expr(string, env, function_decls, depth)?.unwrap_string();
-            Ok(Value::Bool(string.is_empty()))
-        }
-
-        PureExpr::OptionIsSome { option, .. } => {
-            let option = evaluate_expr(option, env, function_decls, depth)?.unwrap_option();
-            Ok(Value::Bool(option.is_some()))
-        }
-
-        PureExpr::OptionIsNone { option, .. } => {
-            let option = evaluate_expr(option, env, function_decls, depth)?.unwrap_option();
-            Ok(Value::Bool(option.is_none()))
-        }
-
-        PureExpr::IntToString { value, .. } => {
-            let value = evaluate_expr(value, env, function_decls, depth)?.unwrap_int();
-            Ok(Value::String(value.to_string()))
-        }
-
-        PureExpr::FloatToInt { value, .. } => {
-            let value = evaluate_expr(value, env, function_decls, depth)?.unwrap_float();
-            Ok(Value::Int(value as i32))
-        }
-
-        PureExpr::IntToFloat { value, .. } => {
-            let value = evaluate_expr(value, env, function_decls, depth)?.unwrap_int();
-            Ok(Value::Float(value as f64))
         }
     }
 }

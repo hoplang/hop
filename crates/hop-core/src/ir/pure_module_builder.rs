@@ -7,10 +7,12 @@ use crate::html::HtmlElementKind;
 use crate::ir::binder_id::BinderId;
 use crate::ir::binder_id::BinderIdCounter;
 use crate::ir::function_id::FunctionIdCounter;
+use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::ir_parameter::IrParameter;
+use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::pure_module::{
     PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
     PurePageDeclaration,
@@ -373,10 +375,10 @@ impl PureBuilder {
                 l, r
             ),
         };
-        PureExpr::Equals {
+        PureExpr::Binary {
+            op: IrBinaryOp::Equals(operand_types),
             left: Box::new(left),
             right: Box::new(right),
-            operand_types,
         }
     }
 
@@ -389,10 +391,10 @@ impl PureBuilder {
                 l, r
             ),
         };
-        PureExpr::LessThan {
+        PureExpr::Binary {
+            op: IrBinaryOp::LessThan(operand_types),
             left: Box::new(left),
             right: Box::new(right),
-            operand_types,
         }
     }
 
@@ -405,10 +407,10 @@ impl PureBuilder {
                 l, r
             ),
         };
-        PureExpr::LessThanOrEqual {
+        PureExpr::Binary {
+            op: IrBinaryOp::LessThanOrEqual(operand_types),
             left: Box::new(left),
             right: Box::new(right),
-            operand_types,
         }
     }
 
@@ -418,10 +420,10 @@ impl PureBuilder {
             (Type::Float, Type::Float) => NumericType::Float,
             (l, r) => panic!("Unsupported types for addition: {:?} + {:?}", l, r),
         };
-        PureExpr::NumericAdd {
+        PureExpr::Binary {
+            op: IrBinaryOp::NumericAdd(operand_types),
             left: Box::new(left),
             right: Box::new(right),
-            operand_types,
         }
     }
 
@@ -431,10 +433,10 @@ impl PureBuilder {
             (Type::Float, Type::Float) => NumericType::Float,
             (l, r) => panic!("Unsupported types for subtraction: {:?} - {:?}", l, r),
         };
-        PureExpr::NumericSubtract {
+        PureExpr::Binary {
+            op: IrBinaryOp::NumericSubtract(operand_types),
             left: Box::new(left),
             right: Box::new(right),
-            operand_types,
         }
     }
 
@@ -444,10 +446,10 @@ impl PureBuilder {
             (Type::Float, Type::Float) => NumericType::Float,
             (l, r) => panic!("Unsupported types for multiplication: {:?} * {:?}", l, r),
         };
-        PureExpr::NumericMultiply {
+        PureExpr::Binary {
+            op: IrBinaryOp::NumericMultiply(operand_types),
             left: Box::new(left),
             right: Box::new(right),
-            operand_types,
         }
     }
 
@@ -458,7 +460,8 @@ impl PureBuilder {
             "BoolNegation expects Bool operand, got: {}",
             operand
         );
-        PureExpr::BoolNegation {
+        PureExpr::Unary {
+            op: IrUnaryOp::BoolNegation,
             operand: Box::new(operand),
         }
     }
@@ -469,9 +472,9 @@ impl PureBuilder {
             Type::Float => NumericType::Float,
             t => panic!("Unsupported type for numeric negation: -{:?}", t),
         };
-        PureExpr::NumericNegation {
+        PureExpr::Unary {
+            op: IrUnaryOp::NumericNegation(operand_type),
             operand: Box::new(operand),
-            operand_type,
         }
     }
 
@@ -559,8 +562,9 @@ impl PureBuilder {
             "IntToString expects Int operand, got: {}",
             value
         );
-        PureExpr::IntToString {
-            value: Box::new(value),
+        PureExpr::Unary {
+            op: IrUnaryOp::IntToString,
+            operand: Box::new(value),
         }
     }
 
@@ -571,8 +575,9 @@ impl PureBuilder {
             "FloatToInt expects Float operand, got: {}",
             value
         );
-        PureExpr::FloatToInt {
-            value: Box::new(value),
+        PureExpr::Unary {
+            op: IrUnaryOp::FloatToInt,
+            operand: Box::new(value),
         }
     }
 
@@ -583,8 +588,9 @@ impl PureBuilder {
             "IntToFloat expects Int operand, got: {}",
             value
         );
-        PureExpr::IntToFloat {
-            value: Box::new(value),
+        PureExpr::Unary {
+            op: IrUnaryOp::IntToFloat,
+            operand: Box::new(value),
         }
     }
 
@@ -930,8 +936,9 @@ impl PureBuilder {
             "ArrayLength expects Array operand, got: {}",
             operand
         );
-        PureExpr::ArrayLength {
-            array: Box::new(operand),
+        PureExpr::Unary {
+            op: IrUnaryOp::ArrayLength,
+            operand: Box::new(operand),
         }
     }
 
@@ -941,8 +948,9 @@ impl PureBuilder {
             "ArrayIsEmpty expects Array operand, got: {}",
             operand
         );
-        PureExpr::ArrayIsEmpty {
-            array: Box::new(operand),
+        PureExpr::Unary {
+            op: IrUnaryOp::ArrayIsEmpty,
+            operand: Box::new(operand),
         }
     }
 
@@ -953,8 +961,9 @@ impl PureBuilder {
             "StringIsEmpty expects String operand, got: {}",
             operand
         );
-        PureExpr::StringIsEmpty {
-            string: Box::new(operand),
+        PureExpr::Unary {
+            op: IrUnaryOp::StringIsEmpty,
+            operand: Box::new(operand),
         }
     }
 
@@ -964,8 +973,9 @@ impl PureBuilder {
             "OptionIsSome expects Option operand, got: {}",
             operand
         );
-        PureExpr::OptionIsSome {
-            option: Box::new(operand),
+        PureExpr::Unary {
+            op: IrUnaryOp::OptionIsSome,
+            operand: Box::new(operand),
         }
     }
 
@@ -975,8 +985,9 @@ impl PureBuilder {
             "OptionIsNone expects Option operand, got: {}",
             operand
         );
-        PureExpr::OptionIsNone {
-            option: Box::new(operand),
+        PureExpr::Unary {
+            op: IrUnaryOp::OptionIsNone,
+            operand: Box::new(operand),
         }
     }
 

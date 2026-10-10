@@ -135,22 +135,8 @@ impl RustTranspiler {
             | Value::Enum { .. }
             | Value::Option(_)
             | Value::StringConcat(_)
-            | Value::NumericAdd { .. }
-            | Value::NumericSubtract { .. }
-            | Value::NumericMultiply { .. }
-            | Value::NumericNegation { .. }
-            | Value::BoolNegation(_)
-            | Value::Equals { .. }
-            | Value::LessThan { .. }
-            | Value::LessThanOrEqual { .. }
-            | Value::ArrayLength(_)
-            | Value::ArrayIsEmpty(_)
-            | Value::StringIsEmpty(_)
-            | Value::OptionIsSome(_)
-            | Value::OptionIsNone(_)
-            | Value::IntToString(_)
-            | Value::FloatToInt(_)
-            | Value::IntToFloat(_)
+            | Value::Binary { .. }
+            | Value::Unary { .. }
             | Value::Call { .. }
             | Value::HtmlLiteral(_)
             | Value::Match(_) => NaturalForm::Temporary,

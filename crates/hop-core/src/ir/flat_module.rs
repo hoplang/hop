@@ -3,12 +3,14 @@ use std::fmt;
 use pretty::BoxDoc;
 
 use crate::document::CheapString;
-use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
+use crate::hop::typing::Type;
 use crate::html::HtmlElementKind;
 use crate::ir::binder_id::{BinderId, BinderIdCounter};
+use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
+use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::var_id::{VarId, VarIdCounter};
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
@@ -141,81 +143,20 @@ pub enum FlatOp {
     /// N-ary mappend over String names.
     StringConcat(Vec<VarId>),
 
-    /// Must name two values of the operand type. Produces that type.
-    NumericAdd {
+    /// Must name two values of the op's operand type. Produces the op's
+    /// result type.
+    Binary {
+        op: IrBinaryOp,
         left: VarId,
         right: VarId,
-        operand_types: NumericType,
     },
 
-    /// Must name two values of the operand type. Produces that type.
-    NumericSubtract {
-        left: VarId,
-        right: VarId,
-        operand_types: NumericType,
-    },
-
-    /// Must name two values of the operand type. Produces that type.
-    NumericMultiply {
-        left: VarId,
-        right: VarId,
-        operand_types: NumericType,
-    },
-
-    /// Must name a value of the operand type. Produces that type.
-    NumericNegation {
+    /// Must name a value of the op's operand type. Produces the op's
+    /// result type.
+    Unary {
+        op: IrUnaryOp,
         operand: VarId,
-        operand_type: NumericType,
     },
-
-    /// Must name a Bool. Produces a Bool.
-    BoolNegation(VarId),
-
-    /// Must name two values of the operand type. Produces a Bool.
-    Equals {
-        left: VarId,
-        right: VarId,
-        operand_types: EquatableType,
-    },
-
-    /// Must name two values of the operand type. Produces a Bool.
-    LessThan {
-        left: VarId,
-        right: VarId,
-        operand_types: ComparableType,
-    },
-
-    /// Must name two values of the operand type. Produces a Bool.
-    LessThanOrEqual {
-        left: VarId,
-        right: VarId,
-        operand_types: ComparableType,
-    },
-
-    /// Must name an Array. Produces an Int.
-    ArrayLength(VarId),
-
-    /// Must name an Array. Produces a Bool.
-    ArrayIsEmpty(VarId),
-
-    /// Must name a String. Produces a Bool.
-    StringIsEmpty(VarId),
-
-    /// Must name an Option. Produces a Bool.
-    OptionIsSome(VarId),
-
-    /// Must name an Option. Produces a Bool.
-    OptionIsNone(VarId),
-
-    /// Must name an Int. Produces a String.
-    IntToString(VarId),
-
-    /// Must name a Float. Produces an Int. Saturates at the i32 bounds and
-    /// maps NaN to 0.
-    FloatToInt(VarId),
-
-    /// Must name an Int. Produces a Float.
-    IntToFloat(VarId),
 
     /// Must name a String. Produces its HTML escaped form as Html.
     HtmlEscape(VarId),
@@ -275,16 +216,7 @@ impl FlatOp {
             FlatOp::FieldAccess { record: name, .. }
             | FlatOp::TupleIndex { tuple: name, .. }
             | FlatOp::Option(Some(name))
-            | FlatOp::NumericNegation { operand: name, .. }
-            | FlatOp::BoolNegation(name)
-            | FlatOp::ArrayLength(name)
-            | FlatOp::ArrayIsEmpty(name)
-            | FlatOp::StringIsEmpty(name)
-            | FlatOp::OptionIsSome(name)
-            | FlatOp::OptionIsNone(name)
-            | FlatOp::IntToString(name)
-            | FlatOp::FloatToInt(name)
-            | FlatOp::IntToFloat(name)
+            | FlatOp::Unary { operand: name, .. }
             | FlatOp::HtmlEscape(name) => f(*name),
 
             FlatOp::Array(names)
@@ -302,12 +234,7 @@ impl FlatOp {
                 }
             }
 
-            FlatOp::NumericAdd { left, right, .. }
-            | FlatOp::NumericSubtract { left, right, .. }
-            | FlatOp::NumericMultiply { left, right, .. }
-            | FlatOp::Equals { left, right, .. }
-            | FlatOp::LessThan { left, right, .. }
-            | FlatOp::LessThanOrEqual { left, right, .. } => {
+            FlatOp::Binary { left, right, .. } => {
                 f(*left);
                 f(*right);
             }
@@ -363,16 +290,7 @@ impl FlatOp {
             FlatOp::FieldAccess { record: name, .. }
             | FlatOp::TupleIndex { tuple: name, .. }
             | FlatOp::Option(Some(name))
-            | FlatOp::NumericNegation { operand: name, .. }
-            | FlatOp::BoolNegation(name)
-            | FlatOp::ArrayLength(name)
-            | FlatOp::ArrayIsEmpty(name)
-            | FlatOp::StringIsEmpty(name)
-            | FlatOp::OptionIsSome(name)
-            | FlatOp::OptionIsNone(name)
-            | FlatOp::IntToString(name)
-            | FlatOp::FloatToInt(name)
-            | FlatOp::IntToFloat(name)
+            | FlatOp::Unary { operand: name, .. }
             | FlatOp::HtmlEscape(name) => f(name),
 
             FlatOp::Array(names)
@@ -390,12 +308,7 @@ impl FlatOp {
                 }
             }
 
-            FlatOp::NumericAdd { left, right, .. }
-            | FlatOp::NumericSubtract { left, right, .. }
-            | FlatOp::NumericMultiply { left, right, .. }
-            | FlatOp::Equals { left, right, .. }
-            | FlatOp::LessThan { left, right, .. }
-            | FlatOp::LessThanOrEqual { left, right, .. } => {
+            FlatOp::Binary { left, right, .. } => {
                 f(left);
                 f(right);
             }
@@ -520,28 +433,26 @@ impl FlatOp {
                     .join(", ");
                 BoxDoc::text(format!("concat({parts})"))
             }
-            FlatOp::NumericAdd { left, right, .. } => BoxDoc::text(format!("{left} + {right}")),
-            FlatOp::NumericSubtract { left, right, .. } => {
-                BoxDoc::text(format!("{left} - {right}"))
-            }
-            FlatOp::NumericMultiply { left, right, .. } => {
-                BoxDoc::text(format!("{left} * {right}"))
-            }
-            FlatOp::NumericNegation { operand, .. } => BoxDoc::text(format!("-{operand}")),
-            FlatOp::BoolNegation(operand) => BoxDoc::text(format!("!{operand}")),
-            FlatOp::Equals { left, right, .. } => BoxDoc::text(format!("{left} == {right}")),
-            FlatOp::LessThan { left, right, .. } => BoxDoc::text(format!("{left} < {right}")),
-            FlatOp::LessThanOrEqual { left, right, .. } => {
-                BoxDoc::text(format!("{left} <= {right}"))
-            }
-            FlatOp::ArrayLength(array) => BoxDoc::text(format!("{array}.len()")),
-            FlatOp::ArrayIsEmpty(array) => BoxDoc::text(format!("{array}.is_empty()")),
-            FlatOp::StringIsEmpty(string) => BoxDoc::text(format!("{string}.is_empty()")),
-            FlatOp::OptionIsSome(option) => BoxDoc::text(format!("{option}.is_some()")),
-            FlatOp::OptionIsNone(option) => BoxDoc::text(format!("{option}.is_none()")),
-            FlatOp::IntToString(value) => BoxDoc::text(format!("{value}.to_string()")),
-            FlatOp::FloatToInt(value) => BoxDoc::text(format!("{value}.to_int()")),
-            FlatOp::IntToFloat(value) => BoxDoc::text(format!("{value}.to_float()")),
+            FlatOp::Binary { op, left, right } => BoxDoc::text(match op {
+                IrBinaryOp::NumericAdd(_) => format!("{left} + {right}"),
+                IrBinaryOp::NumericSubtract(_) => format!("{left} - {right}"),
+                IrBinaryOp::NumericMultiply(_) => format!("{left} * {right}"),
+                IrBinaryOp::Equals(_) => format!("{left} == {right}"),
+                IrBinaryOp::LessThan(_) => format!("{left} < {right}"),
+                IrBinaryOp::LessThanOrEqual(_) => format!("{left} <= {right}"),
+            }),
+            FlatOp::Unary { op, operand } => BoxDoc::text(match op {
+                IrUnaryOp::NumericNegation(_) => format!("-{operand}"),
+                IrUnaryOp::BoolNegation => format!("!{operand}"),
+                IrUnaryOp::ArrayLength => format!("{operand}.len()"),
+                IrUnaryOp::ArrayIsEmpty => format!("{operand}.is_empty()"),
+                IrUnaryOp::StringIsEmpty => format!("{operand}.is_empty()"),
+                IrUnaryOp::OptionIsSome => format!("{operand}.is_some()"),
+                IrUnaryOp::OptionIsNone => format!("{operand}.is_none()"),
+                IrUnaryOp::IntToString => format!("{operand}.to_string()"),
+                IrUnaryOp::FloatToInt => format!("{operand}.to_int()"),
+                IrUnaryOp::IntToFloat => format!("{operand}.to_float()"),
+            }),
             FlatOp::HtmlEscape(string) => BoxDoc::text(format!("escape({string})")),
             FlatOp::HtmlElement {
                 element,

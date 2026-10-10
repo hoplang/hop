@@ -3,11 +3,13 @@ use std::fmt;
 use pretty::BoxDoc;
 
 use crate::document::CheapString;
-use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
+use crate::hop::typing::Type;
 use crate::ir::binder_id::BinderId;
+use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
+use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::var_id::VarId;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -165,57 +167,16 @@ pub enum Value {
 
     StringConcat(Vec<Name>),
 
-    NumericAdd {
+    Binary {
+        op: IrBinaryOp,
         left: Name,
         right: Name,
-        operand_types: NumericType,
     },
 
-    NumericSubtract {
-        left: Name,
-        right: Name,
-        operand_types: NumericType,
-    },
-
-    NumericMultiply {
-        left: Name,
-        right: Name,
-        operand_types: NumericType,
-    },
-
-    NumericNegation {
+    Unary {
+        op: IrUnaryOp,
         operand: Name,
-        operand_type: NumericType,
     },
-
-    BoolNegation(Name),
-
-    Equals {
-        left: Name,
-        right: Name,
-        operand_types: EquatableType,
-    },
-
-    LessThan {
-        left: Name,
-        right: Name,
-        operand_types: ComparableType,
-    },
-
-    LessThanOrEqual {
-        left: Name,
-        right: Name,
-        operand_types: ComparableType,
-    },
-
-    ArrayLength(Name),
-    ArrayIsEmpty(Name),
-    StringIsEmpty(Name),
-    OptionIsSome(Name),
-    OptionIsNone(Name),
-    IntToString(Name),
-    FloatToInt(Name),
-    IntToFloat(Name),
 
     /// Invoke a value returning function. The arguments follow the
     /// function's parameters, one for each.
@@ -248,16 +209,7 @@ impl Value {
             Value::FieldAccess { record: name, .. }
             | Value::TupleIndex { tuple: name, .. }
             | Value::Option(Some(name))
-            | Value::NumericNegation { operand: name, .. }
-            | Value::BoolNegation(name)
-            | Value::ArrayLength(name)
-            | Value::ArrayIsEmpty(name)
-            | Value::StringIsEmpty(name)
-            | Value::OptionIsSome(name)
-            | Value::OptionIsNone(name)
-            | Value::IntToString(name)
-            | Value::FloatToInt(name)
-            | Value::IntToFloat(name) => f(*name),
+            | Value::Unary { operand: name, .. } => f(*name),
 
             Value::Array(names) | Value::Tuple(names) | Value::StringConcat(names) => {
                 for name in names {
@@ -271,12 +223,7 @@ impl Value {
                 }
             }
 
-            Value::NumericAdd { left, right, .. }
-            | Value::NumericSubtract { left, right, .. }
-            | Value::NumericMultiply { left, right, .. }
-            | Value::Equals { left, right, .. }
-            | Value::LessThan { left, right, .. }
-            | Value::LessThanOrEqual { left, right, .. } => {
+            Value::Binary { left, right, .. } => {
                 f(*left);
                 f(*right);
             }
@@ -430,24 +377,26 @@ impl Value {
                     .join(", ");
                 BoxDoc::text(format!("concat({parts})"))
             }
-            Value::NumericAdd { left, right, .. } => BoxDoc::text(format!("{left} + {right}")),
-            Value::NumericSubtract { left, right, .. } => BoxDoc::text(format!("{left} - {right}")),
-            Value::NumericMultiply { left, right, .. } => BoxDoc::text(format!("{left} * {right}")),
-            Value::NumericNegation { operand, .. } => BoxDoc::text(format!("-{operand}")),
-            Value::BoolNegation(operand) => BoxDoc::text(format!("!{operand}")),
-            Value::Equals { left, right, .. } => BoxDoc::text(format!("{left} == {right}")),
-            Value::LessThan { left, right, .. } => BoxDoc::text(format!("{left} < {right}")),
-            Value::LessThanOrEqual { left, right, .. } => {
-                BoxDoc::text(format!("{left} <= {right}"))
-            }
-            Value::ArrayLength(array) => BoxDoc::text(format!("{array}.len()")),
-            Value::ArrayIsEmpty(array) => BoxDoc::text(format!("{array}.is_empty()")),
-            Value::StringIsEmpty(string) => BoxDoc::text(format!("{string}.is_empty()")),
-            Value::OptionIsSome(option) => BoxDoc::text(format!("{option}.is_some()")),
-            Value::OptionIsNone(option) => BoxDoc::text(format!("{option}.is_none()")),
-            Value::IntToString(value) => BoxDoc::text(format!("{value}.to_string()")),
-            Value::FloatToInt(value) => BoxDoc::text(format!("{value}.to_int()")),
-            Value::IntToFloat(value) => BoxDoc::text(format!("{value}.to_float()")),
+            Value::Binary { op, left, right } => BoxDoc::text(match op {
+                IrBinaryOp::NumericAdd(_) => format!("{left} + {right}"),
+                IrBinaryOp::NumericSubtract(_) => format!("{left} - {right}"),
+                IrBinaryOp::NumericMultiply(_) => format!("{left} * {right}"),
+                IrBinaryOp::Equals(_) => format!("{left} == {right}"),
+                IrBinaryOp::LessThan(_) => format!("{left} < {right}"),
+                IrBinaryOp::LessThanOrEqual(_) => format!("{left} <= {right}"),
+            }),
+            Value::Unary { op, operand } => BoxDoc::text(match op {
+                IrUnaryOp::NumericNegation(_) => format!("-{operand}"),
+                IrUnaryOp::BoolNegation => format!("!{operand}"),
+                IrUnaryOp::ArrayLength => format!("{operand}.len()"),
+                IrUnaryOp::ArrayIsEmpty => format!("{operand}.is_empty()"),
+                IrUnaryOp::StringIsEmpty => format!("{operand}.is_empty()"),
+                IrUnaryOp::OptionIsSome => format!("{operand}.is_some()"),
+                IrUnaryOp::OptionIsNone => format!("{operand}.is_none()"),
+                IrUnaryOp::IntToString => format!("{operand}.to_string()"),
+                IrUnaryOp::FloatToInt => format!("{operand}.to_int()"),
+                IrUnaryOp::IntToFloat => format!("{operand}.to_float()"),
+            }),
             Value::Call { function, args } => {
                 let args = args
                     .iter()

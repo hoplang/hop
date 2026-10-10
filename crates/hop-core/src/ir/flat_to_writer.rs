@@ -441,76 +441,15 @@ impl Lowerer {
                 FlatOp::StringConcat(parts) => {
                     Value::StringConcat(parts.into_iter().map(|part| self.name(part)).collect())
                 }
-                FlatOp::NumericAdd {
-                    left,
-                    right,
-                    operand_types,
-                } => Value::NumericAdd {
+                FlatOp::Binary { op, left, right } => Value::Binary {
+                    op,
                     left: self.name(left),
                     right: self.name(right),
-                    operand_types,
                 },
-                FlatOp::NumericSubtract {
-                    left,
-                    right,
-                    operand_types,
-                } => Value::NumericSubtract {
-                    left: self.name(left),
-                    right: self.name(right),
-                    operand_types,
-                },
-                FlatOp::NumericMultiply {
-                    left,
-                    right,
-                    operand_types,
-                } => Value::NumericMultiply {
-                    left: self.name(left),
-                    right: self.name(right),
-                    operand_types,
-                },
-                FlatOp::NumericNegation {
-                    operand,
-                    operand_type,
-                } => Value::NumericNegation {
+                FlatOp::Unary { op, operand } => Value::Unary {
+                    op,
                     operand: self.name(operand),
-                    operand_type,
                 },
-                FlatOp::BoolNegation(operand) => Value::BoolNegation(self.name(operand)),
-                FlatOp::Equals {
-                    left,
-                    right,
-                    operand_types,
-                } => Value::Equals {
-                    left: self.name(left),
-                    right: self.name(right),
-                    operand_types,
-                },
-                FlatOp::LessThan {
-                    left,
-                    right,
-                    operand_types,
-                } => Value::LessThan {
-                    left: self.name(left),
-                    right: self.name(right),
-                    operand_types,
-                },
-                FlatOp::LessThanOrEqual {
-                    left,
-                    right,
-                    operand_types,
-                } => Value::LessThanOrEqual {
-                    left: self.name(left),
-                    right: self.name(right),
-                    operand_types,
-                },
-                FlatOp::ArrayLength(array) => Value::ArrayLength(self.name(array)),
-                FlatOp::ArrayIsEmpty(array) => Value::ArrayIsEmpty(self.name(array)),
-                FlatOp::StringIsEmpty(string) => Value::StringIsEmpty(self.name(string)),
-                FlatOp::OptionIsSome(option) => Value::OptionIsSome(self.name(option)),
-                FlatOp::OptionIsNone(option) => Value::OptionIsNone(self.name(option)),
-                FlatOp::IntToString(value) => Value::IntToString(self.name(value)),
-                FlatOp::FloatToInt(value) => Value::FloatToInt(self.name(value)),
-                FlatOp::IntToFloat(value) => Value::IntToFloat(self.name(value)),
             };
             lets.push(Let { name, typ, value });
         }
@@ -699,6 +638,8 @@ mod tests {
     use super::*;
     use crate::hop::typing::{ComparableType, EquatableType, NumericType};
     use crate::ir::flat_optimizer::optimize_flat;
+    use crate::ir::ir_binary_op::IrBinaryOp;
+    use crate::ir::ir_unary_op::IrUnaryOp;
     use crate::ir::pure_module::PureModule;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
@@ -824,20 +765,20 @@ mod tests {
             type_of(names, operand);
         });
         match value {
-            Value::NumericAdd {
+            Value::Binary {
+                op: IrBinaryOp::NumericAdd(operand_types),
                 left,
                 right,
-                operand_types,
             }
-            | Value::NumericSubtract {
+            | Value::Binary {
+                op: IrBinaryOp::NumericSubtract(operand_types),
                 left,
                 right,
-                operand_types,
             }
-            | Value::NumericMultiply {
+            | Value::Binary {
+                op: IrBinaryOp::NumericMultiply(operand_types),
                 left,
                 right,
-                operand_types,
             } => {
                 let typ = match operand_types {
                     NumericType::Int => Type::Int,
@@ -847,9 +788,9 @@ mod tests {
                 assert_eq!(type_of(names, *right), &typ);
                 Some(typ)
             }
-            Value::NumericNegation {
+            Value::Unary {
+                op: IrUnaryOp::NumericNegation(operand_type),
                 operand,
-                operand_type,
             } => {
                 let typ = match operand_type {
                     NumericType::Int => Type::Int,
@@ -858,10 +799,10 @@ mod tests {
                 assert_eq!(type_of(names, *operand), &typ);
                 Some(typ)
             }
-            Value::Equals {
+            Value::Binary {
+                op: IrBinaryOp::Equals(operand_types),
                 left,
                 right,
-                operand_types,
             } => {
                 let typ = match operand_types {
                     EquatableType::String => Type::String,
@@ -873,15 +814,15 @@ mod tests {
                 assert_eq!(type_of(names, *right), &typ);
                 Some(Type::Bool)
             }
-            Value::LessThan {
+            Value::Binary {
+                op: IrBinaryOp::LessThan(operand_types),
                 left,
                 right,
-                operand_types,
             }
-            | Value::LessThanOrEqual {
+            | Value::Binary {
+                op: IrBinaryOp::LessThanOrEqual(operand_types),
                 left,
                 right,
-                operand_types,
             } => {
                 let typ = match operand_types {
                     ComparableType::Int => Type::Int,

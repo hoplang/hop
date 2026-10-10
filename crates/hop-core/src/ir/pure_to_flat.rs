@@ -247,51 +247,16 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
                 .collect(),
         ),
 
-        PureExpr::NumericAdd {
-            left,
-            right,
-            operand_types,
-            ..
-        } => FlatOp::NumericAdd {
+        PureExpr::Binary { op, left, right } => FlatOp::Binary {
+            op,
             left: lower_expr(*left, out, cx),
             right: lower_expr(*right, out, cx),
-            operand_types,
         },
 
-        PureExpr::NumericSubtract {
-            left,
-            right,
-            operand_types,
-            ..
-        } => FlatOp::NumericSubtract {
-            left: lower_expr(*left, out, cx),
-            right: lower_expr(*right, out, cx),
-            operand_types,
-        },
-
-        PureExpr::NumericMultiply {
-            left,
-            right,
-            operand_types,
-            ..
-        } => FlatOp::NumericMultiply {
-            left: lower_expr(*left, out, cx),
-            right: lower_expr(*right, out, cx),
-            operand_types,
-        },
-
-        PureExpr::NumericNegation {
-            operand,
-            operand_type,
-            ..
-        } => FlatOp::NumericNegation {
+        PureExpr::Unary { op, operand } => FlatOp::Unary {
+            op,
             operand: lower_expr(*operand, out, cx),
-            operand_type,
         },
-
-        PureExpr::BoolNegation { operand, .. } => {
-            FlatOp::BoolNegation(lower_expr(*operand, out, cx))
-        }
 
         // The right operand runs only when the left one is true, so it
         // becomes the true arm. The false arm returns the left operand,
@@ -322,57 +287,6 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
                 false_body: Box::new(lower_block(*right, cx)),
             })
         }
-
-        PureExpr::Equals {
-            left,
-            right,
-            operand_types,
-            ..
-        } => FlatOp::Equals {
-            left: lower_expr(*left, out, cx),
-            right: lower_expr(*right, out, cx),
-            operand_types,
-        },
-
-        PureExpr::LessThan {
-            left,
-            right,
-            operand_types,
-            ..
-        } => FlatOp::LessThan {
-            left: lower_expr(*left, out, cx),
-            right: lower_expr(*right, out, cx),
-            operand_types,
-        },
-
-        PureExpr::LessThanOrEqual {
-            left,
-            right,
-            operand_types,
-            ..
-        } => FlatOp::LessThanOrEqual {
-            left: lower_expr(*left, out, cx),
-            right: lower_expr(*right, out, cx),
-            operand_types,
-        },
-
-        PureExpr::ArrayLength { array, .. } => FlatOp::ArrayLength(lower_expr(*array, out, cx)),
-
-        PureExpr::ArrayIsEmpty { array, .. } => FlatOp::ArrayIsEmpty(lower_expr(*array, out, cx)),
-
-        PureExpr::StringIsEmpty { string, .. } => {
-            FlatOp::StringIsEmpty(lower_expr(*string, out, cx))
-        }
-
-        PureExpr::OptionIsSome { option, .. } => FlatOp::OptionIsSome(lower_expr(*option, out, cx)),
-
-        PureExpr::OptionIsNone { option, .. } => FlatOp::OptionIsNone(lower_expr(*option, out, cx)),
-
-        PureExpr::IntToString { value, .. } => FlatOp::IntToString(lower_expr(*value, out, cx)),
-
-        PureExpr::FloatToInt { value, .. } => FlatOp::FloatToInt(lower_expr(*value, out, cx)),
-
-        PureExpr::IntToFloat { value, .. } => FlatOp::IntToFloat(lower_expr(*value, out, cx)),
     };
     let name = cx.var_ids.next();
     out.push(FlatBinding { name, typ, op });
@@ -385,6 +299,8 @@ mod tests {
 
     use super::*;
     use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
+    use crate::ir::ir_binary_op::IrBinaryOp;
+    use crate::ir::ir_unary_op::IrUnaryOp;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
     use expect_test::{Expect, expect};
@@ -858,20 +774,20 @@ mod tests {
                     };
                     Some(typ.clone())
                 }
-                FlatOp::NumericAdd {
+                FlatOp::Binary {
+                    op: IrBinaryOp::NumericAdd(operand_types),
                     left,
                     right,
-                    operand_types,
                 }
-                | FlatOp::NumericSubtract {
+                | FlatOp::Binary {
+                    op: IrBinaryOp::NumericSubtract(operand_types),
                     left,
                     right,
-                    operand_types,
                 }
-                | FlatOp::NumericMultiply {
+                | FlatOp::Binary {
+                    op: IrBinaryOp::NumericMultiply(operand_types),
                     left,
                     right,
-                    operand_types,
                 } => {
                     let typ = match operand_types {
                         NumericType::Int => Type::Int,
@@ -881,9 +797,9 @@ mod tests {
                     assert_eq!(type_of(names, *right), &typ);
                     Some(typ)
                 }
-                FlatOp::NumericNegation {
+                FlatOp::Unary {
+                    op: IrUnaryOp::NumericNegation(operand_type),
                     operand,
-                    operand_type,
                 } => {
                     let typ = match operand_type {
                         NumericType::Int => Type::Int,
@@ -892,10 +808,10 @@ mod tests {
                     assert_eq!(type_of(names, *operand), &typ);
                     Some(typ)
                 }
-                FlatOp::Equals {
+                FlatOp::Binary {
+                    op: IrBinaryOp::Equals(operand_types),
                     left,
                     right,
-                    operand_types,
                 } => {
                     let typ = match operand_types {
                         EquatableType::String => Type::String,
@@ -907,15 +823,15 @@ mod tests {
                     assert_eq!(type_of(names, *right), &typ);
                     Some(Type::Bool)
                 }
-                FlatOp::LessThan {
+                FlatOp::Binary {
+                    op: IrBinaryOp::LessThan(operand_types),
                     left,
                     right,
-                    operand_types,
                 }
-                | FlatOp::LessThanOrEqual {
+                | FlatOp::Binary {
+                    op: IrBinaryOp::LessThanOrEqual(operand_types),
                     left,
                     right,
-                    operand_types,
                 } => {
                     let typ = match operand_types {
                         ComparableType::Int => Type::Int,

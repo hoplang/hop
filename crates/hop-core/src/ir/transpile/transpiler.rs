@@ -1,9 +1,11 @@
 use crate::hop::typing::{
     ComparableType, EquatableType, NumericType, ResolvedType, Type, TypeRegistry,
 };
+use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
+use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::writer_module::{
     ForSource, Let, Name, Stmt, Value, ValueBlock, WriterFunctionDeclaration, WriterModule,
     WriterPageDeclaration,
@@ -317,74 +319,67 @@ pub trait Transpiler {
                 _ => unreachable!("Option value must have Option type"),
             },
             Value::StringConcat(parts) => self.transpile_string_concat(arena, parts),
-            Value::NumericAdd {
-                left,
-                right,
-                operand_types,
-            } => match operand_types {
-                NumericType::Int => self.transpile_int_add(arena, *left, *right),
-                NumericType::Float => self.transpile_float_add(arena, *left, *right),
-            },
-            Value::NumericSubtract {
-                left,
-                right,
-                operand_types,
-            } => match operand_types {
-                NumericType::Int => self.transpile_int_subtract(arena, *left, *right),
-                NumericType::Float => self.transpile_float_subtract(arena, *left, *right),
-            },
-            Value::NumericMultiply {
-                left,
-                right,
-                operand_types,
-            } => match operand_types {
-                NumericType::Int => self.transpile_int_multiply(arena, *left, *right),
-                NumericType::Float => self.transpile_float_multiply(arena, *left, *right),
-            },
-            Value::NumericNegation {
-                operand,
-                operand_type,
-            } => match operand_type {
-                NumericType::Int => self.transpile_int_negation(arena, *operand),
-                NumericType::Float => self.transpile_float_negation(arena, *operand),
-            },
-            Value::BoolNegation(operand) => self.transpile_not(arena, *operand),
-            Value::Equals {
-                left,
-                right,
-                operand_types,
-            } => match operand_types {
-                EquatableType::String => self.transpile_string_equals(arena, *left, *right),
-                EquatableType::Bool => self.transpile_bool_equals(arena, *left, *right),
-                EquatableType::Int => self.transpile_int_equals(arena, *left, *right),
-                EquatableType::Float => self.transpile_float_equals(arena, *left, *right),
-            },
-            Value::LessThan {
-                left,
-                right,
-                operand_types,
-            } => match operand_types {
-                ComparableType::Int => self.transpile_int_less_than(arena, *left, *right),
-                ComparableType::Float => self.transpile_float_less_than(arena, *left, *right),
-            },
-            Value::LessThanOrEqual {
-                left,
-                right,
-                operand_types,
-            } => match operand_types {
-                ComparableType::Int => self.transpile_int_less_than_or_equal(arena, *left, *right),
-                ComparableType::Float => {
+            Value::Binary { op, left, right } => match op {
+                IrBinaryOp::NumericAdd(NumericType::Int) => {
+                    self.transpile_int_add(arena, *left, *right)
+                }
+                IrBinaryOp::NumericAdd(NumericType::Float) => {
+                    self.transpile_float_add(arena, *left, *right)
+                }
+                IrBinaryOp::NumericSubtract(NumericType::Int) => {
+                    self.transpile_int_subtract(arena, *left, *right)
+                }
+                IrBinaryOp::NumericSubtract(NumericType::Float) => {
+                    self.transpile_float_subtract(arena, *left, *right)
+                }
+                IrBinaryOp::NumericMultiply(NumericType::Int) => {
+                    self.transpile_int_multiply(arena, *left, *right)
+                }
+                IrBinaryOp::NumericMultiply(NumericType::Float) => {
+                    self.transpile_float_multiply(arena, *left, *right)
+                }
+                IrBinaryOp::Equals(EquatableType::String) => {
+                    self.transpile_string_equals(arena, *left, *right)
+                }
+                IrBinaryOp::Equals(EquatableType::Bool) => {
+                    self.transpile_bool_equals(arena, *left, *right)
+                }
+                IrBinaryOp::Equals(EquatableType::Int) => {
+                    self.transpile_int_equals(arena, *left, *right)
+                }
+                IrBinaryOp::Equals(EquatableType::Float) => {
+                    self.transpile_float_equals(arena, *left, *right)
+                }
+                IrBinaryOp::LessThan(ComparableType::Int) => {
+                    self.transpile_int_less_than(arena, *left, *right)
+                }
+                IrBinaryOp::LessThan(ComparableType::Float) => {
+                    self.transpile_float_less_than(arena, *left, *right)
+                }
+                IrBinaryOp::LessThanOrEqual(ComparableType::Int) => {
+                    self.transpile_int_less_than_or_equal(arena, *left, *right)
+                }
+                IrBinaryOp::LessThanOrEqual(ComparableType::Float) => {
                     self.transpile_float_less_than_or_equal(arena, *left, *right)
                 }
             },
-            Value::ArrayLength(array) => self.transpile_array_length(arena, *array),
-            Value::ArrayIsEmpty(array) => self.transpile_array_is_empty(arena, *array),
-            Value::StringIsEmpty(string) => self.transpile_string_is_empty(arena, *string),
-            Value::OptionIsSome(option) => self.transpile_option_is_some(arena, *option),
-            Value::OptionIsNone(option) => self.transpile_option_is_none(arena, *option),
-            Value::IntToString(value) => self.transpile_int_to_string(arena, *value),
-            Value::FloatToInt(value) => self.transpile_float_to_int(arena, *value),
-            Value::IntToFloat(value) => self.transpile_int_to_float(arena, *value),
+            Value::Unary { op, operand } => match op {
+                IrUnaryOp::NumericNegation(NumericType::Int) => {
+                    self.transpile_int_negation(arena, *operand)
+                }
+                IrUnaryOp::NumericNegation(NumericType::Float) => {
+                    self.transpile_float_negation(arena, *operand)
+                }
+                IrUnaryOp::BoolNegation => self.transpile_not(arena, *operand),
+                IrUnaryOp::ArrayLength => self.transpile_array_length(arena, *operand),
+                IrUnaryOp::ArrayIsEmpty => self.transpile_array_is_empty(arena, *operand),
+                IrUnaryOp::StringIsEmpty => self.transpile_string_is_empty(arena, *operand),
+                IrUnaryOp::OptionIsSome => self.transpile_option_is_some(arena, *operand),
+                IrUnaryOp::OptionIsNone => self.transpile_option_is_none(arena, *operand),
+                IrUnaryOp::IntToString => self.transpile_int_to_string(arena, *operand),
+                IrUnaryOp::FloatToInt => self.transpile_float_to_int(arena, *operand),
+                IrUnaryOp::IntToFloat => self.transpile_int_to_float(arena, *operand),
+            },
             Value::Call { function, args } => {
                 self.transpile_function_call_value(arena, function, args)
             }

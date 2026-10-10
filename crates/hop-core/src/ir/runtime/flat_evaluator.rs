@@ -6,8 +6,10 @@ use crate::ir::document_shell::DocumentShell;
 use crate::ir::flat_module::{
     FlatAttribute, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule, FlatOp,
 };
+use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumPattern, Match};
+use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::runtime::eval_error::EvalError;
 /// The most function frames that may be active at once. A call that would
 /// open one more fails with a recursion limit error, so a function that
@@ -210,120 +212,75 @@ fn evaluate_op(
             Value::String(result)
         }
 
-        FlatOp::NumericAdd {
-            left,
-            right,
-            operand_types,
-        } => {
+        FlatOp::Binary { op, left, right } => {
             let left = names[left].clone();
             let right = names[right].clone();
-            match operand_types {
-                NumericType::Int => Value::Int(left.unwrap_int().wrapping_add(right.unwrap_int())),
-                NumericType::Float => Value::Float(left.unwrap_float() + right.unwrap_float()),
+            match op {
+                IrBinaryOp::NumericAdd(NumericType::Int) => {
+                    Value::Int(left.unwrap_int().wrapping_add(right.unwrap_int()))
+                }
+                IrBinaryOp::NumericAdd(NumericType::Float) => {
+                    Value::Float(left.unwrap_float() + right.unwrap_float())
+                }
+                IrBinaryOp::NumericSubtract(NumericType::Int) => {
+                    Value::Int(left.unwrap_int().wrapping_sub(right.unwrap_int()))
+                }
+                IrBinaryOp::NumericSubtract(NumericType::Float) => {
+                    Value::Float(left.unwrap_float() - right.unwrap_float())
+                }
+                IrBinaryOp::NumericMultiply(NumericType::Int) => {
+                    Value::Int(left.unwrap_int().wrapping_mul(right.unwrap_int()))
+                }
+                IrBinaryOp::NumericMultiply(NumericType::Float) => {
+                    Value::Float(left.unwrap_float() * right.unwrap_float())
+                }
+                IrBinaryOp::Equals(EquatableType::Bool) => {
+                    Value::Bool(left.unwrap_bool() == right.unwrap_bool())
+                }
+                IrBinaryOp::Equals(EquatableType::String) => {
+                    Value::Bool(left.unwrap_string() == right.unwrap_string())
+                }
+                IrBinaryOp::Equals(EquatableType::Int) => {
+                    Value::Bool(left.unwrap_int() == right.unwrap_int())
+                }
+                IrBinaryOp::Equals(EquatableType::Float) => {
+                    Value::Bool(left.unwrap_float() == right.unwrap_float())
+                }
+                IrBinaryOp::LessThan(ComparableType::Int) => {
+                    Value::Bool(left.unwrap_int() < right.unwrap_int())
+                }
+                IrBinaryOp::LessThan(ComparableType::Float) => {
+                    Value::Bool(left.unwrap_float() < right.unwrap_float())
+                }
+                IrBinaryOp::LessThanOrEqual(ComparableType::Int) => {
+                    Value::Bool(left.unwrap_int() <= right.unwrap_int())
+                }
+                IrBinaryOp::LessThanOrEqual(ComparableType::Float) => {
+                    Value::Bool(left.unwrap_float() <= right.unwrap_float())
+                }
             }
         }
 
-        FlatOp::NumericSubtract {
-            left,
-            right,
-            operand_types,
-        } => {
-            let left = names[left].clone();
-            let right = names[right].clone();
-            match operand_types {
-                NumericType::Int => Value::Int(left.unwrap_int().wrapping_sub(right.unwrap_int())),
-                NumericType::Float => Value::Float(left.unwrap_float() - right.unwrap_float()),
-            }
-        }
-
-        FlatOp::NumericMultiply {
-            left,
-            right,
-            operand_types,
-        } => {
-            let left = names[left].clone();
-            let right = names[right].clone();
-            match operand_types {
-                NumericType::Int => Value::Int(left.unwrap_int().wrapping_mul(right.unwrap_int())),
-                NumericType::Float => Value::Float(left.unwrap_float() * right.unwrap_float()),
-            }
-        }
-
-        FlatOp::NumericNegation {
-            operand,
-            operand_type,
-        } => {
+        FlatOp::Unary { op, operand } => {
             let operand = names[operand].clone();
-            match operand_type {
-                NumericType::Int => Value::Int(operand.unwrap_int().wrapping_neg()),
-                NumericType::Float => Value::Float(-operand.unwrap_float()),
+            match op {
+                IrUnaryOp::NumericNegation(NumericType::Int) => {
+                    Value::Int(operand.unwrap_int().wrapping_neg())
+                }
+                IrUnaryOp::NumericNegation(NumericType::Float) => {
+                    Value::Float(-operand.unwrap_float())
+                }
+                IrUnaryOp::BoolNegation => Value::Bool(!operand.unwrap_bool()),
+                IrUnaryOp::ArrayLength => Value::Int(operand.unwrap_array().len() as i32),
+                IrUnaryOp::ArrayIsEmpty => Value::Bool(operand.unwrap_array().is_empty()),
+                IrUnaryOp::StringIsEmpty => Value::Bool(operand.unwrap_string().is_empty()),
+                IrUnaryOp::OptionIsSome => Value::Bool(operand.unwrap_option().is_some()),
+                IrUnaryOp::OptionIsNone => Value::Bool(operand.unwrap_option().is_none()),
+                IrUnaryOp::IntToString => Value::String(operand.unwrap_int().to_string()),
+                IrUnaryOp::FloatToInt => Value::Int(operand.unwrap_float() as i32),
+                IrUnaryOp::IntToFloat => Value::Float(operand.unwrap_int() as f64),
             }
         }
-
-        FlatOp::BoolNegation(operand) => Value::Bool(!names[operand].clone().unwrap_bool()),
-
-        FlatOp::Equals {
-            left,
-            right,
-            operand_types,
-        } => {
-            let left = names[left].clone();
-            let right = names[right].clone();
-            match operand_types {
-                EquatableType::Bool => Value::Bool(left.unwrap_bool() == right.unwrap_bool()),
-                EquatableType::String => Value::Bool(left.unwrap_string() == right.unwrap_string()),
-                EquatableType::Int => Value::Bool(left.unwrap_int() == right.unwrap_int()),
-                EquatableType::Float => Value::Bool(left.unwrap_float() == right.unwrap_float()),
-            }
-        }
-
-        FlatOp::LessThan {
-            left,
-            right,
-            operand_types,
-        } => {
-            let left = names[left].clone();
-            let right = names[right].clone();
-            match operand_types {
-                ComparableType::Int => Value::Bool(left.unwrap_int() < right.unwrap_int()),
-                ComparableType::Float => Value::Bool(left.unwrap_float() < right.unwrap_float()),
-            }
-        }
-
-        FlatOp::LessThanOrEqual {
-            left,
-            right,
-            operand_types,
-        } => {
-            let left = names[left].clone();
-            let right = names[right].clone();
-            match operand_types {
-                ComparableType::Int => Value::Bool(left.unwrap_int() <= right.unwrap_int()),
-                ComparableType::Float => Value::Bool(left.unwrap_float() <= right.unwrap_float()),
-            }
-        }
-
-        FlatOp::ArrayLength(array) => Value::Int(names[array].clone().unwrap_array().len() as i32),
-
-        FlatOp::ArrayIsEmpty(array) => Value::Bool(names[array].clone().unwrap_array().is_empty()),
-
-        FlatOp::StringIsEmpty(string) => {
-            Value::Bool(names[string].clone().unwrap_string().is_empty())
-        }
-
-        FlatOp::OptionIsSome(option) => {
-            Value::Bool(names[option].clone().unwrap_option().is_some())
-        }
-
-        FlatOp::OptionIsNone(option) => {
-            Value::Bool(names[option].clone().unwrap_option().is_none())
-        }
-
-        FlatOp::IntToString(value) => Value::String(names[value].clone().unwrap_int().to_string()),
-
-        FlatOp::FloatToInt(value) => Value::Int(names[value].clone().unwrap_float() as i32),
-
-        FlatOp::IntToFloat(value) => Value::Float(names[value].clone().unwrap_int() as f64),
 
         FlatOp::HtmlEscape(string) => Value::Html(vec![HtmlNode::Escape(
             names[string].clone().unwrap_string(),

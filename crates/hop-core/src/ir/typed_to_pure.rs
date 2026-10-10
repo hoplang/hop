@@ -9,9 +9,11 @@ use crate::hop::typing::{
 use crate::ir::binder_id::BinderId;
 use crate::ir::binder_id::BinderIdCounter;
 use crate::ir::function_id::FunctionIdCounter;
+use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
+use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::pure_module::PureForSource;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
@@ -429,15 +431,16 @@ impl<'a> Compiler<'a> {
                 field: field.clone(),
                 typ: typ.clone(),
             },
-            TypedExpr::BoolNegation { operand, .. } => PureExpr::BoolNegation {
+            TypedExpr::BoolNegation { operand, .. } => PureExpr::Unary {
+                op: IrUnaryOp::BoolNegation,
                 operand: Box::new(self.compile_expr(operand)),
             },
             TypedExpr::NumericNegation {
                 operand,
                 operand_type,
-            } => PureExpr::NumericNegation {
+            } => PureExpr::Unary {
+                op: IrUnaryOp::NumericNegation(operand_type.clone()),
                 operand: Box::new(self.compile_expr(operand)),
-                operand_type: operand_type.clone(),
             },
             TypedExpr::Array { elements, typ, .. } => PureExpr::Array {
                 elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
@@ -524,10 +527,10 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => PureExpr::Equals {
+            } => PureExpr::Binary {
+                op: IrBinaryOp::Equals(operand_types.clone()),
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
-                operand_types: operand_types.clone(),
             },
             TypedExpr::NotEquals {
                 left,
@@ -536,11 +539,12 @@ impl<'a> Compiler<'a> {
                 ..
             } => {
                 // Desugar NotEquals into BoolNegation(Equals(...))
-                PureExpr::BoolNegation {
-                    operand: Box::new(PureExpr::Equals {
+                PureExpr::Unary {
+                    op: IrUnaryOp::BoolNegation,
+                    operand: Box::new(PureExpr::Binary {
+                        op: IrBinaryOp::Equals(operand_types.clone()),
                         left: Box::new(self.compile_expr(left)),
                         right: Box::new(self.compile_expr(right)),
-                        operand_types: operand_types.clone(),
                     }),
                 }
             }
@@ -549,10 +553,10 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => PureExpr::LessThan {
+            } => PureExpr::Binary {
+                op: IrBinaryOp::LessThan(operand_types.clone()),
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
-                operand_types: operand_types.clone(),
             },
             // Convert a > b to b < a
             TypedExpr::GreaterThan {
@@ -560,20 +564,20 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => PureExpr::LessThan {
+            } => PureExpr::Binary {
+                op: IrBinaryOp::LessThan(operand_types.clone()),
                 left: Box::new(self.compile_expr(right)),
                 right: Box::new(self.compile_expr(left)),
-                operand_types: operand_types.clone(),
             },
             TypedExpr::LessThanOrEqual {
                 left,
                 right,
                 operand_types,
                 ..
-            } => PureExpr::LessThanOrEqual {
+            } => PureExpr::Binary {
+                op: IrBinaryOp::LessThanOrEqual(operand_types.clone()),
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
-                operand_types: operand_types.clone(),
             },
             // Convert a >= b to b <= a
             TypedExpr::GreaterThanOrEqual {
@@ -581,10 +585,10 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => PureExpr::LessThanOrEqual {
+            } => PureExpr::Binary {
+                op: IrBinaryOp::LessThanOrEqual(operand_types.clone()),
                 left: Box::new(self.compile_expr(right)),
                 right: Box::new(self.compile_expr(left)),
-                operand_types: operand_types.clone(),
             },
             TypedExpr::BoolLogicalAnd { left, right, .. } => PureExpr::BoolLogicalAnd {
                 left: Box::new(self.compile_expr(left)),
@@ -599,30 +603,30 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => PureExpr::NumericAdd {
+            } => PureExpr::Binary {
+                op: IrBinaryOp::NumericAdd(operand_types.clone()),
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
-                operand_types: operand_types.clone(),
             },
             TypedExpr::NumericSubtract {
                 left,
                 right,
                 operand_types,
                 ..
-            } => PureExpr::NumericSubtract {
+            } => PureExpr::Binary {
+                op: IrBinaryOp::NumericSubtract(operand_types.clone()),
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
-                operand_types: operand_types.clone(),
             },
             TypedExpr::NumericMultiply {
                 left,
                 right,
                 operand_types,
                 ..
-            } => PureExpr::NumericMultiply {
+            } => PureExpr::Binary {
+                op: IrBinaryOp::NumericMultiply(operand_types.clone()),
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
-                operand_types: operand_types.clone(),
             },
             TypedExpr::Enum {
                 type_name,
@@ -870,20 +874,25 @@ impl<'a> Compiler<'a> {
                     body,
                 }
             }
-            TypedExpr::ArrayLength { array } => PureExpr::ArrayLength {
-                array: Box::new(self.compile_expr(array)),
+            TypedExpr::ArrayLength { array } => PureExpr::Unary {
+                op: IrUnaryOp::ArrayLength,
+                operand: Box::new(self.compile_expr(array)),
             },
-            TypedExpr::ArrayIsEmpty { array } => PureExpr::ArrayIsEmpty {
-                array: Box::new(self.compile_expr(array)),
+            TypedExpr::ArrayIsEmpty { array } => PureExpr::Unary {
+                op: IrUnaryOp::ArrayIsEmpty,
+                operand: Box::new(self.compile_expr(array)),
             },
-            TypedExpr::StringIsEmpty { string } => PureExpr::StringIsEmpty {
-                string: Box::new(self.compile_expr(string)),
+            TypedExpr::StringIsEmpty { string } => PureExpr::Unary {
+                op: IrUnaryOp::StringIsEmpty,
+                operand: Box::new(self.compile_expr(string)),
             },
-            TypedExpr::OptionIsSome { option } => PureExpr::OptionIsSome {
-                option: Box::new(self.compile_expr(option)),
+            TypedExpr::OptionIsSome { option } => PureExpr::Unary {
+                op: IrUnaryOp::OptionIsSome,
+                operand: Box::new(self.compile_expr(option)),
             },
-            TypedExpr::OptionIsNone { option } => PureExpr::OptionIsNone {
-                option: Box::new(self.compile_expr(option)),
+            TypedExpr::OptionIsNone { option } => PureExpr::Unary {
+                op: IrUnaryOp::OptionIsNone,
+                operand: Box::new(self.compile_expr(option)),
             },
             TypedExpr::OptionUnwrapOr {
                 option,
@@ -908,14 +917,17 @@ impl<'a> Compiler<'a> {
                     typ: typ.clone(),
                 }
             }
-            TypedExpr::IntToString { value } => PureExpr::IntToString {
-                value: Box::new(self.compile_expr(value)),
+            TypedExpr::IntToString { value } => PureExpr::Unary {
+                op: IrUnaryOp::IntToString,
+                operand: Box::new(self.compile_expr(value)),
             },
-            TypedExpr::FloatToInt { value } => PureExpr::FloatToInt {
-                value: Box::new(self.compile_expr(value)),
+            TypedExpr::FloatToInt { value } => PureExpr::Unary {
+                op: IrUnaryOp::FloatToInt,
+                operand: Box::new(self.compile_expr(value)),
             },
-            TypedExpr::IntToFloat { value } => PureExpr::IntToFloat {
-                value: Box::new(self.compile_expr(value)),
+            TypedExpr::IntToFloat { value } => PureExpr::Unary {
+                op: IrUnaryOp::IntToFloat,
+                operand: Box::new(self.compile_expr(value)),
             },
         }
     }

@@ -1,13 +1,15 @@
 use std::fmt;
 
 use crate::document::CheapString;
-use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
+use crate::hop::typing::{NumericType, Type};
 use crate::html::HtmlElementKind;
 use crate::ir::binder_id::BinderId;
 use crate::ir::binder_id::BinderIdCounter;
+use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
+use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -232,50 +234,24 @@ pub enum PureExpr {
     /// N-ary mappend over String-typed parts.
     StringConcat { parts: Vec<PureExpr> },
 
-    /// A NumericAdd expression.
+    /// A binary operation.
     ///
-    /// Must hold two expressions of the same NumericType.
-    /// Returns the NumericType of the expressions.
-    NumericAdd {
+    /// Must hold two expressions of the op's operand type.
+    /// Returns the op's result type.
+    Binary {
+        op: IrBinaryOp,
         left: Box<PureExpr>,
         right: Box<PureExpr>,
-        operand_types: NumericType,
     },
 
-    /// A NumericSubtract expression.
+    /// A unary operation.
     ///
-    /// Must hold two expressions of the same NumericType.
-    /// Returns the NumericType of the expressions.
-    NumericSubtract {
-        left: Box<PureExpr>,
-        right: Box<PureExpr>,
-        operand_types: NumericType,
-    },
-
-    /// A NumericMultiply expression.
-    ///
-    /// Must hold two expressions of the same NumericType.
-    /// Returns the NumericType of the expressions.
-    NumericMultiply {
-        left: Box<PureExpr>,
-        right: Box<PureExpr>,
-        operand_types: NumericType,
-    },
-
-    /// A NumericNegation expression.
-    ///
-    /// Must hold an expression of a NumericType.
-    /// Returns the NumericType of the expression.
-    NumericNegation {
+    /// Must hold an expression of the op's operand type.
+    /// Returns the op's result type.
+    Unary {
+        op: IrUnaryOp,
         operand: Box<PureExpr>,
-        operand_type: NumericType,
     },
-
-    /// A BoolNegation expression.
-    ///
-    /// Must hold a Bool expression.
-    /// Returns a Bool.
-    BoolNegation { operand: Box<PureExpr> },
 
     /// A BoolLogicalAnd expression.
     ///
@@ -294,86 +270,6 @@ pub enum PureExpr {
         left: Box<PureExpr>,
         right: Box<PureExpr>,
     },
-
-    /// An Equals expression.
-    ///
-    /// Must hold two values of the same EquatableType.
-    /// Returns a Bool.
-    Equals {
-        left: Box<PureExpr>,
-        right: Box<PureExpr>,
-        operand_types: EquatableType,
-    },
-
-    /// A LessThan expression.
-    ///
-    /// Must hold two values of the same ComparableType.
-    /// Returns a Bool.
-    LessThan {
-        left: Box<PureExpr>,
-        right: Box<PureExpr>,
-        operand_types: ComparableType,
-    },
-
-    /// A LessThanOrEqual expression.
-    ///
-    /// Must hold two values of the same ComparableType.
-    /// Returns a Bool.
-    LessThanOrEqual {
-        left: Box<PureExpr>,
-        right: Box<PureExpr>,
-        operand_types: ComparableType,
-    },
-
-    /// An ArrayLength expression.
-    ///
-    /// Must hold an Array expression.
-    /// Returns an Int.
-    ArrayLength { array: Box<PureExpr> },
-
-    /// An ArrayIsEmpty expression.
-    ///
-    /// Must hold an Array expression.
-    /// Returns a Bool.
-    ArrayIsEmpty { array: Box<PureExpr> },
-
-    /// A StringIsEmpty expression.
-    ///
-    /// Must hold a String expression.
-    /// Returns a Bool.
-    StringIsEmpty { string: Box<PureExpr> },
-
-    /// An OptionIsSome expression.
-    ///
-    /// Must hold an Option expression.
-    /// Returns a Bool.
-    OptionIsSome { option: Box<PureExpr> },
-
-    /// An OptionIsNone expression.
-    ///
-    /// Must hold an Option expression.
-    /// Returns a Bool.
-    OptionIsNone { option: Box<PureExpr> },
-
-    /// An IntToString expression.
-    ///
-    /// Must hold an Int.
-    /// Returns a String.
-    IntToString { value: Box<PureExpr> },
-
-    /// A FloatToInt expression.
-    ///
-    /// Saturates at the i32 bounds and maps NaN -> 0.
-    ///
-    /// Must hold a Float.
-    /// Returns an Int.
-    FloatToInt { value: Box<PureExpr> },
-
-    /// An IntToFloat expression.
-    ///
-    /// Must hold an Int.
-    /// Returns a Float.
-    IntToFloat { value: Box<PureExpr> },
 }
 
 impl PureExpr {
@@ -392,7 +288,7 @@ impl PureExpr {
             | PureExpr::Let { typ, .. }
             | PureExpr::Call { typ, .. } => typ.clone(),
 
-            PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => Type::Float,
+            PureExpr::FloatLiteral { .. } => Type::Float,
             PureExpr::IntLiteral { .. } => Type::Int,
 
             PureExpr::HtmlText { .. }
@@ -401,34 +297,36 @@ impl PureExpr {
             | PureExpr::HtmlConcat { .. }
             | PureExpr::HtmlFor { .. } => Type::Html,
 
-            PureExpr::StringConcat { .. }
-            | PureExpr::StringLiteral { .. }
-            | PureExpr::IntToString { .. } => Type::String,
+            PureExpr::StringConcat { .. } | PureExpr::StringLiteral { .. } => Type::String,
 
-            PureExpr::NumericAdd { operand_types, .. }
-            | PureExpr::NumericSubtract { operand_types, .. }
-            | PureExpr::NumericMultiply { operand_types, .. }
-            | PureExpr::NumericNegation {
-                operand_type: operand_types,
-                ..
-            } => match operand_types {
-                NumericType::Int => Type::Int,
-                NumericType::Float => Type::Float,
+            PureExpr::Binary { op, .. } => match op {
+                IrBinaryOp::NumericAdd(operand_types)
+                | IrBinaryOp::NumericSubtract(operand_types)
+                | IrBinaryOp::NumericMultiply(operand_types) => match operand_types {
+                    NumericType::Int => Type::Int,
+                    NumericType::Float => Type::Float,
+                },
+                IrBinaryOp::Equals(_)
+                | IrBinaryOp::LessThan(_)
+                | IrBinaryOp::LessThanOrEqual(_) => Type::Bool,
             },
 
             PureExpr::BoolLiteral { .. }
-            | PureExpr::BoolNegation { .. }
-            | PureExpr::Equals { .. }
-            | PureExpr::LessThan { .. }
-            | PureExpr::LessThanOrEqual { .. }
             | PureExpr::BoolLogicalAnd { .. }
-            | PureExpr::BoolLogicalOr { .. }
-            | PureExpr::ArrayIsEmpty { .. }
-            | PureExpr::StringIsEmpty { .. }
-            | PureExpr::OptionIsSome { .. }
-            | PureExpr::OptionIsNone { .. } => Type::Bool,
+            | PureExpr::BoolLogicalOr { .. } => Type::Bool,
 
-            PureExpr::ArrayLength { .. } | PureExpr::FloatToInt { .. } => Type::Int,
+            PureExpr::Unary { op, .. } => match op {
+                IrUnaryOp::NumericNegation(NumericType::Int) => Type::Int,
+                IrUnaryOp::NumericNegation(NumericType::Float) => Type::Float,
+                IrUnaryOp::BoolNegation
+                | IrUnaryOp::ArrayIsEmpty
+                | IrUnaryOp::StringIsEmpty
+                | IrUnaryOp::OptionIsSome
+                | IrUnaryOp::OptionIsNone => Type::Bool,
+                IrUnaryOp::ArrayLength | IrUnaryOp::FloatToInt => Type::Int,
+                IrUnaryOp::IntToString => Type::String,
+                IrUnaryOp::IntToFloat => Type::Float,
+            },
         }
     }
 
@@ -535,33 +433,14 @@ impl PureExpr {
                 }
             }
 
-            PureExpr::NumericNegation { operand, .. } | PureExpr::BoolNegation { operand, .. } => {
-                f(operand);
-            }
+            PureExpr::Unary { operand, .. } => f(operand),
 
-            PureExpr::NumericAdd { left, right, .. }
-            | PureExpr::NumericSubtract { left, right, .. }
-            | PureExpr::NumericMultiply { left, right, .. }
+            PureExpr::Binary { left, right, .. }
             | PureExpr::BoolLogicalAnd { left, right, .. }
-            | PureExpr::BoolLogicalOr { left, right, .. }
-            | PureExpr::Equals { left, right, .. }
-            | PureExpr::LessThan { left, right, .. }
-            | PureExpr::LessThanOrEqual { left, right, .. } => {
+            | PureExpr::BoolLogicalOr { left, right, .. } => {
                 f(left);
                 f(right);
             }
-
-            PureExpr::ArrayLength { array, .. } | PureExpr::ArrayIsEmpty { array, .. } => f(array),
-
-            PureExpr::StringIsEmpty { string, .. } => f(string),
-
-            PureExpr::OptionIsSome { option, .. } | PureExpr::OptionIsNone { option, .. } => {
-                f(option);
-            }
-
-            PureExpr::IntToString { value, .. }
-            | PureExpr::FloatToInt { value, .. }
-            | PureExpr::IntToFloat { value, .. } => f(value),
 
             PureExpr::VariableReference { .. }
             | PureExpr::StringLiteral { .. }
@@ -846,34 +725,43 @@ impl PureExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            PureExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" + "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            PureExpr::NumericSubtract { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" - "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            PureExpr::NumericMultiply { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" * "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            PureExpr::NumericNegation { operand, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::text("-"))
-                .append(operand.to_doc())
-                .append(BoxDoc::text(")")),
-            PureExpr::BoolNegation { operand, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::text("!"))
-                .append(operand.to_doc())
-                .append(BoxDoc::text(")")),
+            PureExpr::Binary { op, left, right } => {
+                let operator = match op {
+                    IrBinaryOp::NumericAdd(_) => " + ",
+                    IrBinaryOp::NumericSubtract(_) => " - ",
+                    IrBinaryOp::NumericMultiply(_) => " * ",
+                    IrBinaryOp::Equals(_) => " == ",
+                    IrBinaryOp::LessThan(_) => " < ",
+                    IrBinaryOp::LessThanOrEqual(_) => " <= ",
+                };
+                BoxDoc::nil()
+                    .append(BoxDoc::text("("))
+                    .append(left.to_doc())
+                    .append(BoxDoc::text(operator))
+                    .append(right.to_doc())
+                    .append(BoxDoc::text(")"))
+            }
+            PureExpr::Unary { op, operand } => match op {
+                IrUnaryOp::NumericNegation(_) => BoxDoc::nil()
+                    .append(BoxDoc::text("("))
+                    .append(BoxDoc::text("-"))
+                    .append(operand.to_doc())
+                    .append(BoxDoc::text(")")),
+                IrUnaryOp::BoolNegation => BoxDoc::nil()
+                    .append(BoxDoc::text("("))
+                    .append(BoxDoc::text("!"))
+                    .append(operand.to_doc())
+                    .append(BoxDoc::text(")")),
+                IrUnaryOp::ArrayLength => operand.to_doc().append(BoxDoc::text(".len()")),
+                IrUnaryOp::ArrayIsEmpty | IrUnaryOp::StringIsEmpty => {
+                    operand.to_doc().append(BoxDoc::text(".is_empty()"))
+                }
+                IrUnaryOp::OptionIsSome => operand.to_doc().append(BoxDoc::text(".is_some()")),
+                IrUnaryOp::OptionIsNone => operand.to_doc().append(BoxDoc::text(".is_none()")),
+                IrUnaryOp::IntToString => operand.to_doc().append(BoxDoc::text(".to_string()")),
+                IrUnaryOp::FloatToInt => operand.to_doc().append(BoxDoc::text(".to_int()")),
+                IrUnaryOp::IntToFloat => operand.to_doc().append(BoxDoc::text(".to_float()")),
+            },
             PureExpr::BoolLogicalAnd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
@@ -884,24 +772,6 @@ impl PureExpr {
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" || "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            PureExpr::Equals { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" == "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            PureExpr::LessThan { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" < "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            PureExpr::LessThanOrEqual { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" <= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
             PureExpr::Enum {
@@ -962,26 +832,6 @@ impl PureExpr {
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}"))
                 .group(),
-            PureExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
-            PureExpr::ArrayIsEmpty { array, .. } => {
-                array.to_doc().append(BoxDoc::text(".is_empty()"))
-            }
-            PureExpr::StringIsEmpty { string, .. } => {
-                string.to_doc().append(BoxDoc::text(".is_empty()"))
-            }
-            PureExpr::OptionIsSome { option, .. } => {
-                option.to_doc().append(BoxDoc::text(".is_some()"))
-            }
-            PureExpr::OptionIsNone { option, .. } => {
-                option.to_doc().append(BoxDoc::text(".is_none()"))
-            }
-            PureExpr::IntToString { value, .. } => {
-                value.to_doc().append(BoxDoc::text(".to_string()"))
-            }
-            PureExpr::FloatToInt { value, .. } => value.to_doc().append(BoxDoc::text(".to_int()")),
-            PureExpr::IntToFloat { value, .. } => {
-                value.to_doc().append(BoxDoc::text(".to_float()"))
-            }
         }
     }
 }

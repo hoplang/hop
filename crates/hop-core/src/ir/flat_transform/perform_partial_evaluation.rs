@@ -4,7 +4,9 @@ use crate::document::CheapString;
 use crate::hop::typing::Type;
 use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
+use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
+use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::var_id::{VarId, VarIdCounter};
 
 /// A pass that evaluates the constant parts of a block at compile time.
@@ -246,186 +248,122 @@ impl Evaluator<'_> {
                 _ => Folded::Op(FlatOp::TupleIndex { tuple, index }),
             },
 
-            FlatOp::NumericAdd {
-                left,
-                right,
-                operand_types,
-            } => match (self.ops.get(&left), self.ops.get(&right)) {
-                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
-                    Folded::Op(FlatOp::IntLiteral(l.wrapping_add(*r)))
-                }
-                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
-                    Folded::Op(FlatOp::FloatLiteral(l + r))
-                }
-                _ => Folded::Op(FlatOp::NumericAdd {
-                    left,
-                    right,
-                    operand_types,
-                }),
-            },
+            FlatOp::Binary { op, left, right } => {
+                let folded = match (&op, self.ops.get(&left), self.ops.get(&right)) {
+                    (
+                        IrBinaryOp::NumericAdd(_),
+                        Some(FlatOp::IntLiteral(l)),
+                        Some(FlatOp::IntLiteral(r)),
+                    ) => Some(FlatOp::IntLiteral(l.wrapping_add(*r))),
+                    (
+                        IrBinaryOp::NumericAdd(_),
+                        Some(FlatOp::FloatLiteral(l)),
+                        Some(FlatOp::FloatLiteral(r)),
+                    ) => Some(FlatOp::FloatLiteral(l + r)),
+                    (
+                        IrBinaryOp::NumericSubtract(_),
+                        Some(FlatOp::IntLiteral(l)),
+                        Some(FlatOp::IntLiteral(r)),
+                    ) => Some(FlatOp::IntLiteral(l.wrapping_sub(*r))),
+                    (
+                        IrBinaryOp::NumericSubtract(_),
+                        Some(FlatOp::FloatLiteral(l)),
+                        Some(FlatOp::FloatLiteral(r)),
+                    ) => Some(FlatOp::FloatLiteral(l - r)),
+                    (
+                        IrBinaryOp::NumericMultiply(_),
+                        Some(FlatOp::IntLiteral(l)),
+                        Some(FlatOp::IntLiteral(r)),
+                    ) => Some(FlatOp::IntLiteral(l.wrapping_mul(*r))),
+                    (
+                        IrBinaryOp::NumericMultiply(_),
+                        Some(FlatOp::FloatLiteral(l)),
+                        Some(FlatOp::FloatLiteral(r)),
+                    ) => Some(FlatOp::FloatLiteral(l * r)),
+                    (
+                        IrBinaryOp::Equals(_),
+                        Some(FlatOp::BoolLiteral(l)),
+                        Some(FlatOp::BoolLiteral(r)),
+                    ) => Some(FlatOp::BoolLiteral(l == r)),
+                    (
+                        IrBinaryOp::Equals(_),
+                        Some(FlatOp::StringLiteral(l)),
+                        Some(FlatOp::StringLiteral(r)),
+                    ) => Some(FlatOp::BoolLiteral(l.as_str() == r.as_str())),
+                    (
+                        IrBinaryOp::Equals(_),
+                        Some(FlatOp::IntLiteral(l)),
+                        Some(FlatOp::IntLiteral(r)),
+                    ) => Some(FlatOp::BoolLiteral(l == r)),
+                    (
+                        IrBinaryOp::Equals(_),
+                        Some(FlatOp::FloatLiteral(l)),
+                        Some(FlatOp::FloatLiteral(r)),
+                    ) => Some(FlatOp::BoolLiteral(l == r)),
+                    (
+                        IrBinaryOp::LessThan(_),
+                        Some(FlatOp::IntLiteral(l)),
+                        Some(FlatOp::IntLiteral(r)),
+                    ) => Some(FlatOp::BoolLiteral(l < r)),
+                    (
+                        IrBinaryOp::LessThan(_),
+                        Some(FlatOp::FloatLiteral(l)),
+                        Some(FlatOp::FloatLiteral(r)),
+                    ) => Some(FlatOp::BoolLiteral(l < r)),
+                    (
+                        IrBinaryOp::LessThanOrEqual(_),
+                        Some(FlatOp::IntLiteral(l)),
+                        Some(FlatOp::IntLiteral(r)),
+                    ) => Some(FlatOp::BoolLiteral(l <= r)),
+                    (
+                        IrBinaryOp::LessThanOrEqual(_),
+                        Some(FlatOp::FloatLiteral(l)),
+                        Some(FlatOp::FloatLiteral(r)),
+                    ) => Some(FlatOp::BoolLiteral(l <= r)),
+                    _ => None,
+                };
+                Folded::Op(folded.unwrap_or(FlatOp::Binary { op, left, right }))
+            }
 
-            FlatOp::NumericSubtract {
-                left,
-                right,
-                operand_types,
-            } => match (self.ops.get(&left), self.ops.get(&right)) {
-                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
-                    Folded::Op(FlatOp::IntLiteral(l.wrapping_sub(*r)))
-                }
-                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
-                    Folded::Op(FlatOp::FloatLiteral(l - r))
-                }
-                _ => Folded::Op(FlatOp::NumericSubtract {
-                    left,
-                    right,
-                    operand_types,
-                }),
-            },
-
-            FlatOp::NumericMultiply {
-                left,
-                right,
-                operand_types,
-            } => match (self.ops.get(&left), self.ops.get(&right)) {
-                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
-                    Folded::Op(FlatOp::IntLiteral(l.wrapping_mul(*r)))
-                }
-                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
-                    Folded::Op(FlatOp::FloatLiteral(l * r))
-                }
-                _ => Folded::Op(FlatOp::NumericMultiply {
-                    left,
-                    right,
-                    operand_types,
-                }),
-            },
-
-            FlatOp::NumericNegation {
-                operand,
-                operand_type,
-            } => match self.ops.get(&operand) {
-                Some(FlatOp::IntLiteral(value)) => {
-                    Folded::Op(FlatOp::IntLiteral(value.wrapping_neg()))
-                }
-                Some(FlatOp::FloatLiteral(value)) => Folded::Op(FlatOp::FloatLiteral(-value)),
-                _ => Folded::Op(FlatOp::NumericNegation {
-                    operand,
-                    operand_type,
-                }),
-            },
-
-            FlatOp::BoolNegation(operand) => match self.ops.get(&operand) {
-                Some(FlatOp::BoolLiteral(value)) => Folded::Op(FlatOp::BoolLiteral(!value)),
-                _ => Folded::Op(FlatOp::BoolNegation(operand)),
-            },
-
-            FlatOp::Equals {
-                left,
-                right,
-                operand_types,
-            } => match (self.ops.get(&left), self.ops.get(&right)) {
-                (Some(FlatOp::BoolLiteral(l)), Some(FlatOp::BoolLiteral(r))) => {
-                    Folded::Op(FlatOp::BoolLiteral(l == r))
-                }
-                (Some(FlatOp::StringLiteral(l)), Some(FlatOp::StringLiteral(r))) => {
-                    Folded::Op(FlatOp::BoolLiteral(l.as_str() == r.as_str()))
-                }
-                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
-                    Folded::Op(FlatOp::BoolLiteral(l == r))
-                }
-                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
-                    Folded::Op(FlatOp::BoolLiteral(l == r))
-                }
-                _ => Folded::Op(FlatOp::Equals {
-                    left,
-                    right,
-                    operand_types,
-                }),
-            },
-
-            FlatOp::LessThan {
-                left,
-                right,
-                operand_types,
-            } => match (self.ops.get(&left), self.ops.get(&right)) {
-                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
-                    Folded::Op(FlatOp::BoolLiteral(l < r))
-                }
-                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
-                    Folded::Op(FlatOp::BoolLiteral(l < r))
-                }
-                _ => Folded::Op(FlatOp::LessThan {
-                    left,
-                    right,
-                    operand_types,
-                }),
-            },
-
-            FlatOp::LessThanOrEqual {
-                left,
-                right,
-                operand_types,
-            } => match (self.ops.get(&left), self.ops.get(&right)) {
-                (Some(FlatOp::IntLiteral(l)), Some(FlatOp::IntLiteral(r))) => {
-                    Folded::Op(FlatOp::BoolLiteral(l <= r))
-                }
-                (Some(FlatOp::FloatLiteral(l)), Some(FlatOp::FloatLiteral(r))) => {
-                    Folded::Op(FlatOp::BoolLiteral(l <= r))
-                }
-                _ => Folded::Op(FlatOp::LessThanOrEqual {
-                    left,
-                    right,
-                    operand_types,
-                }),
-            },
-
-            FlatOp::IntToString(value) => match self.ops.get(&value) {
-                Some(FlatOp::IntLiteral(value)) => {
-                    Folded::Op(FlatOp::StringLiteral(CheapString::new(value.to_string())))
-                }
-                _ => Folded::Op(FlatOp::IntToString(value)),
-            },
-
-            FlatOp::FloatToInt(value) => match self.ops.get(&value) {
-                Some(FlatOp::FloatLiteral(value)) => Folded::Op(FlatOp::IntLiteral(*value as i32)),
-                _ => Folded::Op(FlatOp::FloatToInt(value)),
-            },
-
-            FlatOp::IntToFloat(value) => match self.ops.get(&value) {
-                Some(FlatOp::IntLiteral(value)) => Folded::Op(FlatOp::FloatLiteral(*value as f64)),
-                _ => Folded::Op(FlatOp::IntToFloat(value)),
-            },
-
-            FlatOp::StringIsEmpty(string) => match self.ops.get(&string) {
-                Some(FlatOp::StringLiteral(value)) => {
-                    Folded::Op(FlatOp::BoolLiteral(value.as_str().is_empty()))
-                }
-                _ => Folded::Op(FlatOp::StringIsEmpty(string)),
-            },
-
-            FlatOp::ArrayIsEmpty(array) => match self.ops.get(&array) {
-                Some(FlatOp::Array(elements)) => {
-                    Folded::Op(FlatOp::BoolLiteral(elements.is_empty()))
-                }
-                _ => Folded::Op(FlatOp::ArrayIsEmpty(array)),
-            },
-
-            FlatOp::ArrayLength(array) => match self.ops.get(&array) {
-                Some(FlatOp::Array(elements)) => {
-                    Folded::Op(FlatOp::IntLiteral(elements.len() as i32))
-                }
-                _ => Folded::Op(FlatOp::ArrayLength(array)),
-            },
-
-            FlatOp::OptionIsSome(option) => match self.ops.get(&option) {
-                Some(FlatOp::Option(value)) => Folded::Op(FlatOp::BoolLiteral(value.is_some())),
-                _ => Folded::Op(FlatOp::OptionIsSome(option)),
-            },
-
-            FlatOp::OptionIsNone(option) => match self.ops.get(&option) {
-                Some(FlatOp::Option(value)) => Folded::Op(FlatOp::BoolLiteral(value.is_none())),
-                _ => Folded::Op(FlatOp::OptionIsNone(option)),
-            },
+            FlatOp::Unary { op, operand } => {
+                let folded = match (&op, self.ops.get(&operand)) {
+                    (IrUnaryOp::NumericNegation(_), Some(FlatOp::IntLiteral(value))) => {
+                        Some(FlatOp::IntLiteral(value.wrapping_neg()))
+                    }
+                    (IrUnaryOp::NumericNegation(_), Some(FlatOp::FloatLiteral(value))) => {
+                        Some(FlatOp::FloatLiteral(-value))
+                    }
+                    (IrUnaryOp::BoolNegation, Some(FlatOp::BoolLiteral(value))) => {
+                        Some(FlatOp::BoolLiteral(!value))
+                    }
+                    (IrUnaryOp::IntToString, Some(FlatOp::IntLiteral(value))) => {
+                        Some(FlatOp::StringLiteral(CheapString::new(value.to_string())))
+                    }
+                    (IrUnaryOp::FloatToInt, Some(FlatOp::FloatLiteral(value))) => {
+                        Some(FlatOp::IntLiteral(*value as i32))
+                    }
+                    (IrUnaryOp::IntToFloat, Some(FlatOp::IntLiteral(value))) => {
+                        Some(FlatOp::FloatLiteral(*value as f64))
+                    }
+                    (IrUnaryOp::StringIsEmpty, Some(FlatOp::StringLiteral(value))) => {
+                        Some(FlatOp::BoolLiteral(value.as_str().is_empty()))
+                    }
+                    (IrUnaryOp::ArrayIsEmpty, Some(FlatOp::Array(elements))) => {
+                        Some(FlatOp::BoolLiteral(elements.is_empty()))
+                    }
+                    (IrUnaryOp::ArrayLength, Some(FlatOp::Array(elements))) => {
+                        Some(FlatOp::IntLiteral(elements.len() as i32))
+                    }
+                    (IrUnaryOp::OptionIsSome, Some(FlatOp::Option(value))) => {
+                        Some(FlatOp::BoolLiteral(value.is_some()))
+                    }
+                    (IrUnaryOp::OptionIsNone, Some(FlatOp::Option(value))) => {
+                        Some(FlatOp::BoolLiteral(value.is_none()))
+                    }
+                    _ => None,
+                };
+                Folded::Op(folded.unwrap_or(FlatOp::Unary { op, operand }))
+            }
 
             FlatOp::StringConcat(parts) => {
                 let mut flattened = Vec::with_capacity(parts.len());
