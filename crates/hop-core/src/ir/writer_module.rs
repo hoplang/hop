@@ -36,7 +36,7 @@ pub struct WriterPageDeclaration {
     pub name: TypeName,
     pub parameters: Vec<IrParameter>,
     /// Statements for the assembled page.
-    pub body: Vec<Stmt>,
+    pub body: Vec<WriterStmt>,
 }
 
 #[derive(Debug)]
@@ -51,190 +51,190 @@ pub struct WriterFunctionDeclaration {
 pub enum WriterFunctionBody {
     /// Destination passing: writes to the ambient buffer. A call site is a
     /// WriteFunction statement.
-    Writes(Vec<Stmt>),
+    Writes(Vec<WriterStmt>),
     /// Value returning. A call site is a Call value.
-    Returns(ValueBlock),
+    Returns(WriterValueBlock),
 }
 
 /// A name a value or statement reads: the name of a let, or a binder,
 /// which the Flat IR read through a Read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Name {
+pub enum WriterName {
     Binding(VarId),
     Binder(BinderId),
 }
 
-impl fmt::Display for Name {
+impl fmt::Display for WriterName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Name::Binding(var) => var.fmt(f),
-            Name::Binder(binder) => binder.fmt(f),
+            WriterName::Binding(var) => var.fmt(f),
+            WriterName::Binder(binder) => binder.fmt(f),
         }
     }
 }
 
 /// The source of iteration in a For.
 #[derive(Debug, Clone)]
-pub enum ForSource {
-    Array(Name),
-    RangeInclusive { start: Name, end: Name },
+pub enum WriterForSource {
+    Array(WriterName),
+    RangeInclusive { start: WriterName, end: WriterName },
 }
 
 /// A value binding.
 #[derive(Debug, Clone)]
-pub struct Let {
+pub struct WriterLet {
     pub name: VarId,
     pub typ: Type,
-    pub value: Value,
+    pub op: WriterOp,
 }
 
 /// Lets followed by the name of the result: a value function body or a
 /// match arm in value position.
 #[derive(Debug, Clone)]
-pub struct ValueBlock {
-    pub lets: Vec<Let>,
-    pub result: Name,
+pub struct WriterValueBlock {
+    pub lets: Vec<WriterLet>,
+    pub result: WriterName,
 }
 
 /// A statement. Statements write to the ambient buffer, in order, or bind
 /// a value for the statements after them.
 #[derive(Debug, Clone)]
-pub enum Stmt {
-    Let(Let),
+pub enum WriterStmt {
+    Let(WriterLet),
 
     /// Write a constant string, unescaped.
     Write(String),
 
     /// Write a String name, escaped.
-    WriteString(Name),
+    WriteString(WriterName),
 
     /// Write an Html name as it is.
-    WriteHtml(Name),
+    WriteHtml(WriterName),
 
     /// Invoke an Html function, which writes to the same buffer. The
     /// arguments follow the function's parameters, one for each.
     WriteFunction {
         function: IrFunction,
-        args: Vec<Name>,
+        args: Vec<WriterName>,
     },
 
     /// Run the body once per element, in order. When var is None, the loop
     /// binds no variable, but still iterates.
     For {
         var: Option<IrBinder>,
-        source: ForSource,
-        body: Vec<Stmt>,
+        source: WriterForSource,
+        body: Vec<WriterStmt>,
     },
 
     /// Run the arm that matches. Matching is exhaustive.
-    Match(Match<Name, Vec<Stmt>>),
+    Match(Match<WriterName, Vec<WriterStmt>>),
 }
 
 /// The computation of a let. Operands are names.
 #[derive(Debug, Clone)]
-pub enum Value {
+pub enum WriterOp {
     StringLiteral(CheapString),
     IntLiteral(i32),
     FloatLiteral(f64),
     BoolLiteral(bool),
 
     FieldAccess {
-        record: Name,
+        record: WriterName,
         field: FieldName,
     },
 
     TupleIndex {
-        tuple: Name,
+        tuple: WriterName,
         index: usize,
     },
 
-    Array(Vec<Name>),
+    Array(Vec<WriterName>),
 
-    Tuple(Vec<Name>),
+    Tuple(Vec<WriterName>),
 
     /// The record type is the type of the let.
     Record {
-        fields: Vec<(FieldName, Name)>,
+        fields: Vec<(FieldName, WriterName)>,
     },
 
     /// The enum type is the type of the let.
     Enum {
         variant_name: TypeName,
-        fields: Vec<(FieldName, Name)>,
+        fields: Vec<(FieldName, WriterName)>,
     },
 
-    Option(Option<Name>),
+    Option(Option<WriterName>),
 
-    StringConcat(Vec<Name>),
+    StringConcat(Vec<WriterName>),
 
     Binary {
         op: IrBinaryOp,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     },
 
     Unary {
         op: IrUnaryOp,
-        operand: Name,
+        operand: WriterName,
     },
 
     /// Invoke a value returning function. The arguments follow the
     /// function's parameters, one for each.
     Call {
         function: IrFunction,
-        args: Vec<Name>,
+        args: Vec<WriterName>,
     },
 
     /// Html as a value: the statements render into a fresh buffer.
-    HtmlLiteral(Vec<Stmt>),
+    HtmlLiteral(Vec<WriterStmt>),
 
     /// A match over a value that is not Html. Each arm produces the value.
-    Match(Match<Name, ValueBlock>),
+    Match(Match<WriterName, WriterValueBlock>),
 }
 
-impl Value {
-    /// Apply `f` to each name this value reads directly. The names read
+impl WriterOp {
+    /// Apply `f` to each name this op reads directly. The names read
     /// inside an HtmlLiteral or the arms of a Match are not visited, only
     /// the subject of the Match.
     #[cfg(test)]
-    pub fn for_each_operand(&self, f: &mut impl FnMut(Name)) {
+    pub fn for_each_operand(&self, f: &mut impl FnMut(WriterName)) {
         match self {
-            Value::StringLiteral(_)
-            | Value::IntLiteral(_)
-            | Value::FloatLiteral(_)
-            | Value::BoolLiteral(_)
-            | Value::Option(None)
-            | Value::HtmlLiteral(_) => {}
+            WriterOp::StringLiteral(_)
+            | WriterOp::IntLiteral(_)
+            | WriterOp::FloatLiteral(_)
+            | WriterOp::BoolLiteral(_)
+            | WriterOp::Option(None)
+            | WriterOp::HtmlLiteral(_) => {}
 
-            Value::FieldAccess { record: name, .. }
-            | Value::TupleIndex { tuple: name, .. }
-            | Value::Option(Some(name))
-            | Value::Unary { operand: name, .. } => f(*name),
+            WriterOp::FieldAccess { record: name, .. }
+            | WriterOp::TupleIndex { tuple: name, .. }
+            | WriterOp::Option(Some(name))
+            | WriterOp::Unary { operand: name, .. } => f(*name),
 
-            Value::Array(names) | Value::Tuple(names) | Value::StringConcat(names) => {
+            WriterOp::Array(names) | WriterOp::Tuple(names) | WriterOp::StringConcat(names) => {
                 for name in names {
                     f(*name);
                 }
             }
 
-            Value::Record { fields } | Value::Enum { fields, .. } => {
+            WriterOp::Record { fields } | WriterOp::Enum { fields, .. } => {
                 for (_, name) in fields {
                     f(*name);
                 }
             }
 
-            Value::Binary { left, right, .. } => {
+            WriterOp::Binary { left, right, .. } => {
                 f(*left);
                 f(*right);
             }
 
-            Value::Call { args, .. } => {
+            WriterOp::Call { args, .. } => {
                 for arg in args {
                     f(*arg);
                 }
             }
 
-            Value::Match(match_) => match match_ {
+            WriterOp::Match(match_) => match match_ {
                 Match::Bool { subject, .. }
                 | Match::Option { subject, .. }
                 | Match::Enum { subject, .. } => f(**subject),
@@ -245,7 +245,7 @@ impl Value {
 
 /// Each statement on a line of its own. The statements start with a line
 /// break and the caller nests them, so an empty list prints nothing.
-fn stmts_to_doc(stmts: &[Stmt]) -> BoxDoc<'_> {
+fn stmts_to_doc(stmts: &[WriterStmt]) -> BoxDoc<'_> {
     BoxDoc::concat(
         stmts
             .iter()
@@ -253,35 +253,35 @@ fn stmts_to_doc(stmts: &[Stmt]) -> BoxDoc<'_> {
     )
 }
 
-impl ValueBlock {
+impl WriterValueBlock {
     /// One line per let and one for the result.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::intersperse(
             self.lets
                 .iter()
-                .map(Let::to_doc)
+                .map(WriterLet::to_doc)
                 .chain(std::iter::once(BoxDoc::text(self.result.to_string()))),
             BoxDoc::line(),
         )
     }
 }
 
-impl Let {
+impl WriterLet {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(format!("let {}: {} = ", self.name, self.typ)).append(self.value.to_doc())
+        BoxDoc::text(format!("let {}: {} = ", self.name, self.typ)).append(self.op.to_doc())
     }
 }
 
-impl Stmt {
+impl WriterStmt {
     /// A For, a Match or a let holding a literal spans lines, every other
     /// statement is one line.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            Stmt::Let(let_) => let_.to_doc(),
-            Stmt::Write(content) => BoxDoc::text(format!("write({content:?})")),
-            Stmt::WriteString(name) => BoxDoc::text(format!("write_string({name})")),
-            Stmt::WriteHtml(name) => BoxDoc::text(format!("write_html({name})")),
-            Stmt::WriteFunction { function, args } => {
+            WriterStmt::Let(let_) => let_.to_doc(),
+            WriterStmt::Write(content) => BoxDoc::text(format!("write({content:?})")),
+            WriterStmt::WriteString(name) => BoxDoc::text(format!("write_string({name})")),
+            WriterStmt::WriteHtml(name) => BoxDoc::text(format!("write_html({name})")),
+            WriterStmt::WriteFunction { function, args } => {
                 let args = args
                     .iter()
                     .map(|arg| arg.to_string())
@@ -289,21 +289,21 @@ impl Stmt {
                     .join(", ");
                 BoxDoc::text(format!("write_function {function}({args})"))
             }
-            Stmt::For { var, source, body } => {
+            WriterStmt::For { var, source, body } => {
                 let var = match var {
                     Some(binder) => format!("{}: {}", binder.var, binder.typ),
                     None => "_".to_string(),
                 };
                 let source = match source {
-                    ForSource::Array(array) => array.to_string(),
-                    ForSource::RangeInclusive { start, end } => format!("{start}..={end}"),
+                    WriterForSource::Array(array) => array.to_string(),
+                    WriterForSource::RangeInclusive { start, end } => format!("{start}..={end}"),
                 };
                 BoxDoc::text(format!("for {var} in {source} {{"))
                     .append(stmts_to_doc(body).nest(2))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
             }
-            Stmt::Match(match_) => match_.to_doc(
+            WriterStmt::Match(match_) => match_.to_doc(
                 |subject| BoxDoc::text(subject.to_string()),
                 |body| stmts_to_doc(body),
             ),
@@ -311,20 +311,20 @@ impl Stmt {
     }
 }
 
-impl Value {
-    /// An HtmlLiteral or a Match spans lines, every other value is one
+impl WriterOp {
+    /// An HtmlLiteral or a Match spans lines, every other op is one
     /// line.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            Value::StringLiteral(value) => BoxDoc::text(format!("{:?}", value.as_str())),
-            Value::IntLiteral(value) => BoxDoc::text(value.to_string()),
-            Value::FloatLiteral(value) => BoxDoc::text(value.to_string()),
-            Value::BoolLiteral(value) => BoxDoc::text(value.to_string()),
-            Value::FieldAccess { record, field } => {
+            WriterOp::StringLiteral(value) => BoxDoc::text(format!("{:?}", value.as_str())),
+            WriterOp::IntLiteral(value) => BoxDoc::text(value.to_string()),
+            WriterOp::FloatLiteral(value) => BoxDoc::text(value.to_string()),
+            WriterOp::BoolLiteral(value) => BoxDoc::text(value.to_string()),
+            WriterOp::FieldAccess { record, field } => {
                 BoxDoc::text(format!("{record}.{}", field.as_str()))
             }
-            Value::TupleIndex { tuple, index } => BoxDoc::text(format!("{tuple}.{index}")),
-            Value::Array(elements) => {
+            WriterOp::TupleIndex { tuple, index } => BoxDoc::text(format!("{tuple}.{index}")),
+            WriterOp::Array(elements) => {
                 let elements = elements
                     .iter()
                     .map(ToString::to_string)
@@ -332,7 +332,7 @@ impl Value {
                     .join(", ");
                 BoxDoc::text(format!("[{elements}]"))
             }
-            Value::Tuple(elements) => {
+            WriterOp::Tuple(elements) => {
                 let joined = elements
                     .iter()
                     .map(ToString::to_string)
@@ -344,7 +344,7 @@ impl Value {
                     BoxDoc::text(format!("({joined})"))
                 }
             }
-            Value::Record { fields } => {
+            WriterOp::Record { fields } => {
                 let fields = fields
                     .iter()
                     .map(|(name, value)| format!("{}: {value}", name.as_str()))
@@ -352,7 +352,7 @@ impl Value {
                     .join(", ");
                 BoxDoc::text(format!("{{{fields}}}"))
             }
-            Value::Enum {
+            WriterOp::Enum {
                 variant_name,
                 fields,
             } => {
@@ -367,9 +367,9 @@ impl Value {
                     BoxDoc::text(format!("{} {{{fields}}}", variant_name.as_str()))
                 }
             }
-            Value::Option(Some(value)) => BoxDoc::text(format!("Some({value})")),
-            Value::Option(None) => BoxDoc::text("None"),
-            Value::StringConcat(parts) => {
+            WriterOp::Option(Some(value)) => BoxDoc::text(format!("Some({value})")),
+            WriterOp::Option(None) => BoxDoc::text("None"),
+            WriterOp::StringConcat(parts) => {
                 let parts = parts
                     .iter()
                     .map(ToString::to_string)
@@ -377,7 +377,7 @@ impl Value {
                     .join(", ");
                 BoxDoc::text(format!("concat({parts})"))
             }
-            Value::Binary { op, left, right } => BoxDoc::text(match op {
+            WriterOp::Binary { op, left, right } => BoxDoc::text(match op {
                 IrBinaryOp::NumericAdd(_) => format!("{left} + {right}"),
                 IrBinaryOp::NumericSubtract(_) => format!("{left} - {right}"),
                 IrBinaryOp::NumericMultiply(_) => format!("{left} * {right}"),
@@ -385,7 +385,7 @@ impl Value {
                 IrBinaryOp::LessThan(_) => format!("{left} < {right}"),
                 IrBinaryOp::LessThanOrEqual(_) => format!("{left} <= {right}"),
             }),
-            Value::Unary { op, operand } => BoxDoc::text(match op {
+            WriterOp::Unary { op, operand } => BoxDoc::text(match op {
                 IrUnaryOp::NumericNegation(_) => format!("-{operand}"),
                 IrUnaryOp::BoolNegation => format!("!{operand}"),
                 IrUnaryOp::ArrayLength => format!("{operand}.len()"),
@@ -397,7 +397,7 @@ impl Value {
                 IrUnaryOp::FloatToInt => format!("{operand}.to_int()"),
                 IrUnaryOp::IntToFloat => format!("{operand}.to_float()"),
             }),
-            Value::Call { function, args } => {
+            WriterOp::Call { function, args } => {
                 let args = args
                     .iter()
                     .map(|arg| arg.to_string())
@@ -405,11 +405,11 @@ impl Value {
                     .join(", ");
                 BoxDoc::text(format!("call {function}({args})"))
             }
-            Value::HtmlLiteral(body) => BoxDoc::text("html {")
+            WriterOp::HtmlLiteral(body) => BoxDoc::text("html {")
                 .append(stmts_to_doc(body).nest(2))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}")),
-            Value::Match(match_) => match_.to_doc(
+            WriterOp::Match(match_) => match_.to_doc(
                 |subject| BoxDoc::text(subject.to_string()),
                 |body| BoxDoc::line().append(body.to_doc()),
             ),

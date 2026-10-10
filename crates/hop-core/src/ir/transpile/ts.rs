@@ -10,8 +10,8 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::writer_module::{
-    ForSource, Let, Name, Stmt, ValueBlock, WriterFunctionBody, WriterFunctionDeclaration,
-    WriterModule, WriterPageDeclaration,
+    WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
+    WriterName, WriterPageDeclaration, WriterStmt, WriterValueBlock,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -22,10 +22,10 @@ use crate::symbols::type_name::TypeName;
 /// Names are unique across the module, a let's as `v_` and a binder's as
 /// `b_`, so no hop identifier can shadow another, and no name can collide
 /// with a TypeScript reserved word or with the `output` buffer.
-fn name_ident(name: Name) -> String {
+fn name_ident(name: WriterName) -> String {
     match name {
-        Name::Binding(var) => format!("v_{}", var.index()),
-        Name::Binder(binder) => format!("b_{}", binder.index()),
+        WriterName::Binding(var) => format!("v_{}", var.index()),
+        WriterName::Binder(binder) => format!("b_{}", binder.index()),
     }
 }
 
@@ -35,7 +35,7 @@ fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter) -> 
     arena
         .text(param.name().as_str())
         .append(arena.text(": "))
-        .append(arena.text(name_ident(Name::Binder(param.var))))
+        .append(arena.text(name_ident(WriterName::Binder(param.var))))
 }
 
 fn function_ident(function: &IrFunction) -> String {
@@ -56,7 +56,7 @@ pub struct TsTranspiler {
     /// The type of every name bound so far. A match binds its subject to
     /// a fresh constant of the subject's declared type, so a nested match
     /// on the same name is not narrowed by the arm it sits in.
-    name_types: HashMap<Name, Type>,
+    name_types: HashMap<WriterName, Type>,
     /// Numbers the subject constants.
     subjects: usize,
 }
@@ -76,7 +76,7 @@ impl TsTranspiler {
 
     /// Bind the subject of a match to a fresh constant of its declared
     /// type, and return the constant's name with the binding statement.
-    fn bind_subject<'a>(&mut self, arena: &'a Arena<'a>, subject: Name) -> (String, Doc<'a>) {
+    fn bind_subject<'a>(&mut self, arena: &'a Arena<'a>, subject: WriterName) -> (String, Doc<'a>) {
         let name = format!("s_{}", self.subjects);
         self.subjects += 1;
         let typ = self.name_types[&subject].clone();
@@ -115,7 +115,7 @@ impl TsTranspiler {
     ) -> Doc<'a> {
         for param in parameters {
             self.name_types
-                .insert(Name::Binder(param.var), param.typ.clone());
+                .insert(WriterName::Binder(param.var), param.typ.clone());
         }
         if parameters.is_empty() {
             return arena.nil();
@@ -152,7 +152,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         base: Doc<'a>,
-        fields: &'a [(FieldName, Name)],
+        fields: &'a [(FieldName, WriterName)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             return base.append(arena.text(")"));
@@ -184,7 +184,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         base: Doc<'a>,
-        args: &'a [Name],
+        args: &'a [WriterName],
     ) -> Doc<'a> {
         let arg_docs: Vec<_> = args
             .iter()
@@ -195,7 +195,11 @@ impl TsTranspiler {
     }
 
     /// A statement block, indented, between the braces the caller writes.
-    fn transpile_block<'a>(&mut self, arena: &'a Arena<'a>, statements: &'a [Stmt]) -> Doc<'a> {
+    fn transpile_block<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        statements: &'a [WriterStmt],
+    ) -> Doc<'a> {
         arena
             .nil()
             .append(arena.hardline())
@@ -209,7 +213,7 @@ impl TsTranspiler {
     fn transpile_enum_cases<'a, Body>(
         &mut self,
         arena: &'a Arena<'a>,
-        subject: Name,
+        subject: WriterName,
         arms: &'a [EnumMatchArm<Body>],
         mut body: impl FnMut(&mut Self, &'a Body) -> Doc<'a>,
         tail: &'static str,
@@ -220,51 +224,50 @@ impl TsTranspiler {
         } else {
             arena.hardline().append(arena.text(tail))
         };
-        let case_docs: Vec<_> = arms
-            .iter()
-            .map(|arm| {
-                let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
-                for (_, binder) in &arm.bindings {
-                    self.name_types
-                        .insert(Name::Binder(binder.var), binder.typ.clone());
-                }
-                let bindings_doc = if arm.bindings.is_empty() {
-                    arena.nil()
-                } else {
-                    let destructure_docs: Vec<_> = arm
-                        .bindings
-                        .iter()
-                        .map(|(field, binder)| {
-                            arena
-                                .text(field.as_str())
-                                .append(arena.text(": "))
-                                .append(arena.text(name_ident(Name::Binder(binder.var))))
-                        })
-                        .collect();
-                    arena
-                        .text("const { ")
-                        .append(arena.intersperse(destructure_docs, arena.text(", ")))
-                        .append(arena.text(" } = "))
-                        .append(arena.text(subject_name.clone()))
-                        .append(arena.text(";"))
-                        .append(arena.hardline())
-                };
-                arena
-                    .text("case \"")
-                    .append(arena.text(variant_name.as_str()))
-                    .append(arena.text("\": {"))
-                    .append(
+        let case_docs: Vec<_> =
+            arms.iter()
+                .map(|arm| {
+                    let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
+                    for (_, binder) in &arm.bindings {
+                        self.name_types
+                            .insert(WriterName::Binder(binder.var), binder.typ.clone());
+                    }
+                    let bindings_doc = if arm.bindings.is_empty() {
+                        arena.nil()
+                    } else {
+                        let destructure_docs: Vec<_> =
+                            arm.bindings
+                                .iter()
+                                .map(|(field, binder)| {
+                                    arena.text(field.as_str()).append(arena.text(": ")).append(
+                                        arena.text(name_ident(WriterName::Binder(binder.var))),
+                                    )
+                                })
+                                .collect();
                         arena
-                            .hardline()
-                            .append(bindings_doc)
-                            .append(body(self, &arm.body))
-                            .append(tail_doc.clone())
-                            .nest(4),
-                    )
-                    .append(arena.hardline())
-                    .append(arena.text("}"))
-            })
-            .collect();
+                            .text("const { ")
+                            .append(arena.intersperse(destructure_docs, arena.text(", ")))
+                            .append(arena.text(" } = "))
+                            .append(arena.text(subject_name.clone()))
+                            .append(arena.text(";"))
+                            .append(arena.hardline())
+                    };
+                    arena
+                        .text("case \"")
+                        .append(arena.text(variant_name.as_str()))
+                        .append(arena.text("\": {"))
+                        .append(
+                            arena
+                                .hardline()
+                                .append(bindings_doc)
+                                .append(body(self, &arm.body))
+                                .append(tail_doc.clone())
+                                .nest(4),
+                        )
+                        .append(arena.hardline())
+                        .append(arena.text("}"))
+                })
+                .collect();
         subject_binding
             .append(arena.text("switch ("))
             .append(arena.text(subject_name))
@@ -284,7 +287,7 @@ impl TsTranspiler {
     fn transpile_option_cases<'a, Body>(
         &mut self,
         arena: &'a Arena<'a>,
-        subject: Name,
+        subject: WriterName,
         some_arm_binding: Option<&'a IrBinder>,
         some_arm_body: &'a Body,
         none_arm_body: &'a Body,
@@ -301,10 +304,10 @@ impl TsTranspiler {
         let binding_doc = match some_arm_binding {
             Some(binder) => {
                 self.name_types
-                    .insert(Name::Binder(binder.var), binder.typ.clone());
+                    .insert(WriterName::Binder(binder.var), binder.typ.clone());
                 arena
                     .text("const ")
-                    .append(arena.text(name_ident(Name::Binder(binder.var))))
+                    .append(arena.text(name_ident(WriterName::Binder(binder.var))))
                     .append(arena.text(" = "))
                     .append(arena.text(subject_name.clone()))
                     .append(arena.text(".value;"))
@@ -737,7 +740,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [Name],
+        args: &'a [WriterName],
     ) -> Doc<'a> {
         let base = arena
             .nil()
@@ -760,9 +763,9 @@ impl Transpiler for TsTranspiler {
             .iter()
             .map(|param| {
                 self.name_types
-                    .insert(Name::Binder(param.var), param.typ.clone());
+                    .insert(WriterName::Binder(param.var), param.typ.clone());
                 arena
-                    .text(name_ident(Name::Binder(param.var)))
+                    .text(name_ident(WriterName::Binder(param.var)))
                     .append(arena.text(": "))
                     .append(self.transpile_type(arena, &param.typ))
             })
@@ -812,7 +815,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [Name],
+        args: &'a [WriterName],
     ) -> Doc<'a> {
         let base = arena
             .nil()
@@ -832,7 +835,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: Name,
+        name: WriterName,
     ) -> Doc<'a> {
         self.needs_escape_html = true;
         arena
@@ -842,7 +845,11 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(");"))
     }
 
-    fn transpile_write_html_statement<'a>(&mut self, arena: &'a Arena<'a>, name: Name) -> Doc<'a> {
+    fn transpile_write_html_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        name: WriterName,
+    ) -> Doc<'a> {
         arena
             .nil()
             .append(arena.text("output += "))
@@ -854,19 +861,19 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrBinder>,
-        source: &'a ForSource,
-        body: &'a [Stmt],
+        source: &'a WriterForSource,
+        body: &'a [WriterStmt],
     ) -> Doc<'a> {
         let var_name = match var {
             Some(binder) => {
                 self.name_types
-                    .insert(Name::Binder(binder.var), binder.typ.clone());
-                name_ident(Name::Binder(binder.var))
+                    .insert(WriterName::Binder(binder.var), binder.typ.clone());
+                name_ident(WriterName::Binder(binder.var))
             }
             None => "_".to_string(),
         };
         match source {
-            ForSource::Array(array) => arena
+            WriterForSource::Array(array) => arena
                 .text("for (const ")
                 .append(arena.text(var_name))
                 .append(arena.text(" of "))
@@ -874,7 +881,7 @@ impl Transpiler for TsTranspiler {
                 .append(arena.text(") {"))
                 .append(self.transpile_block(arena, body))
                 .append(arena.text("}")),
-            ForSource::RangeInclusive { start, end } => arena
+            WriterForSource::RangeInclusive { start, end } => arena
                 .text("for (let ")
                 .append(arena.text(var_name.clone()))
                 .append(arena.text(" = "))
@@ -891,14 +898,18 @@ impl Transpiler for TsTranspiler {
         }
     }
 
-    fn transpile_let_statement<'a>(&mut self, arena: &'a Arena<'a>, let_: &'a Let) -> Doc<'a> {
+    fn transpile_let_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        let_: &'a WriterLet,
+    ) -> Doc<'a> {
         self.name_types
-            .insert(Name::Binding(let_.name), let_.typ.clone());
+            .insert(WriterName::Binding(let_.name), let_.typ.clone());
         let binding_type = self.transpile_type(arena, &let_.typ);
-        let value = self.transpile_value(arena, &let_.value, &let_.typ);
+        let value = self.transpile_op(arena, &let_.op, &let_.typ);
         arena
             .text("const ")
-            .append(arena.text(name_ident(Name::Binding(let_.name))))
+            .append(arena.text(name_ident(WriterName::Binding(let_.name))))
             .append(arena.text(": "))
             .append(binding_type)
             .append(arena.text(" = "))
@@ -909,7 +920,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<Name, Vec<Stmt>>,
+        match_: &'a Match<WriterName, Vec<WriterStmt>>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -960,7 +971,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_statements<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        statements: &'a [Stmt],
+        statements: &'a [WriterStmt],
     ) -> Doc<'a> {
         let mut docs: Vec<Doc<'a>> = Vec::new();
         for stmt in statements {
@@ -973,7 +984,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_value_block<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        block: &'a ValueBlock,
+        block: &'a WriterValueBlock,
     ) -> Doc<'a> {
         let mut docs: Vec<Doc<'a>> = Vec::new();
         for let_ in &block.lets {
@@ -991,7 +1002,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        record: Name,
+        record: WriterName,
         field: &'a FieldName,
     ) -> Doc<'a> {
         arena
@@ -1007,7 +1018,7 @@ impl Transpiler for TsTranspiler {
 
     /// The fragment body gets its own `output` buffer, so it is built by an
     /// immediately invoked arrow function rather than inline.
-    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [Stmt]) -> Doc<'a> {
+    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStmt]) -> Doc<'a> {
         self.needs_html = true;
         arena
             .text("(() => {")
@@ -1056,7 +1067,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [Name],
+        elements: &'a [WriterName],
         _elem_type: &'a Type,
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
@@ -1073,7 +1084,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_tuple_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [Name],
+        elements: &'a [WriterName],
         _element_types: &'a [Type],
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
@@ -1089,7 +1100,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_tuple_index<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        tuple: Name,
+        tuple: WriterName,
         index: usize,
     ) -> Doc<'a> {
         arena
@@ -1103,7 +1114,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, Name)],
+        fields: &'a [(FieldName, WriterName)],
     ) -> Doc<'a> {
         let base = arena
             .text("new ")
@@ -1117,7 +1128,7 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, Name)],
+        fields: &'a [(FieldName, WriterName)],
     ) -> Doc<'a> {
         // Call the namespace constructor function: Color.Red() or Result.Ok(value)
         let base = arena
@@ -1131,8 +1142,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1143,8 +1154,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1155,8 +1166,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1167,8 +1178,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1179,8 +1190,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1191,8 +1202,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1203,8 +1214,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1215,8 +1226,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1224,22 +1235,30 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(name_ident(right)))
     }
 
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a> {
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a> {
         arena.text("!").append(arena.text(name_ident(operand)))
     }
 
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a> {
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a> {
         arena
             .text("-")
             .append(arena.text(name_ident(operand)))
             .append(arena.text(" | 0"))
     }
 
-    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a> {
+    fn transpile_float_negation<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        operand: WriterName,
+    ) -> Doc<'a> {
         arena.text("-").append(arena.text(name_ident(operand)))
     }
 
-    fn transpile_string_concat<'a>(&mut self, arena: &'a Arena<'a>, parts: &'a [Name]) -> Doc<'a> {
+    fn transpile_string_concat<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        parts: &'a [WriterName],
+    ) -> Doc<'a> {
         if parts.is_empty() {
             return arena.text("\"\"");
         }
@@ -1249,7 +1268,12 @@ impl Transpiler for TsTranspiler {
         )
     }
 
-    fn transpile_int_add<'a>(&mut self, arena: &'a Arena<'a>, left: Name, right: Name) -> Doc<'a> {
+    fn transpile_int_add<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: WriterName,
+        right: WriterName,
+    ) -> Doc<'a> {
         arena
             .nil()
             .append(arena.text("("))
@@ -1262,8 +1286,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1274,8 +1298,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1289,8 +1313,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1301,8 +1325,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1316,8 +1340,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1328,7 +1352,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<Name>,
+        value: Option<WriterName>,
         inner_type: &'a Type,
     ) -> Doc<'a> {
         self.needs_option = true;
@@ -1353,7 +1377,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<Name, ValueBlock>,
+        match_: &'a Match<WriterName, WriterValueBlock>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1421,41 +1445,53 @@ impl Transpiler for TsTranspiler {
         }
     }
 
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: Name) -> Doc<'a> {
+    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a> {
         arena.text(name_ident(array)).append(arena.text(".length"))
     }
 
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: Name) -> Doc<'a> {
+    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a> {
         arena
             .text(name_ident(array))
             .append(arena.text(".length === 0"))
     }
 
-    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: Name) -> Doc<'a> {
+    fn transpile_string_is_empty<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        string: WriterName,
+    ) -> Doc<'a> {
         arena
             .text(name_ident(string))
             .append(arena.text(".length === 0"))
     }
 
-    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: Name) -> Doc<'a> {
+    fn transpile_option_is_some<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        option: WriterName,
+    ) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".tag === \"Some\""))
     }
 
-    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: Name) -> Doc<'a> {
+    fn transpile_option_is_none<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        option: WriterName,
+    ) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".tag === \"None\""))
     }
 
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a> {
+    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
         arena
             .text(name_ident(value))
             .append(arena.text(".toString()"))
     }
 
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a> {
+    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
         self.needs_float_to_int = true;
         arena
             .text("floatToInt(")
@@ -1463,7 +1499,7 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(")"))
     }
 
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a> {
+    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
         // In JavaScript, all numbers are floats, so no conversion needed
         arena.text(name_ident(value))
     }

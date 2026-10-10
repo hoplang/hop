@@ -11,8 +11,8 @@ use crate::ir::flat_module::{
 use crate::ir::ir_match::{EnumMatchArm, Match};
 use crate::ir::var_id::VarId;
 use crate::ir::writer_module::{
-    ForSource, Let, Name, Stmt, Value, ValueBlock, WriterFunctionBody, WriterFunctionDeclaration,
-    WriterModule, WriterPageDeclaration,
+    WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
+    WriterName, WriterOp, WriterPageDeclaration, WriterStmt, WriterValueBlock,
 };
 
 /// Lower a Flat module to the Writer.
@@ -44,11 +44,11 @@ fn lower_page(decl: FlatPageDeclaration, shell: Option<&DocumentShell>) -> Write
     let mut body = Vec::new();
     match shell {
         Some(shell) => {
-            body.push(Stmt::Write(shell.before_head.to_string()));
+            body.push(WriterStmt::Write(shell.before_head.to_string()));
             lower_body(decl.head, &mut body);
-            body.push(Stmt::Write(shell.after_head.clone()));
+            body.push(WriterStmt::Write(shell.after_head.clone()));
             lower_body(decl.body, &mut body);
-            body.push(Stmt::Write(shell.after_body.to_string()));
+            body.push(WriterStmt::Write(shell.after_body.to_string()));
         }
         None => {
             lower_body(decl.head, &mut body);
@@ -88,7 +88,7 @@ fn lower_function(decl: FlatFunctionDeclaration) -> WriterFunctionDeclaration {
 }
 
 /// Lower an Html block in output position.
-fn lower_body(block: FlatBlock, out: &mut Vec<Stmt>) {
+fn lower_body(block: FlatBlock, out: &mut Vec<WriterStmt>) {
     let mut lowerer = Lowerer::new(&block, true);
     lowerer.lower_output_block(block, out);
     debug_assert!(
@@ -103,14 +103,14 @@ const WRITE_LIMIT: usize = 60;
 
 /// Append a constant write, merged into the write before it while the
 /// combined length stays below the limit.
-fn write(out: &mut Vec<Stmt>, content: &str) {
-    if let Some(Stmt::Write(previous)) = out.last_mut() {
+fn write(out: &mut Vec<WriterStmt>, content: &str) {
+    if let Some(WriterStmt::Write(previous)) = out.last_mut() {
         if previous.len() + content.len() < WRITE_LIMIT {
             previous.push_str(content);
             return;
         }
     }
-    out.push(Stmt::Write(content.to_string()));
+    out.push(WriterStmt::Write(content.to_string()));
 }
 
 /// What reads a name, for a name read once.
@@ -180,10 +180,10 @@ impl Lowerer {
     }
 
     /// The Writer name for reading a binding: its binder when it is a Read.
-    fn name(&self, name: VarId) -> Name {
+    fn name(&self, name: VarId) -> WriterName {
         match self.reads.get(&name) {
-            Some(binder) => Name::Binder(*binder),
-            None => Name::Binding(name),
+            Some(binder) => WriterName::Binder(*binder),
+            None => WriterName::Binding(name),
         }
     }
 
@@ -316,15 +316,15 @@ impl Lowerer {
         }
     }
 
-    fn lower_output_block(&mut self, block: FlatBlock, out: &mut Vec<Stmt>) {
+    fn lower_output_block(&mut self, block: FlatBlock, out: &mut Vec<WriterStmt>) {
         let lets = self.lower_bindings(block.bindings);
-        out.extend(lets.into_iter().map(Stmt::Let));
+        out.extend(lets.into_iter().map(WriterStmt::Let));
         self.lower_html(block.result, out);
     }
 
-    fn lower_value_block(&mut self, block: FlatBlock) -> ValueBlock {
+    fn lower_value_block(&mut self, block: FlatBlock) -> WriterValueBlock {
         let lets = self.lower_bindings(block.bindings);
-        ValueBlock {
+        WriterValueBlock {
             lets,
             result: self.name(block.result),
         }
@@ -332,7 +332,7 @@ impl Lowerer {
 
     /// Lower the bindings to lets, folding the Reads into their readers and
     /// holding back the ones written or folded where they are read.
-    fn lower_bindings(&mut self, bindings: Vec<FlatBinding>) -> Vec<Let> {
+    fn lower_bindings(&mut self, bindings: Vec<FlatBinding>) -> Vec<WriterLet> {
         let mut lets = Vec::new();
         for binding in bindings {
             if let FlatOp::Read(binder) = binding.op {
@@ -344,7 +344,7 @@ impl Lowerer {
                 continue;
             }
             let FlatBinding { name, typ, op } = binding;
-            let value = match op {
+            let op = match op {
                 op @ (FlatOp::HtmlText(_)
                 | FlatOp::HtmlEscape(_)
                 | FlatOp::HtmlElement { .. }
@@ -352,14 +352,14 @@ impl Lowerer {
                 | FlatOp::HtmlFor { .. }) => {
                     let mut body = Vec::new();
                     self.lower_html_op(op, &mut body);
-                    Value::HtmlLiteral(body)
+                    WriterOp::HtmlLiteral(body)
                 }
                 op @ (FlatOp::Match(_) | FlatOp::Call { .. }) if matches!(typ, Type::Html) => {
                     let mut body = Vec::new();
                     self.lower_html_op(op, &mut body);
-                    Value::HtmlLiteral(body)
+                    WriterOp::HtmlLiteral(body)
                 }
-                FlatOp::Match(match_) => Value::Match(match match_ {
+                FlatOp::Match(match_) => WriterOp::Match(match match_ {
                     Match::Bool {
                         subject,
                         true_body,
@@ -393,35 +393,35 @@ impl Lowerer {
                     },
                 }),
                 FlatOp::Read(_) => unreachable!("a Read is folded into its readers"),
-                FlatOp::Call { function, args } => Value::Call {
+                FlatOp::Call { function, args } => WriterOp::Call {
                     function,
                     args: args.into_iter().map(|arg| self.name(arg)).collect(),
                 },
-                FlatOp::StringLiteral(value) => Value::StringLiteral(value),
-                FlatOp::IntLiteral(value) => Value::IntLiteral(value),
-                FlatOp::FloatLiteral(value) => Value::FloatLiteral(value),
-                FlatOp::BoolLiteral(value) => Value::BoolLiteral(value),
-                FlatOp::FieldAccess { record, field } => Value::FieldAccess {
+                FlatOp::StringLiteral(value) => WriterOp::StringLiteral(value),
+                FlatOp::IntLiteral(value) => WriterOp::IntLiteral(value),
+                FlatOp::FloatLiteral(value) => WriterOp::FloatLiteral(value),
+                FlatOp::BoolLiteral(value) => WriterOp::BoolLiteral(value),
+                FlatOp::FieldAccess { record, field } => WriterOp::FieldAccess {
                     record: self.name(record),
                     field,
                 },
-                FlatOp::TupleIndex { tuple, index } => Value::TupleIndex {
+                FlatOp::TupleIndex { tuple, index } => WriterOp::TupleIndex {
                     tuple: self.name(tuple),
                     index,
                 },
-                FlatOp::Array(elements) => Value::Array(
+                FlatOp::Array(elements) => WriterOp::Array(
                     elements
                         .into_iter()
                         .map(|element| self.name(element))
                         .collect(),
                 ),
-                FlatOp::Tuple(elements) => Value::Tuple(
+                FlatOp::Tuple(elements) => WriterOp::Tuple(
                     elements
                         .into_iter()
                         .map(|element| self.name(element))
                         .collect(),
                 ),
-                FlatOp::Record { fields } => Value::Record {
+                FlatOp::Record { fields } => WriterOp::Record {
                     fields: fields
                         .into_iter()
                         .map(|(field, value)| (field, self.name(value)))
@@ -430,45 +430,45 @@ impl Lowerer {
                 FlatOp::Enum {
                     variant_name,
                     fields,
-                } => Value::Enum {
+                } => WriterOp::Enum {
                     variant_name,
                     fields: fields
                         .into_iter()
                         .map(|(field, value)| (field, self.name(value)))
                         .collect(),
                 },
-                FlatOp::Option(value) => Value::Option(value.map(|value| self.name(value))),
+                FlatOp::Option(value) => WriterOp::Option(value.map(|value| self.name(value))),
                 FlatOp::StringConcat(parts) => {
-                    Value::StringConcat(parts.into_iter().map(|part| self.name(part)).collect())
+                    WriterOp::StringConcat(parts.into_iter().map(|part| self.name(part)).collect())
                 }
-                FlatOp::Binary { op, left, right } => Value::Binary {
+                FlatOp::Binary { op, left, right } => WriterOp::Binary {
                     op,
                     left: self.name(left),
                     right: self.name(right),
                 },
-                FlatOp::Unary { op, operand } => Value::Unary {
+                FlatOp::Unary { op, operand } => WriterOp::Unary {
                     op,
                     operand: self.name(operand),
                 },
             };
-            lets.push(Let { name, typ, value });
+            lets.push(WriterLet { name, typ, op });
         }
         lets
     }
 
     /// Write an Html name: the writes of its op when it was held back, the
     /// value it was bound to otherwise.
-    fn lower_html(&mut self, name: VarId, out: &mut Vec<Stmt>) {
+    fn lower_html(&mut self, name: VarId, out: &mut Vec<WriterStmt>) {
         match self.pending.remove(&name) {
             Some(op) => self.lower_html_op(op, out),
-            None => out.push(Stmt::WriteHtml(self.name(name))),
+            None => out.push(WriterStmt::WriteHtml(self.name(name))),
         }
     }
 
     /// Write a String name escaped. A constant held back is escaped now,
     /// and a concat held back part by part, so only what varies is escaped
     /// when the page renders.
-    fn lower_escaped(&mut self, name: VarId, out: &mut Vec<Stmt>) {
+    fn lower_escaped(&mut self, name: VarId, out: &mut Vec<WriterStmt>) {
         match self.pending.remove(&name) {
             Some(FlatOp::StringLiteral(value)) => {
                 let mut content = String::new();
@@ -481,12 +481,12 @@ impl Lowerer {
                 }
             }
             Some(op) => unreachable!("a held back string is a constant or a concat, not {op:?}"),
-            None => out.push(Stmt::WriteString(self.name(name))),
+            None => out.push(WriterStmt::WriteString(self.name(name))),
         }
     }
 
     /// Write the Html an op produces.
-    fn lower_html_op(&mut self, op: FlatOp, out: &mut Vec<Stmt>) {
+    fn lower_html_op(&mut self, op: FlatOp, out: &mut Vec<WriterStmt>) {
         match op {
             FlatOp::HtmlText(content) => write(out, content.as_str()),
 
@@ -523,7 +523,7 @@ impl Lowerer {
                                 None => {
                                     let mut true_body = Vec::new();
                                     write(&mut true_body, &format!(" {}", name.as_str()));
-                                    unit.push(Stmt::Match(Match::Bool {
+                                    unit.push(WriterStmt::Match(Match::Bool {
                                         subject: Box::new(self.name(present)),
                                         true_body: Box::new(true_body),
                                         false_body: Box::new(Vec::new()),
@@ -544,7 +544,7 @@ impl Lowerer {
                 }
                 for statement in unit {
                     match statement {
-                        Stmt::Write(content) => write(out, &content),
+                        WriterStmt::Write(content) => write(out, &content),
                         statement => out.push(statement),
                     }
                 }
@@ -558,22 +558,24 @@ impl Lowerer {
 
             FlatOp::HtmlFor { var, source, body } => {
                 let source = match source {
-                    FlatForSource::Array(array) => ForSource::Array(self.name(array)),
-                    FlatForSource::RangeInclusive { start, end } => ForSource::RangeInclusive {
-                        start: self.name(start),
-                        end: self.name(end),
-                    },
+                    FlatForSource::Array(array) => WriterForSource::Array(self.name(array)),
+                    FlatForSource::RangeInclusive { start, end } => {
+                        WriterForSource::RangeInclusive {
+                            start: self.name(start),
+                            end: self.name(end),
+                        }
+                    }
                 };
                 let mut statements = Vec::new();
                 self.lower_output_block(body, &mut statements);
-                out.push(Stmt::For {
+                out.push(WriterStmt::For {
                     var,
                     source,
                     body: statements,
                 });
             }
 
-            FlatOp::Match(match_) => out.push(Stmt::Match(match match_ {
+            FlatOp::Match(match_) => out.push(WriterStmt::Match(match match_ {
                 Match::Bool {
                     subject,
                     true_body,
@@ -623,7 +625,7 @@ impl Lowerer {
                 },
             })),
 
-            FlatOp::Call { function, args } => out.push(Stmt::WriteFunction {
+            FlatOp::Call { function, args } => out.push(WriterStmt::WriteFunction {
                 function,
                 args: args.into_iter().map(|arg| self.name(arg)).collect(),
             }),
@@ -648,7 +650,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     /// The type of a name in scope.
-    fn type_of(names: &[(Name, Type)], name: Name) -> &Type {
+    fn type_of(names: &[(WriterName, Type)], name: WriterName) -> &Type {
         let Some((_, typ)) = names.iter().find(|(bound, _)| *bound == name) else {
             panic!("{name} is not in scope");
         };
@@ -660,32 +662,32 @@ mod tests {
     /// with the names it reads and with its own let, and that a loop
     /// variable or option binding has the type of the elements of its
     /// source or subject.
-    fn check_stmts(stmts: &[Stmt], names: &mut Vec<(Name, Type)>) {
+    fn check_stmts(stmts: &[WriterStmt], names: &mut Vec<(WriterName, Type)>) {
         let names_len = names.len();
         for stmt in stmts {
             let scope_len = names.len();
             match stmt {
-                Stmt::Let(let_) => {
-                    if let Some(expected) = check_value(&let_.value, names) {
+                WriterStmt::Let(let_) => {
+                    if let Some(expected) = check_op(&let_.op, names) {
                         assert_eq!(let_.typ, expected, "{} has the wrong type", let_.name);
                     }
-                    names.push((Name::Binding(let_.name), let_.typ.clone()));
+                    names.push((WriterName::Binding(let_.name), let_.typ.clone()));
                 }
-                Stmt::Write(_) => {}
-                Stmt::WriteString(name) => assert_eq!(type_of(names, *name), &Type::String),
-                Stmt::WriteHtml(name) => assert_eq!(type_of(names, *name), &Type::Html),
-                Stmt::WriteFunction { args, .. } => {
+                WriterStmt::Write(_) => {}
+                WriterStmt::WriteString(name) => assert_eq!(type_of(names, *name), &Type::String),
+                WriterStmt::WriteHtml(name) => assert_eq!(type_of(names, *name), &Type::Html),
+                WriterStmt::WriteFunction { args, .. } => {
                     for arg in args {
                         type_of(names, *arg);
                     }
                 }
-                Stmt::For { var, source, body } => {
+                WriterStmt::For { var, source, body } => {
                     let element_type = match source {
-                        ForSource::Array(array) => match type_of(names, *array) {
+                        WriterForSource::Array(array) => match type_of(names, *array) {
                             Type::Array(element_type) => (**element_type).clone(),
                             typ => panic!("a loop over {array} of type {typ}"),
                         },
-                        ForSource::RangeInclusive { start, end } => {
+                        WriterForSource::RangeInclusive { start, end } => {
                             assert_eq!(type_of(names, *start), &Type::Int);
                             assert_eq!(type_of(names, *end), &Type::Int);
                             Type::Int
@@ -697,12 +699,12 @@ mod tests {
                             "{} has the wrong type",
                             binder.var
                         );
-                        names.push((Name::Binder(binder.var), binder.typ.clone()));
+                        names.push((WriterName::Binder(binder.var), binder.typ.clone()));
                     }
                     check_stmts(body, names);
                     names.truncate(scope_len);
                 }
-                Stmt::Match(Match::Bool {
+                WriterStmt::Match(Match::Bool {
                     subject,
                     true_body,
                     false_body,
@@ -711,7 +713,7 @@ mod tests {
                     check_stmts(true_body, names);
                     check_stmts(false_body, names);
                 }
-                Stmt::Match(Match::Option {
+                WriterStmt::Match(Match::Option {
                     subject,
                     some_arm_binding,
                     some_arm_body,
@@ -722,17 +724,17 @@ mod tests {
                     };
                     if let Some(binder) = some_arm_binding {
                         assert_eq!(binder.typ, *inner, "{} has the wrong type", binder.var);
-                        names.push((Name::Binder(binder.var), binder.typ.clone()));
+                        names.push((WriterName::Binder(binder.var), binder.typ.clone()));
                     }
                     check_stmts(some_arm_body, names);
                     names.truncate(scope_len);
                     check_stmts(none_arm_body, names);
                 }
-                Stmt::Match(Match::Enum { subject, arms }) => {
+                WriterStmt::Match(Match::Enum { subject, arms }) => {
                     type_of(names, **subject);
                     for arm in arms {
                         for (_, binder) in &arm.bindings {
-                            names.push((Name::Binder(binder.var), binder.typ.clone()));
+                            names.push((WriterName::Binder(binder.var), binder.typ.clone()));
                         }
                         check_stmts(&arm.body, names);
                         names.truncate(scope_len);
@@ -744,38 +746,38 @@ mod tests {
     }
 
     /// Checks the lets and returns the type of the result.
-    fn check_value_block(block: &ValueBlock, names: &mut Vec<(Name, Type)>) -> Type {
+    fn check_value_block(block: &WriterValueBlock, names: &mut Vec<(WriterName, Type)>) -> Type {
         let names_len = names.len();
         for let_ in &block.lets {
-            if let Some(expected) = check_value(&let_.value, names) {
+            if let Some(expected) = check_op(&let_.op, names) {
                 assert_eq!(let_.typ, expected, "{} has the wrong type", let_.name);
             }
-            names.push((Name::Binding(let_.name), let_.typ.clone()));
+            names.push((WriterName::Binding(let_.name), let_.typ.clone()));
         }
         let result = type_of(names, block.result).clone();
         names.truncate(names_len);
         result
     }
 
-    /// Checks the value and returns the type it must have, when the value
+    /// Checks the op and returns the type it must have, when the op
     /// determines it.
-    fn check_value(value: &Value, names: &mut Vec<(Name, Type)>) -> Option<Type> {
+    fn check_op(op: &WriterOp, names: &mut Vec<(WriterName, Type)>) -> Option<Type> {
         let names_len = names.len();
-        value.for_each_operand(&mut |operand| {
+        op.for_each_operand(&mut |operand| {
             type_of(names, operand);
         });
-        match value {
-            Value::Binary {
+        match op {
+            WriterOp::Binary {
                 op: IrBinaryOp::NumericAdd(operand_types),
                 left,
                 right,
             }
-            | Value::Binary {
+            | WriterOp::Binary {
                 op: IrBinaryOp::NumericSubtract(operand_types),
                 left,
                 right,
             }
-            | Value::Binary {
+            | WriterOp::Binary {
                 op: IrBinaryOp::NumericMultiply(operand_types),
                 left,
                 right,
@@ -788,7 +790,7 @@ mod tests {
                 assert_eq!(type_of(names, *right), &typ);
                 Some(typ)
             }
-            Value::Unary {
+            WriterOp::Unary {
                 op: IrUnaryOp::NumericNegation(operand_type),
                 operand,
             } => {
@@ -799,7 +801,7 @@ mod tests {
                 assert_eq!(type_of(names, *operand), &typ);
                 Some(typ)
             }
-            Value::Binary {
+            WriterOp::Binary {
                 op: IrBinaryOp::Equals(operand_types),
                 left,
                 right,
@@ -814,12 +816,12 @@ mod tests {
                 assert_eq!(type_of(names, *right), &typ);
                 Some(Type::Bool)
             }
-            Value::Binary {
+            WriterOp::Binary {
                 op: IrBinaryOp::LessThan(operand_types),
                 left,
                 right,
             }
-            | Value::Binary {
+            | WriterOp::Binary {
                 op: IrBinaryOp::LessThanOrEqual(operand_types),
                 left,
                 right,
@@ -832,11 +834,11 @@ mod tests {
                 assert_eq!(type_of(names, *right), &typ);
                 Some(Type::Bool)
             }
-            Value::HtmlLiteral(body) => {
+            WriterOp::HtmlLiteral(body) => {
                 check_stmts(body, names);
                 Some(Type::Html)
             }
-            Value::Match(Match::Bool {
+            WriterOp::Match(Match::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -847,7 +849,7 @@ mod tests {
                 assert_eq!(true_type, false_type);
                 Some(true_type)
             }
-            Value::Match(Match::Option {
+            WriterOp::Match(Match::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -858,7 +860,7 @@ mod tests {
                 };
                 if let Some(binder) = some_arm_binding {
                     assert_eq!(binder.typ, *inner, "{} has the wrong type", binder.var);
-                    names.push((Name::Binder(binder.var), binder.typ.clone()));
+                    names.push((WriterName::Binder(binder.var), binder.typ.clone()));
                 }
                 let some_type = check_value_block(some_arm_body, names);
                 names.truncate(names_len);
@@ -866,11 +868,11 @@ mod tests {
                 assert_eq!(some_type, none_type);
                 Some(some_type)
             }
-            Value::Match(Match::Enum { arms, .. }) => {
+            WriterOp::Match(Match::Enum { arms, .. }) => {
                 let mut arm_type = None;
                 for arm in arms {
                     for (_, binder) in &arm.bindings {
-                        names.push((Name::Binder(binder.var), binder.typ.clone()));
+                        names.push((WriterName::Binder(binder.var), binder.typ.clone()));
                     }
                     let typ = check_value_block(&arm.body, names);
                     names.truncate(names_len);
@@ -891,18 +893,18 @@ mod tests {
             let (module, _) = random_module(u);
             let module = flat_to_writer(optimize_flat(pure_to_flat(module)), None);
             for page in &module.pages {
-                let mut names: Vec<(Name, Type)> = page
+                let mut names: Vec<(WriterName, Type)> = page
                     .parameters
                     .iter()
-                    .map(|param| (Name::Binder(param.var), param.typ.clone()))
+                    .map(|param| (WriterName::Binder(param.var), param.typ.clone()))
                     .collect();
                 check_stmts(&page.body, &mut names);
             }
             for function in &module.functions {
-                let mut names: Vec<(Name, Type)> = function
+                let mut names: Vec<(WriterName, Type)> = function
                     .parameters
                     .iter()
-                    .map(|param| (Name::Binder(param.var), param.typ.clone()))
+                    .map(|param| (WriterName::Binder(param.var), param.typ.clone()))
                     .collect();
                 match &function.body {
                     WriterFunctionBody::Writes(statements) => {

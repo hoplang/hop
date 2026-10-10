@@ -10,8 +10,8 @@ use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::writer_module::{
-    ForSource, Let, Name, Stmt, Value, ValueBlock, WriterFunctionBody, WriterFunctionDeclaration,
-    WriterModule, WriterPageDeclaration,
+    WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
+    WriterName, WriterOp, WriterPageDeclaration, WriterStmt, WriterValueBlock,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -22,10 +22,10 @@ use crate::symbols::type_name::TypeName;
 /// Names are unique across the module, a let's as `v_` and a binder's as
 /// `b_`, so no hop identifier can shadow another, and no name can collide
 /// with a keyword or with the `output` buffer.
-fn name_ident(name: Name) -> String {
+fn name_ident(name: WriterName) -> String {
     match name {
-        Name::Binding(var) => format!("v_{}", var.index()),
-        Name::Binder(binder) => format!("b_{}", binder.index()),
+        WriterName::Binding(var) => format!("v_{}", var.index()),
+        WriterName::Binder(binder) => format!("b_{}", binder.index()),
     }
 }
 
@@ -71,7 +71,7 @@ pub struct RustTranspiler {
     registry: TypeRegistry,
     /// What the binding for every name holds, and the name's type. Every
     /// parameter, let and binder inserts its entry before anything reads it.
-    names: HashMap<Name, (Binding, Type)>,
+    names: HashMap<WriterName, (Binding, Type)>,
 }
 
 impl RustTranspiler {
@@ -107,44 +107,44 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
-    fn name_binding(&self, name: Name) -> Binding {
+    fn name_binding(&self, name: WriterName) -> Binding {
         self.names
             .get(&name)
             .map(|(binding, _)| *binding)
             .unwrap_or_else(|| unreachable!("every name records a binding, and {name} has none"))
     }
 
-    fn name_type(&self, name: Name) -> &Type {
+    fn name_type(&self, name: WriterName) -> &Type {
         self.names
             .get(&name)
             .map(|(_, typ)| typ)
             .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
     }
 
-    /// What the value a let binds transpiles to.
-    fn natural_form(&self, value: &Value) -> NaturalForm {
-        match value {
-            Value::StringLiteral(_) => NaturalForm::Reference,
-            Value::FieldAccess { .. } | Value::TupleIndex { .. } => NaturalForm::Place,
-            Value::IntLiteral(_)
-            | Value::FloatLiteral(_)
-            | Value::BoolLiteral(_)
-            | Value::Array(_)
-            | Value::Tuple(_)
-            | Value::Record { .. }
-            | Value::Enum { .. }
-            | Value::Option(_)
-            | Value::StringConcat(_)
-            | Value::Binary { .. }
-            | Value::Unary { .. }
-            | Value::Call { .. }
-            | Value::HtmlLiteral(_)
-            | Value::Match(_) => NaturalForm::Temporary,
+    /// What the op a let binds transpiles to.
+    fn natural_form(&self, op: &WriterOp) -> NaturalForm {
+        match op {
+            WriterOp::StringLiteral(_) => NaturalForm::Reference,
+            WriterOp::FieldAccess { .. } | WriterOp::TupleIndex { .. } => NaturalForm::Place,
+            WriterOp::IntLiteral(_)
+            | WriterOp::FloatLiteral(_)
+            | WriterOp::BoolLiteral(_)
+            | WriterOp::Array(_)
+            | WriterOp::Tuple(_)
+            | WriterOp::Record { .. }
+            | WriterOp::Enum { .. }
+            | WriterOp::Option(_)
+            | WriterOp::StringConcat(_)
+            | WriterOp::Binary { .. }
+            | WriterOp::Unary { .. }
+            | WriterOp::Call { .. }
+            | WriterOp::HtmlLiteral(_)
+            | WriterOp::Match(_) => NaturalForm::Temporary,
         }
     }
 
     /// A name where a reference to its value is wanted.
-    fn name_ref<'a>(&self, arena: &'a Arena<'a>, name: Name) -> Doc<'a> {
+    fn name_ref<'a>(&self, arena: &'a Arena<'a>, name: WriterName) -> Doc<'a> {
         match self.name_binding(name) {
             Binding::Borrowed => arena.text(name_ident(name)),
             Binding::Owned => arena.text("&").append(arena.text(name_ident(name))),
@@ -162,7 +162,7 @@ impl RustTranspiler {
     /// A dereference binds tighter than any operator, so it needs no
     /// parentheses. Receivers and field reads take the binding itself, since
     /// auto-dereferencing sees through references and `Box` alike.
-    fn name_place<'a>(&self, arena: &'a Arena<'a>, name: Name) -> Doc<'a> {
+    fn name_place<'a>(&self, arena: &'a Arena<'a>, name: WriterName) -> Doc<'a> {
         match self.name_binding(name) {
             Binding::Borrowed if Self::is_scalar(self.name_type(name)) => {
                 arena.text("*").append(arena.text(name_ident(name)))
@@ -176,7 +176,7 @@ impl RustTranspiler {
     /// else clones, since the binding keeps holding the value. `Clone`
     /// resolves on a `Box` itself, handing back a `Box` where the value is
     /// wanted, so a boxed binding is dereferenced before the clone.
-    fn name_owned<'a>(&self, arena: &'a Arena<'a>, name: Name) -> Doc<'a> {
+    fn name_owned<'a>(&self, arena: &'a Arena<'a>, name: WriterName) -> Doc<'a> {
         let typ = self.name_type(name);
         if Self::is_scalar(typ) {
             return self.name_place(arena, name);
@@ -199,11 +199,11 @@ impl RustTranspiler {
     /// The expression a value block produces. A result the block itself
     /// bound and owns moves out, since nothing after the block can read it.
     /// Anything else is copied or cloned.
-    fn block_result<'a>(&self, arena: &'a Arena<'a>, block: &ValueBlock) -> Doc<'a> {
+    fn block_result<'a>(&self, arena: &'a Arena<'a>, block: &WriterValueBlock) -> Doc<'a> {
         let bound_here = block
             .lets
             .iter()
-            .any(|let_| Name::Binding(let_.name) == block.result);
+            .any(|let_| WriterName::Binding(let_.name) == block.result);
         if bound_here && self.name_binding(block.result) == Binding::Owned {
             arena.text(name_ident(block.result))
         } else {
@@ -303,7 +303,7 @@ impl RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         owner: &str,
-        value: Name,
+        value: WriterName,
     ) -> Doc<'a> {
         if self.field_type_is_boxed(self.name_type(value), owner) {
             arena
@@ -316,7 +316,7 @@ impl RustTranspiler {
     }
 
     /// Whether reads of `field` off `record` have to strip a `Box`.
-    fn field_access_is_boxed(&self, record: Name, field: &FieldName) -> bool {
+    fn field_access_is_boxed(&self, record: WriterName, field: &FieldName) -> bool {
         let Some(ResolvedType::Record { name, fields, .. }) =
             self.registry.resolve(self.name_type(record))
         else {
@@ -349,8 +349,10 @@ impl RustTranspiler {
             } else {
                 Binding::Borrowed
             };
-            self.names
-                .insert(Name::Binder(binder.var), (binding, binder.typ.clone()));
+            self.names.insert(
+                WriterName::Binder(binder.var),
+                (binding, binder.typ.clone()),
+            );
         }
         if bindings.is_empty() {
             // Check if this variant has fields by looking at the type
@@ -371,7 +373,7 @@ impl RustTranspiler {
                     format!(
                         "{}: {}",
                         Self::escape_ident(field.as_str()),
-                        name_ident(Name::Binder(binder.var))
+                        name_ident(WriterName::Binder(binder.var))
                     )
                 })
                 .collect();
@@ -396,7 +398,7 @@ impl RustTranspiler {
     }
 
     /// The variants of the enum a match subject holds.
-    fn subject_variants(&self, subject: Name) -> Vec<EnumVariant> {
+    fn subject_variants(&self, subject: WriterName) -> Vec<EnumVariant> {
         let Some(ResolvedType::Enum { variants, .. }) =
             self.registry.resolve(self.name_type(subject))
         else {
@@ -458,9 +460,9 @@ impl RustTranspiler {
                     Binding::Borrowed
                 };
                 self.names
-                    .insert(Name::Binder(param.var), (binding, param.typ.clone()));
+                    .insert(WriterName::Binder(param.var), (binding, param.typ.clone()));
                 arena
-                    .text(name_ident(Name::Binder(param.var)))
+                    .text(name_ident(WriterName::Binder(param.var)))
                     .append(arena.text(": "))
                     .append(self.transpile_param_type(arena, &param.typ))
             })
@@ -469,7 +471,11 @@ impl RustTranspiler {
 
     /// The arguments of a call: scalars by value, everything else by
     /// reference.
-    fn transpile_arguments<'a>(&mut self, arena: &'a Arena<'a>, args: &'a [Name]) -> Vec<Doc<'a>> {
+    fn transpile_arguments<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        args: &'a [WriterName],
+    ) -> Vec<Doc<'a>> {
         args.iter()
             .map(|arg| {
                 if Self::is_scalar(self.name_type(*arg)) {
@@ -516,7 +522,11 @@ impl RustTranspiler {
 
     /// A value block as the body of a match arm: the result alone when the
     /// block binds nothing, otherwise a block expression.
-    fn transpile_arm_block<'a>(&mut self, arena: &'a Arena<'a>, block: &'a ValueBlock) -> Doc<'a> {
+    fn transpile_arm_block<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        block: &'a WriterValueBlock,
+    ) -> Doc<'a> {
         if block.lets.is_empty() {
             return self.block_result(arena, block);
         }
@@ -757,13 +767,15 @@ impl Transpiler for RustTranspiler {
                     arena
                         .text(Self::escape_ident(param.name().as_str()))
                         .append(arena.text(": "))
-                        .append(arena.text(name_ident(Name::Binder(param.var))))
+                        .append(arena.text(name_ident(WriterName::Binder(param.var))))
                 }),
                 arena.text(", "),
             );
             for param in &page.parameters {
-                self.names
-                    .insert(Name::Binder(param.var), (Binding::Owned, param.typ.clone()));
+                self.names.insert(
+                    WriterName::Binder(param.var),
+                    (Binding::Owned, param.typ.clone()),
+                );
             }
             write_body = write_body
                 .append(arena.text("let "))
@@ -814,7 +826,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [Name],
+        args: &'a [WriterName],
     ) -> Doc<'a> {
         let mut all_args: Vec<Doc<'a>> = vec![arena.text("output")];
         all_args.extend(self.transpile_arguments(arena, args));
@@ -877,7 +889,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [Name],
+        args: &'a [WriterName],
     ) -> Doc<'a> {
         let all_args = self.transpile_arguments(arena, args);
         arena
@@ -897,7 +909,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: Name,
+        name: WriterName,
     ) -> Doc<'a> {
         self.needs_escape_html = true;
         arena
@@ -906,7 +918,11 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(", output);"))
     }
 
-    fn transpile_write_html_statement<'a>(&mut self, arena: &'a Arena<'a>, name: Name) -> Doc<'a> {
+    fn transpile_write_html_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        name: WriterName,
+    ) -> Doc<'a> {
         arena
             .text("output.push_str(&")
             .append(arena.text(name_ident(name)))
@@ -918,22 +934,22 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrBinder>,
-        source: &'a ForSource,
-        body: &'a [Stmt],
+        source: &'a WriterForSource,
+        body: &'a [WriterStmt],
     ) -> Doc<'a> {
         let var_name = match var {
-            Some(binder) => name_ident(Name::Binder(binder.var)),
+            Some(binder) => name_ident(WriterName::Binder(binder.var)),
             None => "_".to_string(),
         };
 
         let doc = match source {
-            ForSource::Array(array) => arena
+            WriterForSource::Array(array) => arena
                 .text("for ")
                 .append(arena.text(var_name))
                 .append(arena.text(" in "))
                 .append(arena.text(name_ident(*array)))
                 .append(arena.text(".iter() {")),
-            ForSource::RangeInclusive { start, end } => arena
+            WriterForSource::RangeInclusive { start, end } => arena
                 .text("for ")
                 .append(arena.text(var_name))
                 .append(arena.text(" in "))
@@ -945,11 +961,13 @@ impl Transpiler for RustTranspiler {
 
         if let Some(binder) = var {
             let binding = match source {
-                ForSource::Array(_) => Binding::Borrowed,
-                ForSource::RangeInclusive { .. } => Binding::Owned,
+                WriterForSource::Array(_) => Binding::Borrowed,
+                WriterForSource::RangeInclusive { .. } => Binding::Owned,
             };
-            self.names
-                .insert(Name::Binder(binder.var), (binding, binder.typ.clone()));
+            self.names.insert(
+                WriterName::Binder(binder.var),
+                (binding, binder.typ.clone()),
+            );
         }
         doc.append(
             arena
@@ -969,8 +987,12 @@ impl Transpiler for RustTranspiler {
     /// A borrowed binding is annotated with the type a borrowed parameter
     /// has, so a reference to a `String` or a `Vec` coerces to its unsized
     /// view and every borrowed binding of a type has the same Rust type.
-    fn transpile_let_statement<'a>(&mut self, arena: &'a Arena<'a>, let_: &'a Let) -> Doc<'a> {
-        let natural = self.natural_form(&let_.value);
+    fn transpile_let_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        let_: &'a WriterLet,
+    ) -> Doc<'a> {
+        let natural = self.natural_form(&let_.op);
         let scalar = Self::is_scalar(&let_.typ);
         let binding = match natural {
             NaturalForm::Temporary => Binding::Owned,
@@ -978,13 +1000,13 @@ impl Transpiler for RustTranspiler {
             NaturalForm::Reference | NaturalForm::Place => Binding::Borrowed,
         };
         self.names
-            .insert(Name::Binding(let_.name), (binding, let_.typ.clone()));
+            .insert(WriterName::Binding(let_.name), (binding, let_.typ.clone()));
         let typ = match binding {
             Binding::Owned => self.transpile_type(arena, &let_.typ),
             Binding::Borrowed => self.transpile_param_type(arena, &let_.typ),
             Binding::BorrowedBoxed => unreachable!("a let never binds through a Box"),
         };
-        let value = self.transpile_value(arena, &let_.value, &let_.typ);
+        let value = self.transpile_op(arena, &let_.op, &let_.typ);
         let value = match natural {
             NaturalForm::Temporary => value,
             NaturalForm::Reference if scalar => arena.text("*").append(value),
@@ -994,7 +1016,7 @@ impl Transpiler for RustTranspiler {
         };
         arena
             .text("let ")
-            .append(arena.text(name_ident(Name::Binding(let_.name))))
+            .append(arena.text(name_ident(WriterName::Binding(let_.name))))
             .append(arena.text(": "))
             .append(typ)
             .append(arena.text(" = "))
@@ -1005,7 +1027,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<Name, Vec<Stmt>>,
+        match_: &'a Match<WriterName, Vec<WriterStmt>>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1048,12 +1070,12 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(binder) => format!("Some({})", name_ident(Name::Binder(binder.var))),
+                    Some(binder) => format!("Some({})", name_ident(WriterName::Binder(binder.var))),
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
                     self.names.insert(
-                        Name::Binder(binder.var),
+                        WriterName::Binder(binder.var),
                         (Binding::Borrowed, binder.typ.clone()),
                     );
                 }
@@ -1135,7 +1157,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_statements<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        statements: &'a [Stmt],
+        statements: &'a [WriterStmt],
     ) -> Doc<'a> {
         let mut docs: Vec<Doc<'a>> = Vec::new();
         for stmt in statements {
@@ -1148,7 +1170,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_value_block<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        block: &'a ValueBlock,
+        block: &'a WriterValueBlock,
     ) -> Doc<'a> {
         let mut docs: Vec<Doc<'a>> = Vec::new();
         for let_ in &block.lets {
@@ -1228,7 +1250,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        record: Name,
+        record: WriterName,
         field: &'a FieldName,
     ) -> Doc<'a> {
         let boxed = self.field_access_is_boxed(record, field);
@@ -1253,7 +1275,7 @@ impl Transpiler for RustTranspiler {
 
     /// The fragment body renders into its own `output` buffer, so it is
     /// emitted as a block expression that shadows `output`.
-    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [Stmt]) -> Doc<'a> {
+    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStmt]) -> Doc<'a> {
         self.needs_html = true;
         arena
             .text("{")
@@ -1306,7 +1328,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [Name],
+        elements: &'a [WriterName],
         elem_type: &'a Type,
     ) -> Doc<'a> {
         if elements.is_empty() {
@@ -1329,7 +1351,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_tuple_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [Name],
+        elements: &'a [WriterName],
         _element_types: &'a [Type],
     ) -> Doc<'a> {
         let items: Vec<Doc<'a>> = elements
@@ -1350,7 +1372,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_tuple_index<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        tuple: Name,
+        tuple: WriterName,
         index: usize,
     ) -> Doc<'a> {
         arena
@@ -1362,8 +1384,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         // Strings compare by reference. The operands arrive as a mix of
         // `String`, `str` and `&str`, and `str` compares with neither `&str`
@@ -1376,8 +1398,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" == "))
@@ -1387,8 +1409,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" == "))
@@ -1398,8 +1420,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" == "))
@@ -1409,8 +1431,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" < "))
@@ -1420,8 +1442,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" < "))
@@ -1431,8 +1453,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" <= "))
@@ -1442,29 +1464,37 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" <= "))
             .append(self.name_place(arena, right))
     }
 
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a> {
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a> {
         arena.text("!").append(self.name_place(arena, operand))
     }
 
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a> {
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a> {
         arena
             .text(name_ident(operand))
             .append(arena.text(".wrapping_neg()"))
     }
 
-    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a> {
+    fn transpile_float_negation<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        operand: WriterName,
+    ) -> Doc<'a> {
         arena.text("-").append(self.name_place(arena, operand))
     }
 
-    fn transpile_string_concat<'a>(&mut self, arena: &'a Arena<'a>, parts: &'a [Name]) -> Doc<'a> {
+    fn transpile_string_concat<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        parts: &'a [WriterName],
+    ) -> Doc<'a> {
         if parts.is_empty() {
             return arena.text("String::new()");
         }
@@ -1490,7 +1520,12 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("}"))
     }
 
-    fn transpile_int_add<'a>(&mut self, arena: &'a Arena<'a>, left: Name, right: Name) -> Doc<'a> {
+    fn transpile_int_add<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: WriterName,
+        right: WriterName,
+    ) -> Doc<'a> {
         arena
             .text(name_ident(left))
             .append(arena.text(".wrapping_add("))
@@ -1501,8 +1536,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" + "))
@@ -1512,8 +1547,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1525,8 +1560,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" - "))
@@ -1536,8 +1571,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1549,8 +1584,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: Name,
-        right: Name,
+        left: WriterName,
+        right: WriterName,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" * "))
@@ -1561,7 +1596,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, Name)],
+        fields: &'a [(FieldName, WriterName)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             arena.text(record_name).append(arena.text(" {}"))
@@ -1589,7 +1624,7 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, Name)],
+        fields: &'a [(FieldName, WriterName)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             arena
@@ -1620,7 +1655,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<Name>,
+        value: Option<WriterName>,
         inner_type: &'a Type,
     ) -> Doc<'a> {
         match value {
@@ -1638,7 +1673,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<Name, ValueBlock>,
+        match_: &'a Match<WriterName, WriterValueBlock>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1677,12 +1712,12 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(binder) => format!("Some({})", name_ident(Name::Binder(binder.var))),
+                    Some(binder) => format!("Some({})", name_ident(WriterName::Binder(binder.var))),
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
                     self.names.insert(
-                        Name::Binder(binder.var),
+                        WriterName::Binder(binder.var),
                         (Binding::Borrowed, binder.typ.clone()),
                     );
                 }
@@ -1716,7 +1751,7 @@ impl Transpiler for RustTranspiler {
                 let subject_doc = self.name_ref(arena, **subject);
                 let arm_docs: Vec<Doc<'a>> = arms
                     .iter()
-                    .map(|arm: &'a EnumMatchArm<ValueBlock>| {
+                    .map(|arm: &'a EnumMatchArm<WriterValueBlock>| {
                         let pattern = self.enum_arm_pattern(&variants, &arm.pattern, &arm.bindings);
                         arena
                             .text(pattern)
@@ -1742,47 +1777,59 @@ impl Transpiler for RustTranspiler {
         }
     }
 
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: Name) -> Doc<'a> {
+    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a> {
         arena
             .text(name_ident(array))
             .append(arena.text(".len() as i32"))
     }
 
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: Name) -> Doc<'a> {
+    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a> {
         arena
             .text(name_ident(array))
             .append(arena.text(".is_empty()"))
     }
 
-    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: Name) -> Doc<'a> {
+    fn transpile_string_is_empty<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        string: WriterName,
+    ) -> Doc<'a> {
         arena
             .text(name_ident(string))
             .append(arena.text(".is_empty()"))
     }
 
-    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: Name) -> Doc<'a> {
+    fn transpile_option_is_some<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        option: WriterName,
+    ) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".is_some()"))
     }
 
-    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: Name) -> Doc<'a> {
+    fn transpile_option_is_none<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        option: WriterName,
+    ) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".is_none()"))
     }
 
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a> {
+    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
         arena
             .text(name_ident(value))
             .append(arena.text(".to_string()"))
     }
 
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a> {
+    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
         self.name_place(arena, value).append(arena.text(" as i32"))
     }
 
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a> {
+    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
         self.name_place(arena, value).append(arena.text(" as f64"))
     }
 }
