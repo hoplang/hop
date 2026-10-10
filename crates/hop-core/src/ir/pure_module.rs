@@ -3,11 +3,11 @@ use std::fmt;
 use crate::document::CheapString;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
 use crate::html::HtmlElementKind;
+use crate::ir::binder_id::BinderId;
+use crate::ir::binder_id::BinderIdCounter;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
-use crate::ir::var_id::VarId;
-use crate::ir::var_id::VarIdCounter;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -20,13 +20,13 @@ use super::ir_parameter::IrParameter;
 /// An expression-only, side-effect-free form of the IR.
 ///
 /// All IDs in the module are unique across the whole module. Each binder has
-/// a unique VarId, so two binders are never the same variable: shadowing is
+/// a unique BinderId, so two binders are never the same variable: shadowing is
 /// impossible and substitution is capture-free.
 #[derive(Debug, Clone)]
 pub struct PureModule {
     pub pages: Vec<PurePageDeclaration>,
     pub functions: Vec<PureFunctionDeclaration>,
-    pub var_ids: VarIdCounter,
+    pub binder_ids: BinderIdCounter,
 }
 
 /// A page declaration in Pure.
@@ -111,7 +111,7 @@ pub enum PureExpr {
     /// Reads the value bound by its binder.
     ///
     /// The `typ` field must match the binder's type.
-    VariableReference { value: VarId, typ: Type },
+    VariableReference { value: BinderId, typ: Type },
 
     /// A FieldAccess expression.
     ///

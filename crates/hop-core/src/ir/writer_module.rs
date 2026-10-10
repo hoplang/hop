@@ -4,7 +4,7 @@ use pretty::BoxDoc;
 
 use crate::document::CheapString;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
-use crate::ir::flat_module::FlatForSource;
+use crate::ir::binder_id::BinderId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
@@ -19,10 +19,10 @@ use super::ir_parameter::IrParameter;
 /// The form the backends consume. A body is a sequence of statements that
 /// write to the ambient buffer, with the values they need bound by lets
 /// along the way. A let is in scope for the rest of its block and for the
-/// blocks nested in that rest. Operands are names, as in the Flat IR, so a value
-/// never contains another value. Html is written rather than held, except
-/// where a value needs it, and then an HtmlLiteral renders it into a
-/// buffer of its own.
+/// blocks nested in that rest. Operands are names, of a let or of a binder,
+/// so a value never contains another value. Html is written rather than
+/// held, except where a value needs it, and then an HtmlLiteral renders it
+/// into a buffer of its own.
 #[derive(Debug)]
 pub struct WriterModule {
     pub pages: Vec<WriterPageDeclaration>,
@@ -54,6 +54,30 @@ pub enum WriterFunctionBody {
     Returns(ValueBlock),
 }
 
+/// A name a value or statement reads: the name of a let, or a binder,
+/// which the Flat IR read through a Read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Name {
+    Binding(VarId),
+    Binder(BinderId),
+}
+
+impl fmt::Display for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Name::Binding(var) => var.fmt(f),
+            Name::Binder(binder) => binder.fmt(f),
+        }
+    }
+}
+
+/// The source of iteration in a For.
+#[derive(Debug, Clone)]
+pub enum ForSource {
+    Array(Name),
+    RangeInclusive { start: Name, end: Name },
+}
+
 /// A value binding.
 #[derive(Debug, Clone)]
 pub struct Let {
@@ -67,7 +91,7 @@ pub struct Let {
 #[derive(Debug, Clone)]
 pub struct ValueBlock {
     pub lets: Vec<Let>,
-    pub result: VarId,
+    pub result: Name,
 }
 
 /// A statement. Statements write to the ambient buffer, in order, or bind
@@ -80,28 +104,28 @@ pub enum Stmt {
     Write(String),
 
     /// Write a String name, escaped.
-    WriteString(VarId),
+    WriteString(Name),
 
     /// Write an Html name as it is.
-    WriteHtml(VarId),
+    WriteHtml(Name),
 
     /// Invoke an Html function, which writes to the same buffer. The
     /// arguments follow the function's parameters, one for each.
     WriteFunction {
         function: IrFunction,
-        args: Vec<VarId>,
+        args: Vec<Name>,
     },
 
     /// Run the body once per element, in order. When var is None, the loop
     /// binds no variable, but still iterates.
     For {
         var: Option<IrBinder>,
-        source: FlatForSource,
+        source: ForSource,
         body: Vec<Stmt>,
     },
 
     /// Run the arm that matches. Matching is exhaustive.
-    Match(Match<VarId, Vec<Stmt>>),
+    Match(Match<Name, Vec<Stmt>>),
 }
 
 /// The computation of a let. Operands are names.
@@ -113,98 +137,98 @@ pub enum Value {
     BoolLiteral(bool),
 
     FieldAccess {
-        record: VarId,
+        record: Name,
         field: FieldName,
     },
 
     TupleIndex {
-        tuple: VarId,
+        tuple: Name,
         index: usize,
     },
 
-    Array(Vec<VarId>),
+    Array(Vec<Name>),
 
-    Tuple(Vec<VarId>),
+    Tuple(Vec<Name>),
 
     /// The record type is the type of the let.
     Record {
-        fields: Vec<(FieldName, VarId)>,
+        fields: Vec<(FieldName, Name)>,
     },
 
     /// The enum type is the type of the let.
     Enum {
         variant_name: TypeName,
-        fields: Vec<(FieldName, VarId)>,
+        fields: Vec<(FieldName, Name)>,
     },
 
-    Option(Option<VarId>),
+    Option(Option<Name>),
 
-    StringConcat(Vec<VarId>),
+    StringConcat(Vec<Name>),
 
     NumericAdd {
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
         operand_types: NumericType,
     },
 
     NumericSubtract {
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
         operand_types: NumericType,
     },
 
     NumericMultiply {
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
         operand_types: NumericType,
     },
 
     NumericNegation {
-        operand: VarId,
+        operand: Name,
         operand_type: NumericType,
     },
 
-    BoolNegation(VarId),
+    BoolNegation(Name),
 
     Equals {
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
         operand_types: EquatableType,
     },
 
     LessThan {
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
         operand_types: ComparableType,
     },
 
     LessThanOrEqual {
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
         operand_types: ComparableType,
     },
 
-    ArrayLength(VarId),
-    ArrayIsEmpty(VarId),
-    StringIsEmpty(VarId),
-    OptionIsSome(VarId),
-    OptionIsNone(VarId),
-    IntToString(VarId),
-    FloatToInt(VarId),
-    IntToFloat(VarId),
+    ArrayLength(Name),
+    ArrayIsEmpty(Name),
+    StringIsEmpty(Name),
+    OptionIsSome(Name),
+    OptionIsNone(Name),
+    IntToString(Name),
+    FloatToInt(Name),
+    IntToFloat(Name),
 
     /// Invoke a value returning function. The arguments follow the
     /// function's parameters, one for each.
     Call {
         function: IrFunction,
-        args: Vec<VarId>,
+        args: Vec<Name>,
     },
 
     /// Html as a value: the statements render into a fresh buffer.
     HtmlLiteral(Vec<Stmt>),
 
     /// A match over a value that is not Html. Each arm produces the value.
-    Match(Match<VarId, ValueBlock>),
+    Match(Match<Name, ValueBlock>),
 }
 
 impl Value {
@@ -212,7 +236,7 @@ impl Value {
     /// inside an HtmlLiteral or the arms of a Match are not visited, only
     /// the subject of the Match.
     #[cfg(test)]
-    pub fn for_each_operand(&self, f: &mut impl FnMut(VarId)) {
+    pub fn for_each_operand(&self, f: &mut impl FnMut(Name)) {
         match self {
             Value::StringLiteral(_)
             | Value::IntLiteral(_)
@@ -324,8 +348,8 @@ impl Stmt {
                     None => "_".to_string(),
                 };
                 let source = match source {
-                    FlatForSource::Array(array) => array.to_string(),
-                    FlatForSource::RangeInclusive { start, end } => format!("{start}..={end}"),
+                    ForSource::Array(array) => array.to_string(),
+                    ForSource::RangeInclusive { start, end } => format!("{start}..={end}"),
                 };
                 BoxDoc::text(format!("for {var} in {source} {{"))
                     .append(stmts_to_doc(body).nest(2))

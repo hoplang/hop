@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::document::CheapString;
 use crate::hop::typing::Type;
+use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::var_id::{VarId, VarIdCounter};
@@ -13,8 +14,8 @@ use crate::ir::var_id::{VarId, VarIdCounter};
 /// - A field access on a record constructor reads the constructor's
 ///   operand, and a tuple index on a tuple constructor likewise.
 /// - A match whose subject is a constructor runs the selected arm in place
-///   of the match, with the arm's binders reading the constructor's
-///   operands.
+///   of the match, and a Read of one of the arm's binders is the
+///   constructor's operand it binds.
 /// - A string concat takes the parts of a nested concat as its own, drops
 ///   empty constants and merges adjacent constants. An html concat takes
 ///   the parts of a nested concat as its own. A concat of one part is that
@@ -31,6 +32,7 @@ pub fn perform_partial_evaluation(block: FlatBlock, var_ids: &mut VarIdCounter) 
         var_ids,
         ops: HashMap::new(),
         renames: HashMap::new(),
+        binders: HashMap::new(),
     };
     evaluator.evaluate_block(block)
 }
@@ -49,9 +51,11 @@ struct Evaluator<'a> {
     /// for their readers to look at. Names are unique, so one map serves
     /// every nested block.
     ops: HashMap<VarId, FlatOp>,
-    /// The bindings that turned out to be another name, and the binders of
-    /// selected arms, which are the constructor's operands.
+    /// The bindings that turned out to be another name.
     renames: HashMap<VarId, VarId>,
+    /// The binders of selected arms, each with the constructor operand it
+    /// stands for. A Read of one is that operand.
+    binders: HashMap<BinderId, VarId>,
 }
 
 impl Evaluator<'_> {
@@ -115,7 +119,7 @@ impl Evaluator<'_> {
                         Some(FlatOp::Option(Some(inner))) => {
                             let inner = *inner;
                             if let Some(binder) = some_arm_binding {
-                                self.renames.insert(binder.var, inner);
+                                self.binders.insert(binder.var, inner);
                             }
                             self.select_arm(name, *some_arm_body, out);
                             return;
@@ -162,7 +166,7 @@ impl Evaluator<'_> {
                                             field.as_str()
                                         )
                                     });
-                                self.renames.insert(binder.var, value);
+                                self.binders.insert(binder.var, value);
                             }
                             self.select_arm(name, arm.body, out);
                             return;
@@ -216,6 +220,11 @@ impl Evaluator<'_> {
     /// otherwise.
     fn fold(&mut self, op: FlatOp, out: &mut Vec<FlatBinding>) -> Folded {
         match op {
+            FlatOp::Read(binder) => match self.binders.get(&binder) {
+                Some(value) => Folded::Name(*value),
+                None => Folded::Op(FlatOp::Read(binder)),
+            },
+
             FlatOp::FieldAccess { record, field } => match self.ops.get(&record) {
                 Some(FlatOp::Record { fields }) => Folded::Name(
                     fields
@@ -541,6 +550,7 @@ mod tests {
             pages,
             functions,
             var_ids,
+            binder_ids: module.binder_ids,
         }
     }
 
@@ -680,8 +690,9 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(flag@v0: Bool) {
-                  let v4: Html = match v0 {
+                page Test(flag@b0: Bool) {
+                  let v1: Bool = b0
+                  let v4: Html = match v1 {
                     true => {
                       let v2: Html = text("yes")
                       v2
@@ -695,8 +706,9 @@ mod tests {
                 }
 
                 -- after --
-                page Test(flag@v0: Bool) {
-                  let v4: Html = match v0 {
+                page Test(flag@b0: Bool) {
+                  let v1: Bool = b0
+                  let v4: Html = match v1 {
                     true => {
                       let v2: Html = text("yes")
                       v2
@@ -726,9 +738,10 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(n@v0: Int) {
+                page Test(n@b0: Int) {
+                  let v1: Int = b0
                   let v2: Int = 2
-                  let v3: Point = {x: v0, y: v2}
+                  let v3: Point = {x: v1, y: v2}
                   let v4: Int = v3.x
                   let v5: String = v4.to_string()
                   let v6: Html = escape(v5)
@@ -736,10 +749,11 @@ mod tests {
                 }
 
                 -- after --
-                page Test(n@v0: Int) {
+                page Test(n@b0: Int) {
+                  let v1: Int = b0
                   let v2: Int = 2
-                  let v3: Point = {x: v0, y: v2}
-                  let v5: String = v0.to_string()
+                  let v3: Point = {x: v1, y: v2}
+                  let v5: String = v1.to_string()
                   let v6: Html = escape(v5)
                   v6
                 }
@@ -789,26 +803,30 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(dyn@v0: String) {
+                page Test(dyn@b0: String) {
+                  let v1: String = b0
                   let v2: String = "a"
-                  let v3: String = concat(v0, v2)
+                  let v3: String = concat(v1, v2)
                   let v4: String = "b"
-                  let v5: String = concat(v4, v0)
-                  let v6: String = concat(v3, v5)
-                  let v7: Html = escape(v6)
-                  v7
+                  let v5: String = b0
+                  let v6: String = concat(v4, v5)
+                  let v7: String = concat(v3, v6)
+                  let v8: Html = escape(v7)
+                  v8
                 }
 
                 -- after --
-                page Test(dyn@v0: String) {
+                page Test(dyn@b0: String) {
+                  let v1: String = b0
                   let v2: String = "a"
-                  let v3: String = concat(v0, v2)
+                  let v3: String = concat(v1, v2)
                   let v4: String = "b"
-                  let v5: String = concat(v4, v0)
-                  let v8: String = "ab"
-                  let v6: String = concat(v0, v8, v0)
-                  let v7: Html = escape(v6)
-                  v7
+                  let v5: String = b0
+                  let v6: String = concat(v4, v5)
+                  let v9: String = "ab"
+                  let v7: String = concat(v1, v9, v5)
+                  let v8: Html = escape(v7)
+                  v8
                 }
             "#]],
         );
@@ -824,19 +842,21 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(dyn@v0: String) {
-                  let v2: String = ""
+                page Test(dyn@b0: String) {
+                  let v1: String = ""
+                  let v2: String = b0
                   let v3: String = ""
-                  let v4: String = concat(v2, v0, v3)
+                  let v4: String = concat(v1, v2, v3)
                   let v5: Html = escape(v4)
                   v5
                 }
 
                 -- after --
-                page Test(dyn@v0: String) {
-                  let v2: String = ""
+                page Test(dyn@b0: String) {
+                  let v1: String = ""
+                  let v2: String = b0
                   let v3: String = ""
-                  let v5: Html = escape(v0)
+                  let v5: Html = escape(v2)
                   v5
                 }
             "#]],
@@ -934,26 +954,30 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn area@f0(n@v0: Int) -> Int {
-                  let v2: Shape = Circle {radius: v0}
-                  let v5: Int = match v2 {
+                fn area@f0(n@b0: Int) -> Int {
+                  let v0: Int = b0
+                  let v1: Shape = Circle {radius: v0}
+                  let v6: Int = match v1 {
                     Shape::Dot => {
-                      let v3: Int = 0
-                      v3
+                      let v2: Int = 0
+                      v2
                     }
-                    Shape::Circle {radius@v1: Int} => {
-                      let v4: Int = v1 * v1
-                      v4
+                    Shape::Circle {radius@b1: Int} => {
+                      let v3: Int = b1
+                      let v4: Int = b1
+                      let v5: Int = v3 * v4
+                      v5
                     }
                   }
-                  v5
+                  v6
                 }
 
                 -- after --
-                fn area@f0(n@v0: Int) -> Int {
-                  let v2: Shape = Circle {radius: v0}
-                  let v4: Int = v0 * v0
-                  v4
+                fn area@f0(n@b0: Int) -> Int {
+                  let v0: Int = b0
+                  let v1: Shape = Circle {radius: v0}
+                  let v5: Int = v0 * v0
+                  v5
                 }
             "#]],
         );
@@ -975,11 +999,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v2: String = "x"
-                  let v3: Option[String] = Some(v2)
-                  let v6: Html = match v3 {
-                    Some(v0: String) => {
-                      let v4: Html = escape(v0)
+                  let v1: String = "x"
+                  let v2: Option[String] = Some(v1)
+                  let v6: Html = match v2 {
+                    Some(b0: String) => {
+                      let v3: String = b0
+                      let v4: Html = escape(v3)
                       v4
                     }
                     None => {
@@ -992,9 +1017,9 @@ mod tests {
 
                 -- after --
                 page Test() {
-                  let v2: String = "x"
-                  let v3: Option[String] = Some(v2)
-                  let v4: Html = escape(v2)
+                  let v1: String = "x"
+                  let v2: Option[String] = Some(v1)
+                  let v4: Html = escape(v1)
                   v4
                 }
             "#]],

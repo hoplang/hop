@@ -36,6 +36,7 @@ pub fn optimize_flat(module: FlatModule) -> FlatModule {
         pages,
         functions,
         var_ids,
+        binder_ids: module.binder_ids,
     }
 }
 
@@ -137,28 +138,32 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Items(items@v0: Array[String]) {
-                  let v4: String = "value"
-                  let v8: Html = for v2: String in v0 {
-                    let v5: Html = escape(v2)
-                    let v6: Html = concat(v5)
-                    let v7: Html = html(tag: "li", attrs: [], children: v6)
-                    v7
+                page Items(items@b0: Array[String]) {
+                  let v1: String = "value"
+                  let v2: Array[String] = b0
+                  let v7: Html = for b2: String in v2 {
+                    let v3: String = b2
+                    let v4: Html = escape(v3)
+                    let v5: Html = concat(v4)
+                    let v6: Html = html(tag: "li", attrs: [], children: v5)
+                    v6
                   }
-                  let v9: Html = concat(v8)
-                  let v10: Html = html(tag: "ul", attrs: [], children: v9)
-                  v10
+                  let v8: Html = concat(v7)
+                  let v9: Html = html(tag: "ul", attrs: [], children: v8)
+                  v9
                 }
 
                 -- after --
-                page Items(items@v0: Array[String]) {
-                  let v8: Html = for v2: String in v0 {
-                    let v5: Html = escape(v2)
-                    let v7: Html = html(tag: "li", attrs: [], children: v5)
-                    v7
+                page Items(items@b0: Array[String]) {
+                  let v2: Array[String] = b0
+                  let v7: Html = for b2: String in v2 {
+                    let v3: String = b2
+                    let v4: Html = escape(v3)
+                    let v6: Html = html(tag: "li", attrs: [], children: v4)
+                    v6
                   }
-                  let v10: Html = html(tag: "ul", attrs: [], children: v8)
-                  v10
+                  let v9: Html = html(tag: "ul", attrs: [], children: v7)
+                  v9
                 }
             "#]],
         );
@@ -181,26 +186,26 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v2: Bool = true
-                  let v6: Html = match v2 {
+                  let v1: Bool = true
+                  let v5: Html = match v1 {
                     true => {
-                      let v3: Html = text("yes")
-                      let v4: Html = concat(v3)
-                      v4
+                      let v2: Html = text("yes")
+                      let v3: Html = concat(v2)
+                      v3
                     }
                     false => {
-                      let v5: Html = concat()
-                      v5
+                      let v4: Html = concat()
+                      v4
                     }
                   }
-                  let v7: Html = concat(v6)
-                  v7
+                  let v6: Html = concat(v5)
+                  v6
                 }
 
                 -- after --
                 page Test() {
-                  let v3: Html = text("yes")
-                  v3
+                  let v2: Html = text("yes")
+                  v2
                 }
             "#]],
         );
@@ -219,23 +224,25 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn double@f0(x@v0: Int) -> Int {
-                  let v6: Int = v0 + v0
-                  v6
+                fn double@f0(x@b0: Int) -> Int {
+                  let v5: Int = b0
+                  let v6: Int = b0
+                  let v7: Int = v5 + v6
+                  v7
                 }
                 page Test() {
-                  let v2: Int = 21
-                  let v3: Int = call double@f0(v2)
-                  let v4: String = v3.to_string()
-                  let v5: Html = escape(v4)
-                  v5
+                  let v1: Int = 21
+                  let v2: Int = call double@f0(v1)
+                  let v3: String = v2.to_string()
+                  let v4: Html = escape(v3)
+                  v4
                 }
 
                 -- after --
                 page Test() {
-                  let v4: String = "42"
-                  let v5: Html = escape(v4)
-                  v5
+                  let v3: String = "42"
+                  let v4: Html = escape(v3)
+                  v4
                 }
             "#]],
         );

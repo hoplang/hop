@@ -1,5 +1,5 @@
 use crate::hop::typing::Type;
-use crate::ir::var_id::VarId;
+use crate::ir::binder_id::BinderId;
 use crate::symbols::attribute_name::AttributeName;
 
 /// A parameter of a page or a function. The name is what a call names the
@@ -8,7 +8,7 @@ use crate::symbols::attribute_name::AttributeName;
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrParameter {
     pub name: AttributeName,
-    pub var: VarId,
+    pub var: BinderId,
     pub typ: Type,
 }
 

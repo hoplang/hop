@@ -6,14 +6,12 @@ use super::Doc;
 use super::transpiler::Transpiler;
 use crate::dependency_graph::DependencyGraph;
 use crate::hop::typing::{EnumVariant, ResolvedType, Type, TypeRegistry};
-use crate::ir::flat_module::FlatForSource;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
-use crate::ir::var_id::VarId;
 use crate::ir::writer_module::{
-    Let, Stmt, Value, ValueBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterModule,
-    WriterPageDeclaration,
+    ForSource, Let, Name, Stmt, Value, ValueBlock, WriterFunctionBody, WriterFunctionDeclaration,
+    WriterModule, WriterPageDeclaration,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -21,11 +19,14 @@ use crate::symbols::type_name::TypeName;
 /// Names every variable in the generated code after the name that binds it
 /// in the IR rather than the source name.
 ///
-/// Names are unique across the module, so no hop identifier can shadow
-/// another, and no name can collide with a keyword or with the `output`
-/// buffer.
-fn name_ident(name: VarId) -> String {
-    format!("v_{}", name.index())
+/// Names are unique across the module, a let's as `v_` and a binder's as
+/// `b_`, so no hop identifier can shadow another, and no name can collide
+/// with a keyword or with the `output` buffer.
+fn name_ident(name: Name) -> String {
+    match name {
+        Name::Binding(var) => format!("v_{}", var.index()),
+        Name::Binder(binder) => format!("b_{}", binder.index()),
+    }
 }
 
 fn function_ident(function: &IrFunction) -> String {
@@ -70,7 +71,7 @@ pub struct RustTranspiler {
     registry: TypeRegistry,
     /// What the binding for every name holds, and the name's type. Every
     /// parameter, let and binder inserts its entry before anything reads it.
-    names: HashMap<VarId, (Binding, Type)>,
+    names: HashMap<Name, (Binding, Type)>,
 }
 
 impl RustTranspiler {
@@ -106,14 +107,14 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
-    fn name_binding(&self, name: VarId) -> Binding {
+    fn name_binding(&self, name: Name) -> Binding {
         self.names
             .get(&name)
             .map(|(binding, _)| *binding)
             .unwrap_or_else(|| unreachable!("every name records a binding, and {name} has none"))
     }
 
-    fn name_type(&self, name: VarId) -> &Type {
+    fn name_type(&self, name: Name) -> &Type {
         self.names
             .get(&name)
             .map(|(_, typ)| typ)
@@ -157,7 +158,7 @@ impl RustTranspiler {
     }
 
     /// A name where a reference to its value is wanted.
-    fn name_ref<'a>(&self, arena: &'a Arena<'a>, name: VarId) -> Doc<'a> {
+    fn name_ref<'a>(&self, arena: &'a Arena<'a>, name: Name) -> Doc<'a> {
         match self.name_binding(name) {
             Binding::Borrowed => arena.text(name_ident(name)),
             Binding::Owned => arena.text("&").append(arena.text(name_ident(name))),
@@ -175,7 +176,7 @@ impl RustTranspiler {
     /// A dereference binds tighter than any operator, so it needs no
     /// parentheses. Receivers and field reads take the binding itself, since
     /// auto-dereferencing sees through references and `Box` alike.
-    fn name_place<'a>(&self, arena: &'a Arena<'a>, name: VarId) -> Doc<'a> {
+    fn name_place<'a>(&self, arena: &'a Arena<'a>, name: Name) -> Doc<'a> {
         match self.name_binding(name) {
             Binding::Borrowed if Self::is_scalar(self.name_type(name)) => {
                 arena.text("*").append(arena.text(name_ident(name)))
@@ -189,7 +190,7 @@ impl RustTranspiler {
     /// else clones, since the binding keeps holding the value. `Clone`
     /// resolves on a `Box` itself, handing back a `Box` where the value is
     /// wanted, so a boxed binding is dereferenced before the clone.
-    fn name_owned<'a>(&self, arena: &'a Arena<'a>, name: VarId) -> Doc<'a> {
+    fn name_owned<'a>(&self, arena: &'a Arena<'a>, name: Name) -> Doc<'a> {
         let typ = self.name_type(name);
         if Self::is_scalar(typ) {
             return self.name_place(arena, name);
@@ -213,7 +214,10 @@ impl RustTranspiler {
     /// bound and owns moves out, since nothing after the block can read it.
     /// Anything else is copied or cloned.
     fn block_result<'a>(&self, arena: &'a Arena<'a>, block: &ValueBlock) -> Doc<'a> {
-        let bound_here = block.lets.iter().any(|let_| let_.name == block.result);
+        let bound_here = block
+            .lets
+            .iter()
+            .any(|let_| Name::Binding(let_.name) == block.result);
         if bound_here && self.name_binding(block.result) == Binding::Owned {
             arena.text(name_ident(block.result))
         } else {
@@ -313,7 +317,7 @@ impl RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         owner: &str,
-        value: VarId,
+        value: Name,
     ) -> Doc<'a> {
         if self.field_type_is_boxed(self.name_type(value), owner) {
             arena
@@ -326,7 +330,7 @@ impl RustTranspiler {
     }
 
     /// Whether reads of `field` off `record` have to strip a `Box`.
-    fn field_access_is_boxed(&self, record: VarId, field: &FieldName) -> bool {
+    fn field_access_is_boxed(&self, record: Name, field: &FieldName) -> bool {
         let Some(ResolvedType::Record { name, fields, .. }) =
             self.registry.resolve(self.name_type(record))
         else {
@@ -359,7 +363,8 @@ impl RustTranspiler {
             } else {
                 Binding::Borrowed
             };
-            self.names.insert(binder.var, (binding, binder.typ.clone()));
+            self.names
+                .insert(Name::Binder(binder.var), (binding, binder.typ.clone()));
         }
         if bindings.is_empty() {
             // Check if this variant has fields by looking at the type
@@ -380,7 +385,7 @@ impl RustTranspiler {
                     format!(
                         "{}: {}",
                         Self::escape_ident(field.as_str()),
-                        name_ident(binder.var)
+                        name_ident(Name::Binder(binder.var))
                     )
                 })
                 .collect();
@@ -405,7 +410,7 @@ impl RustTranspiler {
     }
 
     /// The variants of the enum a match subject holds.
-    fn subject_variants(&self, subject: VarId) -> Vec<EnumVariant> {
+    fn subject_variants(&self, subject: Name) -> Vec<EnumVariant> {
         let Some(ResolvedType::Enum { variants, .. }) =
             self.registry.resolve(self.name_type(subject))
         else {
@@ -466,9 +471,10 @@ impl RustTranspiler {
                 } else {
                     Binding::Borrowed
                 };
-                self.names.insert(param.var, (binding, param.typ.clone()));
+                self.names
+                    .insert(Name::Binder(param.var), (binding, param.typ.clone()));
                 arena
-                    .text(name_ident(param.var))
+                    .text(name_ident(Name::Binder(param.var)))
                     .append(arena.text(": "))
                     .append(self.transpile_param_type(arena, &param.typ))
             })
@@ -477,7 +483,7 @@ impl RustTranspiler {
 
     /// The arguments of a call: scalars by value, everything else by
     /// reference.
-    fn transpile_arguments<'a>(&mut self, arena: &'a Arena<'a>, args: &'a [VarId]) -> Vec<Doc<'a>> {
+    fn transpile_arguments<'a>(&mut self, arena: &'a Arena<'a>, args: &'a [Name]) -> Vec<Doc<'a>> {
         args.iter()
             .map(|arg| {
                 if Self::is_scalar(self.name_type(*arg)) {
@@ -765,13 +771,13 @@ impl Transpiler for RustTranspiler {
                     arena
                         .text(Self::escape_ident(param.name().as_str()))
                         .append(arena.text(": "))
-                        .append(arena.text(name_ident(param.var)))
+                        .append(arena.text(name_ident(Name::Binder(param.var))))
                 }),
                 arena.text(", "),
             );
             for param in &page.parameters {
                 self.names
-                    .insert(param.var, (Binding::Owned, param.typ.clone()));
+                    .insert(Name::Binder(param.var), (Binding::Owned, param.typ.clone()));
             }
             write_body = write_body
                 .append(arena.text("let "))
@@ -822,7 +828,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [VarId],
+        args: &'a [Name],
     ) -> Doc<'a> {
         let mut all_args: Vec<Doc<'a>> = vec![arena.text("output")];
         all_args.extend(self.transpile_arguments(arena, args));
@@ -885,7 +891,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [VarId],
+        args: &'a [Name],
     ) -> Doc<'a> {
         let all_args = self.transpile_arguments(arena, args);
         arena
@@ -905,7 +911,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: VarId,
+        name: Name,
     ) -> Doc<'a> {
         self.needs_escape_html = true;
         arena
@@ -914,7 +920,7 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(", output);"))
     }
 
-    fn transpile_write_html_statement<'a>(&mut self, arena: &'a Arena<'a>, name: VarId) -> Doc<'a> {
+    fn transpile_write_html_statement<'a>(&mut self, arena: &'a Arena<'a>, name: Name) -> Doc<'a> {
         arena
             .text("output.push_str(&")
             .append(arena.text(name_ident(name)))
@@ -926,22 +932,22 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrBinder>,
-        source: &'a FlatForSource,
+        source: &'a ForSource,
         body: &'a [Stmt],
     ) -> Doc<'a> {
         let var_name = match var {
-            Some(binder) => name_ident(binder.var),
+            Some(binder) => name_ident(Name::Binder(binder.var)),
             None => "_".to_string(),
         };
 
         let doc = match source {
-            FlatForSource::Array(array) => arena
+            ForSource::Array(array) => arena
                 .text("for ")
                 .append(arena.text(var_name))
                 .append(arena.text(" in "))
                 .append(arena.text(name_ident(*array)))
                 .append(arena.text(".iter() {")),
-            FlatForSource::RangeInclusive { start, end } => arena
+            ForSource::RangeInclusive { start, end } => arena
                 .text("for ")
                 .append(arena.text(var_name))
                 .append(arena.text(" in "))
@@ -953,10 +959,11 @@ impl Transpiler for RustTranspiler {
 
         if let Some(binder) = var {
             let binding = match source {
-                FlatForSource::Array(_) => Binding::Borrowed,
-                FlatForSource::RangeInclusive { .. } => Binding::Owned,
+                ForSource::Array(_) => Binding::Borrowed,
+                ForSource::RangeInclusive { .. } => Binding::Owned,
             };
-            self.names.insert(binder.var, (binding, binder.typ.clone()));
+            self.names
+                .insert(Name::Binder(binder.var), (binding, binder.typ.clone()));
         }
         doc.append(
             arena
@@ -984,7 +991,8 @@ impl Transpiler for RustTranspiler {
             NaturalForm::Reference | NaturalForm::Place if scalar => Binding::Owned,
             NaturalForm::Reference | NaturalForm::Place => Binding::Borrowed,
         };
-        self.names.insert(let_.name, (binding, let_.typ.clone()));
+        self.names
+            .insert(Name::Binding(let_.name), (binding, let_.typ.clone()));
         let typ = match binding {
             Binding::Owned => self.transpile_type(arena, &let_.typ),
             Binding::Borrowed => self.transpile_param_type(arena, &let_.typ),
@@ -1000,7 +1008,7 @@ impl Transpiler for RustTranspiler {
         };
         arena
             .text("let ")
-            .append(arena.text(name_ident(let_.name)))
+            .append(arena.text(name_ident(Name::Binding(let_.name))))
             .append(arena.text(": "))
             .append(typ)
             .append(arena.text(" = "))
@@ -1011,7 +1019,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<VarId, Vec<Stmt>>,
+        match_: &'a Match<Name, Vec<Stmt>>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1054,12 +1062,14 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(binder) => format!("Some({})", name_ident(binder.var)),
+                    Some(binder) => format!("Some({})", name_ident(Name::Binder(binder.var))),
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names
-                        .insert(binder.var, (Binding::Borrowed, binder.typ.clone()));
+                    self.names.insert(
+                        Name::Binder(binder.var),
+                        (Binding::Borrowed, binder.typ.clone()),
+                    );
                 }
 
                 let some_arm = arena
@@ -1232,7 +1242,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        record: VarId,
+        record: Name,
         field: &'a FieldName,
     ) -> Doc<'a> {
         let boxed = self.field_access_is_boxed(record, field);
@@ -1310,7 +1320,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [VarId],
+        elements: &'a [Name],
         elem_type: &'a Type,
     ) -> Doc<'a> {
         if elements.is_empty() {
@@ -1333,7 +1343,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_tuple_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [VarId],
+        elements: &'a [Name],
         _element_types: &'a [Type],
     ) -> Doc<'a> {
         let items: Vec<Doc<'a>> = elements
@@ -1354,7 +1364,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_tuple_index<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        tuple: VarId,
+        tuple: Name,
         index: usize,
     ) -> Doc<'a> {
         arena
@@ -1366,8 +1376,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         // Strings compare by reference. The operands arrive as a mix of
         // `String`, `str` and `&str`, and `str` compares with neither `&str`
@@ -1380,8 +1390,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" == "))
@@ -1391,8 +1401,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" == "))
@@ -1402,8 +1412,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" == "))
@@ -1413,8 +1423,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" < "))
@@ -1424,8 +1434,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" < "))
@@ -1435,8 +1445,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" <= "))
@@ -1446,29 +1456,29 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" <= "))
             .append(self.name_place(arena, right))
     }
 
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: VarId) -> Doc<'a> {
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a> {
         arena.text("!").append(self.name_place(arena, operand))
     }
 
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: VarId) -> Doc<'a> {
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a> {
         arena
             .text(name_ident(operand))
             .append(arena.text(".wrapping_neg()"))
     }
 
-    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: VarId) -> Doc<'a> {
+    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a> {
         arena.text("-").append(self.name_place(arena, operand))
     }
 
-    fn transpile_string_concat<'a>(&mut self, arena: &'a Arena<'a>, parts: &'a [VarId]) -> Doc<'a> {
+    fn transpile_string_concat<'a>(&mut self, arena: &'a Arena<'a>, parts: &'a [Name]) -> Doc<'a> {
         if parts.is_empty() {
             return arena.text("String::new()");
         }
@@ -1494,12 +1504,7 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("}"))
     }
 
-    fn transpile_int_add<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
-    ) -> Doc<'a> {
+    fn transpile_int_add<'a>(&mut self, arena: &'a Arena<'a>, left: Name, right: Name) -> Doc<'a> {
         arena
             .text(name_ident(left))
             .append(arena.text(".wrapping_add("))
@@ -1510,8 +1515,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" + "))
@@ -1521,8 +1526,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1534,8 +1539,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" - "))
@@ -1545,8 +1550,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1558,8 +1563,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" * "))
@@ -1570,7 +1575,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, VarId)],
+        fields: &'a [(FieldName, Name)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             arena.text(record_name).append(arena.text(" {}"))
@@ -1598,7 +1603,7 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, VarId)],
+        fields: &'a [(FieldName, Name)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             arena
@@ -1629,7 +1634,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<VarId>,
+        value: Option<Name>,
         inner_type: &'a Type,
     ) -> Doc<'a> {
         match value {
@@ -1647,7 +1652,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<VarId, ValueBlock>,
+        match_: &'a Match<Name, ValueBlock>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1686,12 +1691,14 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(binder) => format!("Some({})", name_ident(binder.var)),
+                    Some(binder) => format!("Some({})", name_ident(Name::Binder(binder.var))),
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names
-                        .insert(binder.var, (Binding::Borrowed, binder.typ.clone()));
+                    self.names.insert(
+                        Name::Binder(binder.var),
+                        (Binding::Borrowed, binder.typ.clone()),
+                    );
                 }
                 let subject_doc = self.name_ref(arena, **subject);
                 let some_arm = arena
@@ -1749,47 +1756,47 @@ impl Transpiler for RustTranspiler {
         }
     }
 
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: VarId) -> Doc<'a> {
+    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: Name) -> Doc<'a> {
         arena
             .text(name_ident(array))
             .append(arena.text(".len() as i32"))
     }
 
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: VarId) -> Doc<'a> {
+    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: Name) -> Doc<'a> {
         arena
             .text(name_ident(array))
             .append(arena.text(".is_empty()"))
     }
 
-    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: VarId) -> Doc<'a> {
+    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: Name) -> Doc<'a> {
         arena
             .text(name_ident(string))
             .append(arena.text(".is_empty()"))
     }
 
-    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: VarId) -> Doc<'a> {
+    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: Name) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".is_some()"))
     }
 
-    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: VarId) -> Doc<'a> {
+    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: Name) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".is_none()"))
     }
 
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: VarId) -> Doc<'a> {
+    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a> {
         arena
             .text(name_ident(value))
             .append(arena.text(".to_string()"))
     }
 
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: VarId) -> Doc<'a> {
+    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a> {
         self.name_place(arena, value).append(arena.text(" as i32"))
     }
 
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: VarId) -> Doc<'a> {
+    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a> {
         self.name_place(arena, value).append(arena.text(" as f64"))
     }
 }
@@ -1901,11 +1908,11 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(unit@v0: ()) {
+                page Test(unit@b0: ()) {
                   let v2: () = ()
                   let v3: Holder = {nothing: v2}
                   let v4: () = v3.nothing
-                  let v5: Array[()] = [v0, v4]
+                  let v5: Array[()] = [b0, v4]
                   let v6: Int = v5.len()
                   let v7: String = v6.to_string()
                   write_string(v7)
@@ -1950,11 +1957,11 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { unit: v_0 } = self;
+                        let Test { unit: b_0 } = self;
                         let v_2: () = ();
                         let v_3: Holder = Holder { nothing: v_2.clone() };
                         let v_4: &() = &v_3.nothing;
-                        let v_5: Vec<()> = vec![v_0.clone(), v_4.clone()];
+                        let v_5: Vec<()> = vec![b_0.clone(), v_4.clone()];
                         let v_6: i32 = v_5.len() as i32;
                         let v_7: String = v_6.to_string();
                         write_escaped_html(&v_7, output);
@@ -1976,13 +1983,13 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                page Row(cell@v0: (Int, String)) {
-                  let v2: Int = v0.0
+                page Row(cell@b0: (Int, String)) {
+                  let v2: Int = b0.0
                   let v3: String = v2.to_string()
-                  let v6: String = v0.1
+                  let v7: String = b0.1
                   write_string(v3)
                   write(": ")
-                  write_string(v6)
+                  write_string(v7)
                 }
 
                 -- after --
@@ -2019,13 +2026,13 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Row { cell: v_0 } = self;
-                        let v_2: i32 = v_0.0;
+                        let Row { cell: b_0 } = self;
+                        let v_2: i32 = b_0.0;
                         let v_3: String = v_2.to_string();
-                        let v_6: &str = &v_0.1;
+                        let v_7: &str = &b_0.1;
                         write_escaped_html(&v_3, output);
                         output.push_str(": ");
-                        write_escaped_html(v_6, output);
+                        write_escaped_html(v_7, output);
                     }
                 }
             "#]],
@@ -2087,8 +2094,8 @@ mod tests {
                 page First() {
                   write("<h1>First</h1>")
                 }
-                page Second(title@v0: String) {
-                  write_string(v0)
+                page Second(title@b0: String) {
+                  write_string(b0)
                 }
 
                 -- after --
@@ -2139,8 +2146,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Second { title: v_0 } = self;
-                        write_escaped_html(&v_0, output);
+                        let Second { title: b_0 } = self;
+                        write_escaped_html(&b_0, output);
                     }
                 }
             "#]],
@@ -2159,8 +2166,8 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                page Test(show@v0: Bool) {
-                  match v0 {
+                page Test(show@b0: Bool) {
+                  match b0 {
                     true => {
                       write("<h1>Visible</h1>")
                     }
@@ -2191,8 +2198,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { show: v_0 } = self;
-                        if v_0 {
+                        let Test { show: b_0 } = self;
+                        if b_0 {
                             output.push_str("<h1>Visible</h1>");
                         }
                     }
@@ -2212,10 +2219,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v2: Int = 1
-                  let v3: Int = 3
-                  for v0: Int in v2..=v3 {
-                    let v4: String = v0.to_string()
+                  let v1: Int = 1
+                  let v2: Int = 3
+                  for b0: Int in v1..=v2 {
+                    let v4: String = b0.to_string()
                     write_string(v4)
                   }
                 }
@@ -2252,10 +2259,10 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_2: i32 = 1_i32;
-                        let v_3: i32 = 3_i32;
-                        for v_0 in v_2..=v_3 {
-                            let v_4: String = v_0.to_string();
+                        let v_1: i32 = 1_i32;
+                        let v_2: i32 = 3_i32;
+                        for b_0 in v_1..=v_2 {
+                            let v_4: String = b_0.to_string();
                             write_escaped_html(&v_4, output);
                         }
                     }
@@ -2278,12 +2285,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v2: String = "x"
-                  let v3: Option[String] = Some(v2)
-                  match v3 {
-                    Some(v0: String) => {
+                  let v1: String = "x"
+                  let v2: Option[String] = Some(v1)
+                  match v2 {
+                    Some(b0: String) => {
                       write("some: ")
-                      write_string(v0)
+                      write_string(b0)
                     }
                     None => {
                       write("none")
@@ -2323,12 +2330,12 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_2: &str = "x";
-                        let v_3: Option<String> = Some(v_2.to_string());
-                        match &v_3 {
-                            Some(v_0) => {
+                        let v_1: &str = "x";
+                        let v_2: Option<String> = Some(v_1.to_string());
+                        match &v_2 {
+                            Some(b_0) => {
                                 output.push_str("some: ");
-                                write_escaped_html(v_0, output);
+                                write_escaped_html(b_0, output);
                             }
                             None => {
                                 output.push_str("none");
@@ -2353,11 +2360,11 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                page Test(opt@v0: Option[String]) {
-                  match v0 {
-                    Some(v1: String) => {
+                page Test(opt@b0: Option[String]) {
+                  match b0 {
+                    Some(b1: String) => {
                       write("some: ")
-                      write_string(v1)
+                      write_string(b1)
                     }
                     None => {
                       write("none")
@@ -2399,11 +2406,11 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { opt: v_0 } = self;
-                        match &v_0 {
-                            Some(v_1) => {
+                        let Test { opt: b_0 } = self;
+                        match &b_0 {
+                            Some(b_1) => {
                                 output.push_str("some: ");
-                                write_escaped_html(v_1, output);
+                                write_escaped_html(b_1, output);
                             }
                             None => {
                                 output.push_str("none");
@@ -2425,8 +2432,8 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(node@v0: Node) {
-                  let v2: Int = v0.value
+                page Test(node@b0: Node) {
+                  let v2: Int = b0.value
                   let v3: String = v2.to_string()
                   write_string(v3)
                 }
@@ -2471,8 +2478,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { node: v_0 } = self;
-                        let v_2: i32 = v_0.value;
+                        let Test { node: b_0 } = self;
+                        let v_2: i32 = b_0.value;
                         let v_3: String = v_2.to_string();
                         write_escaped_html(&v_3, output);
                     }
@@ -2548,15 +2555,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v2: Int = 2
-                  let v3: Int = 1
-                  let v4: Option[Node] = None
-                  let v5: Node = {value: v3, next: v4}
-                  let v6: Option[Node] = Some(v5)
-                  let v7: Node = {value: v2, next: v6}
-                  let v8: Int = v7.value
-                  let v9: String = v8.to_string()
-                  write_string(v9)
+                  let v1: Int = 2
+                  let v2: Int = 1
+                  let v3: Option[Node] = None
+                  let v4: Node = {value: v2, next: v3}
+                  let v5: Option[Node] = Some(v4)
+                  let v6: Node = {value: v1, next: v5}
+                  let v7: Int = v6.value
+                  let v8: String = v7.to_string()
+                  write_string(v8)
                 }
 
                 -- after --
@@ -2597,15 +2604,15 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_2: i32 = 2_i32;
-                        let v_3: i32 = 1_i32;
-                        let v_4: Option<Node> = None::<Node>;
-                        let v_5: Node = Node { value: v_3, next: Box::new(v_4.clone()) };
-                        let v_6: Option<Node> = Some(v_5.clone());
-                        let v_7: Node = Node { value: v_2, next: Box::new(v_6.clone()) };
-                        let v_8: i32 = v_7.value;
-                        let v_9: String = v_8.to_string();
-                        write_escaped_html(&v_9, output);
+                        let v_1: i32 = 2_i32;
+                        let v_2: i32 = 1_i32;
+                        let v_3: Option<Node> = None::<Node>;
+                        let v_4: Node = Node { value: v_2, next: Box::new(v_3.clone()) };
+                        let v_5: Option<Node> = Some(v_4.clone());
+                        let v_6: Node = Node { value: v_1, next: Box::new(v_5.clone()) };
+                        let v_7: i32 = v_6.value;
+                        let v_8: String = v_7.to_string();
+                        write_escaped_html(&v_8, output);
                     }
                 }
             "#]],
@@ -2636,12 +2643,12 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(e@v0: Expr) {
-                  match v0 {
-                    Expr::Neg {inner@v1: Expr} => {
-                      match v1 {
-                        Expr::Literal {value@v2: String} => {
-                          write_string(v2)
+                page Test(e@b0: Expr) {
+                  match b0 {
+                    Expr::Neg {inner@b1: Expr} => {
+                      match b1 {
+                        Expr::Literal {value@b2: String} => {
+                          write_string(b2)
                         }
                         Expr::Neg => {
                           write("nested")
@@ -2694,12 +2701,12 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { e: v_0 } = self;
-                        match &v_0 {
-                            Expr::Neg { inner: v_1 } => {
-                                match &**v_1 {
-                                    Expr::Literal { value: v_2 } => {
-                                        write_escaped_html(v_2, output);
+                        let Test { e: b_0 } = self;
+                        match &b_0 {
+                            Expr::Neg { inner: b_1 } => {
+                                match &**b_1 {
+                                    Expr::Literal { value: b_2 } => {
+                                        write_escaped_html(b_2, output);
                                     }
                                     Expr::Neg { .. } => {
                                         output.push_str("nested");
@@ -2731,11 +2738,11 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(node@v0: Node) {
-                  let v3: Option[Node] = v0.next
-                  match v3 {
-                    Some(v1: Node) => {
-                      let v4: String = v1.value
+                page Test(node@b0: Node) {
+                  let v2: Option[Node] = b0.next
+                  match v2 {
+                    Some(b1: Node) => {
+                      let v4: String = b1.value
                       write_string(v4)
                     }
                     None => {
@@ -2784,11 +2791,11 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { node: v_0 } = self;
-                        let v_3: &Option<Node> = &*v_0.next;
-                        match v_3 {
-                            Some(v_1) => {
-                                let v_4: &str = &v_1.value;
+                        let Test { node: b_0 } = self;
+                        let v_2: &Option<Node> = &*b_0.next;
+                        match v_2 {
+                            Some(b_1) => {
+                                let v_4: &str = &b_1.value;
                                 write_escaped_html(v_4, output);
                             }
                             None => {
@@ -2819,10 +2826,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(c@v0: Chain) {
-                  match v0 {
-                    Chain::Link {next@v1: Option[Chain]} => {
-                      match v1 {
+                page Test(c@b0: Chain) {
+                  match b0 {
+                    Chain::Link {next@b1: Option[Chain]} => {
+                      match b1 {
                         Some(_) => {
                           write("more")
                         }
@@ -2865,10 +2872,10 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { c: v_0 } = self;
-                        match &v_0 {
-                            Chain::Link { next: v_1 } => {
-                                match &**v_1 {
+                        let Test { c: b_0 } = self;
+                        match &b_0 {
+                            Chain::Link { next: b_1 } => {
+                                match &**b_1 {
                                     Some(_) => {
                                         output.push_str("more");
                                     }
@@ -2912,9 +2919,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v2: Int = 1
-                  let v3: IntList = Nil
-                  let v4: IntList = Cons {head: v2, tail: v3}
+                  let v1: Int = 1
+                  let v2: IntList = Nil
+                  let v3: IntList = Cons {head: v1, tail: v2}
                   write("done")
                 }
 
@@ -2944,9 +2951,9 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_2: i32 = 1_i32;
-                        let v_3: IntList = IntList::Nil;
-                        let v_4: IntList = IntList::Cons { head: v_2, tail: Box::new(v_3.clone()) };
+                        let v_1: i32 = 1_i32;
+                        let v_2: IntList = IntList::Nil;
+                        let v_3: IntList = IntList::Cons { head: v_1, tail: Box::new(v_2.clone()) };
                         output.push_str("done");
                     }
                 }
@@ -2969,11 +2976,11 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v2: Option[A] = None
-                  let v3: B = {a: v2}
-                  let v4: A = {b: v3}
-                  let v5: Option[A] = Some(v4)
-                  let v6: B = {a: v5}
+                  let v1: Option[A] = None
+                  let v2: B = {a: v1}
+                  let v3: A = {b: v2}
+                  let v4: Option[A] = Some(v3)
+                  let v5: B = {a: v4}
                   write("done")
                 }
 
@@ -3007,11 +3014,11 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_2: Option<A> = None::<A>;
-                        let v_3: B = B { a: Box::new(v_2.clone()) };
-                        let v_4: A = A { b: Box::new(v_3.clone()) };
-                        let v_5: Option<A> = Some(v_4.clone());
-                        let v_6: B = B { a: Box::new(v_5.clone()) };
+                        let v_1: Option<A> = None::<A>;
+                        let v_2: B = B { a: Box::new(v_1.clone()) };
+                        let v_3: A = A { b: Box::new(v_2.clone()) };
+                        let v_4: Option<A> = Some(v_3.clone());
+                        let v_5: B = B { a: Box::new(v_4.clone()) };
                         output.push_str("done");
                     }
                 }
@@ -3051,22 +3058,22 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(time@v0: TimeAgo) {
-                  let v19: String = match v0 {
+                page Test(time@b0: TimeAgo) {
+                  let v21: String = match b0 {
                     TimeAgo::JustNow => {
-                      let v4: String = "just now"
-                      v4
+                      let v2: String = "just now"
+                      v2
                     }
-                    TimeAgo::MinutesAgo {count@v1: Int} => {
-                      let v5: Int = 1
-                      let v6: Bool = v1 == v5
-                      let v11: String = match v6 {
+                    TimeAgo::MinutesAgo {count@b1: Int} => {
+                      let v4: Int = 1
+                      let v5: Bool = b1 == v4
+                      let v11: String = match v5 {
                         true => {
-                          let v7: String = "1 minute ago"
-                          v7
+                          let v6: String = "1 minute ago"
+                          v6
                         }
                         false => {
-                          let v8: String = v1.to_string()
+                          let v8: String = b1.to_string()
                           let v9: String = " minutes ago"
                           let v10: String = concat(v8, v9)
                           v10
@@ -3074,25 +3081,25 @@ mod tests {
                       }
                       v11
                     }
-                    TimeAgo::HoursAgo {count@v2: Int} => {
-                      let v12: Int = 1
-                      let v13: Bool = v2 == v12
-                      let v18: String = match v13 {
+                    TimeAgo::HoursAgo {count@b2: Int} => {
+                      let v13: Int = 1
+                      let v14: Bool = b2 == v13
+                      let v20: String = match v14 {
                         true => {
-                          let v14: String = "1 hour ago"
-                          v14
+                          let v15: String = "1 hour ago"
+                          v15
                         }
                         false => {
-                          let v15: String = v2.to_string()
-                          let v16: String = " hours ago"
-                          let v17: String = concat(v15, v16)
-                          v17
+                          let v17: String = b2.to_string()
+                          let v18: String = " hours ago"
+                          let v19: String = concat(v17, v18)
+                          v19
                         }
                       }
-                      v18
+                      v20
                     }
                   }
-                  write_string(v19)
+                  write_string(v21)
                 }
 
                 -- after --
@@ -3136,22 +3143,22 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { time: v_0 } = self;
-                        let v_19: String = match &v_0 {
+                        let Test { time: b_0 } = self;
+                        let v_21: String = match &b_0 {
                             TimeAgo::JustNow => {
-                                let v_4: &str = "just now";
-                                v_4.to_string()
+                                let v_2: &str = "just now";
+                                v_2.to_string()
                             },
-                            TimeAgo::MinutesAgo { count: v_1 } => {
-                                let v_5: i32 = 1_i32;
-                                let v_6: bool = *v_1 == v_5;
-                                let v_11: String = match v_6 {
+                            TimeAgo::MinutesAgo { count: b_1 } => {
+                                let v_4: i32 = 1_i32;
+                                let v_5: bool = *b_1 == v_4;
+                                let v_11: String = match v_5 {
                                     true => {
-                                        let v_7: &str = "1 minute ago";
-                                        v_7.to_string()
+                                        let v_6: &str = "1 minute ago";
+                                        v_6.to_string()
                                     },
                                     false => {
-                                        let v_8: String = v_1.to_string();
+                                        let v_8: String = b_1.to_string();
                                         let v_9: &str = " minutes ago";
                                         let v_10: String = {
                                             let mut s: String = String::new();
@@ -3164,30 +3171,30 @@ mod tests {
                                 };
                                 v_11
                             },
-                            TimeAgo::HoursAgo { count: v_2 } => {
-                                let v_12: i32 = 1_i32;
-                                let v_13: bool = *v_2 == v_12;
-                                let v_18: String = match v_13 {
+                            TimeAgo::HoursAgo { count: b_2 } => {
+                                let v_13: i32 = 1_i32;
+                                let v_14: bool = *b_2 == v_13;
+                                let v_20: String = match v_14 {
                                     true => {
-                                        let v_14: &str = "1 hour ago";
-                                        v_14.to_string()
+                                        let v_15: &str = "1 hour ago";
+                                        v_15.to_string()
                                     },
                                     false => {
-                                        let v_15: String = v_2.to_string();
-                                        let v_16: &str = " hours ago";
-                                        let v_17: String = {
+                                        let v_17: String = b_2.to_string();
+                                        let v_18: &str = " hours ago";
+                                        let v_19: String = {
                                             let mut s: String = String::new();
-                                            s.push_str(&v_15);
-                                            s.push_str(v_16);
+                                            s.push_str(&v_17);
+                                            s.push_str(v_18);
                                             s
                                         };
-                                        v_17
+                                        v_19
                                     },
                                 };
-                                v_18
+                                v_20
                             },
                         };
-                        write_escaped_html(&v_19, output);
+                        write_escaped_html(&v_21, output);
                     }
                 }
             "#]],
@@ -3208,12 +3215,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v2: String = "world"
-                  let v3: Option[String] = Some(v2)
-                  let v7: String = match v3 {
-                    Some(v0: String) => {
-                      let v4: String = "hello "
-                      let v5: String = concat(v4, v0)
+                  let v1: String = "world"
+                  let v2: Option[String] = Some(v1)
+                  let v7: String = match v2 {
+                    Some(b0: String) => {
+                      let v3: String = "hello "
+                      let v5: String = concat(v3, b0)
                       v5
                     }
                     None => {
@@ -3256,15 +3263,15 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_2: &str = "world";
-                        let v_3: Option<String> = Some(v_2.to_string());
-                        let v_7: String = match &v_3 {
-                            Some(v_0) => {
-                                let v_4: &str = "hello ";
+                        let v_1: &str = "world";
+                        let v_2: Option<String> = Some(v_1.to_string());
+                        let v_7: String = match &v_2 {
+                            Some(b_0) => {
+                                let v_3: &str = "hello ";
                                 let v_5: String = {
                                     let mut s: String = String::new();
-                                    s.push_str(v_4);
-                                    s.push_str(v_0);
+                                    s.push_str(v_3);
+                                    s.push_str(b_0);
                                     s
                                 };
                                 v_5
@@ -3298,8 +3305,8 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Badge@f0(color@v0: Color) -> Html {
-                  match v0 {
+                fn Badge@f0(color@b0: Color) -> Html {
+                  match b0 {
                     Color::Red => {
                       write("red")
                     }
@@ -3312,8 +3319,8 @@ mod tests {
                   }
                 }
                 page Test() {
-                  let v2: Color = Green
-                  write_function Badge@f0(v2)
+                  let v1: Color = Green
+                  write_function Badge@f0(v1)
                 }
 
                 -- after --
@@ -3335,8 +3342,8 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_badge_0(output: &mut String, v_0: &Color) {
-                    match v_0 {
+                fn render_badge_0(output: &mut String, b_0: &Color) {
+                    match b_0 {
                         Color::Red => {
                             output.push_str("red");
                         }
@@ -3357,8 +3364,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_2: Color = Color::Green;
-                        render_badge_0(output, &v_2);
+                        let v_1: Color = Color::Green;
+                        render_badge_0(output, &v_1);
                     }
                 }
             "#]],
@@ -3377,12 +3384,12 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(post@v0: Post) {
-                  let v3: Int = v0.views
-                  let v4: Int = 1
-                  let v5: Int = v3 + v4
-                  let v6: String = v5.to_string()
-                  write_string(v6)
+                page Test(post@b0: Post) {
+                  let v2: Int = b0.views
+                  let v3: Int = 1
+                  let v4: Int = v2 + v3
+                  let v5: String = v4.to_string()
+                  write_string(v5)
                 }
 
                 -- after --
@@ -3424,12 +3431,12 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { post: v_0 } = self;
-                        let v_3: i32 = v_0.views;
-                        let v_4: i32 = 1_i32;
-                        let v_5: i32 = v_3.wrapping_add(v_4);
-                        let v_6: String = v_5.to_string();
-                        write_escaped_html(&v_6, output);
+                        let Test { post: b_0 } = self;
+                        let v_2: i32 = b_0.views;
+                        let v_3: i32 = 1_i32;
+                        let v_4: i32 = v_2.wrapping_add(v_3);
+                        let v_5: String = v_4.to_string();
+                        write_escaped_html(&v_5, output);
                     }
                 }
             "#]],
@@ -3458,18 +3465,18 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Card@f0(p@v0: Post, tags@v1: Array[String]) -> Html {
-                  let v6: String = v0.title
-                  let v8: Int = v0.views
+                fn Card@f0(p@b0: Post, tags@b1: Array[String]) -> Html {
+                  let v5: String = b0.title
+                  let v8: Int = b0.views
                   let v9: String = v8.to_string()
-                  let v11: Int = v1.len()
-                  let v12: String = v11.to_string()
-                  write_string(v6)
+                  let v12: Int = b1.len()
+                  let v13: String = v12.to_string()
+                  write_string(v5)
                   write_string(v9)
-                  write_string(v12)
+                  write_string(v13)
                 }
-                page Test(post@v2: Post, tags@v3: Array[String]) {
-                  write_function Card@f0(v2, v3)
+                page Test(post@b2: Post, tags@b3: Array[String]) {
+                  write_function Card@f0(b2, b3)
                 }
 
                 -- after --
@@ -3505,15 +3512,15 @@ mod tests {
                     pub tags: Vec<String>,
                 }
 
-                fn render_card_0(output: &mut String, v_0: &Post, v_1: &[String]) {
-                    let v_6: &str = &v_0.title;
-                    let v_8: i32 = v_0.views;
+                fn render_card_0(output: &mut String, b_0: &Post, b_1: &[String]) {
+                    let v_5: &str = &b_0.title;
+                    let v_8: i32 = b_0.views;
                     let v_9: String = v_8.to_string();
-                    let v_11: i32 = v_1.len() as i32;
-                    let v_12: String = v_11.to_string();
-                    write_escaped_html(v_6, output);
+                    let v_12: i32 = b_1.len() as i32;
+                    let v_13: String = v_12.to_string();
+                    write_escaped_html(v_5, output);
                     write_escaped_html(&v_9, output);
-                    write_escaped_html(&v_12, output);
+                    write_escaped_html(&v_13, output);
                 }
 
                 impl View for Test {
@@ -3524,8 +3531,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { post: v_2, tags: v_3 } = self;
-                        render_card_0(output, &v_2, &v_3);
+                        let Test { post: b_2, tags: b_3 } = self;
+                        render_card_0(output, &b_2, &b_3);
                     }
                 }
             "#]],
@@ -3549,14 +3556,14 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Show@f0(t@v0: Tag) -> Html {
-                  let v4: Wrap = {tag: v0}
+                fn Show@f0(t@b0: Tag) -> Html {
+                  let v4: Wrap = {tag: b0}
                   let v5: Tag = v4.tag
                   let v6: String = v5.name
                   write_string(v6)
                 }
-                page Test(tag@v1: Tag) {
-                  write_function Show@f0(v1)
+                page Test(tag@b1: Tag) {
+                  write_function Show@f0(b1)
                 }
 
                 -- after --
@@ -3595,8 +3602,8 @@ mod tests {
                     pub tag: Tag,
                 }
 
-                fn render_show_0(output: &mut String, v_0: &Tag) {
-                    let v_4: Wrap = Wrap { tag: v_0.clone() };
+                fn render_show_0(output: &mut String, b_0: &Tag) {
+                    let v_4: Wrap = Wrap { tag: b_0.clone() };
                     let v_5: &Tag = &v_4.tag;
                     let v_6: &str = &v_5.name;
                     write_escaped_html(v_6, output);
@@ -3610,8 +3617,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { tag: v_1 } = self;
-                        render_show_0(output, &v_1);
+                        let Test { tag: b_1 } = self;
+                        render_show_0(output, &b_1);
                     }
                 }
             "#]],
@@ -3630,9 +3637,9 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                page Test(post@v0: Post) {
-                  let v3: String = v0.title
-                  write_string(v3)
+                page Test(post@b0: Post) {
+                  let v2: String = b0.title
+                  write_string(v2)
                 }
 
                 -- after --
@@ -3675,9 +3682,9 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { post: v_0 } = self;
-                        let v_3: &str = &v_0.title;
-                        write_escaped_html(v_3, output);
+                        let Test { post: b_0 } = self;
+                        let v_2: &str = &b_0.title;
+                        write_escaped_html(v_2, output);
                     }
                 }
             "#]],
@@ -3700,9 +3707,9 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Role@f0(role@v0: String) -> Html {
+                fn Role@f0(role@b0: String) -> Html {
                   let v4: String = "admin"
-                  let v5: Bool = v0 == v4
+                  let v5: Bool = b0 == v4
                   match v5 {
                     true => {
                       write("yes")
@@ -3712,8 +3719,8 @@ mod tests {
                     }
                   }
                 }
-                page Test(role@v1: String) {
-                  write_function Role@f0(v1)
+                page Test(role@b1: String) {
+                  write_function Role@f0(b1)
                 }
 
                 -- after --
@@ -3730,9 +3737,9 @@ mod tests {
                     pub role: String,
                 }
 
-                fn render_role_0(output: &mut String, v_0: &str) {
+                fn render_role_0(output: &mut String, b_0: &str) {
                     let v_4: &str = "admin";
-                    let v_5: bool = v_0 == v_4;
+                    let v_5: bool = b_0 == v_4;
                     if v_5 {
                         output.push_str("yes");
                     } else {
@@ -3748,8 +3755,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { role: v_1 } = self;
-                        render_role_0(output, &v_1);
+                        let Test { role: b_1 } = self;
+                        render_role_0(output, &b_1);
                     }
                 }
             "#]],
@@ -3768,12 +3775,12 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Greet@f0(name@v0: String) -> Html {
+                fn Greet@f0(name@b0: String) -> Html {
                   write("hello ")
-                  write_string(v0)
+                  write_string(b0)
                 }
-                page Test(who@v1: String) {
-                  write_function Greet@f0(v1)
+                page Test(who@b1: String) {
+                  write_function Greet@f0(b1)
                 }
 
                 -- after --
@@ -3802,9 +3809,9 @@ mod tests {
                     pub who: String,
                 }
 
-                fn render_greet_0(output: &mut String, v_0: &str) {
+                fn render_greet_0(output: &mut String, b_0: &str) {
                     output.push_str("hello ");
-                    write_escaped_html(v_0, output);
+                    write_escaped_html(b_0, output);
                 }
 
                 impl View for Test {
@@ -3815,8 +3822,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { who: v_1 } = self;
-                        render_greet_0(output, &v_1);
+                        let Test { who: b_1 } = self;
+                        render_greet_0(output, &b_1);
                     }
                 }
             "#]],
@@ -3840,18 +3847,18 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Label@f0(text@v0: Option[String]) -> Html {
-                  match v0 {
-                    Some(v1: String) => {
-                      write_string(v1)
+                fn Label@f0(text@b0: Option[String]) -> Html {
+                  match b0 {
+                    Some(b1: String) => {
+                      write_string(b1)
                     }
                     None => {
                       write("none")
                     }
                   }
                 }
-                page Test(label@v2: Option[String]) {
-                  write_function Label@f0(v2)
+                page Test(label@b2: Option[String]) {
+                  write_function Label@f0(b2)
                 }
 
                 -- after --
@@ -3880,10 +3887,10 @@ mod tests {
                     pub label: Option<String>,
                 }
 
-                fn render_label_0(output: &mut String, v_0: &Option<String>) {
-                    match v_0 {
-                        Some(v_1) => {
-                            write_escaped_html(v_1, output);
+                fn render_label_0(output: &mut String, b_0: &Option<String>) {
+                    match b_0 {
+                        Some(b_1) => {
+                            write_escaped_html(b_1, output);
                         }
                         None => {
                             output.push_str("none");
@@ -3899,8 +3906,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { label: v_2 } = self;
-                        render_label_0(output, &v_2);
+                        let Test { label: b_2 } = self;
+                        render_label_0(output, &b_2);
                     }
                 }
             "#]],
@@ -3918,11 +3925,11 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v4: Html = html {
+                  let v3: Html = html {
                     write("<b>hi</b>")
                   }
-                  write_html(v4)
-                  write_html(v4)
+                  write_html(v3)
+                  write_html(v3)
                 }
 
                 -- after --
@@ -3948,14 +3955,14 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_4: Html = {
+                        let v_3: Html = {
                             let mut buf: String = String::new();
                             let mut output: &mut String = &mut buf;
                             output.push_str("<b>hi</b>");
                             Html(buf)
                         };
-                        output.push_str(&v_4.0);
-                        output.push_str(&v_4.0);
+                        output.push_str(&v_3.0);
+                        output.push_str(&v_3.0);
                     }
                 }
             "#]],
@@ -3980,11 +3987,11 @@ mod tests {
                   write("<b>hi</b>")
                 }
                 page Test() {
-                  let v2: Html = html {
+                  let v1: Html = html {
                     write_function Frag@f0()
                   }
-                  write_html(v2)
-                  write_html(v2)
+                  write_html(v1)
+                  write_html(v1)
                 }
 
                 -- after --
@@ -4014,14 +4021,14 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_2: Html = {
+                        let v_1: Html = {
                             let mut buf: String = String::new();
                             let mut output: &mut String = &mut buf;
                             render_frag_0(output);
                             Html(buf)
                         };
-                        output.push_str(&v_2.0);
-                        output.push_str(&v_2.0);
+                        output.push_str(&v_1.0);
+                        output.push_str(&v_1.0);
                     }
                 }
             "#]],
@@ -4040,14 +4047,14 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn format_price@f0(price@v0: Int) -> Int {
-                  v0
+                fn format_price@f0(price@b0: Int) -> Int {
+                  b0
                 }
                 page Test() {
-                  let v2: Int = 5
-                  let v3: Int = call format_price@f0(v2)
-                  let v4: String = v3.to_string()
-                  write_string(v4)
+                  let v1: Int = 5
+                  let v2: Int = call format_price@f0(v1)
+                  let v3: String = v2.to_string()
+                  write_string(v3)
                 }
 
                 -- after --
@@ -4074,8 +4081,8 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_format_price_0(v_0: i32) -> i32 {
-                    v_0
+                fn render_format_price_0(b_0: i32) -> i32 {
+                    b_0
                 }
 
                 impl View for Test {
@@ -4086,10 +4093,10 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_2: i32 = 5_i32;
-                        let v_3: i32 = render_format_price_0(v_2);
-                        let v_4: String = v_3.to_string();
-                        write_escaped_html(&v_4, output);
+                        let v_1: i32 = 5_i32;
+                        let v_2: i32 = render_format_price_0(v_1);
+                        let v_3: String = v_2.to_string();
+                        write_escaped_html(&v_3, output);
                     }
                 }
             "#]],
@@ -4125,25 +4132,25 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn foo@f0(x@v0: Int) -> Int {
+                fn foo@f0(x@b0: Int) -> Int {
                   let v17: Int = 10
-                  let v18: Int = v0 + v17
+                  let v18: Int = b0 + v17
                   v18
                 }
                 page Test() {
-                  let v3: Int = 0
-                  let v4: Int = -7
-                  let v5: Int = call foo@f0(v4)
-                  let v11: Int = 10
-                  let v12: Int = call foo@f0(v11)
-                  let v13: String = v12.to_string()
+                  let v1: Int = 0
+                  let v2: Int = -7
+                  let v3: Int = call foo@f0(v2)
+                  let v10: Int = 10
+                  let v11: Int = call foo@f0(v10)
+                  let v12: String = v11.to_string()
                   write("<div>")
-                  for v1: Int in v3..=v5 {
-                    let v6: String = v1.to_string()
-                    write_string(v6)
+                  for b1: Int in v1..=v3 {
+                    let v5: String = b1.to_string()
+                    write_string(v5)
                     write(",")
                   }
-                  write_string(v13)
+                  write_string(v12)
                   write("</div>")
                 }
 
@@ -4171,9 +4178,9 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_foo_0(v_0: i32) -> i32 {
+                fn render_foo_0(b_0: i32) -> i32 {
                     let v_17: i32 = 10_i32;
-                    let v_18: i32 = v_0.wrapping_add(v_17);
+                    let v_18: i32 = b_0.wrapping_add(v_17);
                     v_18
                 }
 
@@ -4185,19 +4192,19 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_3: i32 = 0_i32;
-                        let v_4: i32 = -7_i32;
-                        let v_5: i32 = render_foo_0(v_4);
-                        let v_11: i32 = 10_i32;
-                        let v_12: i32 = render_foo_0(v_11);
-                        let v_13: String = v_12.to_string();
+                        let v_1: i32 = 0_i32;
+                        let v_2: i32 = -7_i32;
+                        let v_3: i32 = render_foo_0(v_2);
+                        let v_10: i32 = 10_i32;
+                        let v_11: i32 = render_foo_0(v_10);
+                        let v_12: String = v_11.to_string();
                         output.push_str("<div>");
-                        for v_1 in v_3..=v_5 {
-                            let v_6: String = v_1.to_string();
-                            write_escaped_html(&v_6, output);
+                        for b_1 in v_1..=v_3 {
+                            let v_5: String = b_1.to_string();
+                            write_escaped_html(&v_5, output);
                             output.push_str(",");
                         }
-                        write_escaped_html(&v_13, output);
+                        write_escaped_html(&v_12, output);
                         output.push_str("</div>");
                     }
                 }

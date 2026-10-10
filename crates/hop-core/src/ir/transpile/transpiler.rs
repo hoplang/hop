@@ -1,13 +1,12 @@
 use crate::hop::typing::{
     ComparableType, EquatableType, NumericType, ResolvedType, Type, TypeRegistry,
 };
-use crate::ir::flat_module::FlatForSource;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
-use crate::ir::var_id::VarId;
 use crate::ir::writer_module::{
-    Let, Stmt, Value, ValueBlock, WriterFunctionDeclaration, WriterModule, WriterPageDeclaration,
+    ForSource, Let, Name, Stmt, Value, ValueBlock, WriterFunctionDeclaration, WriterModule,
+    WriterPageDeclaration,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -40,30 +39,27 @@ pub trait Transpiler {
 
     // Statements
     fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a>;
-    fn transpile_write_string_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        name: VarId,
-    ) -> Doc<'a>;
-    fn transpile_write_html_statement<'a>(&mut self, arena: &'a Arena<'a>, name: VarId) -> Doc<'a>;
+    fn transpile_write_string_statement<'a>(&mut self, arena: &'a Arena<'a>, name: Name)
+    -> Doc<'a>;
+    fn transpile_write_html_statement<'a>(&mut self, arena: &'a Arena<'a>, name: Name) -> Doc<'a>;
     fn transpile_write_function_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [VarId],
+        args: &'a [Name],
     ) -> Doc<'a>;
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrBinder>,
-        source: &'a FlatForSource,
+        source: &'a ForSource,
         body: &'a [Stmt],
     ) -> Doc<'a>;
     fn transpile_let_statement<'a>(&mut self, arena: &'a Arena<'a>, let_: &'a Let) -> Doc<'a>;
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<VarId, Vec<Stmt>>,
+        match_: &'a Match<Name, Vec<Stmt>>,
     ) -> Doc<'a>;
     fn transpile_statement<'a>(&mut self, arena: &'a Arena<'a>, statement: &'a Stmt) -> Doc<'a> {
         match statement {
@@ -130,7 +126,7 @@ pub trait Transpiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        record: VarId,
+        record: Name,
         field: &'a FieldName,
     ) -> Doc<'a>;
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a>;
@@ -141,143 +137,138 @@ pub trait Transpiler {
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [VarId],
+        elements: &'a [Name],
         elem_type: &'a Type,
     ) -> Doc<'a>;
     fn transpile_tuple_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [VarId],
+        elements: &'a [Name],
         element_types: &'a [Type],
     ) -> Doc<'a>;
     fn transpile_tuple_index<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        tuple: VarId,
+        tuple: Name,
         index: usize,
     ) -> Doc<'a>;
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: VarId) -> Doc<'a>;
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: VarId) -> Doc<'a>;
-    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: VarId) -> Doc<'a>;
-    fn transpile_string_concat<'a>(&mut self, arena: &'a Arena<'a>, parts: &'a [VarId]) -> Doc<'a>;
-    fn transpile_int_add<'a>(&mut self, arena: &'a Arena<'a>, left: VarId, right: VarId)
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a>;
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a>;
+    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: Name) -> Doc<'a>;
+    fn transpile_string_concat<'a>(&mut self, arena: &'a Arena<'a>, parts: &'a [Name]) -> Doc<'a>;
+    fn transpile_int_add<'a>(&mut self, arena: &'a Arena<'a>, left: Name, right: Name) -> Doc<'a>;
+    fn transpile_float_add<'a>(&mut self, arena: &'a Arena<'a>, left: Name, right: Name)
     -> Doc<'a>;
-    fn transpile_float_add<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
-    ) -> Doc<'a>;
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: VarId,
-        right: VarId,
+        left: Name,
+        right: Name,
     ) -> Doc<'a>;
     fn transpile_record_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, VarId)],
+        fields: &'a [(FieldName, Name)],
     ) -> Doc<'a>;
     fn transpile_enum_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, VarId)],
+        fields: &'a [(FieldName, Name)],
     ) -> Doc<'a>;
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<VarId>,
+        value: Option<Name>,
         inner_type: &'a Type,
     ) -> Doc<'a>;
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<VarId, ValueBlock>,
+        match_: &'a Match<Name, ValueBlock>,
     ) -> Doc<'a>;
     fn transpile_function_call_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [VarId],
+        args: &'a [Name],
     ) -> Doc<'a>;
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: VarId) -> Doc<'a>;
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: VarId) -> Doc<'a>;
-    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: VarId) -> Doc<'a>;
-    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: VarId) -> Doc<'a>;
-    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: VarId) -> Doc<'a>;
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: VarId) -> Doc<'a>;
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: VarId) -> Doc<'a>;
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: VarId) -> Doc<'a>;
+    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: Name) -> Doc<'a>;
+    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: Name) -> Doc<'a>;
+    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: Name) -> Doc<'a>;
+    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: Name) -> Doc<'a>;
+    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: Name) -> Doc<'a>;
+    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a>;
+    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a>;
+    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: Name) -> Doc<'a>;
     /// The expression for a value, given the type of the let that holds it.
     fn transpile_value<'a>(
         &mut self,

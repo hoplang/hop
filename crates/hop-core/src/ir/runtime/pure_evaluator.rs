@@ -737,10 +737,10 @@ mod tests {
             ],
             expect![[r#"
                 -- before --
-                page Test(cls@v0: String, flag@v1: Bool) {
+                page Test(cls@b0: String, flag@b1: Bool) {
                   html(
                     tag: "input",
-                    attrs: [class: v0, disabled: v1, checked: false],
+                    attrs: [class: b0, disabled: b1, checked: false],
                   )
                 }
 
@@ -764,8 +764,8 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                page Test(content@v0: String) {
-                  escape(v0)
+                page Test(content@b0: String) {
+                  escape(b0)
                 }
 
                 -- after --
@@ -789,8 +789,8 @@ mod tests {
             vec![("show", Value::Bool(true))],
             expect![[r#"
                 -- before --
-                page Test(show@v0: Bool) {
-                  match v0 {
+                page Test(show@b0: Bool) {
+                  match b0 {
                     true => {
                       html(
                         tag: "div",
@@ -825,8 +825,8 @@ mod tests {
             vec![("show", Value::Bool(false))],
             expect![[r#"
                 -- before --
-                page Test(show@v0: Bool) {
-                  match v0 {
+                page Test(show@b0: Bool) {
+                  match b0 {
                     true => {
                       html(
                         tag: "div",
@@ -869,13 +869,13 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                page Test(items@v0: Array[String]) {
-                  for v1: String in v0 {
+                page Test(items@b0: Array[String]) {
+                  for b1: String in b0 {
                     concat(
                       html(
                         tag: "li",
                         attrs: [],
-                        children: concat(escape(v1)),
+                        children: concat(escape(b1)),
                       ),
                       text("\n"),
                     )
@@ -939,13 +939,13 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                fn Sum@f0(n@v0: Int) -> Int {
-                  match (v0 <= 0) {
+                fn Sum@f0(n@b0: Int) -> Int {
+                  match (b0 <= 0) {
                     true => {
                       0
                     }
                     false => {
-                      (v0 + call Sum@f0((v0 - 1)))
+                      (b0 + call Sum@f0((b0 - 1)))
                     }
                   }
                 }

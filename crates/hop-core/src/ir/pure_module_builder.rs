@@ -4,6 +4,8 @@ use crate::hop::typing::{
     TypeRegistry, TypeRegistryBuilder,
 };
 use crate::html::HtmlElementKind;
+use crate::ir::binder_id::BinderId;
+use crate::ir::binder_id::BinderIdCounter;
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
@@ -13,8 +15,6 @@ use crate::ir::pure_module::{
     PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
     PurePageDeclaration,
 };
-use crate::ir::var_id::VarId;
-use crate::ir::var_id::VarIdCounter;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
@@ -221,7 +221,7 @@ impl<'a> PureModuleBodiesBuilder<'a> {
     }
 
     pub fn build_with_registry(self) -> (PureModule, TypeRegistry) {
-        let var_ids = Rc::new(RefCell::new(VarIdCounter::new()));
+        let binder_ids = Rc::new(RefCell::new(BinderIdCounter::new()));
         let callees = Rc::new(self.callees);
         let mut pages = Vec::new();
         let mut functions = Vec::new();
@@ -231,7 +231,7 @@ impl<'a> PureModuleBodiesBuilder<'a> {
                 .into_iter()
                 .map(|(name, typ)| IrParameter {
                     name,
-                    var: var_ids.borrow_mut().next(),
+                    var: binder_ids.borrow_mut().next(),
                     typ,
                 })
                 .collect();
@@ -241,7 +241,7 @@ impl<'a> PureModuleBodiesBuilder<'a> {
                     .map(|p| (p.name.as_str().to_string(), p.var, p.typ.clone()))
                     .collect(),
                 types: self.types.clone(),
-                var_ids: var_ids.clone(),
+                binder_ids: binder_ids.clone(),
                 callees: callees.clone(),
             };
             let body = (deferred.body_fn)(&builder);
@@ -282,24 +282,24 @@ impl<'a> PureModuleBodiesBuilder<'a> {
         let module = PureModule {
             pages,
             functions,
-            var_ids: *var_ids.borrow(),
+            binder_ids: *binder_ids.borrow(),
         };
         (module, self.types.registry().clone())
     }
 }
 
-type ScopedVar = (String, VarId, Type);
+type ScopedVar = (String, BinderId, Type);
 
 pub struct PureBuilder {
     var_stack: Vec<ScopedVar>,
     types: Rc<TestTypes>,
-    var_ids: Rc<RefCell<VarIdCounter>>,
+    binder_ids: Rc<RefCell<BinderIdCounter>>,
     callees: Rc<HashMap<String, FunctionSignature>>,
 }
 
 impl PureBuilder {
-    fn bind(&self) -> VarId {
-        self.var_ids.borrow_mut().next()
+    fn bind(&self) -> BinderId {
+        self.binder_ids.borrow_mut().next()
     }
 
     fn scoped(&self, bindings: impl IntoIterator<Item = ScopedVar>) -> Self {
@@ -308,7 +308,7 @@ impl PureBuilder {
         Self {
             var_stack,
             types: self.types.clone(),
-            var_ids: self.var_ids.clone(),
+            binder_ids: self.binder_ids.clone(),
             callees: self.callees.clone(),
         }
     }

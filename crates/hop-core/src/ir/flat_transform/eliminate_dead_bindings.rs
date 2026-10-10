@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
 use crate::ir::ir_match::{EnumMatchArm, Match};
 use crate::ir::var_id::VarId;
@@ -8,24 +9,34 @@ use crate::ir::var_id::VarId;
 ///
 /// Every op is pure, so a binding whose name no later binding, nested
 /// block or result reads computes nothing anyone sees, and goes away with
-/// the blocks nested in it. A binder nothing reads goes away too: an
-/// unused loop variable or option binding becomes `_`, and unused enum
-/// arm bindings leave their arm.
+/// the blocks nested in it. A binder that no remaining Read reads goes away
+/// too: an unused loop variable or option binding becomes `_`, and unused
+/// enum arm bindings leave their arm.
 pub fn eliminate_dead_bindings(block: FlatBlock) -> FlatBlock {
-    let mut live = HashSet::new();
+    let mut live = Live {
+        names: HashSet::new(),
+        binders: HashSet::new(),
+    };
     eliminate(block, &mut live)
 }
 
+/// What the bindings after the current one read: the bindings they name,
+/// and the binders they Read.
+struct Live {
+    names: HashSet<VarId>,
+    binders: HashSet<BinderId>,
+}
+
 /// Walk the bindings backwards, keeping a binding when its name is live
-/// and making what it reads live in turn. `live` holds the names read by
+/// and making what it reads live in turn. `live` holds what is read by
 /// what comes after, and is shared with nested blocks, since names are
 /// unique. A binder stays when the block it scopes over, walked first,
 /// reads it.
-fn eliminate(block: FlatBlock, live: &mut HashSet<VarId>) -> FlatBlock {
-    live.insert(block.result);
+fn eliminate(block: FlatBlock, live: &mut Live) -> FlatBlock {
+    live.names.insert(block.result);
     let mut kept = Vec::with_capacity(block.bindings.len());
     for binding in block.bindings.into_iter().rev() {
-        if !live.contains(&binding.name) {
+        if !live.names.contains(&binding.name) {
             continue;
         }
         let FlatBinding { name, typ, op } = binding;
@@ -48,7 +59,7 @@ fn eliminate(block: FlatBlock, live: &mut HashSet<VarId>) -> FlatBlock {
                 } => {
                     let some_arm_body = Box::new(eliminate(*some_arm_body, live));
                     let some_arm_binding =
-                        some_arm_binding.filter(|binder| live.contains(&binder.var));
+                        some_arm_binding.filter(|binder| live.binders.contains(&binder.var));
                     Match::Option {
                         subject,
                         some_arm_binding,
@@ -65,7 +76,7 @@ fn eliminate(block: FlatBlock, live: &mut HashSet<VarId>) -> FlatBlock {
                             let bindings = arm
                                 .bindings
                                 .into_iter()
-                                .filter(|(_, binder)| live.contains(&binder.var))
+                                .filter(|(_, binder)| live.binders.contains(&binder.var))
                                 .collect();
                             EnumMatchArm {
                                 pattern: arm.pattern,
@@ -78,13 +89,17 @@ fn eliminate(block: FlatBlock, live: &mut HashSet<VarId>) -> FlatBlock {
             }),
             FlatOp::HtmlFor { var, source, body } => {
                 let body = eliminate(body, live);
-                let var = var.filter(|binder| live.contains(&binder.var));
+                let var = var.filter(|binder| live.binders.contains(&binder.var));
                 FlatOp::HtmlFor { var, source, body }
+            }
+            FlatOp::Read(binder) => {
+                live.binders.insert(binder);
+                FlatOp::Read(binder)
             }
             op => op,
         };
         op.for_each_operand(&mut |operand| {
-            live.insert(operand);
+            live.names.insert(operand);
         });
         kept.push(FlatBinding { name, typ, op });
     }
@@ -117,6 +132,7 @@ mod tests {
     fn run(module: FlatModule) -> FlatModule {
         FlatModule {
             var_ids: module.var_ids,
+            binder_ids: module.binder_ids,
             pages: module
                 .pages
                 .into_iter()
@@ -213,15 +229,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v2: String = "value"
-                  let v3: Html = text("Hello")
-                  v3
+                  let v1: String = "value"
+                  let v2: Html = text("Hello")
+                  v2
                 }
 
                 -- after --
                 page Test() {
-                  let v3: Html = text("Hello")
-                  v3
+                  let v2: Html = text("Hello")
+                  v2
                 }
             "#]],
         );
@@ -243,32 +259,33 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn f@f0() -> Int {
-                  let v7: Int = call f@f0()
-                  v7
+                  let v6: Int = call f@f0()
+                  v6
                 }
-                page Test(flag@v0: Bool) {
-                  let v5: Int = match v0 {
+                page Test(flag@b0: Bool) {
+                  let v1: Bool = b0
+                  let v4: Int = match v1 {
                     true => {
-                      let v3: Int = call f@f0()
-                      v3
+                      let v2: Int = call f@f0()
+                      v2
                     }
                     false => {
-                      let v4: Int = 0
-                      v4
+                      let v3: Int = 0
+                      v3
                     }
                   }
-                  let v6: Html = text("Hello")
-                  v6
+                  let v5: Html = text("Hello")
+                  v5
                 }
 
                 -- after --
                 fn f@f0() -> Int {
-                  let v7: Int = call f@f0()
-                  v7
-                }
-                page Test(flag@v0: Bool) {
-                  let v6: Html = text("Hello")
+                  let v6: Int = call f@f0()
                   v6
+                }
+                page Test(flag@b0: Bool) {
+                  let v5: Html = text("Hello")
+                  v5
                 }
             "#]],
         );
@@ -284,21 +301,23 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(items@v0: Array[String]) {
-                  let v4: Html = for v1: String in v0 {
-                    let v3: Html = text(".")
-                    v3
+                page Test(items@b0: Array[String]) {
+                  let v1: Array[String] = b0
+                  let v3: Html = for b1: String in v1 {
+                    let v2: Html = text(".")
+                    v2
                   }
-                  v4
+                  v3
                 }
 
                 -- after --
-                page Test(items@v0: Array[String]) {
-                  let v4: Html = for _ in v0 {
-                    let v3: Html = text(".")
-                    v3
+                page Test(items@b0: Array[String]) {
+                  let v1: Array[String] = b0
+                  let v3: Html = for _ in v1 {
+                    let v2: Html = text(".")
+                    v2
                   }
-                  v4
+                  v3
                 }
             "#]],
         );
@@ -319,33 +338,35 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(name@v0: Option[String]) {
-                  let v5: Html = match v0 {
-                    Some(v1: String) => {
-                      let v3: Html = text("some")
-                      v3
+                page Test(name@b0: Option[String]) {
+                  let v1: Option[String] = b0
+                  let v4: Html = match v1 {
+                    Some(b1: String) => {
+                      let v2: Html = text("some")
+                      v2
                     }
                     None => {
-                      let v4: Html = text("none")
-                      v4
+                      let v3: Html = text("none")
+                      v3
                     }
                   }
-                  v5
+                  v4
                 }
 
                 -- after --
-                page Test(name@v0: Option[String]) {
-                  let v5: Html = match v0 {
+                page Test(name@b0: Option[String]) {
+                  let v1: Option[String] = b0
+                  let v4: Html = match v1 {
                     Some(_) => {
-                      let v3: Html = text("some")
-                      v3
+                      let v2: Html = text("some")
+                      v2
                     }
                     None => {
-                      let v4: Html = text("none")
-                      v4
+                      let v3: Html = text("none")
+                      v3
                     }
                   }
-                  v5
+                  v4
                 }
             "#]],
         );
@@ -371,31 +392,35 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn width@f0(shape@v0: Shape) -> Int {
-                  let v4: Int = match v0 {
+                fn width@f0(shape@b0: Shape) -> Int {
+                  let v0: Shape = b0
+                  let v3: Int = match v0 {
                     Shape::Dot => {
-                      let v3: Int = 0
-                      v3
-                    }
-                    Shape::Rect {width@v1: Int, height@v2: Int} => {
+                      let v1: Int = 0
                       v1
                     }
+                    Shape::Rect {width@b1: Int, height@b2: Int} => {
+                      let v2: Int = b1
+                      v2
+                    }
                   }
-                  v4
+                  v3
                 }
 
                 -- after --
-                fn width@f0(shape@v0: Shape) -> Int {
-                  let v4: Int = match v0 {
+                fn width@f0(shape@b0: Shape) -> Int {
+                  let v0: Shape = b0
+                  let v3: Int = match v0 {
                     Shape::Dot => {
-                      let v3: Int = 0
-                      v3
-                    }
-                    Shape::Rect {width@v1: Int} => {
+                      let v1: Int = 0
                       v1
                     }
+                    Shape::Rect {width@b1: Int} => {
+                      let v2: Int = b1
+                      v2
+                    }
                   }
-                  v4
+                  v3
                 }
             "#]],
         );

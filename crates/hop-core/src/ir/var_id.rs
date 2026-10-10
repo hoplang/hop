@@ -1,8 +1,10 @@
 use std::fmt;
 
-/// Identity of a bound variable in the IR.
+/// Identity of a binding in the Flat IR, and of a let in the Writer: the
+/// name of a value an op computes. A binder has a BinderId instead.
 ///
-/// Every binder has its own unique VarId. Equal VarIds mean the same binder.
+/// Every binding has its own unique VarId. Equal VarIds mean the same
+/// binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VarId(usize);
 

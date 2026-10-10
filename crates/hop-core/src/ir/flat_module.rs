@@ -5,6 +5,7 @@ use pretty::BoxDoc;
 use crate::document::CheapString;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
 use crate::html::HtmlElementKind;
+use crate::ir::binder_id::{BinderId, BinderIdCounter};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
@@ -17,18 +18,21 @@ use super::ir_parameter::IrParameter;
 
 /// A Flat module.
 ///
-/// A Pure module with its expressions flattened. Every operand is a name,
-/// and every computation is a binding that names its result. The bindings
-/// of a block are in evaluation order, so a binding refers only to names
-/// bound before it in its own block or in an enclosing block.
+/// A Pure module with its expressions flattened. Every operand is the name
+/// of a binding, and every computation is a binding that names its result.
+/// The bindings of a block are in evaluation order, so a binding refers only
+/// to names bound before it in its own block or in an enclosing block.
 ///
-/// A name is a VarId, bound by a parameter, a binding, a loop or a match
-/// arm. Each is bound once in the module, and each binds it with its type.
+/// A binding is named by a VarId. A parameter, a loop or a match arm binds
+/// a BinderId instead, and a Read op reads a binder into a binding, so a
+/// binder is never an operand. Each VarId and each BinderId is bound once
+/// in the module, and each is bound with its type.
 #[derive(Debug)]
 pub struct FlatModule {
     pub pages: Vec<FlatPageDeclaration>,
     pub functions: Vec<FlatFunctionDeclaration>,
     pub var_ids: VarIdCounter,
+    pub binder_ids: BinderIdCounter,
 }
 
 /// A page declaration in the Flat IR.
@@ -85,13 +89,17 @@ pub enum FlatAttribute {
     Presence { name: AttributeName, present: VarId },
 }
 
-/// The computation of a binding. Operands are names, so an op never
-/// contains another op. Only Match and HtmlFor contain blocks.
+/// The computation of a binding. Operands are names of bindings, so an op
+/// never contains another op. Only Match and HtmlFor contain blocks.
 ///
 /// The type of a binding is on the binding, so ops that carried a `typ`
 /// in Pure carry none here.
 #[derive(Debug, Clone)]
 pub enum FlatOp {
+    /// The value of a binder in scope: a parameter, a loop variable or a
+    /// match arm's variable.
+    Read(BinderId),
+
     StringLiteral(CheapString),
     IntLiteral(i32),
     FloatLiteral(f64),
@@ -256,7 +264,8 @@ impl FlatOp {
     /// or the source.
     pub fn for_each_operand(&self, f: &mut impl FnMut(VarId)) {
         match self {
-            FlatOp::StringLiteral(_)
+            FlatOp::Read(_)
+            | FlatOp::StringLiteral(_)
             | FlatOp::IntLiteral(_)
             | FlatOp::FloatLiteral(_)
             | FlatOp::BoolLiteral(_)
@@ -343,7 +352,8 @@ impl FlatOp {
     /// the same names as `for_each_operand`.
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut VarId)) {
         match self {
-            FlatOp::StringLiteral(_)
+            FlatOp::Read(_)
+            | FlatOp::StringLiteral(_)
             | FlatOp::IntLiteral(_)
             | FlatOp::FloatLiteral(_)
             | FlatOp::BoolLiteral(_)
@@ -447,6 +457,7 @@ impl FlatOp {
     /// A Match or HtmlFor spans lines, every other op is one line.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
+            FlatOp::Read(binder) => BoxDoc::text(binder.to_string()),
             FlatOp::StringLiteral(value) => BoxDoc::text(format!("{:?}", value.as_str())),
             FlatOp::IntLiteral(value) => BoxDoc::text(value.to_string()),
             FlatOp::FloatLiteral(value) => BoxDoc::text(value.to_string()),

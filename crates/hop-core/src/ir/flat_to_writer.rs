@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::hop::typing::Type;
 use crate::html::write_escaped_html;
+use crate::ir::binder_id::BinderId;
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::flat_module::{
     FlatAttribute, FlatBinding, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule,
@@ -10,13 +11,14 @@ use crate::ir::flat_module::{
 use crate::ir::ir_match::{EnumMatchArm, Match};
 use crate::ir::var_id::VarId;
 use crate::ir::writer_module::{
-    Let, Stmt, Value, ValueBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterModule,
-    WriterPageDeclaration,
+    ForSource, Let, Name, Stmt, Value, ValueBlock, WriterFunctionBody, WriterFunctionDeclaration,
+    WriterModule, WriterPageDeclaration,
 };
 
 /// Lower a Flat module to the Writer.
 ///
-/// Values stay lets, in their order. Html is written. An Html binding that
+/// Values stay lets, in their order, except a Read, which is folded into
+/// its readers so they read the binder. Html is written. An Html binding that
 /// is read once, as a part of a concat, the children of an element or the
 /// result of a block, and not from inside a loop it sits outside of, is
 /// not bound at all but written where it is read. Every other Html binding
@@ -158,6 +160,9 @@ struct Lowerer {
     /// The ops of the bindings written or folded where they are read, held
     /// until that read.
     pending: HashMap<VarId, FlatOp>,
+    /// The binder each Read binding reads. A Read is not lowered, and what
+    /// reads its binding reads the binder instead.
+    reads: HashMap<VarId, BinderId>,
 }
 
 impl Lowerer {
@@ -168,9 +173,18 @@ impl Lowerer {
             uses: HashMap::new(),
             defs: HashMap::new(),
             pending: HashMap::new(),
+            reads: HashMap::new(),
         };
         lowerer.analyze(block, 0, output);
         lowerer
+    }
+
+    /// The Writer name for reading a binding: its binder when it is a Read.
+    fn name(&self, name: VarId) -> Name {
+        match self.reads.get(&name) {
+            Some(binder) => Name::Binder(*binder),
+            None => Name::Binding(name),
+        }
     }
 
     fn analyze(&mut self, block: &FlatBlock, depth: usize, output: bool) {
@@ -312,15 +326,19 @@ impl Lowerer {
         let lets = self.lower_bindings(block.bindings);
         ValueBlock {
             lets,
-            result: block.result,
+            result: self.name(block.result),
         }
     }
 
-    /// Lower the bindings to lets, holding back the ones written or folded
-    /// where they are read.
+    /// Lower the bindings to lets, folding the Reads into their readers and
+    /// holding back the ones written or folded where they are read.
     fn lower_bindings(&mut self, bindings: Vec<FlatBinding>) -> Vec<Let> {
         let mut lets = Vec::new();
         for binding in bindings {
+            if let FlatOp::Read(binder) = binding.op {
+                self.reads.insert(binding.name, binder);
+                continue;
+            }
             if self.held_back(binding.name) {
                 self.pending.insert(binding.name, binding.op);
                 continue;
@@ -347,7 +365,7 @@ impl Lowerer {
                         true_body,
                         false_body,
                     } => Match::Bool {
-                        subject,
+                        subject: Box::new(self.name(*subject)),
                         true_body: Box::new(self.lower_value_block(*true_body)),
                         false_body: Box::new(self.lower_value_block(*false_body)),
                     },
@@ -357,13 +375,13 @@ impl Lowerer {
                         some_arm_body,
                         none_arm_body,
                     } => Match::Option {
-                        subject,
+                        subject: Box::new(self.name(*subject)),
                         some_arm_binding,
                         some_arm_body: Box::new(self.lower_value_block(*some_arm_body)),
                         none_arm_body: Box::new(self.lower_value_block(*none_arm_body)),
                     },
                     Match::Enum { subject, arms } => Match::Enum {
-                        subject,
+                        subject: Box::new(self.name(*subject)),
                         arms: arms
                             .into_iter()
                             .map(|arm| EnumMatchArm {
@@ -374,32 +392,62 @@ impl Lowerer {
                             .collect(),
                     },
                 }),
-                FlatOp::Call { function, args } => Value::Call { function, args },
+                FlatOp::Read(_) => unreachable!("a Read is folded into its readers"),
+                FlatOp::Call { function, args } => Value::Call {
+                    function,
+                    args: args.into_iter().map(|arg| self.name(arg)).collect(),
+                },
                 FlatOp::StringLiteral(value) => Value::StringLiteral(value),
                 FlatOp::IntLiteral(value) => Value::IntLiteral(value),
                 FlatOp::FloatLiteral(value) => Value::FloatLiteral(value),
                 FlatOp::BoolLiteral(value) => Value::BoolLiteral(value),
-                FlatOp::FieldAccess { record, field } => Value::FieldAccess { record, field },
-                FlatOp::TupleIndex { tuple, index } => Value::TupleIndex { tuple, index },
-                FlatOp::Array(elements) => Value::Array(elements),
-                FlatOp::Tuple(elements) => Value::Tuple(elements),
-                FlatOp::Record { fields } => Value::Record { fields },
+                FlatOp::FieldAccess { record, field } => Value::FieldAccess {
+                    record: self.name(record),
+                    field,
+                },
+                FlatOp::TupleIndex { tuple, index } => Value::TupleIndex {
+                    tuple: self.name(tuple),
+                    index,
+                },
+                FlatOp::Array(elements) => Value::Array(
+                    elements
+                        .into_iter()
+                        .map(|element| self.name(element))
+                        .collect(),
+                ),
+                FlatOp::Tuple(elements) => Value::Tuple(
+                    elements
+                        .into_iter()
+                        .map(|element| self.name(element))
+                        .collect(),
+                ),
+                FlatOp::Record { fields } => Value::Record {
+                    fields: fields
+                        .into_iter()
+                        .map(|(field, value)| (field, self.name(value)))
+                        .collect(),
+                },
                 FlatOp::Enum {
                     variant_name,
                     fields,
                 } => Value::Enum {
                     variant_name,
-                    fields,
+                    fields: fields
+                        .into_iter()
+                        .map(|(field, value)| (field, self.name(value)))
+                        .collect(),
                 },
-                FlatOp::Option(value) => Value::Option(value),
-                FlatOp::StringConcat(parts) => Value::StringConcat(parts),
+                FlatOp::Option(value) => Value::Option(value.map(|value| self.name(value))),
+                FlatOp::StringConcat(parts) => {
+                    Value::StringConcat(parts.into_iter().map(|part| self.name(part)).collect())
+                }
                 FlatOp::NumericAdd {
                     left,
                     right,
                     operand_types,
                 } => Value::NumericAdd {
-                    left,
-                    right,
+                    left: self.name(left),
+                    right: self.name(right),
                     operand_types,
                 },
                 FlatOp::NumericSubtract {
@@ -407,8 +455,8 @@ impl Lowerer {
                     right,
                     operand_types,
                 } => Value::NumericSubtract {
-                    left,
-                    right,
+                    left: self.name(left),
+                    right: self.name(right),
                     operand_types,
                 },
                 FlatOp::NumericMultiply {
@@ -416,25 +464,25 @@ impl Lowerer {
                     right,
                     operand_types,
                 } => Value::NumericMultiply {
-                    left,
-                    right,
+                    left: self.name(left),
+                    right: self.name(right),
                     operand_types,
                 },
                 FlatOp::NumericNegation {
                     operand,
                     operand_type,
                 } => Value::NumericNegation {
-                    operand,
+                    operand: self.name(operand),
                     operand_type,
                 },
-                FlatOp::BoolNegation(operand) => Value::BoolNegation(operand),
+                FlatOp::BoolNegation(operand) => Value::BoolNegation(self.name(operand)),
                 FlatOp::Equals {
                     left,
                     right,
                     operand_types,
                 } => Value::Equals {
-                    left,
-                    right,
+                    left: self.name(left),
+                    right: self.name(right),
                     operand_types,
                 },
                 FlatOp::LessThan {
@@ -442,8 +490,8 @@ impl Lowerer {
                     right,
                     operand_types,
                 } => Value::LessThan {
-                    left,
-                    right,
+                    left: self.name(left),
+                    right: self.name(right),
                     operand_types,
                 },
                 FlatOp::LessThanOrEqual {
@@ -451,18 +499,18 @@ impl Lowerer {
                     right,
                     operand_types,
                 } => Value::LessThanOrEqual {
-                    left,
-                    right,
+                    left: self.name(left),
+                    right: self.name(right),
                     operand_types,
                 },
-                FlatOp::ArrayLength(array) => Value::ArrayLength(array),
-                FlatOp::ArrayIsEmpty(array) => Value::ArrayIsEmpty(array),
-                FlatOp::StringIsEmpty(string) => Value::StringIsEmpty(string),
-                FlatOp::OptionIsSome(option) => Value::OptionIsSome(option),
-                FlatOp::OptionIsNone(option) => Value::OptionIsNone(option),
-                FlatOp::IntToString(value) => Value::IntToString(value),
-                FlatOp::FloatToInt(value) => Value::FloatToInt(value),
-                FlatOp::IntToFloat(value) => Value::IntToFloat(value),
+                FlatOp::ArrayLength(array) => Value::ArrayLength(self.name(array)),
+                FlatOp::ArrayIsEmpty(array) => Value::ArrayIsEmpty(self.name(array)),
+                FlatOp::StringIsEmpty(string) => Value::StringIsEmpty(self.name(string)),
+                FlatOp::OptionIsSome(option) => Value::OptionIsSome(self.name(option)),
+                FlatOp::OptionIsNone(option) => Value::OptionIsNone(self.name(option)),
+                FlatOp::IntToString(value) => Value::IntToString(self.name(value)),
+                FlatOp::FloatToInt(value) => Value::FloatToInt(self.name(value)),
+                FlatOp::IntToFloat(value) => Value::IntToFloat(self.name(value)),
             };
             lets.push(Let { name, typ, value });
         }
@@ -474,7 +522,7 @@ impl Lowerer {
     fn lower_html(&mut self, name: VarId, out: &mut Vec<Stmt>) {
         match self.pending.remove(&name) {
             Some(op) => self.lower_html_op(op, out),
-            None => out.push(Stmt::WriteHtml(name)),
+            None => out.push(Stmt::WriteHtml(self.name(name))),
         }
     }
 
@@ -494,7 +542,7 @@ impl Lowerer {
                 }
             }
             Some(op) => unreachable!("a held back string is a constant or a concat, not {op:?}"),
-            None => out.push(Stmt::WriteString(name)),
+            None => out.push(Stmt::WriteString(self.name(name))),
         }
     }
 
@@ -537,7 +585,7 @@ impl Lowerer {
                                     let mut true_body = Vec::new();
                                     write(&mut true_body, &format!(" {}", name.as_str()));
                                     unit.push(Stmt::Match(Match::Bool {
-                                        subject: Box::new(present),
+                                        subject: Box::new(self.name(present)),
                                         true_body: Box::new(true_body),
                                         false_body: Box::new(Vec::new()),
                                     }));
@@ -570,6 +618,13 @@ impl Lowerer {
             }
 
             FlatOp::HtmlFor { var, source, body } => {
+                let source = match source {
+                    FlatForSource::Array(array) => ForSource::Array(self.name(array)),
+                    FlatForSource::RangeInclusive { start, end } => ForSource::RangeInclusive {
+                        start: self.name(start),
+                        end: self.name(end),
+                    },
+                };
                 let mut statements = Vec::new();
                 self.lower_output_block(body, &mut statements);
                 out.push(Stmt::For {
@@ -590,7 +645,7 @@ impl Lowerer {
                     let mut false_statements = Vec::new();
                     self.lower_output_block(*false_body, &mut false_statements);
                     Match::Bool {
-                        subject,
+                        subject: Box::new(self.name(*subject)),
                         true_body: Box::new(true_statements),
                         false_body: Box::new(false_statements),
                     }
@@ -606,14 +661,14 @@ impl Lowerer {
                     let mut none_statements = Vec::new();
                     self.lower_output_block(*none_arm_body, &mut none_statements);
                     Match::Option {
-                        subject,
+                        subject: Box::new(self.name(*subject)),
                         some_arm_binding,
                         some_arm_body: Box::new(some_statements),
                         none_arm_body: Box::new(none_statements),
                     }
                 }
                 Match::Enum { subject, arms } => Match::Enum {
-                    subject,
+                    subject: Box::new(self.name(*subject)),
                     arms: arms
                         .into_iter()
                         .map(|arm| {
@@ -629,7 +684,10 @@ impl Lowerer {
                 },
             })),
 
-            FlatOp::Call { function, args } => out.push(Stmt::WriteFunction { function, args }),
+            FlatOp::Call { function, args } => out.push(Stmt::WriteFunction {
+                function,
+                args: args.into_iter().map(|arg| self.name(arg)).collect(),
+            }),
 
             op => unreachable!("{op:?} produces no Html"),
         }
@@ -645,11 +703,11 @@ mod tests {
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
     use crate::ir::pure_to_flat::pure_to_flat;
-    use crate::ir::var_id::VarId;
+
     use expect_test::{Expect, expect};
 
     /// The type of a name in scope.
-    fn type_of(names: &[(VarId, Type)], name: VarId) -> &Type {
+    fn type_of(names: &[(Name, Type)], name: Name) -> &Type {
         let Some((_, typ)) = names.iter().find(|(bound, _)| *bound == name) else {
             panic!("{name} is not in scope");
         };
@@ -661,7 +719,7 @@ mod tests {
     /// with the names it reads and with its own let, and that a loop
     /// variable or option binding has the type of the elements of its
     /// source or subject.
-    fn check_stmts(stmts: &[Stmt], names: &mut Vec<(VarId, Type)>) {
+    fn check_stmts(stmts: &[Stmt], names: &mut Vec<(Name, Type)>) {
         let names_len = names.len();
         for stmt in stmts {
             let scope_len = names.len();
@@ -670,7 +728,7 @@ mod tests {
                     if let Some(expected) = check_value(&let_.value, names) {
                         assert_eq!(let_.typ, expected, "{} has the wrong type", let_.name);
                     }
-                    names.push((let_.name, let_.typ.clone()));
+                    names.push((Name::Binding(let_.name), let_.typ.clone()));
                 }
                 Stmt::Write(_) => {}
                 Stmt::WriteString(name) => assert_eq!(type_of(names, *name), &Type::String),
@@ -682,11 +740,11 @@ mod tests {
                 }
                 Stmt::For { var, source, body } => {
                     let element_type = match source {
-                        FlatForSource::Array(array) => match type_of(names, *array) {
+                        ForSource::Array(array) => match type_of(names, *array) {
                             Type::Array(element_type) => (**element_type).clone(),
                             typ => panic!("a loop over {array} of type {typ}"),
                         },
-                        FlatForSource::RangeInclusive { start, end } => {
+                        ForSource::RangeInclusive { start, end } => {
                             assert_eq!(type_of(names, *start), &Type::Int);
                             assert_eq!(type_of(names, *end), &Type::Int);
                             Type::Int
@@ -698,7 +756,7 @@ mod tests {
                             "{} has the wrong type",
                             binder.var
                         );
-                        names.push((binder.var, binder.typ.clone()));
+                        names.push((Name::Binder(binder.var), binder.typ.clone()));
                     }
                     check_stmts(body, names);
                     names.truncate(scope_len);
@@ -723,7 +781,7 @@ mod tests {
                     };
                     if let Some(binder) = some_arm_binding {
                         assert_eq!(binder.typ, *inner, "{} has the wrong type", binder.var);
-                        names.push((binder.var, binder.typ.clone()));
+                        names.push((Name::Binder(binder.var), binder.typ.clone()));
                     }
                     check_stmts(some_arm_body, names);
                     names.truncate(scope_len);
@@ -733,7 +791,7 @@ mod tests {
                     type_of(names, **subject);
                     for arm in arms {
                         for (_, binder) in &arm.bindings {
-                            names.push((binder.var, binder.typ.clone()));
+                            names.push((Name::Binder(binder.var), binder.typ.clone()));
                         }
                         check_stmts(&arm.body, names);
                         names.truncate(scope_len);
@@ -745,13 +803,13 @@ mod tests {
     }
 
     /// Checks the lets and returns the type of the result.
-    fn check_value_block(block: &ValueBlock, names: &mut Vec<(VarId, Type)>) -> Type {
+    fn check_value_block(block: &ValueBlock, names: &mut Vec<(Name, Type)>) -> Type {
         let names_len = names.len();
         for let_ in &block.lets {
             if let Some(expected) = check_value(&let_.value, names) {
                 assert_eq!(let_.typ, expected, "{} has the wrong type", let_.name);
             }
-            names.push((let_.name, let_.typ.clone()));
+            names.push((Name::Binding(let_.name), let_.typ.clone()));
         }
         let result = type_of(names, block.result).clone();
         names.truncate(names_len);
@@ -760,7 +818,7 @@ mod tests {
 
     /// Checks the value and returns the type it must have, when the value
     /// determines it.
-    fn check_value(value: &Value, names: &mut Vec<(VarId, Type)>) -> Option<Type> {
+    fn check_value(value: &Value, names: &mut Vec<(Name, Type)>) -> Option<Type> {
         let names_len = names.len();
         value.for_each_operand(&mut |operand| {
             type_of(names, operand);
@@ -859,7 +917,7 @@ mod tests {
                 };
                 if let Some(binder) = some_arm_binding {
                     assert_eq!(binder.typ, *inner, "{} has the wrong type", binder.var);
-                    names.push((binder.var, binder.typ.clone()));
+                    names.push((Name::Binder(binder.var), binder.typ.clone()));
                 }
                 let some_type = check_value_block(some_arm_body, names);
                 names.truncate(names_len);
@@ -871,7 +929,7 @@ mod tests {
                 let mut arm_type = None;
                 for arm in arms {
                     for (_, binder) in &arm.bindings {
-                        names.push((binder.var, binder.typ.clone()));
+                        names.push((Name::Binder(binder.var), binder.typ.clone()));
                     }
                     let typ = check_value_block(&arm.body, names);
                     names.truncate(names_len);
@@ -892,18 +950,18 @@ mod tests {
             let (module, _) = random_module(u);
             let module = flat_to_writer(optimize_flat(pure_to_flat(module)), None);
             for page in &module.pages {
-                let mut names: Vec<(VarId, Type)> = page
+                let mut names: Vec<(Name, Type)> = page
                     .parameters
                     .iter()
-                    .map(|param| (param.var, param.typ.clone()))
+                    .map(|param| (Name::Binder(param.var), param.typ.clone()))
                     .collect();
                 check_stmts(&page.body, &mut names);
             }
             for function in &module.functions {
-                let mut names: Vec<(VarId, Type)> = function
+                let mut names: Vec<(Name, Type)> = function
                     .parameters
                     .iter()
-                    .map(|param| (param.var, param.typ.clone()))
+                    .map(|param| (Name::Binder(param.var), param.typ.clone()))
                     .collect();
                 match &function.body {
                     WriterFunctionBody::Writes(statements) => {
@@ -1000,18 +1058,18 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(cls@v0: String) {
+                page Test(cls@b0: String) {
                   html(
                     tag: "div",
-                    attrs: [data-value: v0],
+                    attrs: [data-value: b0],
                     children: concat(),
                   )
                 }
 
                 -- writer --
-                page Test(cls@v0: String) {
+                page Test(cls@b0: String) {
                   write("<div data-value=\"")
-                  write_string(v0)
+                  write_string(b0)
                   write("\"></div>")
                 }
             "#]],
@@ -1039,17 +1097,17 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(flag@v0: Bool) {
+                page Test(flag@b0: Bool) {
                   html(
                     tag: "input",
-                    attrs: [disabled: true, hidden: false, checked: v0],
+                    attrs: [disabled: true, hidden: false, checked: b0],
                   )
                 }
 
                 -- writer --
-                page Test(flag@v0: Bool) {
+                page Test(flag@b0: Bool) {
                   write("<input disabled")
-                  match v0 {
+                  match b0 {
                     true => {
                       write(" checked")
                     }
@@ -1079,7 +1137,7 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(name@v0: String) {
+                page Test(name@b0: String) {
                   html(
                     tag: "div",
                     attrs: [],
@@ -1087,16 +1145,16 @@ mod tests {
                       html(
                         tag: "p",
                         attrs: [],
-                        children: concat(escape(v0)),
+                        children: concat(escape(b0)),
                       ),
                     ),
                   )
                 }
 
                 -- writer --
-                page Test(name@v0: String) {
+                page Test(name@b0: String) {
                   write("<div><p>")
-                  write_string(v0)
+                  write_string(b0)
                   write("</p></div>")
                 }
             "#]],
@@ -1116,14 +1174,14 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(name@v0: String) {
-                  escape(concat("a<", v0, ">b"))
+                page Test(name@b0: String) {
+                  escape(concat("a<", b0, ">b"))
                 }
 
                 -- writer --
-                page Test(name@v0: String) {
+                page Test(name@b0: String) {
                   write("a&lt;")
-                  write_string(v0)
+                  write_string(b0)
                   write("&gt;b")
                 }
             "#]],
@@ -1185,14 +1243,14 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(items@v0: Array[String]) {
+                page Test(items@b0: Array[String]) {
                   concat(
                     text("before "),
-                    for v1: String in v0 {
+                    for b1: String in b0 {
                       html(
                         tag: "li",
                         attrs: [],
-                        children: concat(escape(v1)),
+                        children: concat(escape(b1)),
                       )
                     },
                     text(" after"),
@@ -1200,11 +1258,11 @@ mod tests {
                 }
 
                 -- writer --
-                page Test(items@v0: Array[String]) {
+                page Test(items@b0: Array[String]) {
                   write("before ")
-                  for v1: String in v0 {
+                  for b1: String in b0 {
                     write("<li>")
-                    write_string(v1)
+                    write_string(b1)
                     write("</li>")
                   }
                   write(" after")
@@ -1229,22 +1287,22 @@ mod tests {
             expect![[r#"
                 -- pure --
                 page Test() {
-                  let v0: Html = html(
+                  let b0: Html = html(
                     tag: "b",
                     attrs: [],
                     children: concat(text("hi")),
                   ) in {
-                    concat(v0, v0)
+                    concat(b0, b0)
                   }
                 }
 
                 -- writer --
                 page Test() {
-                  let v4: Html = html {
+                  let v3: Html = html {
                     write("<b>hi</b>")
                   }
-                  write_html(v4)
-                  write_html(v4)
+                  write_html(v3)
+                  write_html(v3)
                 }
             "#]],
         );
@@ -1265,23 +1323,23 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(items@v0: Array[String]) {
-                  let v1: Html = html(
+                page Test(items@b0: Array[String]) {
+                  let b1: Html = html(
                     tag: "b",
                     attrs: [],
                     children: concat(text("hi")),
                   ) in {
-                    for _ in v0 { v1 }
+                    for _ in b0 { b1 }
                   }
                 }
 
                 -- writer --
-                page Test(items@v0: Array[String]) {
-                  let v5: Html = html {
+                page Test(items@b0: Array[String]) {
+                  let v3: Html = html {
                     write("<b>hi</b>")
                   }
-                  for _ in v0 {
-                    write_html(v5)
+                  for _ in b0 {
+                    write_html(v3)
                   }
                 }
             "#]],
@@ -1307,8 +1365,8 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn wrap@f0(inner@v0: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(v0))
+                fn wrap@f0(inner@b0: Html) -> Html {
+                  html(tag: "div", attrs: [], children: concat(b0))
                 }
                 page Test() {
                   call wrap@f0(html(
@@ -1344,8 +1402,8 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn square_next@f0(x@v0: Int) -> Int {
-                  let v1: Int = (v0 + 1) in { (v1 * v1) }
+                fn square_next@f0(x@b0: Int) -> Int {
+                  let b1: Int = (b0 + 1) in { (b1 * b1) }
                 }
                 page Test() {
                   escape(call square_next@f0(2).to_string())
@@ -1383,9 +1441,9 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(flag@v0: Bool) {
-                  let v1: Card = Card {
-                    body: match v0 {
+                page Test(flag@b0: Bool) {
+                  let b1: Card = Card {
+                    body: match b0 {
                       true => {
                         text("a")
                       }
@@ -1394,13 +1452,13 @@ mod tests {
                       }
                     },
                   } in {
-                    v1.body
+                    b1.body
                   }
                 }
 
                 -- writer --
-                page Test(flag@v0: Bool) {
-                  match v0 {
+                page Test(flag@b0: Bool) {
+                  match b0 {
                     true => {
                       write("a")
                     }
@@ -1430,10 +1488,10 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(flag@v0: Bool, n@v1: Int) {
-                  escape(match v0 {
+                page Test(flag@b0: Bool, n@b1: Int) {
+                  escape(match b0 {
                     true => {
-                      (v1 + 1)
+                      (b1 + 1)
                     }
                     false => {
                       0
@@ -1442,11 +1500,11 @@ mod tests {
                 }
 
                 -- writer --
-                page Test(flag@v0: Bool, n@v1: Int) {
-                  let v6: Int = match v0 {
+                page Test(flag@b0: Bool, n@b1: Int) {
+                  let v6: Int = match b0 {
                     true => {
                       let v3: Int = 1
-                      let v4: Int = v1 + v3
+                      let v4: Int = b1 + v3
                       v4
                     }
                     false => {

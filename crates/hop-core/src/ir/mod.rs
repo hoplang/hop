@@ -1,3 +1,4 @@
+mod binder_id;
 mod document_shell;
 pub mod flat_module;
 mod flat_optimizer;

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
+use crate::ir::binder_id::BinderId;
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::flat_module::{
     FlatAttribute, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule, FlatOp,
@@ -19,10 +20,15 @@ use crate::ir::var_id::VarId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 
-/// The values of the names bound so far in one function frame. A block
-/// removes its names when it ends, and an arm or a loop its binders, so a
-/// loop body binds them afresh on every iteration.
+/// The values of the bindings made so far in one function frame. A block
+/// removes its bindings when it ends, so a loop body binds them afresh on
+/// every iteration.
 type Names = HashMap<VarId, Value>;
+
+/// The values of the binders in scope in one function frame: its
+/// parameters, and the binders of the loops and arms being evaluated. An
+/// arm or a loop removes its binders when it ends.
+type Binders = HashMap<BinderId, Value>;
 
 pub fn evaluate_page(
     module: &FlatModule,
@@ -39,9 +45,10 @@ pub fn evaluate_page(
         })?;
 
     let mut names = Names::new();
+    let mut binders = Binders::new();
     for param in &page.parameters {
         if let Some(value) = args.remove(param.name()) {
-            names.insert(param.var, value);
+            binders.insert(param.var, value);
         } else {
             return Err(EvalError::MissingParameter {
                 page: page.name.clone(),
@@ -50,8 +57,10 @@ pub fn evaluate_page(
         }
     }
 
-    let head = evaluate_block(&page.head, &mut names, &module.functions, 0)?.unwrap_html();
-    let body = evaluate_block(&page.body, &mut names, &module.functions, 0)?.unwrap_html();
+    let head =
+        evaluate_block(&page.head, &mut names, &mut binders, &module.functions, 0)?.unwrap_html();
+    let body =
+        evaluate_block(&page.body, &mut names, &mut binders, &module.functions, 0)?.unwrap_html();
 
     let mut html = String::new();
     match shell {
@@ -101,10 +110,11 @@ pub fn evaluate_function(
     // A recursive call binds the same names as the frame it was called
     // from, so each frame has names of its own.
     let mut names = Names::new();
+    let mut binders = Binders::new();
     for (param, value) in decl.parameters.iter().zip(args) {
-        names.insert(param.var, value);
+        binders.insert(param.var, value);
     }
-    evaluate_block(&decl.body, &mut names, functions, depth + 1)
+    evaluate_block(&decl.body, &mut names, &mut binders, functions, depth + 1)
 }
 
 /// Evaluate the bindings in order and produce the result. The names bound
@@ -113,11 +123,12 @@ pub fn evaluate_function(
 fn evaluate_block(
     block: &FlatBlock,
     names: &mut Names,
+    binders: &mut Binders,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
 ) -> Result<Value, EvalError> {
     for binding in &block.bindings {
-        let value = evaluate_op(&binding.op, names, functions, depth)?;
+        let value = evaluate_op(&binding.op, names, binders, functions, depth)?;
         names.insert(binding.name, value);
     }
     let result = names[&block.result].clone();
@@ -130,10 +141,13 @@ fn evaluate_block(
 fn evaluate_op(
     op: &FlatOp,
     names: &mut Names,
+    binders: &mut Binders,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
 ) -> Result<Value, EvalError> {
     Ok(match op {
+        FlatOp::Read(binder) => binders[binder].clone(),
+
         FlatOp::StringLiteral(value) => Value::String(value.to_string()),
 
         FlatOp::IntLiteral(value) => Value::Int(*value),
@@ -389,11 +403,11 @@ fn evaluate_op(
                             field_name, variant_name
                         )
                     });
-                names.insert(binder.var, field.clone());
+                binders.insert(binder.var, field.clone());
             }
-            let result = evaluate_block(&arm.body, names, functions, depth);
+            let result = evaluate_block(&arm.body, names, binders, functions, depth);
             for (_, binder) in &arm.bindings {
-                names.remove(&binder.var);
+                binders.remove(&binder.var);
             }
             result?
         }
@@ -404,9 +418,9 @@ fn evaluate_op(
             false_body,
         }) => {
             if names[subject].clone().unwrap_bool() {
-                evaluate_block(true_body, names, functions, depth)?
+                evaluate_block(true_body, names, binders, functions, depth)?
             } else {
-                evaluate_block(false_body, names, functions, depth)?
+                evaluate_block(false_body, names, binders, functions, depth)?
             }
         }
 
@@ -418,15 +432,15 @@ fn evaluate_op(
         }) => match names[subject].clone().unwrap_option() {
             Some(inner) => {
                 if let Some(binder) = some_arm_binding {
-                    names.insert(binder.var, *inner);
+                    binders.insert(binder.var, *inner);
                 }
-                let result = evaluate_block(some_arm_body, names, functions, depth);
+                let result = evaluate_block(some_arm_body, names, binders, functions, depth);
                 if let Some(binder) = some_arm_binding {
-                    names.remove(&binder.var);
+                    binders.remove(&binder.var);
                 }
                 result?
             }
-            None => evaluate_block(none_arm_body, names, functions, depth)?,
+            None => evaluate_block(none_arm_body, names, binders, functions, depth)?,
         },
 
         FlatOp::HtmlFor { var, source, body } => {
@@ -441,11 +455,11 @@ fn evaluate_op(
             let mut nodes = Vec::new();
             for item in items {
                 if let Some(binder) = var {
-                    names.insert(binder.var, item);
+                    binders.insert(binder.var, item);
                 }
-                let result = evaluate_block(body, names, functions, depth);
+                let result = evaluate_block(body, names, binders, functions, depth);
                 if let Some(binder) = var {
-                    names.remove(&binder.var);
+                    binders.remove(&binder.var);
                 }
                 nodes.extend(result?.unwrap_html());
             }
@@ -559,9 +573,11 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                page Items(items@v0: Array[String]) {
-                  let v6: Html = for v1: String in v0 {
-                    let v3: Html = escape(v1)
+                page Items(items@b0: Array[String]) {
+                  let v1: Array[String] = b0
+                  let v6: Html = for b1: String in v1 {
+                    let v2: String = b1
+                    let v3: Html = escape(v2)
                     let v4: Html = concat(v3)
                     let v5: Html = html(tag: "li", attrs: [], children: v4)
                     v5
@@ -597,14 +613,15 @@ mod tests {
                   let v8: Bool = call diverge@f0()
                   v8
                 }
-                page Test(flag@v0: Bool) {
-                  let v3: Bool = match v0 {
+                page Test(flag@b0: Bool) {
+                  let v1: Bool = b0
+                  let v3: Bool = match v1 {
                     true => {
                       let v2: Bool = call diverge@f0()
                       v2
                     }
                     false => {
-                      v0
+                      v1
                     }
                   }
                   let v6: String = match v3 {
@@ -653,14 +670,16 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                page Test(shape@v0: Shape) {
-                  let v5: String = match v0 {
+                page Test(shape@b0: Shape) {
+                  let v1: Shape = b0
+                  let v5: String = match v1 {
                     Shape::Dot => {
-                      let v3: String = "dot"
-                      v3
+                      let v2: String = "dot"
+                      v2
                     }
-                    Shape::Circle {radius@v1: Int} => {
-                      let v4: String = v1.to_string()
+                    Shape::Circle {radius@b1: Int} => {
+                      let v3: Int = b1
+                      let v4: String = v3.to_string()
                       v4
                     }
                   }

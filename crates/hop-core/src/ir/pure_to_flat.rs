@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{
     FlatAttribute, FlatBinding, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule,
     FlatOp, FlatPageDeclaration,
@@ -11,14 +12,15 @@ use crate::ir::var_id::{VarId, VarIdCounter};
 /// Lower a Pure module to the Flat IR.
 ///
 /// Each Pure expression that computes a value becomes one binding with a
-/// fresh name, in evaluation order. A variable reference binds nothing, it
-/// is the name of its binder, or of the value of the let that binds it,
-/// and a let is the name of its body. The short-circuit operators become
-/// bool matches, so the right operand is evaluated only when the left one
-/// does not decide.
+/// fresh name, in evaluation order. A let is the name of its body, and a
+/// reference to the let's variable binds nothing, it is the name of the
+/// let's value. A reference to any other binder, a parameter, a loop
+/// variable or a match arm's variable, becomes a Read. The short-circuit
+/// operators become bool matches, so the right operand is evaluated only
+/// when the left one does not decide.
 pub fn pure_to_flat(module: PureModule) -> FlatModule {
     let mut cx = Lowering {
-        var_ids: module.var_ids,
+        var_ids: VarIdCounter::new(),
         lets: HashMap::new(),
     };
     let pages = module
@@ -45,16 +47,17 @@ pub fn pure_to_flat(module: PureModule) -> FlatModule {
         pages,
         functions,
         var_ids: cx.var_ids,
+        binder_ids: module.binder_ids,
     }
 }
 
 /// What lowering carries from one expression to the next.
 struct Lowering {
-    /// Names the bindings, after the binders of the Pure module.
+    /// Names the bindings.
     var_ids: VarIdCounter,
-    /// The name each let variable stands for. Binders are unique across
+    /// The binding each let variable stands for. Binders are unique across
     /// the module, so one map serves every body.
-    lets: HashMap<VarId, VarId>,
+    lets: HashMap<BinderId, VarId>,
 }
 
 fn lower_block(expr: PureExpr, cx: &mut Lowering) -> FlatBlock {
@@ -76,9 +79,10 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
             return lower_expr(*body, out, cx);
         }
 
-        PureExpr::VariableReference { value, .. } => {
-            return cx.lets.get(&value).copied().unwrap_or(value);
-        }
+        PureExpr::VariableReference { value, .. } => match cx.lets.get(&value) {
+            Some(name) => return *name,
+            None => FlatOp::Read(value),
+        },
 
         PureExpr::Match { match_, .. } => FlatOp::Match(match match_ {
             Match::Bool {
@@ -403,16 +407,17 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn square_next@f0(x@v0: Int) -> Int {
-                  let v1: Int = (v0 + 1) in { (v1 * v1) }
+                fn square_next@f0(x@b0: Int) -> Int {
+                  let b1: Int = (b0 + 1) in { (b1 * b1) }
                 }
 
                 -- after --
-                fn square_next@f0(x@v0: Int) -> Int {
-                  let v2: Int = 1
-                  let v3: Int = v0 + v2
-                  let v4: Int = v3 * v3
-                  v4
+                fn square_next@f0(x@b0: Int) -> Int {
+                  let v0: Int = b0
+                  let v1: Int = 1
+                  let v2: Int = v0 + v1
+                  let v3: Int = v2 * v2
+                  v3
                 }
             "#]],
         );
@@ -435,20 +440,22 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Card(title@v0: String, hidden@v1: Bool) {
+                page Card(title@b0: String, hidden@b1: Bool) {
                   html(
                     tag: "div",
-                    attrs: [class: "card", hidden: v1],
-                    children: concat(escape(v0)),
+                    attrs: [class: "card", hidden: b1],
+                    children: concat(escape(b0)),
                   )
                 }
 
                 -- after --
-                page Card(title@v0: String, hidden@v1: Bool) {
-                  let v3: String = "card"
-                  let v4: Html = escape(v0)
+                page Card(title@b0: String, hidden@b1: Bool) {
+                  let v1: String = "card"
+                  let v2: Bool = b1
+                  let v3: String = b0
+                  let v4: Html = escape(v3)
                   let v5: Html = concat(v4)
-                  let v6: Html = html(tag: "div", attrs: [class: v3, hidden: v1], children: v5)
+                  let v6: Html = html(tag: "div", attrs: [class: v1, hidden: v2], children: v5)
                   v6
                 }
             "#]],
@@ -471,16 +478,16 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Items(items@v0: Array[String]) {
+                page Items(items@b0: Array[String]) {
                   html(
                     tag: "ul",
                     attrs: [],
                     children: concat(
-                      for v1: String in v0 {
+                      for b1: String in b0 {
                         html(
                           tag: "li",
                           attrs: [],
-                          children: concat(escape(v1)),
+                          children: concat(escape(b1)),
                         )
                       },
                     ),
@@ -488,9 +495,11 @@ mod tests {
                 }
 
                 -- after --
-                page Items(items@v0: Array[String]) {
-                  let v6: Html = for v1: String in v0 {
-                    let v3: Html = escape(v1)
+                page Items(items@b0: Array[String]) {
+                  let v1: Array[String] = b0
+                  let v6: Html = for b1: String in v1 {
+                    let v2: String = b1
+                    let v3: Html = escape(v2)
                     let v4: Html = concat(v3)
                     let v5: Html = html(tag: "li", attrs: [], children: v4)
                     v5
@@ -546,10 +555,10 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Greeting(name@v0: Option[String]) {
-                  match v0 {
-                    Some(v1: String) => {
-                      escape(v1)
+                page Greeting(name@b0: Option[String]) {
+                  match b0 {
+                    Some(b1: String) => {
+                      escape(b1)
                     }
                     None => {
                       text("anonymous")
@@ -558,10 +567,12 @@ mod tests {
                 }
 
                 -- after --
-                page Greeting(name@v0: Option[String]) {
-                  let v5: Html = match v0 {
-                    Some(v1: String) => {
-                      let v3: Html = escape(v1)
+                page Greeting(name@b0: Option[String]) {
+                  let v1: Option[String] = b0
+                  let v5: Html = match v1 {
+                    Some(b1: String) => {
+                      let v2: String = b1
+                      let v3: Html = escape(v2)
                       v3
                     }
                     None => {
@@ -605,13 +616,13 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn origin_x@f0(shape@v0: Shape) -> Int {
-                  match v0 {
+                fn origin_x@f0(shape@b0: Shape) -> Int {
+                  match b0 {
                     Shape::Dot => {
                       0
                     }
-                    Shape::Circle {center@v1: Point} => {
-                      v1.x
+                    Shape::Circle {center@b1: Point} => {
+                      b1.x
                     }
                   }
                 }
@@ -620,14 +631,16 @@ mod tests {
                 }
 
                 -- after --
-                fn origin_x@f0(shape@v0: Shape) -> Int {
+                fn origin_x@f0(shape@b0: Shape) -> Int {
+                  let v0: Shape = b0
                   let v4: Int = match v0 {
                     Shape::Dot => {
-                      let v2: Int = 0
-                      v2
+                      let v1: Int = 0
+                      v1
                     }
-                    Shape::Circle {center@v1: Point} => {
-                      let v3: Int = v1.x
+                    Shape::Circle {center@b1: Point} => {
+                      let v2: Point = b1
+                      let v3: Int = v2.x
                       v3
                     }
                   }
@@ -657,33 +670,37 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn both@f0(a@v0: Bool, b@v1: Bool) -> Bool {
-                  (v0 && (!v1))
+                fn both@f0(a@b0: Bool, b@b1: Bool) -> Bool {
+                  (b0 && (!b1))
                 }
-                fn either@f1(a@v2: Bool, b@v3: Bool) -> Bool {
-                  (v2 || (!v3))
+                fn either@f1(a@b2: Bool, b@b3: Bool) -> Bool {
+                  (b2 || (!b3))
                 }
 
                 -- after --
-                fn both@f0(a@v0: Bool, b@v1: Bool) -> Bool {
-                  let v5: Bool = match v0 {
+                fn both@f0(a@b0: Bool, b@b1: Bool) -> Bool {
+                  let v0: Bool = b0
+                  let v3: Bool = match v0 {
                     true => {
-                      let v4: Bool = !v1
-                      v4
+                      let v1: Bool = b1
+                      let v2: Bool = !v1
+                      v2
                     }
                     false => {
                       v0
                     }
                   }
-                  v5
+                  v3
                 }
-                fn either@f1(a@v2: Bool, b@v3: Bool) -> Bool {
-                  let v7: Bool = match v2 {
+                fn either@f1(a@b2: Bool, b@b3: Bool) -> Bool {
+                  let v4: Bool = b2
+                  let v7: Bool = match v4 {
                     true => {
-                      v2
+                      v4
                     }
                     false => {
-                      let v6: Bool = !v3
+                      let v5: Bool = b3
+                      let v6: Bool = !v5
                       v6
                     }
                   }
@@ -706,24 +723,26 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn double@f0(x@v0: Int) -> Int {
-                  (v0 + v0)
+                fn double@f0(x@b0: Int) -> Int {
+                  (b0 + b0)
                 }
                 page Answer() {
                   escape(call double@f0(21).to_string())
                 }
 
                 -- after --
-                fn double@f0(x@v0: Int) -> Int {
-                  let v6: Int = v0 + v0
-                  v6
+                fn double@f0(x@b0: Int) -> Int {
+                  let v5: Int = b0
+                  let v6: Int = b0
+                  let v7: Int = v5 + v6
+                  v7
                 }
                 page Answer() {
-                  let v2: Int = 21
-                  let v3: Int = call double@f0(v2)
-                  let v4: String = v3.to_string()
-                  let v5: Html = escape(v4)
-                  v5
+                  let v1: Int = 21
+                  let v2: Int = call double@f0(v1)
+                  let v3: String = v2.to_string()
+                  let v4: Html = escape(v3)
+                  v4
                 }
             "#]],
         );
@@ -755,14 +774,21 @@ mod tests {
         );
     }
 
-    /// Nodes of a Pure expression that compute a value, itself included.
-    /// A let and a variable reference bind nothing.
-    fn count_nodes(expr: &PureExpr) -> usize {
+    /// Nodes of a Pure expression that compute a value, itself included. A
+    /// let binds nothing, and nor does a reference to a let's variable,
+    /// which is the name of the let's value. A reference to any other
+    /// binder becomes a Read. `lets` gathers the let variables seen so far,
+    /// which come before any reference to them.
+    fn count_nodes(expr: &PureExpr, lets: &mut HashSet<BinderId>) -> usize {
         let mut count = match expr {
-            PureExpr::Let { .. } | PureExpr::VariableReference { .. } => 0,
+            PureExpr::Let { var, .. } => {
+                lets.insert(var.var);
+                0
+            }
+            PureExpr::VariableReference { value, .. } if lets.contains(value) => 0,
             _ => 1,
         };
-        expr.for_each_child(&mut |child| count += count_nodes(child));
+        expr.for_each_child(&mut |child| count += count_nodes(child, lets));
         count
     }
 
@@ -805,16 +831,18 @@ mod tests {
         typ
     }
 
-    /// Asserts that every name is bound once, that every operand and the
-    /// result are bound earlier in the block or in an enclosing one, that
-    /// the types an op writes agree with the names it reads and with its
-    /// own binding, and that a loop variable or option binding has the type
-    /// of the elements of its source or subject. Returns the type of the
-    /// result.
+    /// Asserts that every binding and binder is bound once, that every
+    /// operand and the result are bindings bound earlier in the block or in
+    /// an enclosing one, that a Read reads a binder in scope, that the types
+    /// an op writes agree with the names it reads and with its own binding,
+    /// and that a loop variable or option binding has the type of the
+    /// elements of its source or subject. Returns the type of the result.
     fn check_block(
         block: &FlatBlock,
         names: &mut Vec<(VarId, Type)>,
+        binders: &mut Vec<(BinderId, Type)>,
         seen: &mut HashSet<VarId>,
+        seen_binders: &mut HashSet<BinderId>,
     ) -> Type {
         let names_len = names.len();
         for binding in &block.bindings {
@@ -822,8 +850,14 @@ mod tests {
             binding.op.for_each_operand(&mut |operand| {
                 type_of(names, operand);
             });
-            let scope_len = names.len();
+            let binders_len = binders.len();
             let expected = match &binding.op {
+                FlatOp::Read(binder) => {
+                    let Some((_, typ)) = binders.iter().find(|(bound, _)| bound == binder) else {
+                        panic!("{} reads {binder}, which is not in scope", binding.name);
+                    };
+                    Some(typ.clone())
+                }
                 FlatOp::NumericAdd {
                     left,
                     right,
@@ -897,8 +931,8 @@ mod tests {
                     false_body,
                 }) => {
                     assert_eq!(type_of(names, **subject), &Type::Bool);
-                    let true_type = check_block(true_body, names, seen);
-                    let false_type = check_block(false_body, names, seen);
+                    let true_type = check_block(true_body, names, binders, seen, seen_binders);
+                    let false_type = check_block(false_body, names, binders, seen, seen_binders);
                     assert_eq!(true_type, false_type);
                     Some(true_type)
                 }
@@ -913,12 +947,16 @@ mod tests {
                     };
                     if let Some(binder) = some_arm_binding {
                         assert_eq!(binder.typ, *inner, "{} has the wrong type", binder.var);
-                        assert!(seen.insert(binder.var), "{} is bound twice", binder.var);
-                        names.push((binder.var, binder.typ.clone()));
+                        assert!(
+                            seen_binders.insert(binder.var),
+                            "{} is bound twice",
+                            binder.var
+                        );
+                        binders.push((binder.var, binder.typ.clone()));
                     }
-                    let some_type = check_block(some_arm_body, names, seen);
-                    names.truncate(scope_len);
-                    let none_type = check_block(none_arm_body, names, seen);
+                    let some_type = check_block(some_arm_body, names, binders, seen, seen_binders);
+                    binders.truncate(binders_len);
+                    let none_type = check_block(none_arm_body, names, binders, seen, seen_binders);
                     assert_eq!(some_type, none_type);
                     Some(some_type)
                 }
@@ -926,11 +964,15 @@ mod tests {
                     let mut arm_type = None;
                     for arm in arms {
                         for (_, binder) in &arm.bindings {
-                            assert!(seen.insert(binder.var), "{} is bound twice", binder.var);
-                            names.push((binder.var, binder.typ.clone()));
+                            assert!(
+                                seen_binders.insert(binder.var),
+                                "{} is bound twice",
+                                binder.var
+                            );
+                            binders.push((binder.var, binder.typ.clone()));
                         }
-                        let typ = check_block(&arm.body, names, seen);
-                        names.truncate(scope_len);
+                        let typ = check_block(&arm.body, names, binders, seen, seen_binders);
+                        binders.truncate(binders_len);
                         if let Some(arm_type) = &arm_type {
                             assert_eq!(arm_type, &typ);
                         }
@@ -952,11 +994,15 @@ mod tests {
                             "{} has the wrong type",
                             binder.var
                         );
-                        assert!(seen.insert(binder.var), "{} is bound twice", binder.var);
-                        names.push((binder.var, binder.typ.clone()));
+                        assert!(
+                            seen_binders.insert(binder.var),
+                            "{} is bound twice",
+                            binder.var
+                        );
+                        binders.push((binder.var, binder.typ.clone()));
                     }
-                    let body_type = check_block(body, names, seen);
-                    names.truncate(scope_len);
+                    let body_type = check_block(body, names, binders, seen, seen_binders);
+                    binders.truncate(binders_len);
                     assert_eq!(body_type, Type::Html);
                     Some(Type::Html)
                 }
@@ -976,39 +1022,69 @@ mod tests {
     fn fuzz_random_pure_modules_lower_to_well_formed_flat() {
         arbtest::arbtest(|u| {
             let (module, _) = random_module(u);
+            let mut lets = HashSet::new();
             let nodes: usize = module
                 .pages
                 .iter()
-                .map(|page| count_nodes(&page.head) + count_nodes(&page.body))
+                .map(|page| count_nodes(&page.head, &mut lets) + count_nodes(&page.body, &mut lets))
                 .sum::<usize>()
                 + module
                     .functions
                     .iter()
-                    .map(|function| count_nodes(&function.body))
+                    .map(|function| count_nodes(&function.body, &mut lets))
                     .sum::<usize>();
 
             let module = pure_to_flat(module);
 
             // Each Pure node that computes a value became one binding.
             let mut seen = HashSet::new();
+            let mut seen_binders = HashSet::new();
             for page in &module.pages {
                 let mut names: Vec<(VarId, Type)> = Vec::new();
+                let mut binders: Vec<(BinderId, Type)> = Vec::new();
                 for param in &page.parameters {
-                    assert!(seen.insert(param.var), "{} is bound twice", param.var);
-                    names.push((param.var, param.typ.clone()));
+                    assert!(
+                        seen_binders.insert(param.var),
+                        "{} is bound twice",
+                        param.var
+                    );
+                    binders.push((param.var, param.typ.clone()));
                 }
-                let head = check_block(&page.head, &mut names, &mut seen);
+                let head = check_block(
+                    &page.head,
+                    &mut names,
+                    &mut binders,
+                    &mut seen,
+                    &mut seen_binders,
+                );
                 assert_eq!(head, Type::Html);
-                let body = check_block(&page.body, &mut names, &mut seen);
+                let body = check_block(
+                    &page.body,
+                    &mut names,
+                    &mut binders,
+                    &mut seen,
+                    &mut seen_binders,
+                );
                 assert_eq!(body, Type::Html);
             }
             for function in &module.functions {
                 let mut names: Vec<(VarId, Type)> = Vec::new();
+                let mut binders: Vec<(BinderId, Type)> = Vec::new();
                 for param in &function.parameters {
-                    assert!(seen.insert(param.var), "{} is bound twice", param.var);
-                    names.push((param.var, param.typ.clone()));
+                    assert!(
+                        seen_binders.insert(param.var),
+                        "{} is bound twice",
+                        param.var
+                    );
+                    binders.push((param.var, param.typ.clone()));
                 }
-                let body = check_block(&function.body, &mut names, &mut seen);
+                let body = check_block(
+                    &function.body,
+                    &mut names,
+                    &mut binders,
+                    &mut seen,
+                    &mut seen_binders,
+                );
                 assert_eq!(body, function.return_type);
             }
             let bindings: usize = module

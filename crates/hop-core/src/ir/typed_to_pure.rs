@@ -6,13 +6,13 @@ use crate::hop::typing::{
     CaseVar, Decision, Type, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
     TypedPageDeclaration, TypedPattern, TypedRecordUpdateField,
 };
+use crate::ir::binder_id::BinderId;
+use crate::ir::binder_id::BinderIdCounter;
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::pure_module::PureForSource;
-use crate::ir::var_id::VarId;
-use crate::ir::var_id::VarIdCounter;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
@@ -37,7 +37,7 @@ pub fn typed_to_pure(
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 ) -> PureModule {
-    let mut var_ids = VarIdCounter::new();
+    let mut binder_ids = BinderIdCounter::new();
     let mut function_ids = FunctionIdCounter::new();
 
     // Each declaration with its position, since the module keeps the
@@ -49,7 +49,7 @@ pub fn typed_to_pure(
             .map(|(index, (module, decl))| (((*module).clone(), decl.name.clone()), (index, *decl)))
             .collect();
 
-    let mut compiler = Compiler::new(&mut var_ids, &mut function_ids, asset_path_rewriter);
+    let mut compiler = Compiler::new(&mut binder_ids, &mut function_ids, asset_path_rewriter);
 
     let pages = pages
         .into_iter()
@@ -72,7 +72,7 @@ pub fn typed_to_pure(
     PureModule {
         pages,
         functions,
-        var_ids,
+        binder_ids,
     }
 }
 
@@ -89,31 +89,31 @@ struct Specialization {
 }
 
 struct Compiler<'a> {
-    var_id_counter: &'a mut VarIdCounter,
+    binder_id_counter: &'a mut BinderIdCounter,
     function_id_counter: &'a mut FunctionIdCounter,
     /// The specializations calls have requested so far, in request order.
     specializations: Vec<Specialization>,
-    scopes: Vec<Vec<(VarName, VarId)>>,
+    scopes: Vec<Vec<(VarName, BinderId)>>,
     /// The parameters of the function being compiled, those it declares and
     /// those its rest adds from a function it is spread into. A forwarded
     /// parameter reads these, so a binding in the body that reuses the name
     /// does not capture it.
-    params: HashMap<VarName, VarId>,
+    params: HashMap<VarName, BinderId>,
     /// The attributes the specialization being compiled receives through its
     /// rest, each with the parameter that holds it, in the order they
     /// render. The spread reads these. They are not in scope by name.
-    rest: Vec<(AttributeName, Type, VarId)>,
+    rest: Vec<(AttributeName, Type, BinderId)>,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
 impl<'a> Compiler<'a> {
     fn new(
-        var_id_counter: &'a mut VarIdCounter,
+        binder_id_counter: &'a mut BinderIdCounter,
         function_id_counter: &'a mut FunctionIdCounter,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Self {
         Compiler {
-            var_id_counter,
+            binder_id_counter,
             function_id_counter,
             specializations: Vec::new(),
             scopes: vec![Vec::new()],
@@ -145,7 +145,7 @@ impl<'a> Compiler<'a> {
         // parameter of its own, after the declared ones and in the order of
         // the shape, as a call passes them.
         for (name, typ) in shape {
-            let var = self.next_var_id();
+            let var = self.next_binder_id();
             self.rest.push((name.clone(), typ.clone(), var));
             parameters.push(IrParameter { var, name, typ });
         }
@@ -184,8 +184,8 @@ impl<'a> Compiler<'a> {
         declaration
     }
 
-    fn next_var_id(&mut self) -> VarId {
-        self.var_id_counter.next()
+    fn next_binder_id(&mut self) -> BinderId {
+        self.binder_id_counter.next()
     }
 
     fn push_scope(&mut self) {
@@ -196,8 +196,8 @@ impl<'a> Compiler<'a> {
         self.scopes.pop().expect("scope stack should not be empty");
     }
 
-    fn bind(&mut self, name: &VarName) -> VarId {
-        let id = self.next_var_id();
+    fn bind(&mut self, name: &VarName) -> BinderId {
+        let id = self.next_binder_id();
         self.scopes
             .last_mut()
             .expect("scope stack should not be empty")
@@ -205,7 +205,7 @@ impl<'a> Compiler<'a> {
         id
     }
 
-    fn resolve(&mut self, name: &VarName) -> VarId {
+    fn resolve(&mut self, name: &VarName) -> BinderId {
         for scope in self.scopes.iter().rev() {
             if let Some((_, id)) = scope.iter().rev().find(|(n, _)| n == name) {
                 return *id;
@@ -223,7 +223,7 @@ impl<'a> Compiler<'a> {
         arms: &[(TypedPattern, TypedExpr)],
         typ: &Type,
         used: &HashSet<CaseVar>,
-        case_vars: &mut HashMap<CaseVar, VarId>,
+        case_vars: &mut HashMap<CaseVar, BinderId>,
     ) -> PureExpr {
         match decision {
             Decision::Success(body) => {
@@ -271,7 +271,7 @@ impl<'a> Compiler<'a> {
                     typ: variable.typ.clone(),
                 });
                 let binding = if used.contains(&some_case.var.id) {
-                    let var = self.next_var_id();
+                    let var = self.next_binder_id();
                     case_vars.insert(some_case.var.id, var);
                     Some(IrBinder {
                         var,
@@ -307,7 +307,7 @@ impl<'a> Compiler<'a> {
                                 if !used.contains(&binding.var.id) {
                                     return None;
                                 }
-                                let var = self.next_var_id();
+                                let var = self.next_binder_id();
                                 case_vars.insert(binding.var.id, var);
                                 Some((
                                     binding.field_name.clone(),
@@ -352,7 +352,7 @@ impl<'a> Compiler<'a> {
                         field: binding.field_name.clone(),
                         typ: binding.var.typ.clone(),
                     };
-                    let var = self.next_var_id();
+                    let var = self.next_binder_id();
                     case_vars.insert(binding.var.id, var);
                     let binder = IrBinder {
                         var,
@@ -387,7 +387,7 @@ impl<'a> Compiler<'a> {
                         index,
                         typ: element.typ.clone(),
                     };
-                    let var = self.next_var_id();
+                    let var = self.next_binder_id();
                     case_vars.insert(element.id, var);
                     let binder = IrBinder {
                         var,
@@ -467,7 +467,7 @@ impl<'a> Compiler<'a> {
                 typ,
             } => {
                 let value = Box::new(self.compile_expr(base));
-                let base_var = self.next_var_id();
+                let base_var = self.next_binder_id();
                 let literal = PureExpr::Record {
                     type_name: type_name.clone(),
                     fields: fields
@@ -649,7 +649,7 @@ impl<'a> Compiler<'a> {
                 let mut used = HashSet::new();
                 decision.collect_used(&mut used);
                 let value = Box::new(self.compile_expr(subject));
-                let var = self.next_var_id();
+                let var = self.next_binder_id();
                 let mut case_vars = HashMap::from([(CaseVar(0), var)]);
                 let body = self.compile_decision(decision, arms, typ, &used, &mut case_vars);
                 PureExpr::Let {
@@ -891,7 +891,7 @@ impl<'a> Compiler<'a> {
                 typ,
             } => {
                 let subject = Box::new(self.compile_expr(option));
-                let binding = self.next_var_id();
+                let binding = self.next_binder_id();
                 PureExpr::Match {
                     match_: Match::Option {
                         subject,
@@ -937,10 +937,10 @@ mod tests {
 
     fn check(page: TypedPageDeclaration, expected: Expect) {
         let before = page.to_string();
-        let mut var_ids = VarIdCounter::new();
+        let mut binder_ids = BinderIdCounter::new();
         let mut function_ids = FunctionIdCounter::new();
         let compiled_page =
-            Compiler::new(&mut var_ids, &mut function_ids, None).compile_page_decl(page);
+            Compiler::new(&mut binder_ids, &mut function_ids, None).compile_page_decl(page);
         let after = compiled_page.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -1041,8 +1041,8 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(name@v0: String) {
-                  concat(text("Hello "), escape(v0))
+                page MainComp(name@b0: String) {
+                  concat(text("Hello "), escape(b0))
                 }
             "#]],
         );
@@ -1114,10 +1114,10 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(show@v0: Bool) {
+                page MainComp(show@b0: Bool) {
                   concat(
-                    let v1: Bool = v0 in {
-                      match v1 {
+                    let b1: Bool = b0 in {
+                      match b1 {
                         true => {
                           concat(
                             html(
@@ -1179,18 +1179,18 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(items@v0: Array[String]) {
+                page MainComp(items@b0: Array[String]) {
                   concat(
                     html(
                       tag: "ul",
                       attrs: [],
                       children: concat(
-                        for v1: String in v0 {
+                        for b1: String in b0 {
                           concat(
                             html(
                               tag: "li",
                               attrs: [],
-                              children: concat(escape(v1)),
+                              children: concat(escape(b1)),
                             ),
                           )
                         },
@@ -1276,11 +1276,11 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(cls@v0: String) {
+                page MainComp(cls@b0: String) {
                   concat(
                     html(
                       tag: "div",
-                      attrs: [class: "base", data-value: v0],
+                      attrs: [class: "base", data-value: b0],
                       children: concat(text("Content")),
                     ),
                   )
@@ -1324,16 +1324,16 @@ mod tests {
                 }
 
                 -- after --
-                page TestComp(name@v0: String, count@v1: String) {
+                page TestComp(name@b0: String, count@b1: String) {
                   concat(
                     html(
                       tag: "div",
                       attrs: [],
                       children: concat(
                         text("Hello "),
-                        escape(v0),
+                        escape(b0),
                         text(", count: "),
-                        escape(v1),
+                        escape(b1),
                       ),
                     ),
                   )
@@ -1370,10 +1370,10 @@ mod tests {
                 }
 
                 -- after --
-                page TestComp(flag@v0: Bool) {
+                page TestComp(flag@b0: Bool) {
                   concat(
-                    let v1: Bool = v0 in {
-                      match v1 {
+                    let b1: Bool = b0 in {
+                      match b1 {
                         true => {
                           concat(text("yes"))
                         }
@@ -1470,10 +1470,10 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(user@v0: User) {
+                page MainComp(user@b0: User) {
                   concat(
-                    escape(let v1: User = v0 in {
-                      User {name: "Jane", age: v1.age}
+                    escape(let b1: User = b0 in {
+                      User {name: "Jane", age: b1.age}
                     }.name),
                   )
                 }
@@ -1507,10 +1507,10 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(app@v0: App) {
+                page MainComp(app@b0: App) {
                   concat(
-                    escape(let v1: State = v0.state in {
-                      State {query: v1.query, num: 1}
+                    escape(let b1: State = b0.state in {
+                      State {query: b1.query, num: 1}
                     }.query),
                   )
                 }
@@ -1558,17 +1558,17 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Button@f0(id@v0: String) -> Html {
+                fn Button@f0(id@b0: String) -> Html {
                   html(
                     tag: "button",
-                    attrs: [id: v0],
+                    attrs: [id: b0],
                     children: concat(text("Go")),
                   )
                 }
-                fn Button@f1(class@v1: String, disabled@v2: Bool) -> Html {
+                fn Button@f1(class@b1: String, disabled@b2: Bool) -> Html {
                   html(
                     tag: "button",
-                    attrs: [class: v1, disabled: v2],
+                    attrs: [class: b1, disabled: b2],
                     children: concat(text("Go")),
                   )
                 }
@@ -1608,18 +1608,18 @@ mod tests {
             "#},
             expect![[r#"
                 fn Card@f1(
-                  title@v2: String,
-                  id@v3: String,
-                  class@v4: String,
+                  title@b2: String,
+                  id@b3: String,
+                  class@b4: String,
                 ) -> Html {
                   html(
                     tag: "div",
-                    attrs: [id: v3, class: v4],
-                    children: concat(escape(v2)),
+                    attrs: [id: b3, class: b4],
+                    children: concat(escape(b2)),
                   )
                 }
-                fn Panel@f0(title@v0: String, class@v1: String) -> Html {
-                  call Card@f1(v0, "panel", v1)
+                fn Panel@f0(title@b0: String, class@b1: String) -> Html {
+                  call Card@f1(b0, "panel", b1)
                 }
                 page Test() {
                   call Panel@f0("Hi", "wide")
@@ -1651,15 +1651,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Nest@f0(depth@v0: Int, id@v1: String) -> Html {
+                fn Nest@f0(depth@b0: Int, id@b1: String) -> Html {
                   html(
                     tag: "div",
-                    attrs: [id: v1],
+                    attrs: [id: b1],
                     children: concat(
-                      let v2: Bool = (0 < v0) in {
-                        match v2 {
+                      let b2: Bool = (0 < b0) in {
+                        match b2 {
                           true => {
-                            call Nest@f1((v0 - 1), "inner")
+                            call Nest@f1((b0 - 1), "inner")
                           }
                           false => {
                             concat()
@@ -1669,15 +1669,15 @@ mod tests {
                     ),
                   )
                 }
-                fn Nest@f1(depth@v3: Int, class@v4: String) -> Html {
+                fn Nest@f1(depth@b3: Int, class@b4: String) -> Html {
                   html(
                     tag: "div",
-                    attrs: [class: v4],
+                    attrs: [class: b4],
                     children: concat(
-                      let v5: Bool = (0 < v3) in {
-                        match v5 {
+                      let b5: Bool = (0 < b3) in {
+                        match b5 {
                           true => {
-                            call Nest@f1((v3 - 1), "inner")
+                            call Nest@f1((b3 - 1), "inner")
                           }
                           false => {
                             concat()
@@ -1712,12 +1712,12 @@ mod tests {
             "#},
             expect![[r#"
                 fn Button@f0(
-                  data-x@v0: String,
-                  aria-label@v1: String,
+                  data-x@b0: String,
+                  aria-label@b1: String,
                 ) -> Html {
                   html(
                     tag: "button",
-                    attrs: [data-x: v0, aria-label: v1],
+                    attrs: [data-x: b0, aria-label: b1],
                     children: concat(text("Go")),
                   )
                 }
