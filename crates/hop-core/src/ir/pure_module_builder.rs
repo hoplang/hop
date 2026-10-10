@@ -46,16 +46,6 @@ impl PureModuleBuilder {
         self
     }
 
-    /// Define an enum with unit variants (no fields)
-    pub fn enum_unit<'a>(
-        mut self,
-        name: &str,
-        variants: impl IntoIterator<Item = &'a str>,
-    ) -> Self {
-        self.types_builder = self.types_builder.enum_unit(name, variants);
-        self
-    }
-
     /// Define an enum with variants that may carry fields
     pub fn enum_<'a>(
         mut self,
@@ -698,10 +688,6 @@ impl PureBuilder {
         }
     }
 
-    pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> PureExpr {
-        self.enum_variant_with_fields(enum_name, variant_name, vec![])
-    }
-
     pub fn enum_variant_with_fields(
         &self,
         enum_name: &str,
@@ -779,10 +765,6 @@ impl PureBuilder {
             value: Some(Box::new(inner)),
             typ: Type::Option(Box::new(inner_type)),
         }
-    }
-
-    pub fn none(&self, inner_type: &str) -> PureExpr {
-        self.none_typed(self.types.resolve(inner_type))
     }
 
     pub fn none_typed(&self, inner_type: Type) -> PureExpr {
