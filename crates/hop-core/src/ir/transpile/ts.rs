@@ -1628,13 +1628,13 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(unit@b0: ()) {
-                  let v2: () = ()
-                  let v3: Holder = {nothing: v2}
-                  let v4: () = v3.nothing
-                  let v5: Array[()] = [b0, v4]
-                  let v6: Int = v5.len()
-                  let v7: String = v6.to_string()
-                  write_string(v7)
+                  let v1: () = ()
+                  let v2: Holder = {nothing: v1}
+                  let v3: () = v2.nothing
+                  let v4: Array[()] = [b0, v3]
+                  let v5: Int = v4.len()
+                  let v6: String = v5.to_string()
+                  write_string(v6)
                 }
 
                 -- after --
@@ -1658,13 +1658,13 @@ mod tests {
 
                 export function Test({unit: b_0}: {unit: []}): string {
                     let output: string = "";
-                    const v_2: [] = [];
-                    const v_3: Holder = new Holder({nothing: v_2});
-                    const v_4: [] = v_3.nothing;
-                    const v_5: [][] = [b_0, v_4];
-                    const v_6: number = v_5.length;
-                    const v_7: string = v_6.toString();
-                    output += escapeHtml(v_7);
+                    const v_1: [] = [];
+                    const v_2: Holder = new Holder({nothing: v_1});
+                    const v_3: [] = v_2.nothing;
+                    const v_4: [][] = [b_0, v_3];
+                    const v_5: number = v_4.length;
+                    const v_6: string = v_5.toString();
+                    output += escapeHtml(v_6);
                     return output;
                 }
             "#]],
@@ -1684,12 +1684,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Row(cell@b0: (Int, String)) {
-                  let v2: Int = b0.0
-                  let v3: String = v2.to_string()
-                  let v7: String = b0.1
-                  write_string(v3)
+                  let v1: Int = b0.0
+                  let v2: String = v1.to_string()
+                  let v6: String = b0.1
+                  write_string(v2)
                   write(": ")
-                  write_string(v7)
+                  write_string(v6)
                 }
 
                 -- after --
@@ -1705,12 +1705,12 @@ mod tests {
 
                 export function Row({cell: b_0}: {cell: [number, string]}): string {
                     let output: string = "";
-                    const v_2: number = b_0[0];
-                    const v_3: string = v_2.toString();
-                    const v_7: string = b_0[1];
-                    output += escapeHtml(v_3);
+                    const v_1: number = b_0[0];
+                    const v_2: string = v_1.toString();
+                    const v_6: string = b_0[1];
+                    output += escapeHtml(v_2);
                     output += ": ";
-                    output += escapeHtml(v_7);
+                    output += escapeHtml(v_6);
                     return output;
                 }
             "#]],
@@ -1919,11 +1919,11 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Counter() {
-                  let v1: Int = 1
-                  let v2: Int = 3
-                  for b0: Int in v1..=v2 {
-                    let v4: String = b0.to_string()
-                    write_string(v4)
+                  let v0: Int = 1
+                  let v1: Int = 3
+                  for b0: Int in v0..=v1 {
+                    let v3: String = b0.to_string()
+                    write_string(v3)
                     write(" ")
                   }
                 }
@@ -1941,11 +1941,11 @@ mod tests {
 
                 export function Counter(): string {
                     let output: string = "";
-                    const v_1: number = 1;
-                    const v_2: number = 3;
-                    for (let b_0 = v_1; b_0 <= v_2; b_0++) {
-                        const v_4: string = b_0.toString();
-                        output += escapeHtml(v_4);
+                    const v_0: number = 1;
+                    const v_1: number = 3;
+                    for (let b_0 = v_0; b_0 <= v_1; b_0++) {
+                        const v_3: string = b_0.toString();
+                        output += escapeHtml(v_3);
                         output += " ";
                     }
                     return output;
@@ -2087,9 +2087,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page UserProfile(user@b0: User) {
-                  let v2: String = b0.name
+                  let v1: String = b0.name
                   write("<div>")
-                  write_string(v2)
+                  write_string(v1)
                   write("</div>")
                 }
 
@@ -2128,9 +2128,9 @@ mod tests {
 
                 export function UserProfile({user: b_0}: {user: User}): string {
                     let output: string = "";
-                    const v_2: string = b_0.name;
+                    const v_1: string = b_0.name;
                     output += "<div>";
-                    output += escapeHtml(v_2);
+                    output += escapeHtml(v_1);
                     output += "</div>";
                     return output;
                 }
@@ -2150,12 +2150,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page CreateUser() {
-                  let v1: String = "John"
-                  let v2: Int = 30
-                  let v3: User = {name: v1, age: v2}
-                  let v4: String = v3.name
+                  let v0: String = "John"
+                  let v1: Int = 30
+                  let v2: User = {name: v0, age: v1}
+                  let v3: String = v2.name
                   write("<div>")
-                  write_string(v4)
+                  write_string(v3)
                   write("</div>")
                 }
 
@@ -2182,12 +2182,12 @@ mod tests {
 
                 export function CreateUser(): string {
                     let output: string = "";
-                    const v_1: string = "John";
-                    const v_2: number = 30;
-                    const v_3: User = new User({name: v_1, age: v_2});
-                    const v_4: string = v_3.name;
+                    const v_0: string = "John";
+                    const v_1: number = 30;
+                    const v_2: User = new User({name: v_0, age: v_1});
+                    const v_3: string = v_2.name;
                     output += "<div>";
-                    output += escapeHtml(v_4);
+                    output += escapeHtml(v_3);
                     output += "</div>";
                     return output;
                 }
@@ -2206,9 +2206,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(node@b0: Node) {
-                  let v2: Int = b0.value
-                  let v3: String = v2.to_string()
-                  write_string(v3)
+                  let v1: Int = b0.value
+                  let v2: String = v1.to_string()
+                  write_string(v2)
                 }
 
                 -- after --
@@ -2245,9 +2245,9 @@ mod tests {
 
                 export function Test({node: b_0}: {node: Node}): string {
                     let output: string = "";
-                    const v_2: number = b_0.value;
-                    const v_3: string = v_2.toString();
-                    output += escapeHtml(v_3);
+                    const v_1: number = b_0.value;
+                    const v_2: string = v_1.toString();
+                    output += escapeHtml(v_2);
                     return output;
                 }
             "#]],
@@ -2311,15 +2311,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v1: Int = 2
-                  let v2: Int = 1
-                  let v3: Option[Node] = None
-                  let v4: Node = {value: v2, next: v3}
-                  let v5: Option[Node] = Some(v4)
-                  let v6: Node = {value: v1, next: v5}
-                  let v7: Int = v6.value
-                  let v8: String = v7.to_string()
-                  write_string(v8)
+                  let v0: Int = 2
+                  let v1: Int = 1
+                  let v2: Option[Node] = None
+                  let v3: Node = {value: v1, next: v2}
+                  let v4: Option[Node] = Some(v3)
+                  let v5: Node = {value: v0, next: v4}
+                  let v6: Int = v5.value
+                  let v7: String = v6.to_string()
+                  write_string(v7)
                 }
 
                 -- after --
@@ -2356,15 +2356,15 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_1: number = 2;
-                    const v_2: number = 1;
-                    const v_3: Option.Option<Node> = Option.none<Node>();
-                    const v_4: Node = new Node({value: v_2, next: v_3});
-                    const v_5: Option.Option<Node> = Option.some<Node>(v_4);
-                    const v_6: Node = new Node({value: v_1, next: v_5});
-                    const v_7: number = v_6.value;
-                    const v_8: string = v_7.toString();
-                    output += escapeHtml(v_8);
+                    const v_0: number = 2;
+                    const v_1: number = 1;
+                    const v_2: Option.Option<Node> = Option.none<Node>();
+                    const v_3: Node = new Node({value: v_1, next: v_2});
+                    const v_4: Option.Option<Node> = Option.some<Node>(v_3);
+                    const v_5: Node = new Node({value: v_0, next: v_4});
+                    const v_6: number = v_5.value;
+                    const v_7: string = v_6.toString();
+                    output += escapeHtml(v_7);
                     return output;
                 }
             "#]],
@@ -2416,21 +2416,21 @@ mod tests {
             expect![[r#"
                 -- before --
                 page ColorName(color@b0: Color) {
-                  let v5: String = match b0 {
+                  let v4: String = match b0 {
                     Color::Red => {
-                      let v2: String = "red"
-                      v2
+                      let v1: String = "red"
+                      v1
                     }
                     Color::Green => {
-                      let v3: String = "green"
-                      v3
+                      let v2: String = "green"
+                      v2
                     }
                     Color::Blue => {
-                      let v4: String = "blue"
-                      v4
+                      let v3: String = "blue"
+                      v3
                     }
                   }
-                  write_string(v5)
+                  write_string(v4)
                 }
 
                 -- after --
@@ -2460,24 +2460,24 @@ mod tests {
 
                 export function ColorName({color: b_0}: {color: Color.Color}): string {
                     let output: string = "";
-                    const v_5: string = (() => {
+                    const v_4: string = (() => {
                         const s_0: Color.Color = b_0;
                         switch (s_0._tag) {
                             case "Red": {
-                                const v_2: string = "red";
-                                return v_2;
+                                const v_1: string = "red";
+                                return v_1;
                             }
                             case "Green": {
-                                const v_3: string = "green";
-                                return v_3;
+                                const v_2: string = "green";
+                                return v_2;
                             }
                             case "Blue": {
-                                const v_4: string = "blue";
-                                return v_4;
+                                const v_3: string = "blue";
+                                return v_3;
                             }
                         }
                     })();
-                    output += escapeHtml(v_5);
+                    output += escapeHtml(v_4);
                     return output;
                 }
             "#]],
@@ -2494,17 +2494,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 page IsActive(active@b0: Bool) {
-                  let v4: String = match b0 {
+                  let v3: String = match b0 {
                     true => {
-                      let v2: String = "yes"
-                      v2
+                      let v1: String = "yes"
+                      v1
                     }
                     false => {
-                      let v3: String = "no"
-                      v3
+                      let v2: String = "no"
+                      v2
                     }
                   }
-                  write_string(v4)
+                  write_string(v3)
                 }
 
                 -- after --
@@ -2520,16 +2520,16 @@ mod tests {
 
                 export function IsActive({active: b_0}: {active: boolean}): string {
                     let output: string = "";
-                    const v_4: string = (() => {
+                    const v_3: string = (() => {
                         if (b_0) {
-                            const v_2: string = "yes";
-                            return v_2;
+                            const v_1: string = "yes";
+                            return v_1;
                         } else {
-                            const v_3: string = "no";
-                            return v_3;
+                            const v_2: string = "no";
+                            return v_2;
                         }
                     })();
-                    output += escapeHtml(v_4);
+                    output += escapeHtml(v_3);
                     return output;
                 }
             "#]],
@@ -2547,17 +2547,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 page CheckOption(opt@b0: Option[Int]) {
-                  let v4: String = match b0 {
+                  let v3: String = match b0 {
                     Some(_) => {
-                      let v2: String = "has value"
-                      v2
+                      let v1: String = "has value"
+                      v1
                     }
                     None => {
-                      let v3: String = "empty"
-                      v3
+                      let v2: String = "empty"
+                      v2
                     }
                   }
-                  write_string(v4)
+                  write_string(v3)
                 }
 
                 -- after --
@@ -2584,20 +2584,20 @@ mod tests {
 
                 export function CheckOption({opt: b_0}: {opt: Option.Option<number>}): string {
                     let output: string = "";
-                    const v_4: string = (() => {
+                    const v_3: string = (() => {
                         const s_0: Option.Option<number> = b_0;
                         switch (s_0.tag) {
                             case "Some": {
-                                const v_2: string = "has value";
-                                return v_2;
+                                const v_1: string = "has value";
+                                return v_1;
                             }
                             case "None": {
-                                const v_3: string = "empty";
-                                return v_3;
+                                const v_2: string = "empty";
+                                return v_2;
                             }
                         }
                     })();
-                    output += escapeHtml(v_4);
+                    output += escapeHtml(v_3);
                     return output;
                 }
             "#]],
@@ -2637,35 +2637,35 @@ mod tests {
             expect![[r#"
                 -- before --
                 page CheckNestedOption(opt@b0: Option[Option[Bool]]) {
-                  let v10: String = match b0 {
+                  let v9: String = match b0 {
                     Some(b1: Option[Bool]) => {
-                      let v8: String = match b1 {
+                      let v7: String = match b1 {
                         Some(b2: Bool) => {
-                          let v6: String = match b2 {
+                          let v5: String = match b2 {
                             true => {
-                              let v4: String = "some-some-true"
-                              v4
+                              let v3: String = "some-some-true"
+                              v3
                             }
                             false => {
-                              let v5: String = "some-some-false"
-                              v5
+                              let v4: String = "some-some-false"
+                              v4
                             }
                           }
-                          v6
+                          v5
                         }
                         None => {
-                          let v7: String = "some-none"
-                          v7
+                          let v6: String = "some-none"
+                          v6
                         }
                       }
-                      v8
+                      v7
                     }
                     None => {
-                      let v9: String = "none"
-                      v9
+                      let v8: String = "none"
+                      v8
                     }
                   }
-                  write_string(v10)
+                  write_string(v9)
                 }
 
                 -- after --
@@ -2696,42 +2696,42 @@ mod tests {
                     opt: Option.Option<Option.Option<boolean>>
                 }): string {
                     let output: string = "";
-                    const v_10: string = (() => {
+                    const v_9: string = (() => {
                         const s_0: Option.Option<Option.Option<boolean>> = b_0;
                         switch (s_0.tag) {
                             case "Some": {
                                 const b_1 = s_0.value;
-                                const v_8: string = (() => {
+                                const v_7: string = (() => {
                                     const s_1: Option.Option<boolean> = b_1;
                                     switch (s_1.tag) {
                                         case "Some": {
                                             const b_2 = s_1.value;
-                                            const v_6: string = (() => {
+                                            const v_5: string = (() => {
                                                 if (b_2) {
-                                                    const v_4: string = "some-some-true";
-                                                    return v_4;
+                                                    const v_3: string = "some-some-true";
+                                                    return v_3;
                                                 } else {
-                                                    const v_5: string = "some-some-false";
-                                                    return v_5;
+                                                    const v_4: string = "some-some-false";
+                                                    return v_4;
                                                 }
                                             })();
-                                            return v_6;
+                                            return v_5;
                                         }
                                         case "None": {
-                                            const v_7: string = "some-none";
-                                            return v_7;
+                                            const v_6: string = "some-none";
+                                            return v_6;
                                         }
                                     }
                                 })();
-                                return v_8;
+                                return v_7;
                             }
                             case "None": {
-                                const v_9: string = "none";
-                                return v_9;
+                                const v_8: string = "none";
+                                return v_8;
                             }
                         }
                     })();
-                    output += escapeHtml(v_10);
+                    output += escapeHtml(v_9);
                     return output;
                 }
             "#]],
@@ -2872,28 +2872,28 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestOptionLiteral(opt1@b0: Option[String], opt2@b1: Option[String]) {
-                  let v4: String = match b0 {
+                  let v3: String = match b0 {
                     Some(_) => {
-                      let v2: String = "has value"
+                      let v1: String = "has value"
+                      v1
+                    }
+                    None => {
+                      let v2: String = "empty"
                       v2
                     }
-                    None => {
-                      let v3: String = "empty"
-                      v3
-                    }
                   }
-                  let v9: String = match b1 {
+                  let v8: String = match b1 {
                     Some(_) => {
-                      let v7: String = "HAS"
+                      let v6: String = "HAS"
+                      v6
+                    }
+                    None => {
+                      let v7: String = "EMPTY"
                       v7
                     }
-                    None => {
-                      let v8: String = "EMPTY"
-                      v8
-                    }
                   }
-                  write_string(v4)
-                  write_string(v9)
+                  write_string(v3)
+                  write_string(v8)
                 }
 
                 -- after --
@@ -2926,34 +2926,34 @@ mod tests {
                     opt2: Option.Option<string>
                 }): string {
                     let output: string = "";
-                    const v_4: string = (() => {
+                    const v_3: string = (() => {
                         const s_0: Option.Option<string> = b_0;
                         switch (s_0.tag) {
                             case "Some": {
-                                const v_2: string = "has value";
-                                return v_2;
+                                const v_1: string = "has value";
+                                return v_1;
                             }
                             case "None": {
-                                const v_3: string = "empty";
-                                return v_3;
+                                const v_2: string = "empty";
+                                return v_2;
                             }
                         }
                     })();
-                    const v_9: string = (() => {
+                    const v_8: string = (() => {
                         const s_1: Option.Option<string> = b_1;
                         switch (s_1.tag) {
                             case "Some": {
-                                const v_7: string = "HAS";
-                                return v_7;
+                                const v_6: string = "HAS";
+                                return v_6;
                             }
                             case "None": {
-                                const v_8: string = "EMPTY";
-                                return v_8;
+                                const v_7: string = "EMPTY";
+                                return v_7;
                             }
                         }
                     })();
-                    output += escapeHtml(v_4);
-                    output += escapeHtml(v_9);
+                    output += escapeHtml(v_3);
+                    output += escapeHtml(v_8);
                     return output;
                 }
             "#]],
@@ -2976,9 +2976,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestInlineMatch() {
-                  let v1: String = "world"
-                  let v2: Option[String] = Some(v1)
-                  match v2 {
+                  let v0: String = "world"
+                  let v1: Option[String] = Some(v0)
+                  match v1 {
                     Some(b1: String) => {
                       write("Got:")
                       write_string(b1)
@@ -3013,9 +3013,9 @@ mod tests {
 
                 export function TestInlineMatch(): string {
                     let output: string = "";
-                    const v_1: string = "world";
-                    const v_2: Option.Option<string> = Option.some<string>(v_1);
-                    const s_0: Option.Option<string> = v_2;
+                    const v_0: string = "world";
+                    const v_1: Option.Option<string> = Option.some<string>(v_0);
+                    const s_0: Option.Option<string> = v_1;
                     switch (s_0.tag) {
                         case "Some": {
                             const b_1 = s_0.value;
@@ -3055,12 +3055,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v1: String = "x"
-                  let v2: Option[String] = Some(v1)
-                  match v2 {
+                  let v0: String = "x"
+                  let v1: Option[String] = Some(v0)
+                  match v1 {
                     Some(b0: String) => {
-                      let v4: Option[String] = Some(b0)
-                      match v4 {
+                      let v3: Option[String] = Some(b0)
+                      match v3 {
                         Some(b1: String) => {
                           write_string(b1)
                         }
@@ -3099,14 +3099,14 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_1: string = "x";
-                    const v_2: Option.Option<string> = Option.some<string>(v_1);
-                    const s_0: Option.Option<string> = v_2;
+                    const v_0: string = "x";
+                    const v_1: Option.Option<string> = Option.some<string>(v_0);
+                    const s_0: Option.Option<string> = v_1;
                     switch (s_0.tag) {
                         case "Some": {
                             const b_0 = s_0.value;
-                            const v_4: Option.Option<string> = Option.some<string>(b_0);
-                            const s_1: Option.Option<string> = v_4;
+                            const v_3: Option.Option<string> = Option.some<string>(b_0);
+                            const s_1: Option.Option<string> = v_3;
                             switch (s_1.tag) {
                                 case "Some": {
                                     const b_1 = s_1.value;
@@ -3142,18 +3142,18 @@ mod tests {
             expect![[r#"
                 -- before --
                 page IsActive(active@b0: Bool) {
-                  let v2: Bool = !b0
-                  let v5: String = match v2 {
+                  let v1: Bool = !b0
+                  let v4: String = match v1 {
                     true => {
-                      let v3: String = "yes"
-                      v3
+                      let v2: String = "yes"
+                      v2
                     }
                     false => {
-                      let v4: String = "no"
-                      v4
+                      let v3: String = "no"
+                      v3
                     }
                   }
-                  write_string(v5)
+                  write_string(v4)
                 }
 
                 -- after --
@@ -3169,17 +3169,17 @@ mod tests {
 
                 export function IsActive({active: b_0}: {active: boolean}): string {
                     let output: string = "";
-                    const v_2: boolean = !b_0;
-                    const v_5: string = (() => {
-                        if (v_2) {
-                            const v_3: string = "yes";
-                            return v_3;
+                    const v_1: boolean = !b_0;
+                    const v_4: string = (() => {
+                        if (v_1) {
+                            const v_2: string = "yes";
+                            return v_2;
                         } else {
-                            const v_4: string = "no";
-                            return v_4;
+                            const v_3: string = "no";
+                            return v_3;
                         }
                     })();
-                    output += escapeHtml(v_5);
+                    output += escapeHtml(v_4);
                     return output;
                 }
             "#]],
@@ -3212,8 +3212,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 page ShowOutcome(r@b0: Outcome) {
-                  let v1: Int = 42
-                  let v2: Outcome = Success {value: v1}
+                  let v0: Int = 42
+                  let v1: Outcome = Success {value: v0}
                   write("<div>Created Ok!</div>")
                 }
 
@@ -3233,8 +3233,8 @@ mod tests {
 
                 export function ShowOutcome({r: b_0}: {r: Outcome.Outcome}): string {
                     let output: string = "";
-                    const v_1: number = 42;
-                    const v_2: Outcome.Outcome = Outcome.Success({value: v_1});
+                    const v_0: number = 42;
+                    const v_1: Outcome.Outcome = Outcome.Success({value: v_0});
                     output += "<div>Created Ok!</div>";
                     return output;
                 }
@@ -3336,11 +3336,11 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v4: Html = html {
+                  let v3: Html = html {
                     write("<b>hi</b>")
                   }
-                  write_html(v4)
-                  write_html(v4)
+                  write_html(v3)
+                  write_html(v3)
                 }
 
                 -- after --
@@ -3350,13 +3350,13 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_4: Html = (() => {
+                    const v_3: Html = (() => {
                         let output: string = "";
                         output += "<b>hi</b>";
                         return output as Html;
                     })();
-                    output += v_4;
-                    output += v_4;
+                    output += v_3;
+                    output += v_3;
                     return output;
                 }
             "#]],
@@ -3381,11 +3381,11 @@ mod tests {
                   write("<b>hi</b>")
                 }
                 page Test() {
-                  let v1: Html = html {
+                  let v0: Html = html {
                     write_function Frag@f0()
                   }
-                  write_html(v1)
-                  write_html(v1)
+                  write_html(v0)
+                  write_html(v0)
                 }
 
                 -- after --
@@ -3401,13 +3401,13 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_1: Html = (() => {
+                    const v_0: Html = (() => {
                         let output: string = "";
                         output += renderFrag_0();
                         return output as Html;
                     })();
-                    output += v_1;
-                    output += v_1;
+                    output += v_0;
+                    output += v_0;
                     return output;
                 }
             "#]],
@@ -3430,10 +3430,10 @@ mod tests {
                   b0
                 }
                 page Test() {
-                  let v1: Int = 5
-                  let v2: Int = call format_price@f0(v1)
-                  let v3: String = v2.to_string()
-                  write_string(v3)
+                  let v0: Int = 5
+                  let v1: Int = call format_price@f0(v0)
+                  let v2: String = v1.to_string()
+                  write_string(v2)
                 }
 
                 -- after --
@@ -3453,10 +3453,10 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_1: number = 5;
-                    const v_2: number = renderFormatPrice_0(v_1);
-                    const v_3: string = v_2.toString();
-                    output += escapeHtml(v_3);
+                    const v_0: number = 5;
+                    const v_1: number = renderFormatPrice_0(v_0);
+                    const v_2: string = v_1.toString();
+                    output += escapeHtml(v_2);
                     return output;
                 }
             "#]],
@@ -3493,24 +3493,24 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn foo@f0(x@b0: Int) -> Int {
-                  let v17: Int = 10
-                  let v18: Int = b0 + v17
-                  v18
+                  let v16: Int = 10
+                  let v17: Int = b0 + v16
+                  v17
                 }
                 page Test() {
-                  let v1: Int = 0
-                  let v2: Int = -7
-                  let v3: Int = call foo@f0(v2)
-                  let v10: Int = 10
-                  let v11: Int = call foo@f0(v10)
-                  let v12: String = v11.to_string()
+                  let v0: Int = 0
+                  let v1: Int = -7
+                  let v2: Int = call foo@f0(v1)
+                  let v9: Int = 10
+                  let v10: Int = call foo@f0(v9)
+                  let v11: String = v10.to_string()
                   write("<div>")
-                  for b1: Int in v1..=v3 {
-                    let v5: String = b1.to_string()
-                    write_string(v5)
+                  for b1: Int in v0..=v2 {
+                    let v4: String = b1.to_string()
+                    write_string(v4)
                     write(",")
                   }
-                  write_string(v12)
+                  write_string(v11)
                   write("</div>")
                 }
 
@@ -3526,26 +3526,26 @@ mod tests {
                 }
 
                 function renderFoo_0(b_0: number): number {
-                    const v_17: number = 10;
-                    const v_18: number = (b_0 + v_17) | 0;
-                    return v_18;
+                    const v_16: number = 10;
+                    const v_17: number = (b_0 + v_16) | 0;
+                    return v_17;
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_1: number = 0;
-                    const v_2: number = -7;
-                    const v_3: number = renderFoo_0(v_2);
-                    const v_10: number = 10;
-                    const v_11: number = renderFoo_0(v_10);
-                    const v_12: string = v_11.toString();
+                    const v_0: number = 0;
+                    const v_1: number = -7;
+                    const v_2: number = renderFoo_0(v_1);
+                    const v_9: number = 10;
+                    const v_10: number = renderFoo_0(v_9);
+                    const v_11: string = v_10.toString();
                     output += "<div>";
-                    for (let b_1 = v_1; b_1 <= v_3; b_1++) {
-                        const v_5: string = b_1.toString();
-                        output += escapeHtml(v_5);
+                    for (let b_1 = v_0; b_1 <= v_2; b_1++) {
+                        const v_4: string = b_1.toString();
+                        output += escapeHtml(v_4);
                         output += ",";
                     }
-                    output += escapeHtml(v_12);
+                    output += escapeHtml(v_11);
                     output += "</div>";
                     return output;
                 }
@@ -3569,8 +3569,8 @@ mod tests {
                   write("\"></button>")
                 }
                 page Test() {
-                  let v1: String = "1"
-                  write_function Button@f0(v1)
+                  let v0: String = "1"
+                  write_function Button@f0(v0)
                 }
 
                 -- after --
@@ -3594,8 +3594,8 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_1: string = "1";
-                    output += renderButton_0(v_1);
+                    const v_0: string = "1";
+                    output += renderButton_0(v_0);
                     return output;
                 }
             "#]],

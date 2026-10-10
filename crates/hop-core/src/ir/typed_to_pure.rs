@@ -179,7 +179,7 @@ impl<'a> Compiler<'a> {
         let declaration = PurePageDeclaration {
             name: page.name,
             parameters,
-            head: self.compile_expr(&page.head),
+            head: page.head.as_ref().map(|head| self.compile_expr(head)),
             body: self.compile_expr(&page.body),
         };
         self.pop_scope();
@@ -963,7 +963,7 @@ mod tests {
         let mut page = build_page_no_params("MainComp", |t| {
             t.text("Hello World");
         });
-        page.head = TypedExpr::HtmlConcat {
+        page.head = Some(TypedExpr::HtmlConcat {
             parts: vec![TypedExpr::Element {
                 element: HtmlElementKind::Title,
                 attrs: TypedAttrs {
@@ -976,7 +976,7 @@ mod tests {
                     }],
                 }),
             }],
-        };
+        });
         check(
             page,
             expect![[r#"

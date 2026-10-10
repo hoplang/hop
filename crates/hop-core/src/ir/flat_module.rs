@@ -42,8 +42,8 @@ pub struct FlatModule {
 pub struct FlatPageDeclaration {
     pub name: TypeName,
     pub parameters: Vec<IrParameter>,
-    /// Must produce Html.
-    pub head: FlatBlock,
+    /// Must produce Html, if present.
+    pub head: Option<FlatBlock>,
     /// Must produce Html.
     pub body: FlatBlock,
 }
@@ -535,18 +535,14 @@ impl FlatPageDeclaration {
         let header = BoxDoc::text(format!("page {}({parameters}) {{", self.name.as_str()));
         // A page with only a body prints the body alone. One with a head
         // prints both as the members they were declared as.
-        let head_is_empty = matches!(
-            self.head.bindings.as_slice(),
-            [FlatBinding { op: FlatOp::HtmlConcat(parts), .. }] if parts.is_empty()
-        );
-        if head_is_empty {
+        let Some(head) = &self.head else {
             return header
                 .append(BoxDoc::line().append(self.body.to_doc()).nest(2))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}"));
-        }
+        };
         let head = BoxDoc::text("fn head() -> Html {")
-            .append(BoxDoc::line().append(self.head.to_doc()).nest(2))
+            .append(BoxDoc::line().append(head.to_doc()).nest(2))
             .append(BoxDoc::line())
             .append(BoxDoc::text("}"));
         let body = BoxDoc::text("fn body() -> Html {")

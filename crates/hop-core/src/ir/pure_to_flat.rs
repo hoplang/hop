@@ -29,7 +29,7 @@ pub fn pure_to_flat(module: PureModule) -> FlatModule {
         .map(|page| FlatPageDeclaration {
             name: page.name,
             parameters: page.parameters,
-            head: lower_block(page.head, &mut cx),
+            head: page.head.map(|head| lower_block(head, &mut cx)),
             body: lower_block(page.body, &mut cx),
         })
         .collect();
@@ -366,13 +366,13 @@ mod tests {
 
                 -- after --
                 page Card(title@b0: String, hidden@b1: Bool) {
-                  let v1: String = "card"
-                  let v2: Bool = b1
-                  let v3: String = b0
-                  let v4: Html = escape(v3)
-                  let v5: Html = concat(v4)
-                  let v6: Html = html("div", {class: v1, hidden: v2}, v5)
-                  v6
+                  let v0: String = "card"
+                  let v1: Bool = b1
+                  let v2: String = b0
+                  let v3: Html = escape(v2)
+                  let v4: Html = concat(v3)
+                  let v5: Html = html("div", {class: v0, hidden: v1}, v4)
+                  v5
                 }
             "#]],
         );
@@ -408,17 +408,17 @@ mod tests {
 
                 -- after --
                 page Items(items@b0: Array[String]) {
-                  let v1: Array[String] = b0
-                  let v6: Html = for b1: String in v1 {
-                    let v2: String = b1
-                    let v3: Html = escape(v2)
-                    let v4: Html = concat(v3)
-                    let v5: Html = html("li", {}, v4)
-                    v5
+                  let v0: Array[String] = b0
+                  let v5: Html = for b1: String in v0 {
+                    let v1: String = b1
+                    let v2: Html = escape(v1)
+                    let v3: Html = concat(v2)
+                    let v4: Html = html("li", {}, v3)
+                    v4
                   }
-                  let v7: Html = concat(v6)
-                  let v8: Html = html("ul", {}, v7)
-                  v8
+                  let v6: Html = concat(v5)
+                  let v7: Html = html("ul", {}, v6)
+                  v7
                 }
             "#]],
         );
@@ -440,13 +440,13 @@ mod tests {
 
                 -- after --
                 page Dots() {
-                  let v1: Int = 1
-                  let v2: Int = 3
-                  let v4: Html = for _ in v1..=v2 {
-                    let v3: Html = text(".")
-                    v3
+                  let v0: Int = 1
+                  let v1: Int = 3
+                  let v3: Html = for _ in v0..=v1 {
+                    let v2: Html = text(".")
+                    v2
                   }
-                  v4
+                  v3
                 }
             "#]],
         );
@@ -480,19 +480,19 @@ mod tests {
 
                 -- after --
                 page Greeting(name@b0: Option[String]) {
-                  let v1: Option[String] = b0
-                  let v5: Html = match v1 {
+                  let v0: Option[String] = b0
+                  let v4: Html = match v0 {
                     Some(b1: String) => {
-                      let v2: String = b1
-                      let v3: Html = escape(v2)
-                      v3
+                      let v1: String = b1
+                      let v2: Html = escape(v1)
+                      v2
                     }
                     None => {
-                      let v4: Html = text("anonymous")
-                      v4
+                      let v3: Html = text("anonymous")
+                      v3
                     }
                   }
-                  v5
+                  v4
                 }
             "#]],
         );
@@ -644,17 +644,17 @@ mod tests {
 
                 -- after --
                 fn double@f0(x@b0: Int) -> Int {
+                  let v4: Int = b0
                   let v5: Int = b0
-                  let v6: Int = b0
-                  let v7: Int = v5 + v6
-                  v7
+                  let v6: Int = v4 + v5
+                  v6
                 }
                 page Answer() {
-                  let v1: Int = 21
-                  let v2: Int = call double@f0(v1)
-                  let v3: String = v2.to_string()
-                  let v4: Html = escape(v3)
-                  v4
+                  let v0: Int = 21
+                  let v1: Int = call double@f0(v0)
+                  let v2: String = v1.to_string()
+                  let v3: Html = escape(v2)
+                  v3
                 }
             "#]],
         );
@@ -938,7 +938,13 @@ mod tests {
             let nodes: usize = module
                 .pages
                 .iter()
-                .map(|page| count_nodes(&page.head, &mut lets) + count_nodes(&page.body, &mut lets))
+                .map(|page| {
+                    page.head
+                        .iter()
+                        .map(|head| count_nodes(head, &mut lets))
+                        .sum::<usize>()
+                        + count_nodes(&page.body, &mut lets)
+                })
                 .sum::<usize>()
                 + module
                     .functions
@@ -962,14 +968,11 @@ mod tests {
                     );
                     binders.push((param.var, param.typ.clone()));
                 }
-                let head = check_block(
-                    &page.head,
-                    &mut names,
-                    &mut binders,
-                    &mut seen,
-                    &mut seen_binders,
-                );
-                assert_eq!(head, Type::Html);
+                if let Some(head) = &page.head {
+                    let head =
+                        check_block(head, &mut names, &mut binders, &mut seen, &mut seen_binders);
+                    assert_eq!(head, Type::Html);
+                }
                 let body = check_block(
                     &page.body,
                     &mut names,
@@ -1002,7 +1005,9 @@ mod tests {
             let bindings: usize = module
                 .pages
                 .iter()
-                .map(|page| count_bindings(&page.head) + count_bindings(&page.body))
+                .map(|page| {
+                    page.head.iter().map(count_bindings).sum::<usize>() + count_bindings(&page.body)
+                })
                 .sum::<usize>()
                 + module
                     .functions

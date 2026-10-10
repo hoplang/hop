@@ -139,7 +139,7 @@ mod tests {
                 .map(|page| FlatPageDeclaration {
                     name: page.name,
                     parameters: page.parameters,
-                    head: eliminate_dead_bindings(page.head),
+                    head: page.head.map(eliminate_dead_bindings),
                     body: eliminate_dead_bindings(page.body),
                 })
                 .collect(),
@@ -229,15 +229,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v1: String = "value"
-                  let v2: Html = text("Hello")
-                  v2
+                  let v0: String = "value"
+                  let v1: Html = text("Hello")
+                  v1
                 }
 
                 -- after --
                 page Test() {
-                  let v2: Html = text("Hello")
-                  v2
+                  let v1: Html = text("Hello")
+                  v1
                 }
             "#]],
         );
@@ -259,33 +259,33 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn f@f0() -> Int {
-                  let v6: Int = call f@f0()
-                  v6
+                  let v5: Int = call f@f0()
+                  v5
                 }
                 page Test(flag@b0: Bool) {
-                  let v1: Bool = b0
-                  let v4: Int = match v1 {
+                  let v0: Bool = b0
+                  let v3: Int = match v0 {
                     true => {
-                      let v2: Int = call f@f0()
-                      v2
+                      let v1: Int = call f@f0()
+                      v1
                     }
                     false => {
-                      let v3: Int = 0
-                      v3
+                      let v2: Int = 0
+                      v2
                     }
                   }
-                  let v5: Html = text("Hello")
-                  v5
+                  let v4: Html = text("Hello")
+                  v4
                 }
 
                 -- after --
                 fn f@f0() -> Int {
-                  let v6: Int = call f@f0()
-                  v6
+                  let v5: Int = call f@f0()
+                  v5
                 }
                 page Test(flag@b0: Bool) {
-                  let v5: Html = text("Hello")
-                  v5
+                  let v4: Html = text("Hello")
+                  v4
                 }
             "#]],
         );
@@ -302,22 +302,22 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(items@b0: Array[String]) {
-                  let v1: Array[String] = b0
-                  let v3: Html = for b1: String in v1 {
-                    let v2: Html = text(".")
-                    v2
+                  let v0: Array[String] = b0
+                  let v2: Html = for b1: String in v0 {
+                    let v1: Html = text(".")
+                    v1
                   }
-                  v3
+                  v2
                 }
 
                 -- after --
                 page Test(items@b0: Array[String]) {
-                  let v1: Array[String] = b0
-                  let v3: Html = for _ in v1 {
-                    let v2: Html = text(".")
-                    v2
+                  let v0: Array[String] = b0
+                  let v2: Html = for _ in v0 {
+                    let v1: Html = text(".")
+                    v1
                   }
-                  v3
+                  v2
                 }
             "#]],
         );
@@ -339,34 +339,34 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(name@b0: Option[String]) {
-                  let v1: Option[String] = b0
-                  let v4: Html = match v1 {
+                  let v0: Option[String] = b0
+                  let v3: Html = match v0 {
                     Some(b1: String) => {
-                      let v2: Html = text("some")
-                      v2
+                      let v1: Html = text("some")
+                      v1
                     }
                     None => {
-                      let v3: Html = text("none")
-                      v3
+                      let v2: Html = text("none")
+                      v2
                     }
                   }
-                  v4
+                  v3
                 }
 
                 -- after --
                 page Test(name@b0: Option[String]) {
-                  let v1: Option[String] = b0
-                  let v4: Html = match v1 {
+                  let v0: Option[String] = b0
+                  let v3: Html = match v0 {
                     Some(_) => {
-                      let v2: Html = text("some")
-                      v2
+                      let v1: Html = text("some")
+                      v1
                     }
                     None => {
-                      let v3: Html = text("none")
-                      v3
+                      let v2: Html = text("none")
+                      v2
                     }
                   }
-                  v4
+                  v3
                 }
             "#]],
         );

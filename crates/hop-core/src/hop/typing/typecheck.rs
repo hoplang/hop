@@ -711,10 +711,9 @@ fn typecheck_page_declaration(
     TypedPageDeclaration {
         name: name.clone(),
         params: typed_params,
-        head: match head {
-            Some(head) => check_declaration_body(typed_head, head.body.range(), errors),
-            None => TypedExpr::HtmlConcat { parts: Vec::new() },
-        },
+        head: head
+            .as_ref()
+            .map(|head| check_declaration_body(typed_head, head.body.range(), errors)),
         body: check_declaration_body(typed_body, body.body.range(), errors),
     }
 }

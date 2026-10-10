@@ -76,14 +76,16 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
         .map(|page| FlatPageDeclaration {
             name: page.name,
             parameters: page.parameters,
-            head: inline_block(
-                page.head,
-                &decls,
-                &recursive,
-                &mut var_ids,
-                &mut binder_ids,
-                &mut renames,
-            ),
+            head: page.head.map(|head| {
+                inline_block(
+                    head,
+                    &decls,
+                    &recursive,
+                    &mut var_ids,
+                    &mut binder_ids,
+                    &mut renames,
+                )
+            }),
             body: inline_block(
                 page.body,
                 &decls,
@@ -495,26 +497,26 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn double@f0(x@b0: Int) -> Int {
+                  let v4: Int = b0
                   let v5: Int = b0
-                  let v6: Int = b0
-                  let v7: Int = v5 + v6
-                  v7
+                  let v6: Int = v4 + v5
+                  v6
                 }
                 page Test(n@b1: Int) {
-                  let v1: Int = b1
-                  let v2: Int = call double@f0(v1)
-                  let v3: String = v2.to_string()
-                  let v4: Html = escape(v3)
-                  v4
+                  let v0: Int = b1
+                  let v1: Int = call double@f0(v0)
+                  let v2: String = v1.to_string()
+                  let v3: Html = escape(v2)
+                  v3
                 }
 
                 -- after --
                 page Test(n@b1: Int) {
-                  let v1: Int = b1
-                  let v8: Int = v1 + v1
-                  let v3: String = v8.to_string()
-                  let v4: Html = escape(v3)
-                  v4
+                  let v0: Int = b1
+                  let v7: Int = v0 + v0
+                  let v2: String = v7.to_string()
+                  let v3: Html = escape(v2)
+                  v3
                 }
             "#]],
         );
@@ -537,36 +539,36 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn inner@f0(x@b0: Int) -> Int {
-                  let v5: Int = b0
-                  let v6: Int = 1
-                  let v7: Int = v5 + v6
-                  v7
+                  let v4: Int = b0
+                  let v5: Int = 1
+                  let v6: Int = v4 + v5
+                  v6
                 }
                 fn outer@f1(y@b1: Int) -> Int {
-                  let v8: Int = b1
-                  let v9: Int = call inner@f0(v8)
-                  let v10: Int = 2
-                  let v11: Int = v9 * v10
-                  v11
+                  let v7: Int = b1
+                  let v8: Int = call inner@f0(v7)
+                  let v9: Int = 2
+                  let v10: Int = v8 * v9
+                  v10
                 }
                 page Test(n@b2: Int) {
-                  let v1: Int = b2
-                  let v2: Int = call outer@f1(v1)
-                  let v3: String = v2.to_string()
-                  let v4: Html = escape(v3)
-                  v4
+                  let v0: Int = b2
+                  let v1: Int = call outer@f1(v0)
+                  let v2: String = v1.to_string()
+                  let v3: Html = escape(v2)
+                  v3
                 }
 
                 -- after --
                 page Test(n@b2: Int) {
-                  let v1: Int = b2
-                  let v14: Int = 1
-                  let v15: Int = v1 + v14
-                  let v16: Int = 2
-                  let v17: Int = v15 * v16
-                  let v3: String = v17.to_string()
-                  let v4: Html = escape(v3)
-                  v4
+                  let v0: Int = b2
+                  let v13: Int = 1
+                  let v14: Int = v0 + v13
+                  let v15: Int = 2
+                  let v16: Int = v14 * v15
+                  let v2: String = v16.to_string()
+                  let v3: Html = escape(v2)
+                  v3
                 }
             "#]],
         );
@@ -595,45 +597,45 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn list@f0(items@b0: Array[String]) -> Html {
-                  let v6: Array[String] = b0
-                  let v11: Html = for b1: String in v6 {
-                    let v7: String = b1
-                    let v8: Html = escape(v7)
-                    let v9: Html = concat(v8)
-                    let v10: Html = html("li", {}, v9)
-                    v10
+                  let v5: Array[String] = b0
+                  let v10: Html = for b1: String in v5 {
+                    let v6: String = b1
+                    let v7: Html = escape(v6)
+                    let v8: Html = concat(v7)
+                    let v9: Html = html("li", {}, v8)
+                    v9
                   }
-                  v11
+                  v10
                 }
                 page Test(a@b2: Array[String], b@b3: Array[String]) {
-                  let v1: Array[String] = b2
-                  let v2: Html = call list@f0(v1)
-                  let v3: Array[String] = b3
-                  let v4: Html = call list@f0(v3)
-                  let v5: Html = concat(v2, v4)
-                  v5
+                  let v0: Array[String] = b2
+                  let v1: Html = call list@f0(v0)
+                  let v2: Array[String] = b3
+                  let v3: Html = call list@f0(v2)
+                  let v4: Html = concat(v1, v3)
+                  v4
                 }
 
                 -- after --
                 page Test(a@b2: Array[String], b@b3: Array[String]) {
-                  let v1: Array[String] = b2
-                  let v16: Html = for b4: String in v1 {
-                    let v12: String = b4
-                    let v13: Html = escape(v12)
-                    let v14: Html = concat(v13)
-                    let v15: Html = html("li", {}, v14)
-                    v15
+                  let v0: Array[String] = b2
+                  let v15: Html = for b4: String in v0 {
+                    let v11: String = b4
+                    let v12: Html = escape(v11)
+                    let v13: Html = concat(v12)
+                    let v14: Html = html("li", {}, v13)
+                    v14
                   }
-                  let v3: Array[String] = b3
-                  let v21: Html = for b5: String in v3 {
-                    let v17: String = b5
-                    let v18: Html = escape(v17)
-                    let v19: Html = concat(v18)
-                    let v20: Html = html("li", {}, v19)
-                    v20
+                  let v2: Array[String] = b3
+                  let v20: Html = for b5: String in v2 {
+                    let v16: String = b5
+                    let v17: Html = escape(v16)
+                    let v18: Html = concat(v17)
+                    let v19: Html = html("li", {}, v18)
+                    v19
                   }
-                  let v5: Html = concat(v16, v21)
-                  v5
+                  let v4: Html = concat(v15, v20)
+                  v4
                 }
             "#]],
         );
@@ -655,54 +657,54 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn count@f0(n@b0: Int) -> Html {
-                  let v3: Int = b0
-                  let v4: Int = 1
-                  let v5: Bool = v3 < v4
-                  let v11: Html = match v5 {
+                  let v2: Int = b0
+                  let v3: Int = 1
+                  let v4: Bool = v2 < v3
+                  let v10: Html = match v4 {
                     true => {
-                      let v6: Html = text(".")
-                      v6
+                      let v5: Html = text(".")
+                      v5
                     }
                     false => {
-                      let v7: Int = b0
-                      let v8: Int = 1
-                      let v9: Int = v7 - v8
-                      let v10: Html = call count@f0(v9)
-                      v10
+                      let v6: Int = b0
+                      let v7: Int = 1
+                      let v8: Int = v6 - v7
+                      let v9: Html = call count@f0(v8)
+                      v9
                     }
                   }
-                  v11
+                  v10
                 }
                 page Test() {
-                  let v1: Int = 3
-                  let v2: Html = call count@f0(v1)
-                  v2
+                  let v0: Int = 3
+                  let v1: Html = call count@f0(v0)
+                  v1
                 }
 
                 -- after --
                 fn count@f0(n@b0: Int) -> Html {
-                  let v3: Int = b0
-                  let v4: Int = 1
-                  let v5: Bool = v3 < v4
-                  let v11: Html = match v5 {
+                  let v2: Int = b0
+                  let v3: Int = 1
+                  let v4: Bool = v2 < v3
+                  let v10: Html = match v4 {
                     true => {
-                      let v6: Html = text(".")
-                      v6
+                      let v5: Html = text(".")
+                      v5
                     }
                     false => {
-                      let v7: Int = b0
-                      let v8: Int = 1
-                      let v9: Int = v7 - v8
-                      let v10: Html = call count@f0(v9)
-                      v10
+                      let v6: Int = b0
+                      let v7: Int = 1
+                      let v8: Int = v6 - v7
+                      let v9: Html = call count@f0(v8)
+                      v9
                     }
                   }
-                  v11
+                  v10
                 }
                 page Test() {
-                  let v1: Int = 3
-                  let v2: Html = call count@f0(v1)
-                  v2
+                  let v0: Int = 3
+                  let v1: Html = call count@f0(v0)
+                  v1
                 }
             "#]],
         );
@@ -727,64 +729,64 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn ping@f0(n@b0: Int) -> Html {
-                  let v3: Int = b0
-                  let v4: Int = 1
-                  let v5: Bool = v3 < v4
-                  let v11: Html = match v5 {
+                  let v2: Int = b0
+                  let v3: Int = 1
+                  let v4: Bool = v2 < v3
+                  let v10: Html = match v4 {
                     true => {
-                      let v6: Html = text(".")
-                      v6
+                      let v5: Html = text(".")
+                      v5
                     }
                     false => {
-                      let v7: Int = b0
-                      let v8: Int = 1
-                      let v9: Int = v7 - v8
-                      let v10: Html = call pong@f1(v9)
-                      v10
+                      let v6: Int = b0
+                      let v7: Int = 1
+                      let v8: Int = v6 - v7
+                      let v9: Html = call pong@f1(v8)
+                      v9
                     }
                   }
-                  v11
+                  v10
                 }
                 fn pong@f1(n@b1: Int) -> Html {
-                  let v12: Int = b1
-                  let v13: Html = call ping@f0(v12)
-                  v13
+                  let v11: Int = b1
+                  let v12: Html = call ping@f0(v11)
+                  v12
                 }
                 page Test() {
-                  let v1: Int = 2
-                  let v2: Html = call ping@f0(v1)
-                  v2
+                  let v0: Int = 2
+                  let v1: Html = call ping@f0(v0)
+                  v1
                 }
 
                 -- after --
                 fn ping@f0(n@b0: Int) -> Html {
-                  let v3: Int = b0
-                  let v4: Int = 1
-                  let v5: Bool = v3 < v4
-                  let v11: Html = match v5 {
+                  let v2: Int = b0
+                  let v3: Int = 1
+                  let v4: Bool = v2 < v3
+                  let v10: Html = match v4 {
                     true => {
-                      let v6: Html = text(".")
-                      v6
+                      let v5: Html = text(".")
+                      v5
                     }
                     false => {
-                      let v7: Int = b0
-                      let v8: Int = 1
-                      let v9: Int = v7 - v8
-                      let v10: Html = call pong@f1(v9)
-                      v10
+                      let v6: Int = b0
+                      let v7: Int = 1
+                      let v8: Int = v6 - v7
+                      let v9: Html = call pong@f1(v8)
+                      v9
                     }
                   }
-                  v11
+                  v10
                 }
                 fn pong@f1(n@b1: Int) -> Html {
-                  let v12: Int = b1
-                  let v13: Html = call ping@f0(v12)
-                  v13
+                  let v11: Int = b1
+                  let v12: Html = call ping@f0(v11)
+                  v12
                 }
                 page Test() {
-                  let v1: Int = 2
-                  let v2: Html = call ping@f0(v1)
-                  v2
+                  let v0: Int = 2
+                  let v1: Html = call ping@f0(v0)
+                  v1
                 }
             "#]],
         );

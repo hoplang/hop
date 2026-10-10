@@ -38,8 +38,9 @@ pub struct PurePageDeclaration {
     pub name: TypeName,
     /// Parameter names with their types
     pub parameters: Vec<IrParameter>,
-    /// PureIR expression for the page head. Must be of type `Html`.
-    pub head: PureExpr,
+    /// PureIR expression for the page head, if the page has one. Must be
+    /// of type `Html`.
+    pub head: Option<PureExpr>,
     /// PureIR expression for the page body. Must be of type `Html`.
     pub body: PureExpr,
 }
@@ -476,14 +477,14 @@ impl PurePageDeclaration {
             .append(BoxDoc::text(") {"));
         // A page with only a body prints the body alone. One with a head
         // prints both as the members they were declared as.
-        if matches!(&self.head, PureExpr::HtmlConcat { parts, .. } if parts.is_empty()) {
+        let Some(head) = &self.head else {
             return header
                 .append(BoxDoc::line().append(self.body.to_doc()).nest(2))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}"));
-        }
+        };
         let head = BoxDoc::text("fn head() -> Html {")
-            .append(BoxDoc::line().append(self.head.to_doc()).nest(2))
+            .append(BoxDoc::line().append(head.to_doc()).nest(2))
             .append(BoxDoc::line())
             .append(BoxDoc::text("}"));
         let body = BoxDoc::text("fn body() -> Html {")

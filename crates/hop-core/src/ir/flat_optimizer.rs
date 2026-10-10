@@ -12,9 +12,12 @@ pub fn optimize_flat(module: FlatModule) -> FlatModule {
         .map(|page| FlatPageDeclaration {
             name: page.name,
             parameters: page.parameters,
-            head: flat_transform::eliminate_dead_bindings(
-                flat_transform::perform_partial_evaluation(page.head, &mut var_ids),
-            ),
+            head: page.head.map(|head| {
+                flat_transform::eliminate_dead_bindings(flat_transform::perform_partial_evaluation(
+                    head,
+                    &mut var_ids,
+                ))
+            }),
             body: flat_transform::eliminate_dead_bindings(
                 flat_transform::perform_partial_evaluation(page.body, &mut var_ids),
             ),
@@ -139,31 +142,31 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Items(items@b0: Array[String]) {
-                  let v1: String = "value"
-                  let v2: Array[String] = b0
-                  let v7: Html = for b2: String in v2 {
-                    let v3: String = b2
-                    let v4: Html = escape(v3)
-                    let v5: Html = concat(v4)
-                    let v6: Html = html("li", {}, v5)
-                    v6
+                  let v0: String = "value"
+                  let v1: Array[String] = b0
+                  let v6: Html = for b2: String in v1 {
+                    let v2: String = b2
+                    let v3: Html = escape(v2)
+                    let v4: Html = concat(v3)
+                    let v5: Html = html("li", {}, v4)
+                    v5
                   }
-                  let v8: Html = concat(v7)
-                  let v9: Html = html("ul", {}, v8)
-                  v9
+                  let v7: Html = concat(v6)
+                  let v8: Html = html("ul", {}, v7)
+                  v8
                 }
 
                 -- after --
                 page Items(items@b0: Array[String]) {
-                  let v2: Array[String] = b0
-                  let v7: Html = for b2: String in v2 {
-                    let v3: String = b2
-                    let v4: Html = escape(v3)
-                    let v6: Html = html("li", {}, v4)
-                    v6
+                  let v1: Array[String] = b0
+                  let v6: Html = for b2: String in v1 {
+                    let v2: String = b2
+                    let v3: Html = escape(v2)
+                    let v5: Html = html("li", {}, v3)
+                    v5
                   }
-                  let v9: Html = html("ul", {}, v7)
-                  v9
+                  let v8: Html = html("ul", {}, v6)
+                  v8
                 }
             "#]],
         );
@@ -186,26 +189,26 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v1: Bool = true
-                  let v5: Html = match v1 {
+                  let v0: Bool = true
+                  let v4: Html = match v0 {
                     true => {
-                      let v2: Html = text("yes")
-                      let v3: Html = concat(v2)
-                      v3
+                      let v1: Html = text("yes")
+                      let v2: Html = concat(v1)
+                      v2
                     }
                     false => {
-                      let v4: Html = concat()
-                      v4
+                      let v3: Html = concat()
+                      v3
                     }
                   }
-                  let v6: Html = concat(v5)
-                  v6
+                  let v5: Html = concat(v4)
+                  v5
                 }
 
                 -- after --
                 page Test() {
-                  let v2: Html = text("yes")
-                  v2
+                  let v1: Html = text("yes")
+                  v1
                 }
             "#]],
         );
@@ -225,24 +228,24 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn double@f0(x@b0: Int) -> Int {
+                  let v4: Int = b0
                   let v5: Int = b0
-                  let v6: Int = b0
-                  let v7: Int = v5 + v6
-                  v7
+                  let v6: Int = v4 + v5
+                  v6
                 }
                 page Test() {
-                  let v1: Int = 21
-                  let v2: Int = call double@f0(v1)
-                  let v3: String = v2.to_string()
-                  let v4: Html = escape(v3)
-                  v4
+                  let v0: Int = 21
+                  let v1: Int = call double@f0(v0)
+                  let v2: String = v1.to_string()
+                  let v3: Html = escape(v2)
+                  v3
                 }
 
                 -- after --
                 page Test() {
-                  let v3: String = "42"
-                  let v4: Html = escape(v3)
-                  v4
+                  let v2: String = "42"
+                  let v3: Html = escape(v2)
+                  v3
                 }
             "#]],
         );

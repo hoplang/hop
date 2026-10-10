@@ -59,8 +59,12 @@ pub fn evaluate_page(
         }
     }
 
-    let head =
-        evaluate_block(&page.head, &mut names, &mut binders, &module.functions, 0)?.unwrap_html();
+    let head = match &page.head {
+        Some(head) => {
+            evaluate_block(head, &mut names, &mut binders, &module.functions, 0)?.unwrap_html()
+        }
+        None => Vec::new(),
+    };
     let body =
         evaluate_block(&page.body, &mut names, &mut binders, &module.functions, 0)?.unwrap_html();
 
@@ -531,17 +535,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Items(items@b0: Array[String]) {
-                  let v1: Array[String] = b0
-                  let v6: Html = for b1: String in v1 {
-                    let v2: String = b1
-                    let v3: Html = escape(v2)
-                    let v4: Html = concat(v3)
-                    let v5: Html = html("li", {}, v4)
-                    v5
+                  let v0: Array[String] = b0
+                  let v5: Html = for b1: String in v0 {
+                    let v1: String = b1
+                    let v2: Html = escape(v1)
+                    let v3: Html = concat(v2)
+                    let v4: Html = html("li", {}, v3)
+                    v4
                   }
-                  let v7: Html = concat(v6)
-                  let v8: Html = html("ul", {}, v7)
-                  v8
+                  let v6: Html = concat(v5)
+                  let v7: Html = html("ul", {}, v6)
+                  v7
                 }
 
                 -- after --
@@ -567,32 +571,32 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn diverge@f0() -> Bool {
-                  let v8: Bool = call diverge@f0()
-                  v8
+                  let v7: Bool = call diverge@f0()
+                  v7
                 }
                 page Test(flag@b0: Bool) {
-                  let v1: Bool = b0
-                  let v3: Bool = match v1 {
+                  let v0: Bool = b0
+                  let v2: Bool = match v0 {
                     true => {
-                      let v2: Bool = call diverge@f0()
-                      v2
-                    }
-                    false => {
+                      let v1: Bool = call diverge@f0()
                       v1
                     }
+                    false => {
+                      v0
+                    }
                   }
-                  let v6: String = match v3 {
+                  let v5: String = match v2 {
                     true => {
-                      let v4: String = "yes"
-                      v4
+                      let v3: String = "yes"
+                      v3
                     }
                     false => {
-                      let v5: String = "no"
-                      v5
+                      let v4: String = "no"
+                      v4
                     }
                   }
-                  let v7: Html = escape(v6)
-                  v7
+                  let v6: Html = escape(v5)
+                  v6
                 }
 
                 -- after --
@@ -628,20 +632,20 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(shape@b0: Shape) {
-                  let v1: Shape = b0
-                  let v5: String = match v1 {
+                  let v0: Shape = b0
+                  let v4: String = match v0 {
                     Shape::Dot => {
-                      let v2: String = "dot"
-                      v2
+                      let v1: String = "dot"
+                      v1
                     }
                     Shape::Circle {radius@b1: Int} => {
-                      let v3: Int = b1
-                      let v4: String = v3.to_string()
-                      v4
+                      let v2: Int = b1
+                      let v3: String = v2.to_string()
+                      v3
                     }
                   }
-                  let v6: Html = escape(v5)
-                  v6
+                  let v5: Html = escape(v4)
+                  v5
                 }
 
                 -- after --

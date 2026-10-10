@@ -260,11 +260,10 @@ impl<'a> PureModuleBodiesBuilder<'a> {
             );
             match deferred.declaration {
                 DeferredDeclaration::Page { name } => {
-                    let head = PureExpr::HtmlConcat { parts: Vec::new() };
                     pages.push(PurePageDeclaration {
                         name,
                         parameters,
-                        head,
+                        head: None,
                         body,
                     });
                 }

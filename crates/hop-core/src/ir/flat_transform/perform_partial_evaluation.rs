@@ -470,7 +470,9 @@ mod tests {
             .map(|page| FlatPageDeclaration {
                 name: page.name,
                 parameters: page.parameters,
-                head: perform_partial_evaluation(page.head, &mut var_ids),
+                head: page
+                    .head
+                    .map(|head| perform_partial_evaluation(head, &mut var_ids)),
                 body: perform_partial_evaluation(page.body, &mut var_ids),
             })
             .collect();
@@ -592,27 +594,27 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v1: Bool = true
-                  let v2: Bool = !v1
-                  let v5: Html = match v2 {
+                  let v0: Bool = true
+                  let v1: Bool = !v0
+                  let v4: Html = match v1 {
                     true => {
-                      let v3: Html = text("yes")
-                      v3
+                      let v2: Html = text("yes")
+                      v2
                     }
                     false => {
-                      let v4: Html = text("no")
-                      v4
+                      let v3: Html = text("no")
+                      v3
                     }
                   }
-                  v5
+                  v4
                 }
 
                 -- after --
                 page Test() {
-                  let v1: Bool = true
-                  let v2: Bool = false
-                  let v4: Html = text("no")
-                  v4
+                  let v0: Bool = true
+                  let v1: Bool = false
+                  let v3: Html = text("no")
+                  v3
                 }
             "#]],
         );
@@ -629,34 +631,34 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(flag@b0: Bool) {
-                  let v1: Bool = b0
-                  let v4: Html = match v1 {
+                  let v0: Bool = b0
+                  let v3: Html = match v0 {
                     true => {
-                      let v2: Html = text("yes")
-                      v2
+                      let v1: Html = text("yes")
+                      v1
                     }
                     false => {
-                      let v3: Html = text("no")
-                      v3
+                      let v2: Html = text("no")
+                      v2
                     }
                   }
-                  v4
+                  v3
                 }
 
                 -- after --
                 page Test(flag@b0: Bool) {
-                  let v1: Bool = b0
-                  let v4: Html = match v1 {
+                  let v0: Bool = b0
+                  let v3: Html = match v0 {
                     true => {
-                      let v2: Html = text("yes")
-                      v2
+                      let v1: Html = text("yes")
+                      v1
                     }
                     false => {
-                      let v3: Html = text("no")
-                      v3
+                      let v2: Html = text("no")
+                      v2
                     }
                   }
-                  v4
+                  v3
                 }
             "#]],
         );
@@ -677,23 +679,23 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(n@b0: Int) {
-                  let v1: Int = b0
-                  let v2: Int = 2
-                  let v3: Point = {x: v1, y: v2}
-                  let v4: Int = v3.x
-                  let v5: String = v4.to_string()
-                  let v6: Html = escape(v5)
-                  v6
+                  let v0: Int = b0
+                  let v1: Int = 2
+                  let v2: Point = {x: v0, y: v1}
+                  let v3: Int = v2.x
+                  let v4: String = v3.to_string()
+                  let v5: Html = escape(v4)
+                  v5
                 }
 
                 -- after --
                 page Test(n@b0: Int) {
-                  let v1: Int = b0
-                  let v2: Int = 2
-                  let v3: Point = {x: v1, y: v2}
-                  let v5: String = v1.to_string()
-                  let v6: Html = escape(v5)
-                  v6
+                  let v0: Int = b0
+                  let v1: Int = 2
+                  let v2: Point = {x: v0, y: v1}
+                  let v4: String = v0.to_string()
+                  let v5: Html = escape(v4)
+                  v5
                 }
             "#]],
         );
@@ -742,29 +744,29 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(dyn@b0: String) {
-                  let v1: String = b0
-                  let v2: String = "a"
-                  let v3: String = concat(v1, v2)
-                  let v4: String = "b"
-                  let v5: String = b0
-                  let v6: String = concat(v4, v5)
-                  let v7: String = concat(v3, v6)
-                  let v8: Html = escape(v7)
-                  v8
+                  let v0: String = b0
+                  let v1: String = "a"
+                  let v2: String = concat(v0, v1)
+                  let v3: String = "b"
+                  let v4: String = b0
+                  let v5: String = concat(v3, v4)
+                  let v6: String = concat(v2, v5)
+                  let v7: Html = escape(v6)
+                  v7
                 }
 
                 -- after --
                 page Test(dyn@b0: String) {
-                  let v1: String = b0
-                  let v2: String = "a"
-                  let v3: String = concat(v1, v2)
-                  let v4: String = "b"
-                  let v5: String = b0
-                  let v6: String = concat(v4, v5)
-                  let v9: String = "ab"
-                  let v7: String = concat(v1, v9, v5)
-                  let v8: Html = escape(v7)
-                  v8
+                  let v0: String = b0
+                  let v1: String = "a"
+                  let v2: String = concat(v0, v1)
+                  let v3: String = "b"
+                  let v4: String = b0
+                  let v5: String = concat(v3, v4)
+                  let v8: String = "ab"
+                  let v6: String = concat(v0, v8, v4)
+                  let v7: Html = escape(v6)
+                  v7
                 }
             "#]],
         );
@@ -781,21 +783,21 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(dyn@b0: String) {
-                  let v1: String = ""
-                  let v2: String = b0
-                  let v3: String = ""
-                  let v4: String = concat(v1, v2, v3)
-                  let v5: Html = escape(v4)
-                  v5
+                  let v0: String = ""
+                  let v1: String = b0
+                  let v2: String = ""
+                  let v3: String = concat(v0, v1, v2)
+                  let v4: Html = escape(v3)
+                  v4
                 }
 
                 -- after --
                 page Test(dyn@b0: String) {
-                  let v1: String = ""
-                  let v2: String = b0
-                  let v3: String = ""
-                  let v5: Html = escape(v2)
-                  v5
+                  let v0: String = ""
+                  let v1: String = b0
+                  let v2: String = ""
+                  let v4: Html = escape(v1)
+                  v4
                 }
             "#]],
         );
@@ -812,20 +814,20 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v1: String = "Hello, "
-                  let v2: String = "World"
-                  let v3: String = concat(v1, v2)
-                  let v4: Html = escape(v3)
-                  v4
+                  let v0: String = "Hello, "
+                  let v1: String = "World"
+                  let v2: String = concat(v0, v1)
+                  let v3: Html = escape(v2)
+                  v3
                 }
 
                 -- after --
                 page Test() {
-                  let v1: String = "Hello, "
-                  let v2: String = "World"
-                  let v5: String = "Hello, World"
-                  let v4: Html = escape(v5)
-                  v4
+                  let v0: String = "Hello, "
+                  let v1: String = "World"
+                  let v4: String = "Hello, World"
+                  let v3: Html = escape(v4)
+                  v3
                 }
             "#]],
         );
@@ -846,25 +848,25 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v1: Html = text("a")
-                  let v2: Html = text("b")
-                  let v3: Html = text("c")
-                  let v4: Html = concat(v2, v3)
-                  let v5: Html = text("d")
-                  let v6: Html = concat(v5)
-                  let v7: Html = concat(v1, v4, v6)
-                  v7
+                  let v0: Html = text("a")
+                  let v1: Html = text("b")
+                  let v2: Html = text("c")
+                  let v3: Html = concat(v1, v2)
+                  let v4: Html = text("d")
+                  let v5: Html = concat(v4)
+                  let v6: Html = concat(v0, v3, v5)
+                  v6
                 }
 
                 -- after --
                 page Test() {
-                  let v1: Html = text("a")
-                  let v2: Html = text("b")
-                  let v3: Html = text("c")
-                  let v4: Html = concat(v2, v3)
-                  let v5: Html = text("d")
-                  let v7: Html = concat(v1, v2, v3, v5)
-                  v7
+                  let v0: Html = text("a")
+                  let v1: Html = text("b")
+                  let v2: Html = text("c")
+                  let v3: Html = concat(v1, v2)
+                  let v4: Html = text("d")
+                  let v6: Html = concat(v0, v1, v2, v4)
+                  v6
                 }
             "#]],
         );
@@ -937,28 +939,28 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v1: String = "x"
-                  let v2: Option[String] = Some(v1)
-                  let v6: Html = match v2 {
+                  let v0: String = "x"
+                  let v1: Option[String] = Some(v0)
+                  let v5: Html = match v1 {
                     Some(b0: String) => {
-                      let v3: String = b0
-                      let v4: Html = escape(v3)
-                      v4
+                      let v2: String = b0
+                      let v3: Html = escape(v2)
+                      v3
                     }
                     None => {
-                      let v5: Html = text("none")
-                      v5
+                      let v4: Html = text("none")
+                      v4
                     }
                   }
-                  v6
+                  v5
                 }
 
                 -- after --
                 page Test() {
-                  let v1: String = "x"
-                  let v2: Option[String] = Some(v1)
-                  let v4: Html = escape(v1)
-                  v4
+                  let v0: String = "x"
+                  let v1: Option[String] = Some(v0)
+                  let v3: Html = escape(v0)
+                  v3
                 }
             "#]],
         );
@@ -1003,29 +1005,29 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
+                  let v0: String = "a"
                   let v1: String = "a"
-                  let v2: String = "a"
-                  let v3: Bool = v1 == v2
-                  let v6: Html = match v3 {
+                  let v2: Bool = v0 == v1
+                  let v5: Html = match v2 {
                     true => {
-                      let v4: Html = text("same")
-                      v4
+                      let v3: Html = text("same")
+                      v3
                     }
                     false => {
-                      let v5: Html = text("other")
-                      v5
+                      let v4: Html = text("other")
+                      v4
                     }
                   }
-                  v6
+                  v5
                 }
 
                 -- after --
                 page Test() {
+                  let v0: String = "a"
                   let v1: String = "a"
-                  let v2: String = "a"
-                  let v3: Bool = true
-                  let v4: Html = text("same")
-                  v4
+                  let v2: Bool = true
+                  let v3: Html = text("same")
+                  v3
                 }
             "#]],
         );

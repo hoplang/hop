@@ -16,7 +16,7 @@ pub struct TypedModule {
 #[derive(Debug, Clone)]
 pub struct TypedPageDeclaration {
     pub name: TypeName,
-    pub head: TypedExpr,
+    pub head: Option<TypedExpr>,
     pub body: TypedExpr,
     pub params: Vec<TypedParameter>,
 }
@@ -100,12 +100,12 @@ impl TypedPageDeclaration {
             .append(BoxDoc::text("{"));
 
         let mut blocks: Vec<BoxDoc<'_>> = Vec::new();
-        if !matches!(&self.head, TypedExpr::HtmlConcat { parts } if parts.is_empty()) {
+        if let Some(head) = &self.head {
             blocks.push(
                 BoxDoc::text("fn head() -> Html {")
                     .append(
                         BoxDoc::line()
-                            .append(self.head.to_doc())
+                            .append(head.to_doc())
                             .append(BoxDoc::line())
                             .nest(2),
                     )

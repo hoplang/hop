@@ -99,7 +99,7 @@ impl TypedAstBuilder {
     fn build(self, page_name: &str) -> TypedPageDeclaration {
         TypedPageDeclaration {
             name: TypeName::parse(page_name).unwrap(),
-            head: TypedExpr::HtmlConcat { parts: Vec::new() },
+            head: None,
             body: TypedExpr::HtmlConcat {
                 parts: self.children,
             },

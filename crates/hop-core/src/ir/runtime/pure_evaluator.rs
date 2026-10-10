@@ -44,7 +44,10 @@ pub fn evaluate_page(
         }
     }
 
-    let head = evaluate_expr(&page.head, &mut env, &module.functions, 0)?.unwrap_html();
+    let head = match &page.head {
+        Some(head) => evaluate_expr(head, &mut env, &module.functions, 0)?.unwrap_html(),
+        None => Vec::new(),
+    };
     let body = evaluate_expr(&page.body, &mut env, &module.functions, 0)?.unwrap_html();
 
     let mut html = String::new();

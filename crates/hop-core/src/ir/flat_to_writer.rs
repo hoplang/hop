@@ -45,13 +45,17 @@ fn lower_page(decl: FlatPageDeclaration, shell: Option<&DocumentShell>) -> Write
     match shell {
         Some(shell) => {
             body.push(WriterStmt::Write(shell.before_head.to_string()));
-            lower_body(decl.head, &mut body);
+            if let Some(head) = decl.head {
+                lower_body(head, &mut body);
+            }
             body.push(WriterStmt::Write(shell.after_head.clone()));
             lower_body(decl.body, &mut body);
             body.push(WriterStmt::Write(shell.after_body.to_string()));
         }
         None => {
-            lower_body(decl.head, &mut body);
+            if let Some(head) = decl.head {
+                lower_body(head, &mut body);
+            }
             lower_body(decl.body, &mut body);
         }
     }
@@ -1219,11 +1223,11 @@ mod tests {
 
                 -- writer --
                 page Test() {
-                  let v3: Html = html {
+                  let v2: Html = html {
                     write("<b>hi</b>")
                   }
-                  write_html(v3)
-                  write_html(v3)
+                  write_html(v2)
+                  write_html(v2)
                 }
             "#]],
         );
@@ -1252,11 +1256,11 @@ mod tests {
 
                 -- writer --
                 page Test(items@b0: Array[String]) {
-                  let v3: Html = html {
+                  let v2: Html = html {
                     write("<b>hi</b>")
                   }
                   for _ in b0 {
-                    write_html(v3)
+                    write_html(v2)
                   }
                 }
             "#]],
@@ -1414,19 +1418,19 @@ mod tests {
 
                 -- writer --
                 page Test(flag@b0: Bool, n@b1: Int) {
-                  let v6: Int = match b0 {
+                  let v5: Int = match b0 {
                     true => {
-                      let v3: Int = 1
-                      let v4: Int = b1 + v3
-                      v4
+                      let v2: Int = 1
+                      let v3: Int = b1 + v2
+                      v3
                     }
                     false => {
-                      let v5: Int = 0
-                      v5
+                      let v4: Int = 0
+                      v4
                     }
                   }
-                  let v7: String = v6.to_string()
-                  write_string(v7)
+                  let v6: String = v5.to_string()
+                  write_string(v6)
                 }
             "#]],
         );
