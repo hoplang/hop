@@ -7,7 +7,7 @@ use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::ir_unary_op::IrUnaryOp;
-use crate::ir::var_id::{VarId, VarIdCounter};
+use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// A pass that evaluates the constant parts of a block at compile time.
 ///
@@ -29,9 +29,9 @@ use crate::ir::var_id::{VarId, VarIdCounter};
 ///
 /// One pass in binding order sees every operand's op before the op that
 /// reads it, so nothing is left for a second pass.
-pub fn perform_partial_evaluation(block: FlatBlock, var_ids: &mut VarIdCounter) -> FlatBlock {
+pub fn perform_partial_evaluation(block: FlatBlock, value_ids: &mut ValueIdCounter) -> FlatBlock {
     let mut evaluator = Evaluator {
-        var_ids,
+        value_ids,
         ops: HashMap::new(),
         renames: HashMap::new(),
         binders: HashMap::new(),
@@ -44,24 +44,24 @@ enum Folded {
     /// An op, bound to the name as before.
     Op(FlatOp),
     /// Another name, which the readers of the binding read instead.
-    Name(VarId),
+    Name(ValueId),
 }
 
 struct Evaluator<'a> {
-    var_ids: &'a mut VarIdCounter,
+    value_ids: &'a mut ValueIdCounter,
     /// The ops of the bindings kept so far, except those holding blocks,
     /// for their readers to look at. Names are unique, so one map serves
     /// every nested block.
-    ops: HashMap<VarId, FlatOp>,
+    ops: HashMap<ValueId, FlatOp>,
     /// The bindings that turned out to be another name.
-    renames: HashMap<VarId, VarId>,
+    renames: HashMap<ValueId, ValueId>,
     /// The binders of selected arms, each with the constructor operand it
     /// stands for. A Read of one is that operand.
-    binders: HashMap<BinderId, VarId>,
+    binders: HashMap<BinderId, ValueId>,
 }
 
 impl Evaluator<'_> {
-    fn resolve(&self, name: VarId) -> VarId {
+    fn resolve(&self, name: ValueId) -> ValueId {
         self.renames.get(&name).copied().unwrap_or(name)
     }
 
@@ -79,7 +79,7 @@ impl Evaluator<'_> {
     /// Run the arm selected for the match `name`, its bindings joining the
     /// block the match sits in, and let the readers of `name` read the
     /// arm's result.
-    fn select_arm(&mut self, name: VarId, arm: FlatBlock, out: &mut Vec<FlatBinding>) {
+    fn select_arm(&mut self, name: ValueId, arm: FlatBlock, out: &mut Vec<FlatBinding>) {
         for binding in arm.bindings {
             self.evaluate_binding(binding, out);
         }
@@ -375,7 +375,7 @@ impl Evaluator<'_> {
                         _ => flattened.push(part),
                     }
                 }
-                let mut merged: Vec<VarId> = Vec::with_capacity(flattened.len());
+                let mut merged: Vec<ValueId> = Vec::with_capacity(flattened.len());
                 for part in flattened {
                     let literal = match self.ops.get(&part) {
                         Some(FlatOp::StringLiteral(value)) => Some(value.clone()),
@@ -401,7 +401,7 @@ impl Evaluator<'_> {
                             );
                             combined.push_str(previous.as_str());
                             combined.push_str(value.as_str());
-                            let name = self.var_ids.next();
+                            let name = self.value_ids.next();
                             let op = FlatOp::StringLiteral(CheapString::new(combined));
                             self.ops.insert(name, op.clone());
                             out.push(FlatBinding {
@@ -459,7 +459,7 @@ mod tests {
     use rand::{SeedableRng, rngs::SmallRng};
 
     fn run(module: FlatModule) -> FlatModule {
-        let mut var_ids = module.var_ids;
+        let mut value_ids = module.value_ids;
         let functions = module
             .functions
             .into_iter()
@@ -468,12 +468,12 @@ mod tests {
                 entry: function.entry,
                 parameters: function.parameters,
                 return_type: function.return_type,
-                body: perform_partial_evaluation(function.body, &mut var_ids),
+                body: perform_partial_evaluation(function.body, &mut value_ids),
             })
             .collect();
         FlatModule {
             functions,
-            var_ids,
+            value_ids,
             binder_ids: module.binder_ids,
         }
     }

@@ -8,7 +8,7 @@ use crate::ir::flat_module::{
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_match::{EnumMatchArm, Match};
-use crate::ir::var_id::{VarId, VarIdCounter};
+use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// A pass that replaces a call to a non-recursive function with the
 /// callee's body, and drops the function once no call to it is left. Only
@@ -22,7 +22,7 @@ use crate::ir::var_id::{VarId, VarIdCounter};
 pub fn inline_function_calls(module: FlatModule) -> FlatModule {
     let FlatModule {
         functions,
-        mut var_ids,
+        mut value_ids,
         mut binder_ids,
     } = module;
 
@@ -62,7 +62,7 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
             decl.body,
             &decls,
             &recursive,
-            &mut var_ids,
+            &mut value_ids,
             &mut binder_ids,
             &mut renames,
         );
@@ -80,7 +80,7 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
 
     FlatModule {
         functions,
-        var_ids,
+        value_ids,
         binder_ids,
     }
 }
@@ -124,9 +124,9 @@ fn inline_block(
     block: FlatBlock,
     decls: &HashMap<FunctionId, FlatFunctionDeclaration>,
     recursive: &HashSet<FunctionId>,
-    var_ids: &mut VarIdCounter,
+    value_ids: &mut ValueIdCounter,
     binder_ids: &mut BinderIdCounter,
-    renames: &mut HashMap<VarId, VarId>,
+    renames: &mut HashMap<ValueId, ValueId>,
 ) -> FlatBlock {
     let mut bindings = Vec::with_capacity(block.bindings.len());
     for binding in block.bindings {
@@ -154,7 +154,7 @@ fn inline_block(
                     .map(|(param, arg)| (param.var, arg))
                     .collect();
                 let mut freshener = Freshener {
-                    var_ids,
+                    value_ids,
                     binder_ids,
                     arguments,
                     names: HashMap::new(),
@@ -175,10 +175,10 @@ fn inline_block(
                 } => Match::Bool {
                     subject,
                     true_body: inline_block(
-                        true_body, decls, recursive, var_ids, binder_ids, renames,
+                        true_body, decls, recursive, value_ids, binder_ids, renames,
                     ),
                     false_body: inline_block(
-                        false_body, decls, recursive, var_ids, binder_ids, renames,
+                        false_body, decls, recursive, value_ids, binder_ids, renames,
                     ),
                 },
                 Match::Option {
@@ -193,7 +193,7 @@ fn inline_block(
                         some_arm_body,
                         decls,
                         recursive,
-                        var_ids,
+                        value_ids,
                         binder_ids,
                         renames,
                     ),
@@ -201,7 +201,7 @@ fn inline_block(
                         none_arm_body,
                         decls,
                         recursive,
-                        var_ids,
+                        value_ids,
                         binder_ids,
                         renames,
                     ),
@@ -214,7 +214,7 @@ fn inline_block(
                             pattern: arm.pattern,
                             bindings: arm.bindings,
                             body: inline_block(
-                                arm.body, decls, recursive, var_ids, binder_ids, renames,
+                                arm.body, decls, recursive, value_ids, binder_ids, renames,
                             ),
                         })
                         .collect(),
@@ -223,7 +223,7 @@ fn inline_block(
             FlatOp::HtmlFor { var, source, body } => FlatOp::HtmlFor {
                 var,
                 source,
-                body: inline_block(body, decls, recursive, var_ids, binder_ids, renames),
+                body: inline_block(body, decls, recursive, value_ids, binder_ids, renames),
             },
             op => op,
         };
@@ -238,20 +238,20 @@ fn inline_block(
 /// Copies a callee body for one call, with fresh names and binders, so the
 /// copy shares nothing with the declaration or any other copy.
 struct Freshener<'a> {
-    var_ids: &'a mut VarIdCounter,
+    value_ids: &'a mut ValueIdCounter,
     binder_ids: &'a mut BinderIdCounter,
     /// The argument for each parameter.
-    arguments: HashMap<BinderId, VarId>,
+    arguments: HashMap<BinderId, ValueId>,
     /// The name in the copy of every binding in scope so far: the argument
     /// for a Read of a parameter, and a fresh name for any other binding.
-    names: HashMap<VarId, VarId>,
+    names: HashMap<ValueId, ValueId>,
     /// The fresh binder in the copy of every loop or arm binder in scope so
     /// far.
     binders: HashMap<BinderId, BinderId>,
 }
 
 impl Freshener<'_> {
-    fn name(&self, name: VarId) -> VarId {
+    fn name(&self, name: ValueId) -> ValueId {
         self.names.get(&name).copied().unwrap_or_else(|| {
             unreachable!("a callee body binds every name it reads, and {name} is not bound")
         })
@@ -360,7 +360,7 @@ impl Freshener<'_> {
                 op
             }
         };
-        let name = self.var_ids.next();
+        let name = self.value_ids.next();
         self.names.insert(binding.name, name);
         Some(FlatBinding {
             name,

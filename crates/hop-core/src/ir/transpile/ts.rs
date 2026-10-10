@@ -24,7 +24,7 @@ use crate::symbols::type_name::TypeName;
 /// with a TypeScript reserved word or with the `output` buffer.
 fn name_ident(name: WriterName) -> String {
     match name {
-        WriterName::Binding(var) => format!("v_{}", var.index()),
+        WriterName::Binding(value) => format!("v_{}", value.index()),
         WriterName::Binder(binder) => format!("b_{}", binder.index()),
     }
 }

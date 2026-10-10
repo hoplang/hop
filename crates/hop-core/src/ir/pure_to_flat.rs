@@ -7,7 +7,7 @@ use crate::ir::flat_module::{
 };
 use crate::ir::ir_match::{EnumMatchArm, Match};
 use crate::ir::pure_module::{PureAttribute, PureExpr, PureForSource, PureModule};
-use crate::ir::var_id::{VarId, VarIdCounter};
+use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// Lower a Pure module to the Flat IR.
 ///
@@ -20,7 +20,7 @@ use crate::ir::var_id::{VarId, VarIdCounter};
 /// when the left one does not decide.
 pub fn pure_to_flat(module: PureModule) -> FlatModule {
     let mut cx = Lowering {
-        var_ids: VarIdCounter::new(),
+        value_ids: ValueIdCounter::new(),
         lets: HashMap::new(),
     };
     let functions = module
@@ -36,7 +36,7 @@ pub fn pure_to_flat(module: PureModule) -> FlatModule {
         .collect();
     FlatModule {
         functions,
-        var_ids: cx.var_ids,
+        value_ids: cx.value_ids,
         binder_ids: module.binder_ids,
     }
 }
@@ -44,10 +44,10 @@ pub fn pure_to_flat(module: PureModule) -> FlatModule {
 /// What lowering carries from one expression to the next.
 struct Lowering {
     /// Names the bindings.
-    var_ids: VarIdCounter,
+    value_ids: ValueIdCounter,
     /// The binding each let variable stands for. Binders are unique across
     /// the module, so one map serves every body.
-    lets: HashMap<BinderId, VarId>,
+    lets: HashMap<BinderId, ValueId>,
 }
 
 fn lower_block(expr: PureExpr, cx: &mut Lowering) -> FlatBlock {
@@ -58,7 +58,7 @@ fn lower_block(expr: PureExpr, cx: &mut Lowering) -> FlatBlock {
 
 /// Appends the bindings of `expr` to `out` and returns the name of its
 /// value.
-fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> VarId {
+fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> ValueId {
     let typ = expr.typ();
     let op = match expr {
         PureExpr::Let {
@@ -275,7 +275,7 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
             })
         }
     };
-    let name = cx.var_ids.next();
+    let name = cx.value_ids.next();
     out.push(FlatBinding { name, typ, op });
     name
 }
@@ -731,7 +731,7 @@ mod tests {
     }
 
     /// The type of a name in scope.
-    fn type_of(names: &[(VarId, Type)], name: VarId) -> &Type {
+    fn type_of(names: &[(ValueId, Type)], name: ValueId) -> &Type {
         let Some((_, typ)) = names.iter().find(|(bound, _)| *bound == name) else {
             panic!("{name} is not in scope");
         };
@@ -746,9 +746,9 @@ mod tests {
     /// elements of its source or subject. Returns the type of the result.
     fn check_block(
         block: &FlatBlock,
-        names: &mut Vec<(VarId, Type)>,
+        names: &mut Vec<(ValueId, Type)>,
         binders: &mut Vec<(BinderId, Type)>,
-        seen: &mut HashSet<VarId>,
+        seen: &mut HashSet<ValueId>,
         seen_binders: &mut HashSet<BinderId>,
     ) -> Type {
         let names_len = names.len();
@@ -942,7 +942,7 @@ mod tests {
             let mut seen = HashSet::new();
             let mut seen_binders = HashSet::new();
             for function in &module.functions {
-                let mut names: Vec<(VarId, Type)> = Vec::new();
+                let mut names: Vec<(ValueId, Type)> = Vec::new();
                 let mut binders: Vec<(BinderId, Type)> = Vec::new();
                 for param in &function.parameters {
                     assert!(

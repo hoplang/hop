@@ -5,7 +5,7 @@ use crate::ir::flat_transform;
 /// evaluate what is constant and drop the bindings nothing reads.
 pub fn optimize_flat(module: FlatModule) -> FlatModule {
     let module = flat_transform::inline_function_calls(module);
-    let mut var_ids = module.var_ids;
+    let mut value_ids = module.value_ids;
     let functions = module
         .functions
         .into_iter()
@@ -15,13 +15,13 @@ pub fn optimize_flat(module: FlatModule) -> FlatModule {
             parameters: function.parameters,
             return_type: function.return_type,
             body: flat_transform::eliminate_dead_bindings(
-                flat_transform::perform_partial_evaluation(function.body, &mut var_ids),
+                flat_transform::perform_partial_evaluation(function.body, &mut value_ids),
             ),
         })
         .collect();
     FlatModule {
         functions,
-        var_ids,
+        value_ids,
         binder_ids: module.binder_ids,
     }
 }

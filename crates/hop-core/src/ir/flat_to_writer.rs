@@ -12,7 +12,7 @@ use crate::ir::function_id::FunctionId;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, Match};
 use crate::ir::ir_page::IrPage;
-use crate::ir::var_id::VarId;
+use crate::ir::value_id::ValueId;
 use crate::ir::writer_module::{
     WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
     WriterName, WriterOp, WriterPageDeclaration, WriterStmt, WriterValueBlock,
@@ -217,7 +217,7 @@ enum Reader {
     /// A presence. A constant Bool read here settles the attribute.
     Presence,
     /// A part of the named String concat. Folded along with the concat.
-    ConcatPart(VarId),
+    ConcatPart(ValueId),
     /// Anything else.
     Value,
 }
@@ -247,14 +247,14 @@ struct Def {
 }
 
 struct Lowerer {
-    uses: HashMap<VarId, Use>,
-    defs: HashMap<VarId, Def>,
+    uses: HashMap<ValueId, Use>,
+    defs: HashMap<ValueId, Def>,
     /// The ops of the bindings written or folded where they are read, held
     /// until that read.
-    pending: HashMap<VarId, FlatOp>,
+    pending: HashMap<ValueId, FlatOp>,
     /// The binder each Read binding reads. A Read is not lowered, and what
     /// reads its binding reads the binder instead.
-    reads: HashMap<VarId, BinderId>,
+    reads: HashMap<ValueId, BinderId>,
 }
 
 impl Lowerer {
@@ -272,7 +272,7 @@ impl Lowerer {
     }
 
     /// The Writer name for reading a binding: its binder when it is a Read.
-    fn name(&self, name: VarId) -> WriterName {
+    fn name(&self, name: ValueId) -> WriterName {
         match self.reads.get(&name) {
             Some(binder) => WriterName::Binder(*binder),
             None => WriterName::Binding(name),
@@ -376,7 +376,7 @@ impl Lowerer {
         self.read(block.result, reader, depth);
     }
 
-    fn read(&mut self, name: VarId, reader: Reader, depth: usize) {
+    fn read(&mut self, name: ValueId, reader: Reader, depth: usize) {
         let use_ = self.uses.entry(name).or_insert(Use {
             count: 0,
             reader,
@@ -389,7 +389,7 @@ impl Lowerer {
 
     /// Whether the binding is written or folded where it is read, rather
     /// than bound to its name.
-    fn held_back(&self, name: VarId) -> bool {
+    fn held_back(&self, name: ValueId) -> bool {
         let Some(use_) = self.uses.get(&name) else {
             return false;
         };
@@ -550,7 +550,7 @@ impl Lowerer {
 
     /// Write an Html name: the writes of its op when it was held back, the
     /// value it was bound to otherwise.
-    fn lower_html(&mut self, name: VarId, out: &mut Vec<WriterStmt>) {
+    fn lower_html(&mut self, name: ValueId, out: &mut Vec<WriterStmt>) {
         match self.pending.remove(&name) {
             Some(op) => self.lower_html_op(op, out),
             None => out.push(WriterStmt::WriteHtml(self.name(name))),
@@ -560,7 +560,7 @@ impl Lowerer {
     /// Write a String name escaped. A constant held back is escaped now,
     /// and a concat held back part by part, so only what varies is escaped
     /// when the page renders.
-    fn lower_escaped(&mut self, name: VarId, out: &mut Vec<WriterStmt>) {
+    fn lower_escaped(&mut self, name: ValueId, out: &mut Vec<WriterStmt>) {
         match self.pending.remove(&name) {
             Some(FlatOp::StringLiteral(value)) => {
                 let mut content = String::new();

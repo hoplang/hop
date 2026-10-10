@@ -11,7 +11,7 @@ use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
 use crate::ir::ir_unary_op::IrUnaryOp;
-use crate::ir::var_id::{VarId, VarIdCounter};
+use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -25,14 +25,14 @@ use super::ir_parameter::IrParameter;
 /// The bindings of a block are in evaluation order, so a binding refers only
 /// to names bound before it in its own block or in an enclosing block.
 ///
-/// A binding is named by a VarId. A parameter, a loop or a match arm binds
-/// a BinderId instead, and a Read op reads a binder into a binding, so a
-/// binder is never an operand. Each VarId and each BinderId is bound once
-/// in the module, and each is bound with its type.
+/// A binding is named by a ValueId. A parameter, a loop or a match arm
+/// binds a BinderId instead, and a Read op reads a binder into a binding,
+/// so a binder is never an operand. Each ValueId and each BinderId is
+/// bound once in the module, and each is bound with its type.
 #[derive(Debug)]
 pub struct FlatModule {
     pub functions: Vec<FlatFunctionDeclaration>,
-    pub var_ids: VarIdCounter,
+    pub value_ids: ValueIdCounter,
     pub binder_ids: BinderIdCounter,
 }
 
@@ -54,14 +54,14 @@ pub struct FlatFunctionDeclaration {
 #[derive(Debug, Clone)]
 pub struct FlatBlock {
     pub bindings: Vec<FlatBinding>,
-    pub result: VarId,
+    pub result: ValueId,
 }
 
 /// One binding of a block. The name is in scope for every later binding
 /// of the block, for the blocks nested in them, and for the result.
 #[derive(Debug, Clone)]
 pub struct FlatBinding {
-    pub name: VarId,
+    pub name: ValueId,
     pub typ: Type,
     pub op: FlatOp,
 }
@@ -69,17 +69,20 @@ pub struct FlatBinding {
 /// The source of iteration in a HtmlFor.
 #[derive(Debug, Clone)]
 pub enum FlatForSource {
-    Array(VarId),
-    RangeInclusive { start: VarId, end: VarId },
+    Array(ValueId),
+    RangeInclusive { start: ValueId, end: ValueId },
 }
 
 /// An attribute of a HtmlElement.
 #[derive(Debug, Clone)]
 pub enum FlatAttribute {
     /// Must name a String.
-    Value { name: AttributeName, value: VarId },
+    Value { name: AttributeName, value: ValueId },
     /// Must name a Bool.
-    Presence { name: AttributeName, present: VarId },
+    Presence {
+        name: AttributeName,
+        present: ValueId,
+    },
 }
 
 /// The computation of a binding. Operands are names of bindings, so an op
@@ -103,57 +106,57 @@ pub enum FlatOp {
 
     /// Must name a record with the field.
     FieldAccess {
-        record: VarId,
+        record: ValueId,
         field: FieldName,
     },
 
     /// Must name a tuple with the index.
     TupleIndex {
-        tuple: VarId,
+        tuple: ValueId,
         index: usize,
     },
 
-    Array(Vec<VarId>),
+    Array(Vec<ValueId>),
 
-    Tuple(Vec<VarId>),
+    Tuple(Vec<ValueId>),
 
     /// The record type is the type of the binding.
     Record {
-        fields: Vec<(FieldName, VarId)>,
+        fields: Vec<(FieldName, ValueId)>,
     },
 
     /// The enum type is the type of the binding. Fields are empty for a
     /// unit variant.
     Enum {
         variant_name: TypeName,
-        fields: Vec<(FieldName, VarId)>,
+        fields: Vec<(FieldName, ValueId)>,
     },
 
-    Option(Option<VarId>),
+    Option(Option<ValueId>),
 
     /// N-ary mappend over String names.
-    StringConcat(Vec<VarId>),
+    StringConcat(Vec<ValueId>),
 
     /// Must name two values of the op's operand type. Produces the op's
     /// result type.
     Binary {
         op: IrBinaryOp,
-        left: VarId,
-        right: VarId,
+        left: ValueId,
+        right: ValueId,
     },
 
     /// Must name a value of the op's operand type. Produces the op's
     /// result type.
     Unary {
         op: IrUnaryOp,
-        operand: VarId,
+        operand: ValueId,
     },
 
     /// Must name a String. Produces its HTML escaped form as Html.
-    HtmlEscape(VarId),
+    HtmlEscape(ValueId),
 
     /// N-ary mappend over Html names. Part order is output order.
-    HtmlConcat(Vec<VarId>),
+    HtmlConcat(Vec<ValueId>),
 
     /// An element with its attributes, in the order they render, and its
     /// content. Attribute names are unique within an element.
@@ -163,21 +166,21 @@ pub enum FlatOp {
     HtmlElement {
         element: HtmlElementKind,
         attributes: Vec<FlatAttribute>,
-        children: VarId,
+        children: ValueId,
     },
 
     /// Invokes a function and produces its result. The arguments follow
     /// the function's parameters, one for each.
     Call {
         function: IrFunction,
-        args: Vec<VarId>,
+        args: Vec<ValueId>,
     },
 
     /// A match over an Enum, Bool, or Option name. Each arm is a block
     /// that produces the match's value.
     ///
     /// Matching is exhaustive, a value must match at least one arm.
-    Match(Match<VarId, FlatBlock>),
+    Match(Match<ValueId, FlatBlock>),
 
     /// A foldMap over the source, concatenating the body's Html once per
     /// element in iteration order.
@@ -194,7 +197,7 @@ impl FlatOp {
     /// Apply `f` to each name this op reads directly. The names read inside
     /// the blocks of a Match or HtmlFor are not visited, only the subject
     /// or the source.
-    pub fn for_each_operand(&self, f: &mut impl FnMut(VarId)) {
+    pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
             FlatOp::Read(_)
             | FlatOp::StringLiteral(_)
@@ -268,7 +271,7 @@ impl FlatOp {
 
     /// Apply `f` to each name this op reads directly, to rewrite it. Visits
     /// the same names as `for_each_operand`.
-    pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut VarId)) {
+    pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
             FlatOp::Read(_)
             | FlatOp::StringLiteral(_)

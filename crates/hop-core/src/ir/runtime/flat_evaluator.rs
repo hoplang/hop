@@ -19,14 +19,14 @@ use crate::ir::runtime::eval_error::EvalError;
 pub const MAX_CALL_DEPTH: usize = 12;
 use crate::ir::runtime::html_node::{HtmlAttribute, HtmlNode, write_html};
 use crate::ir::runtime::value::Value;
-use crate::ir::var_id::VarId;
+use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 
 /// The values of the bindings made so far in one function frame. A block
 /// removes its bindings when it ends, so a loop body binds them afresh on
 /// every iteration.
-type Names = HashMap<VarId, Value>;
+type Names = HashMap<ValueId, Value>;
 
 /// The values of the binders in scope in one function frame: its
 /// parameters, and the binders of the loops and arms being evaluated. An

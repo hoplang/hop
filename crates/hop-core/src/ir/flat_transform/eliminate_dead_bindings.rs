@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
 use crate::ir::ir_match::{EnumMatchArm, Match};
-use crate::ir::var_id::VarId;
+use crate::ir::value_id::ValueId;
 
 /// A pass that removes the bindings nothing reads.
 ///
@@ -23,7 +23,7 @@ pub fn eliminate_dead_bindings(block: FlatBlock) -> FlatBlock {
 /// What the bindings after the current one read: the bindings they name,
 /// and the binders they Read.
 struct Live {
-    names: HashSet<VarId>,
+    names: HashSet<ValueId>,
     binders: HashSet<BinderId>,
 }
 
@@ -127,7 +127,7 @@ mod tests {
 
     fn run(module: FlatModule) -> FlatModule {
         FlatModule {
-            var_ids: module.var_ids,
+            value_ids: module.value_ids,
             binder_ids: module.binder_ids,
             functions: module
                 .functions

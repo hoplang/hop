@@ -10,7 +10,7 @@ use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::Match;
 use crate::ir::ir_unary_op::IrUnaryOp;
-use crate::ir::var_id::VarId;
+use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
@@ -60,14 +60,14 @@ pub enum WriterFunctionBody {
 /// which the Flat IR read through a Read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum WriterName {
-    Binding(VarId),
+    Binding(ValueId),
     Binder(BinderId),
 }
 
 impl fmt::Display for WriterName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WriterName::Binding(var) => var.fmt(f),
+            WriterName::Binding(value) => value.fmt(f),
             WriterName::Binder(binder) => binder.fmt(f),
         }
     }
@@ -83,7 +83,7 @@ pub enum WriterForSource {
 /// A value binding.
 #[derive(Debug, Clone)]
 pub struct WriterLet {
-    pub name: VarId,
+    pub name: ValueId,
     pub typ: Type,
     pub op: WriterOp,
 }

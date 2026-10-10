@@ -15,7 +15,7 @@ mod ir_unary_op;
 pub mod pure_module;
 mod pure_to_flat;
 mod typed_to_pure;
-mod var_id;
+mod value_id;
 pub mod writer_module;
 
 #[cfg(test)]
