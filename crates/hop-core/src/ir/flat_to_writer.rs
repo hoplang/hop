@@ -941,7 +941,7 @@ mod tests {
             expect![[r#"
                 -- pure --
                 page Main() {
-                  html(tag: "p", attrs: [], children: concat(text("Hello")))
+                  html("p", {}, concat(text("Hello")))
                 }
 
                 -- writer --
@@ -974,9 +974,9 @@ mod tests {
                 -- pure --
                 page Test() {
                   html(
-                    tag: "div",
-                    attrs: [class: "base", id: "a<b"],
-                    children: concat(text("Content")),
+                    "div",
+                    {class: "base", id: "a<b"},
+                    concat(text("Content")),
                   )
                 }
 
@@ -1002,11 +1002,7 @@ mod tests {
             expect![[r#"
                 -- pure --
                 page Test(cls@b0: String) {
-                  html(
-                    tag: "div",
-                    attrs: [data-value: b0],
-                    children: concat(),
-                  )
+                  html("div", {data-value: b0}, concat())
                 }
 
                 -- writer --
@@ -1042,8 +1038,8 @@ mod tests {
                 -- pure --
                 page Test(flag@b0: Bool) {
                   html(
-                    tag: "input",
-                    attrs: [disabled: true, hidden: false, checked: b0],
+                    "input",
+                    {disabled: true, hidden: false, checked: b0},
                   )
                 }
 
@@ -1081,17 +1077,7 @@ mod tests {
             expect![[r#"
                 -- pure --
                 page Test(name@b0: String) {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: concat(
-                      html(
-                        tag: "p",
-                        attrs: [],
-                        children: concat(escape(b0)),
-                      ),
-                    ),
-                  )
+                  html("div", {}, concat(html("p", {}, concat(escape(b0)))))
                 }
 
                 -- writer --
@@ -1190,11 +1176,7 @@ mod tests {
                   concat(
                     text("before "),
                     for b1: String in b0 {
-                      html(
-                        tag: "li",
-                        attrs: [],
-                        children: concat(escape(b1)),
-                      )
+                      html("li", {}, concat(escape(b1)))
                     },
                     text(" after"),
                   )
@@ -1230,11 +1212,7 @@ mod tests {
             expect![[r#"
                 -- pure --
                 page Test() {
-                  let b0: Html = html(
-                    tag: "b",
-                    attrs: [],
-                    children: concat(text("hi")),
-                  ) in {
+                  let b0: Html = html("b", {}, concat(text("hi"))) in {
                     concat(b0, b0)
                   }
                 }
@@ -1267,11 +1245,7 @@ mod tests {
             expect![[r#"
                 -- pure --
                 page Test(items@b0: Array[String]) {
-                  let b1: Html = html(
-                    tag: "b",
-                    attrs: [],
-                    children: concat(text("hi")),
-                  ) in {
+                  let b1: Html = html("b", {}, concat(text("hi"))) in {
                     for _ in b0 { b1 }
                   }
                 }
@@ -1309,14 +1283,10 @@ mod tests {
             expect![[r#"
                 -- pure --
                 fn wrap@f0(inner@b0: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(b0))
+                  html("div", {}, concat(b0))
                 }
                 page Test() {
-                  call wrap@f0(html(
-                    tag: "b",
-                    attrs: [],
-                    children: concat(text("hi")),
-                  ))
+                  call wrap@f0(html("b", {}, concat(text("hi"))))
                 }
 
                 -- writer --

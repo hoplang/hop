@@ -600,7 +600,7 @@ mod tests {
                     let v7: String = b1
                     let v8: Html = escape(v7)
                     let v9: Html = concat(v8)
-                    let v10: Html = html(tag: "li", attrs: [], children: v9)
+                    let v10: Html = html("li", {}, v9)
                     v10
                   }
                   v11
@@ -621,7 +621,7 @@ mod tests {
                     let v12: String = b4
                     let v13: Html = escape(v12)
                     let v14: Html = concat(v13)
-                    let v15: Html = html(tag: "li", attrs: [], children: v14)
+                    let v15: Html = html("li", {}, v14)
                     v15
                   }
                   let v3: Array[String] = b3
@@ -629,7 +629,7 @@ mod tests {
                     let v17: String = b5
                     let v18: Html = escape(v17)
                     let v19: Html = concat(v18)
-                    let v20: Html = html(tag: "li", attrs: [], children: v19)
+                    let v20: Html = html("li", {}, v19)
                     v20
                   }
                   let v5: Html = concat(v16, v21)

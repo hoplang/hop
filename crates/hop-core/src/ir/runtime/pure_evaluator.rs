@@ -631,11 +631,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  html(
-                    tag: "div",
-                    attrs: [],
-                    children: concat(text("Hello World")),
-                  )
+                  html("div", {}, concat(text("Hello World")))
                 }
 
                 -- after --
@@ -667,10 +663,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(cls@b0: String, flag@b1: Bool) {
-                  html(
-                    tag: "input",
-                    attrs: [class: b0, disabled: b1, checked: false],
-                  )
+                  html("input", {class: b0, disabled: b1, checked: false})
                 }
 
                 -- after --
@@ -721,11 +714,7 @@ mod tests {
                 page Test(show@b0: Bool) {
                   match b0 {
                     true => {
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(text("Visible")),
-                      )
+                      html("div", {}, concat(text("Visible")))
                     }
                     false => {
                       concat()
@@ -757,11 +746,7 @@ mod tests {
                 page Test(show@b0: Bool) {
                   match b0 {
                     true => {
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(text("Hidden")),
-                      )
+                      html("div", {}, concat(text("Hidden")))
                     }
                     false => {
                       concat()
@@ -800,14 +785,7 @@ mod tests {
                 -- before --
                 page Test(items@b0: Array[String]) {
                   for b1: String in b0 {
-                    concat(
-                      html(
-                        tag: "li",
-                        attrs: [],
-                        children: concat(escape(b1)),
-                      ),
-                      text("\n"),
-                    )
+                    concat(html("li", {}, concat(escape(b1))), text("\n"))
                   }
                 }
 

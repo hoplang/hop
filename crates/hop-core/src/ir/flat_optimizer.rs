@@ -145,11 +145,11 @@ mod tests {
                     let v3: String = b2
                     let v4: Html = escape(v3)
                     let v5: Html = concat(v4)
-                    let v6: Html = html(tag: "li", attrs: [], children: v5)
+                    let v6: Html = html("li", {}, v5)
                     v6
                   }
                   let v8: Html = concat(v7)
-                  let v9: Html = html(tag: "ul", attrs: [], children: v8)
+                  let v9: Html = html("ul", {}, v8)
                   v9
                 }
 
@@ -159,10 +159,10 @@ mod tests {
                   let v7: Html = for b2: String in v2 {
                     let v3: String = b2
                     let v4: Html = escape(v3)
-                    let v6: Html = html(tag: "li", attrs: [], children: v4)
+                    let v6: Html = html("li", {}, v4)
                     v6
                   }
-                  let v9: Html = html(tag: "ul", attrs: [], children: v7)
+                  let v9: Html = html("ul", {}, v7)
                   v9
                 }
             "#]],

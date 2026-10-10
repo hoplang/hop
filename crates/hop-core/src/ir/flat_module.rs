@@ -472,7 +472,7 @@ impl FlatOp {
                     .collect::<Vec<_>>()
                     .join(", ");
                 BoxDoc::text(format!(
-                    "html(tag: {:?}, attrs: [{attributes}], children: {children})",
+                    "html({:?}, {{{attributes}}}, {children})",
                     element.as_str()
                 ))
             }

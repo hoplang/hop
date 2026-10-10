@@ -562,9 +562,9 @@ impl PureExpr {
                 ..
             } => {
                 let attrs = if attributes.is_empty() {
-                    BoxDoc::text("[]")
+                    BoxDoc::text("{}")
                 } else {
-                    BoxDoc::text("[")
+                    BoxDoc::text("{")
                         .append(
                             BoxDoc::line_()
                                 .append(BoxDoc::intersperse(
@@ -576,14 +576,11 @@ impl PureExpr {
                                 .nest(2)
                                 .group(),
                         )
-                        .append(BoxDoc::text("]"))
+                        .append(BoxDoc::text("}"))
                 };
-                let mut sections = vec![
-                    BoxDoc::text(format!("tag: {:?}", element.as_str())),
-                    BoxDoc::text("attrs: ").append(attrs),
-                ];
+                let mut sections = vec![BoxDoc::text(format!("{:?}", element.as_str())), attrs];
                 if !element.is_void() {
-                    sections.push(BoxDoc::text("children: ").append(children.to_doc()));
+                    sections.push(children.to_doc());
                 }
                 BoxDoc::text("html(")
                     .append(

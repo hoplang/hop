@@ -999,13 +999,7 @@ mod tests {
                 -- after --
                 page MainComp() {
                   fn head() -> Html {
-                    concat(
-                      html(
-                        tag: "title",
-                        attrs: [],
-                        children: concat(text("Hi")),
-                      ),
-                    )
+                    concat(html("title", {}, concat(text("Hi"))))
                   }
                   fn body() -> Html {
                     concat(text("Hello World"))
@@ -1084,13 +1078,7 @@ mod tests {
 
                 -- after --
                 page MainComp() {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(text("Content")),
-                    ),
-                  )
+                  concat(html("div", {}, concat(text("Content"))))
                 }
             "#]],
         );
@@ -1131,13 +1119,7 @@ mod tests {
                     let b1: Bool = b0 in {
                       match b1 {
                         true => {
-                          concat(
-                            html(
-                              tag: "div",
-                              attrs: [],
-                              children: concat(text("Visible")),
-                            ),
-                          )
+                          concat(html("div", {}, concat(text("Visible"))))
                         }
                         false => {
                           concat()
@@ -1194,17 +1176,11 @@ mod tests {
                 page MainComp(items@b0: Array[String]) {
                   concat(
                     html(
-                      tag: "ul",
-                      attrs: [],
-                      children: concat(
+                      "ul",
+                      {},
+                      concat(
                         for b1: String in b0 {
-                          concat(
-                            html(
-                              tag: "li",
-                              attrs: [],
-                              children: concat(escape(b1)),
-                            ),
-                          )
+                          concat(html("li", {}, concat(escape(b1))))
                         },
                       ),
                     ),
@@ -1246,9 +1222,9 @@ mod tests {
                 page MainComp() {
                   concat(
                     html(
-                      tag: "div",
-                      attrs: [class: "base", id: "test"],
-                      children: concat(text("Content")),
+                      "div",
+                      {class: "base", id: "test"},
+                      concat(text("Content")),
                     ),
                   )
                 }
@@ -1291,9 +1267,9 @@ mod tests {
                 page MainComp(cls@b0: String) {
                   concat(
                     html(
-                      tag: "div",
-                      attrs: [class: "base", data-value: b0],
-                      children: concat(text("Content")),
+                      "div",
+                      {class: "base", data-value: b0},
+                      concat(text("Content")),
                     ),
                   )
                 }
@@ -1339,9 +1315,9 @@ mod tests {
                 page TestComp(name@b0: String, count@b1: String) {
                   concat(
                     html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(
+                      "div",
+                      {},
+                      concat(
                         text("Hello "),
                         escape(b0),
                         text(", count: "),
@@ -1424,13 +1400,7 @@ mod tests {
 
                 -- after --
                 page MainComp() {
-                  concat(
-                    html(
-                      tag: "script",
-                      attrs: [],
-                      children: concat(text("alert(\"hi\")")),
-                    ),
-                  )
+                  concat(html("script", {}, concat(text("alert(\"hi\")"))))
                 }
             "#]],
         );
@@ -1452,7 +1422,7 @@ mod tests {
 
                 -- after --
                 page MainComp() {
-                  concat(html(tag: "br", attrs: []))
+                  concat(html("br", {}))
                 }
             "#]],
         );
@@ -1571,17 +1541,13 @@ mod tests {
             "#},
             expect![[r#"
                 fn Button@f0(id@b0: String) -> Html {
-                  html(
-                    tag: "button",
-                    attrs: [id: b0],
-                    children: concat(text("Go")),
-                  )
+                  html("button", {id: b0}, concat(text("Go")))
                 }
                 fn Button@f1(class@b1: String, disabled@b2: Bool) -> Html {
                   html(
-                    tag: "button",
-                    attrs: [class: b1, disabled: b2],
-                    children: concat(text("Go")),
+                    "button",
+                    {class: b1, disabled: b2},
+                    concat(text("Go")),
                   )
                 }
                 page Test() {
@@ -1624,11 +1590,7 @@ mod tests {
                   id@b3: String,
                   class@b4: String,
                 ) -> Html {
-                  html(
-                    tag: "div",
-                    attrs: [id: b3, class: b4],
-                    children: concat(escape(b2)),
-                  )
+                  html("div", {id: b3, class: b4}, concat(escape(b2)))
                 }
                 fn Panel@f0(title@b0: String, class@b1: String) -> Html {
                   call Card@f1(b0, "panel", b1)
@@ -1665,9 +1627,9 @@ mod tests {
             expect![[r#"
                 fn Nest@f0(depth@b0: Int, id@b1: String) -> Html {
                   html(
-                    tag: "div",
-                    attrs: [id: b1],
-                    children: concat(
+                    "div",
+                    {id: b1},
+                    concat(
                       let b2: Bool = (0 < b0) in {
                         match b2 {
                           true => {
@@ -1683,9 +1645,9 @@ mod tests {
                 }
                 fn Nest@f1(depth@b3: Int, class@b4: String) -> Html {
                   html(
-                    tag: "div",
-                    attrs: [class: b4],
-                    children: concat(
+                    "div",
+                    {class: b4},
+                    concat(
                       let b5: Bool = (0 < b3) in {
                         match b5 {
                           true => {
@@ -1728,9 +1690,9 @@ mod tests {
                   aria-label@b1: String,
                 ) -> Html {
                   html(
-                    tag: "button",
-                    attrs: [data-x: b0, aria-label: b1],
-                    children: concat(text("Go")),
+                    "button",
+                    {data-x: b0, aria-label: b1},
+                    concat(text("Go")),
                   )
                 }
                 page Test() {
@@ -1765,7 +1727,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Used@f0() -> Html {
-                  html(tag: "p", attrs: [], children: concat(text("used")))
+                  html("p", {}, concat(text("used")))
                 }
                 page Test() {
                   call Used@f0()

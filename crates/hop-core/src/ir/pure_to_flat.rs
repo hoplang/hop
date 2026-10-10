@@ -358,9 +358,9 @@ mod tests {
                 -- before --
                 page Card(title@b0: String, hidden@b1: Bool) {
                   html(
-                    tag: "div",
-                    attrs: [class: "card", hidden: b1],
-                    children: concat(escape(b0)),
+                    "div",
+                    {class: "card", hidden: b1},
+                    concat(escape(b0)),
                   )
                 }
 
@@ -371,7 +371,7 @@ mod tests {
                   let v3: String = b0
                   let v4: Html = escape(v3)
                   let v5: Html = concat(v4)
-                  let v6: Html = html(tag: "div", attrs: [class: v1, hidden: v2], children: v5)
+                  let v6: Html = html("div", {class: v1, hidden: v2}, v5)
                   v6
                 }
             "#]],
@@ -396,15 +396,11 @@ mod tests {
                 -- before --
                 page Items(items@b0: Array[String]) {
                   html(
-                    tag: "ul",
-                    attrs: [],
-                    children: concat(
+                    "ul",
+                    {},
+                    concat(
                       for b1: String in b0 {
-                        html(
-                          tag: "li",
-                          attrs: [],
-                          children: concat(escape(b1)),
-                        )
+                        html("li", {}, concat(escape(b1)))
                       },
                     ),
                   )
@@ -417,11 +413,11 @@ mod tests {
                     let v2: String = b1
                     let v3: Html = escape(v2)
                     let v4: Html = concat(v3)
-                    let v5: Html = html(tag: "li", attrs: [], children: v4)
+                    let v5: Html = html("li", {}, v4)
                     v5
                   }
                   let v7: Html = concat(v6)
-                  let v8: Html = html(tag: "ul", attrs: [], children: v7)
+                  let v8: Html = html("ul", {}, v7)
                   v8
                 }
             "#]],

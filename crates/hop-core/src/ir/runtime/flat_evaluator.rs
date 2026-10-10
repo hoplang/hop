@@ -536,11 +536,11 @@ mod tests {
                     let v2: String = b1
                     let v3: Html = escape(v2)
                     let v4: Html = concat(v3)
-                    let v5: Html = html(tag: "li", attrs: [], children: v4)
+                    let v5: Html = html("li", {}, v4)
                     v5
                   }
                   let v7: Html = concat(v6)
-                  let v8: Html = html(tag: "ul", attrs: [], children: v7)
+                  let v8: Html = html("ul", {}, v7)
                   v8
                 }
 
