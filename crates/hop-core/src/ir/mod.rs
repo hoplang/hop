@@ -9,6 +9,7 @@ mod ir_binary_op;
 mod ir_binder;
 mod ir_function;
 mod ir_match;
+pub mod ir_page;
 pub mod ir_parameter;
 mod ir_unary_op;
 pub mod pure_module;

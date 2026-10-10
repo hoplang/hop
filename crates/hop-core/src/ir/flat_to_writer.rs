@@ -11,6 +11,7 @@ use crate::ir::flat_module::{
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, Match};
+use crate::ir::ir_page::IrPage;
 use crate::ir::var_id::VarId;
 use crate::ir::writer_module::{
     WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
@@ -30,13 +31,18 @@ use crate::symbols::type_name::TypeName;
 /// constant presence settles whether its attribute renders, when the
 /// constant has no other reader.
 ///
-/// The functions a page points at are only ever called by the page, so
-/// they are not lowered as functions but written into the page. With a
-/// shell, a page writes a whole document, the shell around its head and
-/// its body. Without one, a page writes its head and its body alone.
-pub fn flat_to_writer(module: FlatModule, shell: Option<&DocumentShell>) -> WriterModule {
-    let page_functions: HashSet<FunctionId> = module
-        .pages
+/// The Flat IR has no pages, so the pages come beside the module, each
+/// pointing at the entry functions that render it. Those functions are
+/// only ever called by the page, so they are not lowered as functions but
+/// written into the page. With a shell, a page writes a whole document, the
+/// shell around its head and its body. Without one, a page writes its head
+/// and its body alone.
+pub fn flat_to_writer(
+    module: FlatModule,
+    pages: &[IrPage],
+    shell: Option<&DocumentShell>,
+) -> WriterModule {
+    let page_functions: HashSet<FunctionId> = pages
         .iter()
         .flat_map(|page| page.head.iter().chain([&page.body]))
         .map(|function| function.id)
@@ -49,9 +55,8 @@ pub fn flat_to_writer(module: FlatModule, shell: Option<&DocumentShell>) -> Writ
         .into_iter()
         .map(|decl| (decl.function.id, decl))
         .collect();
-    let pages = module
-        .pages
-        .into_iter()
+    let pages = pages
+        .iter()
         .map(|page| {
             let mut take = |function: &IrFunction| {
                 page_functions
@@ -60,7 +65,7 @@ pub fn flat_to_writer(module: FlatModule, shell: Option<&DocumentShell>) -> Writ
             };
             let head = page.head.as_ref().map(&mut take);
             let body = take(&page.body);
-            lower_page(page.name, head, body, shell)
+            lower_page(page.name.clone(), head, body, shell)
         })
         .collect();
     WriterModule {
@@ -978,7 +983,8 @@ mod tests {
     fn fuzz_random_modules_lower_to_well_scoped_statements() {
         arbtest::arbtest(|u| {
             let (module, _) = random_module(u);
-            let module = flat_to_writer(optimize_flat(pure_to_flat(module)), None);
+            let pages = IrPage::for_entries(&module);
+            let module = flat_to_writer(optimize_flat(pure_to_flat(module)), &pages, None);
             for page in &module.pages {
                 let mut names: Vec<(WriterName, Type)> = page
                     .parameters
@@ -1009,12 +1015,23 @@ mod tests {
 
     /// Prints the module as Pure IR, as the optimized Flat IR it lowers to, and as
     /// the Writer IR that Flat IR lowers to, so each step can be compared.
+    /// Each entry function renders a page of its own, named after it.
     fn check(build: impl Fn() -> PureModule, shell: Option<&DocumentShell>, expected: Expect) {
         let module = build();
+        let pages = IrPage::for_entries(&module);
+        check_pages(module, &pages, shell, expected);
+    }
+
+    fn check_pages(
+        module: PureModule,
+        pages: &[IrPage],
+        shell: Option<&DocumentShell>,
+        expected: Expect,
+    ) {
         let pure = module.to_string();
         let flat_module = optimize_flat(pure_to_flat(module));
         let flat = flat_module.to_string();
-        let writer = flat_to_writer(flat_module, shell).to_string();
+        let writer = flat_to_writer(flat_module, pages, shell).to_string();
         expected.assert_eq(&format!(
             "-- pure --\n{pure}\n-- flat --\n{flat}\n-- writer --\n{writer}"
         ));
@@ -1025,27 +1042,23 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page_no_params("Main", |t| t.element("p", vec![], vec![t.text("Hello")]))
+                    .entry("Main", [], "Html", |t| {
+                        t.element("p", vec![], vec![t.text("Hello")])
+                    })
                     .build()
             },
             Some(&DocumentShell::new(None, Some("/scripts-deadbeef.js"))),
             expect![[r#"
                 -- pure --
-                fn body@f0() -> Html {
+                entry fn Main@f0() -> Html {
                   html("p", {}, concat(text("Hello")))
-                }
-                page Main() {
-                  body@f0()
                 }
 
                 -- flat --
-                fn body@f0() -> Html {
+                entry fn Main@f0() -> Html {
                   let v0: Html = text("Hello")
                   let v2: Html = html("p", {}, v0)
                   v2
-                }
-                page Main() {
-                  body@f0()
                 }
 
                 -- writer --
@@ -1061,48 +1074,44 @@ mod tests {
 
     #[test]
     fn writes_the_head_into_the_shell_reading_the_parameters_of_the_page() {
-        check(
-            || {
-                PureModuleBuilder::new()
-                    .freeze()
-                    .page_with_head(
-                        "Main",
-                        [("title", "String")],
-                        |t| t.element("title", vec![], vec![t.escape(t.var("title"))]),
-                        |t| t.element("h1", vec![], vec![t.escape(t.var("title"))]),
-                    )
-                    .build()
-            },
+        let module = PureModuleBuilder::new()
+            .entry("head", [("title", "String")], "Html", |t| {
+                t.element("title", vec![], vec![t.escape(t.var("title"))])
+            })
+            .entry("body", [("title", "String")], "Html", |t| {
+                t.element("h1", vec![], vec![t.escape(t.var("title"))])
+            })
+            .build();
+        let page = IrPage {
+            name: TypeName::parse("Main").unwrap(),
+            head: Some(module.functions[0].function.clone()),
+            body: module.functions[1].function.clone(),
+        };
+        check_pages(
+            module,
+            &[page],
             Some(&DocumentShell::new(None, None)),
             expect![[r#"
                 -- pure --
-                fn head@f0(title@b0: String) -> Html {
+                entry fn head@f0(title@b0: String) -> Html {
                   html("title", {}, concat(escape(b0)))
                 }
-                fn body@f1(title@b1: String) -> Html {
+                entry fn body@f1(title@b1: String) -> Html {
                   html("h1", {}, concat(escape(b1)))
-                }
-                page Main(title: String) {
-                  head@f0(title)
-                  body@f1(title)
                 }
 
                 -- flat --
-                fn head@f0(title@b0: String) -> Html {
+                entry fn head@f0(title@b0: String) -> Html {
                   let v0: String = b0
                   let v1: Html = escape(v0)
                   let v3: Html = html("title", {}, v1)
                   v3
                 }
-                fn body@f1(title@b1: String) -> Html {
+                entry fn body@f1(title@b1: String) -> Html {
                   let v4: String = b1
                   let v5: Html = escape(v4)
                   let v7: Html = html("h1", {}, v5)
                   v7
-                }
-                page Main(title: String) {
-                  head@f0(title)
-                  body@f1(title)
                 }
 
                 -- writer --
@@ -1125,7 +1134,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page_no_params("Test", |t| {
+                    .entry("Test", [], "Html", |t| {
                         t.element(
                             "div",
                             vec![t.attr("class", t.str("base")), t.attr("id", t.str("a<b"))],
@@ -1137,27 +1146,21 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   html(
                     "div",
                     {class: "base", id: "a<b"},
                     concat(text("Content")),
                   )
                 }
-                page Test() {
-                  body@f0()
-                }
 
                 -- flat --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: String = "base"
                   let v1: String = "a<b"
                   let v2: Html = text("Content")
                   let v4: Html = html("div", {class: v0, id: v1}, v2)
                   v4
-                }
-                page Test() {
-                  body@f0()
                 }
 
                 -- writer --
@@ -1173,7 +1176,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page("Test", [("cls", "String")], |t| {
+                    .entry("Test", [("cls", "String")], "Html", |t| {
                         t.element("div", vec![t.attr("data-value", t.var("cls"))], vec![])
                     })
                     .build()
@@ -1181,22 +1184,16 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0(cls@b0: String) -> Html {
+                entry fn Test@f0(cls@b0: String) -> Html {
                   html("div", {data-value: b0}, concat())
-                }
-                page Test(cls: String) {
-                  body@f0(cls)
                 }
 
                 -- flat --
-                fn body@f0(cls@b0: String) -> Html {
+                entry fn Test@f0(cls@b0: String) -> Html {
                   let v0: String = b0
                   let v1: Html = concat()
                   let v2: Html = html("div", {data-value: v0}, v1)
                   v2
-                }
-                page Test(cls: String) {
-                  body@f0(cls)
                 }
 
                 -- writer --
@@ -1214,7 +1211,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page("Test", [("flag", "Bool")], |t| {
+                    .entry("Test", [("flag", "Bool")], "Html", |t| {
                         t.element(
                             "input",
                             vec![
@@ -1230,27 +1227,21 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0(flag@b0: Bool) -> Html {
+                entry fn Test@f0(flag@b0: Bool) -> Html {
                   html(
                     "input",
                     {disabled: true, hidden: false, checked: b0},
                   )
                 }
-                page Test(flag: Bool) {
-                  body@f0(flag)
-                }
 
                 -- flat --
-                fn body@f0(flag@b0: Bool) -> Html {
+                entry fn Test@f0(flag@b0: Bool) -> Html {
                   let v0: Bool = true
                   let v1: Bool = false
                   let v2: Bool = b0
                   let v3: Html = concat()
                   let v4: Html = html("input", {disabled: v0, hidden: v1, checked: v2}, v3)
                   v4
-                }
-                page Test(flag: Bool) {
-                  body@f0(flag)
                 }
 
                 -- writer --
@@ -1274,7 +1265,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page("Test", [("name", "String")], |t| {
+                    .entry("Test", [("name", "String")], "Html", |t| {
                         t.element(
                             "div",
                             vec![],
@@ -1286,23 +1277,17 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0(name@b0: String) -> Html {
+                entry fn Test@f0(name@b0: String) -> Html {
                   html("div", {}, concat(html("p", {}, concat(escape(b0)))))
-                }
-                page Test(name: String) {
-                  body@f0(name)
                 }
 
                 -- flat --
-                fn body@f0(name@b0: String) -> Html {
+                entry fn Test@f0(name@b0: String) -> Html {
                   let v0: String = b0
                   let v1: Html = escape(v0)
                   let v3: Html = html("p", {}, v1)
                   let v5: Html = html("div", {}, v3)
                   v5
-                }
-                page Test(name: String) {
-                  body@f0(name)
                 }
 
                 -- writer --
@@ -1320,7 +1305,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page("Test", [("name", "String")], |t| {
+                    .entry("Test", [("name", "String")], "Html", |t| {
                         t.escape(t.string_concat(vec![t.str("a<"), t.var("name"), t.str(">b")]))
                     })
                     .build()
@@ -1328,24 +1313,18 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0(name@b0: String) -> Html {
+                entry fn Test@f0(name@b0: String) -> Html {
                   escape(concat("a<", b0, ">b"))
-                }
-                page Test(name: String) {
-                  body@f0(name)
                 }
 
                 -- flat --
-                fn body@f0(name@b0: String) -> Html {
+                entry fn Test@f0(name@b0: String) -> Html {
                   let v0: String = "a<"
                   let v1: String = b0
                   let v2: String = ">b"
                   let v3: String = concat(v0, v1, v2)
                   let v4: Html = escape(v3)
                   v4
-                }
-                page Test(name: String) {
-                  body@f0(name)
                 }
 
                 -- writer --
@@ -1363,7 +1342,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page_no_params("Test", |t| {
+                    .entry("Test", [], "Html", |t| {
                         t.concat(vec![
                             t.text("aaaaaaaaaaaaaaaaaaaaaaaaa"),
                             t.text("bbbbbbbbbbbbbbbbbbbbbbbbb"),
@@ -1376,7 +1355,7 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   concat(
                     text("aaaaaaaaaaaaaaaaaaaaaaaaa"),
                     text("bbbbbbbbbbbbbbbbbbbbbbbbb"),
@@ -1384,21 +1363,15 @@ mod tests {
                     text("ddddddddddddddddddddddddd"),
                   )
                 }
-                page Test() {
-                  body@f0()
-                }
 
                 -- flat --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: Html = text("aaaaaaaaaaaaaaaaaaaaaaaaa")
                   let v1: Html = text("bbbbbbbbbbbbbbbbbbbbbbbbb")
                   let v2: Html = text("ccccccccccccccccccccccccc")
                   let v3: Html = text("ddddddddddddddddddddddddd")
                   let v4: Html = concat(v0, v1, v2, v3)
                   v4
-                }
-                page Test() {
-                  body@f0()
                 }
 
                 -- writer --
@@ -1415,7 +1388,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page("Test", [("items", "Array[String]")], |t| {
+                    .entry("Test", [("items", "Array[String]")], "Html", |t| {
                         t.concat(vec![
                             t.text("before "),
                             t.html_for(Some("item"), t.var("items"), |t| {
@@ -1429,7 +1402,7 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Test@f0(items@b0: Array[String]) -> Html {
                   concat(
                     text("before "),
                     for b1: String in b0 {
@@ -1438,12 +1411,9 @@ mod tests {
                     text(" after"),
                   )
                 }
-                page Test(items: Array[String]) {
-                  body@f0(items)
-                }
 
                 -- flat --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Test@f0(items@b0: Array[String]) -> Html {
                   let v0: Html = text("before ")
                   let v1: Array[String] = b0
                   let v6: Html = for b1: String in v1 {
@@ -1455,9 +1425,6 @@ mod tests {
                   let v7: Html = text(" after")
                   let v8: Html = concat(v0, v6, v7)
                   v8
-                }
-                page Test(items: Array[String]) {
-                  body@f0(items)
                 }
 
                 -- writer --
@@ -1479,7 +1446,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page_no_params("Test", |t| {
+                    .entry("Test", [], "Html", |t| {
                         t.let_expr("x", t.element("b", vec![], vec![t.text("hi")]), |t| {
                             t.concat(vec![t.var("x"), t.var("x")])
                         })
@@ -1489,24 +1456,18 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let b0: Html = html("b", {}, concat(text("hi"))) in {
                     concat(b0, b0)
                   }
                 }
-                page Test() {
-                  body@f0()
-                }
 
                 -- flat --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: Html = text("hi")
                   let v2: Html = html("b", {}, v0)
                   let v3: Html = concat(v2, v2)
                   v3
-                }
-                page Test() {
-                  body@f0()
                 }
 
                 -- writer --
@@ -1526,7 +1487,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page("Test", [("items", "Array[String]")], |t| {
+                    .entry("Test", [("items", "Array[String]")], "Html", |t| {
                         t.let_expr("x", t.element("b", vec![], vec![t.text("hi")]), |t| {
                             t.html_for(None, t.var("items"), |t| t.var("x"))
                         })
@@ -1536,17 +1497,14 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Test@f0(items@b0: Array[String]) -> Html {
                   let b1: Html = html("b", {}, concat(text("hi"))) in {
                     for _ in b0 { b1 }
                   }
                 }
-                page Test(items: Array[String]) {
-                  body@f0(items)
-                }
 
                 -- flat --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Test@f0(items@b0: Array[String]) -> Html {
                   let v0: Html = text("hi")
                   let v2: Html = html("b", {}, v0)
                   let v3: Array[String] = b0
@@ -1554,9 +1512,6 @@ mod tests {
                     v2
                   }
                   v4
-                }
-                page Test(items: Array[String]) {
-                  body@f0(items)
                 }
 
                 -- writer --
@@ -1580,7 +1535,7 @@ mod tests {
                     .function("wrap", [("inner", "Html")], "Html", |t| {
                         t.element("div", vec![], vec![t.var("inner")])
                     })
-                    .page_no_params("Test", |t| {
+                    .entry("Test", [], "Html", |t| {
                         t.call(
                             "wrap",
                             vec![("inner", t.element("b", vec![], vec![t.text("hi")]))],
@@ -1594,22 +1549,16 @@ mod tests {
                 fn wrap@f0(inner@b0: Html) -> Html {
                   html("div", {}, concat(b0))
                 }
-                fn body@f1() -> Html {
+                entry fn Test@f1() -> Html {
                   call wrap@f0(html("b", {}, concat(text("hi"))))
-                }
-                page Test() {
-                  body@f1()
                 }
 
                 -- flat --
-                fn body@f1() -> Html {
+                entry fn Test@f1() -> Html {
                   let v3: Html = text("hi")
                   let v5: Html = html("b", {}, v3)
                   let v8: Html = html("div", {}, v5)
                   v8
-                }
-                page Test() {
-                  body@f1()
                 }
 
                 -- writer --
@@ -1630,7 +1579,7 @@ mod tests {
                             t.mul(t.var("y"), t.var("y"))
                         })
                     })
-                    .page_no_params("Test", |t| {
+                    .entry("Test", [], "Html", |t| {
                         t.escape(t.int_to_string(t.call("square_next", vec![("x", t.int(2))])))
                     })
                     .build()
@@ -1641,21 +1590,15 @@ mod tests {
                 fn square_next@f0(x@b0: Int) -> Int {
                   let b1: Int = (b0 + 1) in { (b1 * b1) }
                 }
-                fn body@f1() -> Html {
+                entry fn Test@f1() -> Html {
                   escape(call square_next@f0(2).to_string())
-                }
-                page Test() {
-                  body@f1()
                 }
 
                 -- flat --
-                fn body@f1() -> Html {
+                entry fn Test@f1() -> Html {
                   let v6: String = "9"
                   let v7: Html = escape(v6)
                   v7
-                }
-                page Test() {
-                  body@f1()
                 }
 
                 -- writer --
@@ -1672,7 +1615,7 @@ mod tests {
             || {
                 PureModuleBuilder::new()
                     .record("Card", [("body", "Html")])
-                    .page("Test", [("flag", "Bool")], |t| {
+                    .entry("Test", [("flag", "Bool")], "Html", |t| {
                         t.let_expr(
                             "card",
                             t.record(
@@ -1690,7 +1633,7 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0(flag@b0: Bool) -> Html {
+                entry fn Test@f0(flag@b0: Bool) -> Html {
                   let b1: Card = Card {
                     body: match b0 {
                       true => {
@@ -1704,12 +1647,9 @@ mod tests {
                     b1.body
                   }
                 }
-                page Test(flag: Bool) {
-                  body@f0(flag)
-                }
 
                 -- flat --
-                fn body@f0(flag@b0: Bool) -> Html {
+                entry fn Test@f0(flag@b0: Bool) -> Html {
                   let v0: Bool = b0
                   let v3: Html = match v0 {
                     true => {
@@ -1722,9 +1662,6 @@ mod tests {
                     }
                   }
                   v3
-                }
-                page Test(flag: Bool) {
-                  body@f0(flag)
                 }
 
                 -- writer --
@@ -1747,7 +1684,7 @@ mod tests {
         check(
             || {
                 PureModuleBuilder::new()
-                    .page("Test", [("flag", "Bool"), ("n", "Int")], |t| {
+                    .entry("Test", [("flag", "Bool"), ("n", "Int")], "Html", |t| {
                         t.escape(t.int_to_string(t.bool_match_expr(
                             t.var("flag"),
                             t.add(t.var("n"), t.int(1)),
@@ -1759,7 +1696,7 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                fn body@f0(flag@b0: Bool, n@b1: Int) -> Html {
+                entry fn Test@f0(flag@b0: Bool, n@b1: Int) -> Html {
                   escape(match b0 {
                     true => {
                       (b1 + 1)
@@ -1769,12 +1706,9 @@ mod tests {
                     }
                   }.to_string())
                 }
-                page Test(flag: Bool, n: Int) {
-                  body@f0(flag, n)
-                }
 
                 -- flat --
-                fn body@f0(flag@b0: Bool, n@b1: Int) -> Html {
+                entry fn Test@f0(flag@b0: Bool, n@b1: Int) -> Html {
                   let v0: Bool = b0
                   let v5: Int = match v0 {
                     true => {
@@ -1791,9 +1725,6 @@ mod tests {
                   let v6: String = v5.to_string()
                   let v7: Html = escape(v6)
                   v7
-                }
-                page Test(flag: Bool, n: Int) {
-                  body@f0(flag, n)
                 }
 
                 -- writer --

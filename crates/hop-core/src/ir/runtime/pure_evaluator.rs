@@ -1,5 +1,4 @@
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
-use crate::ir::document_shell::DocumentShell;
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumPattern, Match};
@@ -8,62 +7,39 @@ use crate::ir::pure_module::{
     PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
 };
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::html_node::{HtmlAttribute, HtmlNode, write_html};
+use crate::ir::runtime::html_node::{HtmlAttribute, HtmlNode};
 use crate::ir::runtime::value::Value;
 use crate::ir::runtime::variable_env::VariableEnv;
 use crate::symbols::attribute_name::AttributeName;
-use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
 
 use crate::ir::runtime::flat_evaluator::MAX_CALL_DEPTH;
 
-pub fn evaluate_page(
+/// Evaluate a function called from outside the module, on the arguments
+/// named by its parameters.
+pub fn evaluate_entry(
     module: &PureModule,
-    page_name: &TypeName,
+    function: &IrFunction,
     mut args: HashMap<AttributeName, Value>,
-    shell: Option<&DocumentShell>,
-) -> Result<String, EvalError> {
-    let page = module
-        .pages
+) -> Result<Value, EvalError> {
+    let decl = module
+        .functions
         .iter()
-        .find(|page| &page.name == page_name)
-        .ok_or_else(|| EvalError::PageNotFound {
-            page: page_name.clone(),
+        .find(|decl| decl.function.id == function.id)
+        .ok_or_else(|| EvalError::FunctionNotFound {
+            function: function.clone(),
         })?;
-
-    let mut values = Vec::with_capacity(page.parameters.len());
-    for param in &page.parameters {
-        if let Some(value) = args.remove(param.name()) {
-            values.push(value);
-        } else {
-            return Err(EvalError::MissingParameter {
-                page: page.name.clone(),
+    let mut values = Vec::with_capacity(decl.parameters.len());
+    for param in &decl.parameters {
+        let value = args
+            .remove(param.name())
+            .ok_or_else(|| EvalError::MissingParameter {
+                function: function.clone(),
                 param: param.name().clone(),
-            });
-        }
+            })?;
+        values.push(value);
     }
-
-    let head = match &page.head {
-        Some(head) => evaluate_function(&module.functions, head, values.clone(), 0)?.unwrap_html(),
-        None => Vec::new(),
-    };
-    let body = evaluate_function(&module.functions, &page.body, values, 0)?.unwrap_html();
-
-    let mut html = String::new();
-    match shell {
-        Some(shell) => {
-            html.push_str(shell.before_head);
-            write_html(&head, &mut html);
-            html.push_str(&shell.after_head);
-            write_html(&body, &mut html);
-            html.push_str(shell.after_body);
-        }
-        None => {
-            write_html(&head, &mut html);
-            write_html(&body, &mut html);
-        }
-    }
-    Ok(html)
+    evaluate_function(&module.functions, function, values, 0)
 }
 
 /// Evaluate a function on its arguments, one for each parameter in the
@@ -463,8 +439,7 @@ mod tests {
     use super::*;
     use crate::ir::pure_module::PureModule;
     use crate::ir::pure_module_builder::PureModuleBuilder;
-    use crate::ir::pure_module_generator::random_module;
-    use crate::ir::runtime::random::random_value;
+    use crate::ir::pure_module_generator::{random_entry_args, random_module};
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
 
@@ -473,18 +448,8 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            for page in &module.pages {
-                let args: HashMap<AttributeName, Value> = page
-                    .parameters
-                    .iter()
-                    .map(|p| {
-                        (
-                            p.name().clone(),
-                            random_value(&mut rng, &p.typ, None, &registry),
-                        )
-                    })
-                    .collect();
-                match evaluate_page(&module, &page.name, args, None) {
+            for (function, args) in random_entry_args(&module, &mut rng, &registry) {
+                match evaluate_entry(&module, &function, args) {
                     Ok(_) | Err(EvalError::RecursionLimit { .. }) => {}
                     Err(error) => panic!("{error}"),
                 }
@@ -499,9 +464,16 @@ mod tests {
             .into_iter()
             .map(|(k, v)| (AttributeName::parse(k).unwrap(), v))
             .collect();
-        let page_name = module.pages[0].name.clone();
-        let after =
-            evaluate_page(&module, &page_name, args_map, None).expect("Evaluation should succeed");
+        let entry = module
+            .functions
+            .iter()
+            .find(|decl| decl.entry)
+            .expect("the module has an entry function")
+            .function
+            .clone();
+        let after = evaluate_entry(&module, &entry, args_map)
+            .expect("Evaluation should succeed")
+            .into_markup();
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
@@ -512,7 +484,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .record("Holder", [("nothing", "()")])
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     let held = t.record("Holder", vec![("nothing", t.tuple(vec![]))]);
                     t.escape(t.int_to_string(t.array_length(
                         t.array_typed(t.resolve_type("()"), vec![t.field_access(held, "nothing")]),
@@ -522,11 +494,8 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   escape([Holder {nothing: ()}.nothing].len().to_string())
-                }
-                page Test() {
-                  body@f0()
                 }
 
                 -- after --
@@ -539,7 +508,7 @@ mod tests {
     fn should_read_an_element_back_out_of_a_tuple() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     let pair = t.tuple(vec![t.int(1), t.str("two")]);
                     t.escape(t.tuple_index(pair, 1))
                 })
@@ -547,11 +516,8 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   escape((1, "two").1)
-                }
-                page Test() {
-                  body@f0()
                 }
 
                 -- after --
@@ -564,7 +530,7 @@ mod tests {
     fn should_read_an_element_back_out_of_a_one_tuple() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     let only = t.tuple(vec![t.str("alone")]);
                     t.escape(t.tuple_index(only, 0))
                 })
@@ -572,11 +538,8 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   escape(("alone",).0)
-                }
-                page Test() {
-                  body@f0()
                 }
 
                 -- after --
@@ -589,7 +552,7 @@ mod tests {
     fn should_index_a_nested_tuple() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     let inner = t.tuple(vec![t.str("deep"), t.int(2)]);
                     let outer = t.tuple(vec![t.int(1), inner]);
                     t.escape(t.tuple_index(t.tuple_index(outer, 1), 0))
@@ -598,11 +561,8 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   escape((1, ("deep", 2)).1.0)
-                }
-                page Test() {
-                  body@f0()
                 }
 
                 -- after --
@@ -615,7 +575,7 @@ mod tests {
     fn should_wrap_int_addition_at_i32_boundary() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     let sum = t.add(t.int(2147483647), t.int(1));
                     t.escape(t.int_to_string(sum))
                 })
@@ -623,11 +583,8 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   escape((2147483647 + 1).to_string())
-                }
-                page Test() {
-                  body@f0()
                 }
 
                 -- after --
@@ -640,18 +597,15 @@ mod tests {
     fn should_evaluate_an_element() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     t.element("div", vec![], vec![t.text("Hello World")])
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   html("div", {}, concat(text("Hello World")))
-                }
-                page Test() {
-                  body@f0()
                 }
 
                 -- after --
@@ -664,7 +618,7 @@ mod tests {
     fn should_escape_attribute_values_and_settle_boolean_attributes() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("cls", "String"), ("flag", "Bool")], |t| {
+                .entry("Test", [("cls", "String"), ("flag", "Bool")], "Html", |t| {
                     t.element(
                         "input",
                         vec![
@@ -682,11 +636,8 @@ mod tests {
             ],
             expect![[r#"
                 -- before --
-                fn body@f0(cls@b0: String, flag@b1: Bool) -> Html {
+                entry fn Test@f0(cls@b0: String, flag@b1: Bool) -> Html {
                   html("input", {class: b0, disabled: b1, checked: false})
-                }
-                page Test(cls: String, flag: Bool) {
-                  body@f0(cls, flag)
                 }
 
                 -- after --
@@ -699,7 +650,7 @@ mod tests {
     fn should_escape_html_in_expressions() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("content", "String")], |t| {
+                .entry("Test", [("content", "String")], "Html", |t| {
                     t.escape(t.var("content"))
                 })
                 .build(),
@@ -709,11 +660,8 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                fn body@f0(content@b0: String) -> Html {
+                entry fn Test@f0(content@b0: String) -> Html {
                   escape(b0)
-                }
-                page Test(content: String) {
-                  body@f0(content)
                 }
 
                 -- after --
@@ -726,7 +674,7 @@ mod tests {
     fn should_render_if_body_when_condition_is_true() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("show", "Bool")], |t| {
+                .entry("Test", [("show", "Bool")], "Html", |t| {
                     t.bool_match_expr(
                         t.var("show"),
                         t.element("div", vec![], vec![t.text("Visible")]),
@@ -737,7 +685,7 @@ mod tests {
             vec![("show", Value::Bool(true))],
             expect![[r#"
                 -- before --
-                fn body@f0(show@b0: Bool) -> Html {
+                entry fn Test@f0(show@b0: Bool) -> Html {
                   match b0 {
                     true => {
                       html("div", {}, concat(text("Visible")))
@@ -746,9 +694,6 @@ mod tests {
                       concat()
                     }
                   }
-                }
-                page Test(show: Bool) {
-                  body@f0(show)
                 }
 
                 -- after --
@@ -761,7 +706,7 @@ mod tests {
     fn should_skip_if_body_when_condition_is_false() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("show", "Bool")], |t| {
+                .entry("Test", [("show", "Bool")], "Html", |t| {
                     t.bool_match_expr(
                         t.var("show"),
                         t.element("div", vec![], vec![t.text("Hidden")]),
@@ -772,7 +717,7 @@ mod tests {
             vec![("show", Value::Bool(false))],
             expect![[r#"
                 -- before --
-                fn body@f0(show@b0: Bool) -> Html {
+                entry fn Test@f0(show@b0: Bool) -> Html {
                   match b0 {
                     true => {
                       html("div", {}, concat(text("Hidden")))
@@ -781,9 +726,6 @@ mod tests {
                       concat()
                     }
                   }
-                }
-                page Test(show: Bool) {
-                  body@f0(show)
                 }
 
                 -- after --
@@ -796,7 +738,7 @@ mod tests {
     fn should_iterate_over_array_in_for_loop() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("items", "Array[String]")], |t| {
+                .entry("Test", [("items", "Array[String]")], "Html", |t| {
                     t.html_for(Some("item"), t.var("items"), |t| {
                         t.concat(vec![
                             t.element("li", vec![], vec![t.escape(t.var("item"))]),
@@ -815,13 +757,10 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Test@f0(items@b0: Array[String]) -> Html {
                   for b1: String in b0 {
                     concat(html("li", {}, concat(escape(b1))), text("\n"))
                   }
-                }
-                page Test(items: Array[String]) {
-                  body@f0(items)
                 }
 
                 -- after --
@@ -874,7 +813,7 @@ mod tests {
                         ),
                     )
                 })
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     t.escape(t.int_to_string(t.call("Sum", vec![("n", t.int(10))])))
                 })
                 .build(),
@@ -891,11 +830,8 @@ mod tests {
                     }
                   }
                 }
-                fn body@f1() -> Html {
+                entry fn Test@f1() -> Html {
                   escape(call Sum@f0(10).to_string())
-                }
-                page Test() {
-                  body@f1()
                 }
 
                 -- after --
@@ -910,12 +846,11 @@ mod tests {
             .function("Loop", [("n", "Int")], "Int", |t| {
                 t.call("Loop", vec![("n", t.add(t.var("n"), t.int(1)))])
             })
-            .page_no_params("Test", |t| {
+            .entry("Test", [], "Html", |t| {
                 t.escape(t.int_to_string(t.call("Loop", vec![("n", t.int(0))])))
             })
             .build();
-        let page_name = TypeName::parse("Test").unwrap();
-        let result = evaluate_page(&module, &page_name, HashMap::new(), None);
+        let result = evaluate_entry(&module, &module.functions[1].function, HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Function 'Loop@f0' exceeded the call depth limit of 12"
@@ -925,11 +860,11 @@ mod tests {
     #[test]
     fn should_error_when_required_param_not_provided() {
         let module = PureModuleBuilder::new()
-            .page("Test", [("name", "String")], |t| t.escape(t.var("name")))
+            .entry("Test", [("name", "String")], "Html", |t| {
+                t.escape(t.var("name"))
+            })
             .build();
-
-        let page_name = TypeName::parse("Test").unwrap();
-        let result = evaluate_page(&module, &page_name, HashMap::new(), None);
+        let result = evaluate_entry(&module, &module.functions[0].function, HashMap::new());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));

@@ -22,12 +22,15 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
-use super::ir_parameter::{IrParameter, PageParameter};
-use super::pure_module::{
-    PureAttribute, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
-};
+use super::ir_page::IrPage;
+use super::ir_parameter::IrParameter;
+use super::pure_module::{PureAttribute, PureExpr, PureFunctionDeclaration, PureModule};
 
 /// Compile the pages and the functions they reach.
+///
+/// Pure has no pages. A page compiles to an entry function for its head, if
+/// it has one, and one for its body, and the pages that point at them are
+/// returned beside the module.
 ///
 /// A rest parameter is resolved at compile time. A call supplies attributes
 /// to the rest of its callee, and the callee is compiled once for each
@@ -39,7 +42,7 @@ pub fn typed_to_pure(
     pages: Vec<TypedPageDeclaration>,
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
-) -> PureModule {
+) -> (PureModule, Vec<IrPage>) {
     let mut binder_ids = BinderIdCounter::new();
     let mut function_ids = FunctionIdCounter::new();
 
@@ -80,11 +83,13 @@ pub fn typed_to_pure(
         .map(|page| page.declare(&mut function_ids, &mut functions))
         .collect();
 
-    PureModule {
+    (
+        PureModule {
+            functions,
+            binder_ids,
+        },
         pages,
-        functions,
-        binder_ids,
-    }
+    )
 }
 
 /// A function compiled for one list of attributes supplied to its rest.
@@ -103,22 +108,22 @@ struct Specialization {
 /// functions: the parameters and the body of each.
 struct CompiledPage {
     name: TypeName,
-    parameters: Vec<PageParameter>,
     head: Option<(Vec<IrParameter>, PureExpr)>,
     body: (Vec<IrParameter>, PureExpr),
 }
 
 impl CompiledPage {
-    /// Declare the head and the body as functions, appended to `functions`,
-    /// and point the page at them.
+    /// Declare the head and the body as entry functions, appended to
+    /// `functions`, and point the page at them.
     fn declare(
         self,
         function_ids: &mut FunctionIdCounter,
         functions: &mut Vec<PureFunctionDeclaration>,
-    ) -> PurePageDeclaration {
+    ) -> IrPage {
         let mut declare = |function: IrFunction, (parameters, body)| {
             functions.push(PureFunctionDeclaration {
                 function: function.clone(),
+                entry: true,
                 parameters,
                 return_type: Type::Html,
                 body,
@@ -127,15 +132,21 @@ impl CompiledPage {
         };
         let head = self
             .head
-            .map(|head| declare(IrFunction::page_head(function_ids.next()), head));
-        let body = declare(IrFunction::page_body(function_ids.next()), self.body);
-        PurePageDeclaration {
+            .map(|head| declare(page_function(function_ids, "head"), head));
+        let body = declare(page_function(function_ids, "body"), self.body);
+        IrPage {
             name: self.name,
-            parameters: self.parameters,
             head,
             body,
         }
     }
+}
+
+/// A function that renders a page member, named after the member.
+fn page_function(function_ids: &mut FunctionIdCounter, member: &str) -> IrFunction {
+    let name = FunctionName::new(CheapString::new(member.to_string()))
+        .expect("a page member name is a valid function name");
+    IrFunction::new(function_ids.next(), name)
 }
 
 struct Compiler<'a> {
@@ -202,6 +213,7 @@ impl<'a> Compiler<'a> {
 
         let declaration = PureFunctionDeclaration {
             function,
+            entry: false,
             parameters,
             return_type: decl.return_type.clone(),
             body: self.compile_expr(&decl.body),
@@ -213,17 +225,8 @@ impl<'a> Compiler<'a> {
     }
 
     fn compile_page_decl(&mut self, page: TypedPageDeclaration) -> CompiledPage {
-        let parameters = page
-            .params
-            .iter()
-            .map(|param| PageParameter {
-                name: param.var_name.clone().into(),
-                typ: param.var_type.clone(),
-            })
-            .collect();
         CompiledPage {
             name: page.name,
-            parameters,
             head: page
                 .head
                 .as_ref()
@@ -1020,13 +1023,14 @@ mod tests {
         );
         let diagnostics = program.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let module = orchestrate_pure(
+        let (module, pages) = orchestrate_pure(
             program.typed_modules(),
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        expected.assert_eq(&module.to_string());
+        let pages: String = pages.iter().map(|page| format!("{page}\n")).collect();
+        expected.assert_eq(&format!("{module}{pages}"));
     }
 
     #[test]
@@ -1043,16 +1047,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn head@f0() -> Html {
+                entry fn head@f0() -> Html {
                   html("title", {}, concat(text("Hi")))
                 }
-                fn body@f1() -> Html {
+                entry fn body@f1() -> Html {
                   concat(text("Hello World"))
                 }
-                page Test() {
-                  head@f0()
-                  body@f1()
-                }
+                page Test: head@f0, body@f1
             "#]],
         );
     }
@@ -1068,12 +1069,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn body@f0(name@b0: String) -> Html {
+                entry fn body@f0(name@b0: String) -> Html {
                   concat(text("Hello "), escape(b0))
                 }
-                page Test(name: String) {
-                  body@f0(name)
-                }
+                page Test: body@f0
             "#]],
         );
     }
@@ -1089,12 +1088,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn body@f0() -> Html {
+                entry fn body@f0() -> Html {
                   html("div", {}, concat(text("Content")))
                 }
-                page Test() {
-                  body@f0()
-                }
+                page Test: body@f0
             "#]],
         );
     }
@@ -1114,7 +1111,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn body@f0(items@b0: Array[String]) -> Html {
                   html(
                     "ul",
                     {},
@@ -1125,9 +1122,7 @@ mod tests {
                     ),
                   )
                 }
-                page Test(items: Array[String]) {
-                  body@f0(items)
-                }
+                page Test: body@f0
             "#]],
         );
     }
@@ -1143,16 +1138,14 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn body@f0() -> Html {
+                entry fn body@f0() -> Html {
                   html(
                     "div",
                     {class: "base", id: "test"},
                     concat(text("Content")),
                   )
                 }
-                page Test() {
-                  body@f0()
-                }
+                page Test: body@f0
             "#]],
         );
     }
@@ -1168,16 +1161,14 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn body@f0(cls@b0: String) -> Html {
+                entry fn body@f0(cls@b0: String) -> Html {
                   html(
                     "div",
                     {class: "base", data-value: b0},
                     concat(text("Content")),
                   )
                 }
-                page Test(cls: String) {
-                  body@f0(cls)
-                }
+                page Test: body@f0
             "#]],
         );
     }
@@ -1196,7 +1187,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn body@f0(flag@b0: Bool) -> Html {
+                entry fn body@f0(flag@b0: Bool) -> Html {
                   let b1: Bool = b0 in {
                     match b1 {
                       true => {
@@ -1208,9 +1199,7 @@ mod tests {
                     }
                   }
                 }
-                page Test(flag: Bool) {
-                  body@f0(flag)
-                }
+                page Test: body@f0
             "#]],
         );
     }
@@ -1226,12 +1215,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn body@f0() -> Html {
+                entry fn body@f0() -> Html {
                   html("br", {})
                 }
-                page Test() {
-                  body@f0()
-                }
+                page Test: body@f0
             "#]],
         );
     }
@@ -1252,16 +1239,14 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn body@f0(user@b0: User) -> Html {
+                entry fn body@f0(user@b0: User) -> Html {
                   concat(
                     escape(let b1: User = b0 in {
                       User {name: "Jane", age: b1.age}
                     }.name),
                   )
                 }
-                page Test(user: User) {
-                  body@f0(user)
-                }
+                page Test: body@f0
             "#]],
         );
     }
@@ -1286,16 +1271,14 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn body@f0(app@b0: App) -> Html {
+                entry fn body@f0(app@b0: App) -> Html {
                   concat(
                     escape(let b1: State = b0.state in {
                       State {query: b1.query, num: 1}
                     }.query),
                   )
                 }
-                page Test(app: App) {
-                  body@f0(app)
-                }
+                page Test: body@f0
             "#]],
         );
     }
@@ -1331,16 +1314,14 @@ mod tests {
                     concat(text("Go")),
                   )
                 }
-                fn body@f2() -> Html {
+                entry fn body@f2() -> Html {
                   concat(
                     call Button@f0("a"),
                     call Button@f1("b", true),
                     call Button@f0("c"),
                   )
                 }
-                page Test() {
-                  body@f2()
-                }
+                page Test: body@f2
             "#]],
         );
     }
@@ -1379,12 +1360,10 @@ mod tests {
                 fn Panel@f0(title@b0: String, class@b1: String) -> Html {
                   call Card@f1(b0, "panel", b1)
                 }
-                fn body@f2() -> Html {
+                entry fn body@f2() -> Html {
                   call Panel@f0("Hi", "wide")
                 }
-                page Test() {
-                  body@f2()
-                }
+                page Test: body@f2
             "#]],
         );
     }
@@ -1448,12 +1427,10 @@ mod tests {
                     ),
                   )
                 }
-                fn body@f2() -> Html {
+                entry fn body@f2() -> Html {
                   call Nest@f0(2, "outer")
                 }
-                page Test() {
-                  body@f2()
-                }
+                page Test: body@f2
             "#]],
         );
     }
@@ -1485,12 +1462,10 @@ mod tests {
                     concat(text("Go")),
                   )
                 }
-                fn body@f1() -> Html {
+                entry fn body@f1() -> Html {
                   call Button@f0("1", "go")
                 }
-                page Test() {
-                  body@f1()
-                }
+                page Test: body@f1
             "#]],
         );
     }
@@ -1522,12 +1497,10 @@ mod tests {
                 fn Used@f0() -> Html {
                   html("p", {}, concat(text("used")))
                 }
-                fn body@f1() -> Html {
+                entry fn body@f1() -> Html {
                   call Used@f0()
                 }
-                page Test() {
-                  body@f1()
-                }
+                page Test: body@f1
             "#]],
         );
     }

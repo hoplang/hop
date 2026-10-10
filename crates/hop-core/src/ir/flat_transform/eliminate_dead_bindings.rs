@@ -112,20 +112,16 @@ fn eliminate(block: FlatBlock, live: &mut Live) -> FlatBlock {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
     use super::*;
     use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
     use crate::ir::pure_module::PureModule;
     use crate::ir::pure_module_builder::PureModuleBuilder;
-    use crate::ir::pure_module_generator::random_module;
+    use crate::ir::pure_module_generator::{random_entry_args, random_module};
     use crate::ir::pure_to_flat::pure_to_flat;
     use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::flat_evaluator::evaluate_page;
-    use crate::ir::runtime::random::random_value;
+    use crate::ir::runtime::flat_evaluator::evaluate_entry;
     use crate::ir::runtime::value::Value;
-    use crate::symbols::attribute_name::AttributeName;
-    use crate::symbols::type_name::TypeName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
 
@@ -133,12 +129,12 @@ mod tests {
         FlatModule {
             var_ids: module.var_ids,
             binder_ids: module.binder_ids,
-            pages: module.pages,
             functions: module
                 .functions
                 .into_iter()
                 .map(|function| FlatFunctionDeclaration {
                     function: function.function,
+                    entry: function.entry,
                     parameters: function.parameters,
                     return_type: function.return_type,
                     body: eliminate_dead_bindings(function.body),
@@ -152,31 +148,14 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
+            let entry_args = random_entry_args(&module, &mut rng, &registry);
             let module = pure_to_flat(module);
 
-            let page_args: Vec<(TypeName, HashMap<AttributeName, Value>)> = module
-                .pages
-                .iter()
-                .map(|page| {
-                    let args = page
-                        .parameters
-                        .iter()
-                        .map(|p| {
-                            (
-                                p.name().clone(),
-                                random_value(&mut rng, &p.typ, None, &registry),
-                            )
-                        })
-                        .collect();
-                    (page.name.clone(), args)
-                })
-                .collect();
-
             let before_module = module.to_string();
-            let before: Vec<Option<String>> = page_args
+            let before: Vec<Option<String>> = entry_args
                 .iter()
-                .map(|(page_name, args)| {
-                    match evaluate_page(&module, page_name, args.clone(), None) {
+                .map(|(function, args)| {
+                    match evaluate_entry(&module, function, args.clone()).map(Value::into_markup) {
                         Ok(output) => Some(output),
                         Err(EvalError::RecursionLimit { .. }) => None,
                         Err(error) => panic!("{error}"),
@@ -186,16 +165,18 @@ mod tests {
 
             let module = run(module);
 
-            for ((page_name, args), before) in page_args.iter().zip(&before) {
-                // A page that hit the call depth limit has no output to
+            for ((function, args), before) in entry_args.iter().zip(&before) {
+                // An entry that hit the call depth limit has no output to
                 // preserve, and the pass may drop the diverging call.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_page(&module, page_name, args.clone(), None).unwrap();
+                let after = evaluate_entry(&module, function, args.clone())
+                    .unwrap()
+                    .into_markup();
                 assert_eq!(
                     before, &after,
-                    "page {page_name}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    "entry {function}\n-- before --\n{before_module}\n-- after --\n{module}"
                 );
             }
             Ok(())
@@ -213,28 +194,22 @@ mod tests {
     fn should_drop_a_value_nothing_reads() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     t.let_expr("unused", t.str("value"), |t| t.text("Hello"))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: String = "value"
                   let v1: Html = text("Hello")
                   v1
                 }
-                page Test() {
-                  body@f0()
-                }
 
                 -- after --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v1: Html = text("Hello")
                   v1
-                }
-                page Test() {
-                  body@f0()
                 }
             "#]],
         );
@@ -245,7 +220,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .function("f", [], "Int", |t| t.call("f", vec![]))
-                .page("Test", [("flag", "Bool")], |t| {
+                .entry("Test", [("flag", "Bool")], "Html", |t| {
                     t.let_expr(
                         "n",
                         t.bool_match_expr(t.var("flag"), t.call("f", vec![]), t.int(0)),
@@ -259,7 +234,7 @@ mod tests {
                   let v0: Int = call f@f0()
                   v0
                 }
-                fn body@f1(flag@b0: Bool) -> Html {
+                entry fn Test@f1(flag@b0: Bool) -> Html {
                   let v1: Bool = b0
                   let v4: Int = match v1 {
                     true => {
@@ -274,21 +249,15 @@ mod tests {
                   let v5: Html = text("Hello")
                   v5
                 }
-                page Test(flag: Bool) {
-                  body@f1(flag)
-                }
 
                 -- after --
                 fn f@f0() -> Int {
                   let v0: Int = call f@f0()
                   v0
                 }
-                fn body@f1(flag@b0: Bool) -> Html {
+                entry fn Test@f1(flag@b0: Bool) -> Html {
                   let v5: Html = text("Hello")
                   v5
-                }
-                page Test(flag: Bool) {
-                  body@f1(flag)
                 }
             "#]],
         );
@@ -298,13 +267,13 @@ mod tests {
     fn should_unbind_an_unused_loop_variable() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("items", "Array[String]")], |t| {
+                .entry("Test", [("items", "Array[String]")], "Html", |t| {
                     t.html_for(Some("item"), t.var("items"), |t| t.text("."))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Test@f0(items@b0: Array[String]) -> Html {
                   let v0: Array[String] = b0
                   let v2: Html = for b1: String in v0 {
                     let v1: Html = text(".")
@@ -312,21 +281,15 @@ mod tests {
                   }
                   v2
                 }
-                page Test(items: Array[String]) {
-                  body@f0(items)
-                }
 
                 -- after --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Test@f0(items@b0: Array[String]) -> Html {
                   let v0: Array[String] = b0
                   let v2: Html = for _ in v0 {
                     let v1: Html = text(".")
                     v1
                   }
                   v2
-                }
-                page Test(items: Array[String]) {
-                  body@f0(items)
                 }
             "#]],
         );
@@ -336,7 +299,7 @@ mod tests {
     fn should_unbind_an_unused_option_binding() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("name", "Option[String]")], |t| {
+                .entry("Test", [("name", "Option[String]")], "Html", |t| {
                     t.option_match_expr_with_binding(
                         t.var("name"),
                         "n",
@@ -347,7 +310,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0(name@b0: Option[String]) -> Html {
+                entry fn Test@f0(name@b0: Option[String]) -> Html {
                   let v0: Option[String] = b0
                   let v3: Html = match v0 {
                     Some(b1: String) => {
@@ -361,12 +324,9 @@ mod tests {
                   }
                   v3
                 }
-                page Test(name: Option[String]) {
-                  body@f0(name)
-                }
 
                 -- after --
-                fn body@f0(name@b0: Option[String]) -> Html {
+                entry fn Test@f0(name@b0: Option[String]) -> Html {
                   let v0: Option[String] = b0
                   let v3: Html = match v0 {
                     Some(_) => {
@@ -379,9 +339,6 @@ mod tests {
                     }
                   }
                   v3
-                }
-                page Test(name: Option[String]) {
-                  body@f0(name)
                 }
             "#]],
         );

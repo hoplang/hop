@@ -17,19 +17,3 @@ impl IrParameter {
         &self.name
     }
 }
-
-/// A parameter of a page. A page binds no names of its own, so its
-/// parameter has a name and a type but no binder. The functions a page
-/// points at declare the page's parameters, in order, each with a binder of
-/// its own.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PageParameter {
-    pub name: AttributeName,
-    pub typ: Type,
-}
-
-impl PageParameter {
-    pub fn name(&self) -> &AttributeName {
-        &self.name
-    }
-}

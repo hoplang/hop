@@ -15,7 +15,7 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use pretty::BoxDoc;
 
-use super::ir_parameter::{IrParameter, PageParameter};
+use super::ir_parameter::IrParameter;
 
 /// A Pure module.
 ///
@@ -26,22 +26,8 @@ use super::ir_parameter::{IrParameter, PageParameter};
 /// impossible and substitution is capture-free.
 #[derive(Debug, Clone)]
 pub struct PureModule {
-    pub pages: Vec<PurePageDeclaration>,
     pub functions: Vec<PureFunctionDeclaration>,
     pub binder_ids: BinderIdCounter,
-}
-
-/// A page declaration in Pure.
-#[derive(Debug, Clone)]
-pub struct PurePageDeclaration {
-    /// Page name
-    pub name: TypeName,
-    /// Parameter names with their types
-    pub parameters: Vec<PageParameter>,
-    /// The function that renders the page head, if the page has one.
-    pub head: Option<IrFunction>,
-    /// The function that renders the page body.
-    pub body: IrFunction,
 }
 
 /// A function declaration in Pure.
@@ -49,6 +35,9 @@ pub struct PurePageDeclaration {
 pub struct PureFunctionDeclaration {
     /// The function's identity, carrying its source name.
     pub function: IrFunction,
+    /// Whether the function is called from outside the module, so it is
+    /// kept even when nothing in the module calls it.
+    pub entry: bool,
     /// Parameter names with their types
     pub parameters: Vec<IrParameter>,
     /// The function's return type. The body must be of this type.
@@ -466,37 +455,9 @@ impl PureAttribute {
     }
 }
 
-impl PurePageDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let parameters = self
-            .parameters
-            .iter()
-            .map(|param| format!("{}: {}", param.name.as_str(), param.typ))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let arguments = self
-            .parameters
-            .iter()
-            .map(|param| param.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        // The calls the page renders by, each passing the page's arguments.
-        let mut calls = BoxDoc::nil();
-        for function in self.head.iter().chain([&self.body]) {
-            calls = calls
-                .append(BoxDoc::hardline())
-                .append(BoxDoc::text(format!("{function}({arguments})")));
-        }
-        BoxDoc::text(format!("page {}({parameters}) {{", self.name.as_str()))
-            .append(calls.nest(2))
-            .append(BoxDoc::hardline())
-            .append(BoxDoc::text("}"))
-    }
-}
-
 impl PureFunctionDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("fn ")
+        BoxDoc::text(if self.entry { "entry fn " } else { "fn " })
             .append(BoxDoc::text(self.function.to_string()))
             .append(BoxDoc::text("("))
             .append(params_to_doc(&self.parameters))
@@ -830,12 +791,6 @@ impl fmt::Display for PureExpr {
     }
 }
 
-impl fmt::Display for PurePageDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.to_doc().pretty(60))
-    }
-}
-
 impl fmt::Display for PureFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
@@ -846,9 +801,6 @@ impl fmt::Display for PureModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for function in &self.functions {
             write!(f, "{}", function)?;
-        }
-        for page in &self.pages {
-            write!(f, "{}", page)?;
         }
         Ok(())
     }

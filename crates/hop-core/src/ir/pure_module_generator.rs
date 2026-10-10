@@ -1,8 +1,14 @@
 use crate::hop::typing::{Type, TypeRegistry};
+use crate::ir::ir_function::IrFunction;
 use crate::ir::pure_module::{PureExpr, PureModule};
 use crate::ir::pure_module_builder::{PureBuilder, PureModuleBuilder};
+use crate::ir::runtime::random::random_value;
+use crate::ir::runtime::value::Value;
+use crate::symbols::attribute_name::AttributeName;
 use arbitrary::Unstructured;
+use rand::Rng;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
 /// Expression recursion budget.
@@ -117,7 +123,7 @@ pub fn random_module_with_test_view(u: &mut Unstructured<'_>) -> (PureModule, Ty
 
 fn random_module_inner(
     u: &mut Unstructured<'_>,
-    single_test_page: bool,
+    single_test_entry: bool,
 ) -> (PureModule, TypeRegistry) {
     let mut g = PureGenerator {
         u,
@@ -215,26 +221,54 @@ fn random_module_inner(
         );
     }
 
-    // Generate pages
-    if single_test_page {
-        bodies = bodies.page_no_params("Test", |b| g.borrow_mut().expr(b, &Type::Html, DEPTH));
+    // Generate entry functions, each rendering Html as a page body does.
+    if single_test_entry {
+        bodies = bodies.entry("Test", [], "Html", |b| {
+            g.borrow_mut().expr(b, &Type::Html, DEPTH)
+        });
     } else {
-        let page_count = g.borrow_mut().count(1..=3);
-        for i in 0..page_count {
+        let entry_count = g.borrow_mut().count(1..=3);
+        for i in 0..entry_count {
             let params: Vec<(String, String)> = {
                 let mut g = g.borrow_mut();
                 (0..g.count(0..=3))
                     .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
                     .collect()
             };
-            bodies = bodies.page(
+            bodies = bodies.entry(
                 &format!("V{i}"),
                 params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
+                "Html",
                 |b| g.borrow_mut().expr(b, &Type::Html, DEPTH),
             );
         }
     }
     bodies.build_with_registry()
+}
+
+/// Random arguments for each entry function of the module, named by its
+/// parameters.
+pub fn random_entry_args(
+    module: &PureModule,
+    rng: &mut impl Rng,
+    registry: &TypeRegistry,
+) -> Vec<(IrFunction, HashMap<AttributeName, Value>)> {
+    module
+        .functions
+        .iter()
+        .filter(|decl| decl.entry)
+        .map(|decl| {
+            let args = decl
+                .parameters
+                .iter()
+                .map(|param| {
+                    let value = random_value(rng, &param.typ, None, registry);
+                    (param.name.clone(), value)
+                })
+                .collect();
+            (decl.function.clone(), args)
+        })
+        .collect()
 }
 
 impl PureGenerator<'_, '_> {

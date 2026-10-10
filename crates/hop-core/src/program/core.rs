@@ -241,14 +241,14 @@ impl Program {
             ..Default::default()
         };
 
-        let pure = orchestrate_pure(self.typed_modules(), options);
+        let (pure, pages) = orchestrate_pure(self.typed_modules(), options);
         let flat = pure_to_flat(pure);
         let flat = if skip_optimization {
             flat
         } else {
             optimize_flat(flat)
         };
-        let module = flat_to_writer(flat, Some(&shell));
+        let module = flat_to_writer(flat, &pages, Some(&shell));
 
         match target {
             TargetLanguage::Typescript => {

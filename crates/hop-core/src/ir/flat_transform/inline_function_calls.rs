@@ -12,7 +12,7 @@ use crate::ir::var_id::{VarId, VarIdCounter};
 
 /// A pass that replaces a call to a non-recursive function with the
 /// callee's body, and drops the function once no call to it is left. Only
-/// the functions in a call cycle and the functions pages point at remain.
+/// the functions in a call cycle and the entry functions remain.
 ///
 /// A call's arguments are names, computed before the call, so a parameter
 /// is bound by dropping every Read of it and reading the argument's name in
@@ -21,7 +21,6 @@ use crate::ir::var_id::{VarId, VarIdCounter};
 /// becomes a read of the body's result.
 pub fn inline_function_calls(module: FlatModule) -> FlatModule {
     let FlatModule {
-        pages,
         functions,
         mut var_ids,
         mut binder_ids,
@@ -71,21 +70,15 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
     }
 
     // Every call to a function outside a cycle was replaced by its body, so
-    // nothing calls such a function any more. A function a page points at
-    // is not called but rendered, so it stays.
-    let roots: HashSet<FunctionId> = pages
-        .iter()
-        .flat_map(|page| page.head.iter().chain([&page.body]))
-        .map(|function| function.id)
-        .collect();
+    // nothing calls such a function any more. An entry function is called
+    // from outside the module, so it stays.
     let functions = order
         .into_iter()
-        .filter(|id| recursive.contains(id) || roots.contains(id))
         .map(|id| decls.remove(&id).expect("each function is declared once"))
+        .filter(|decl| decl.entry || recursive.contains(&decl.function.id))
         .collect();
 
     FlatModule {
-        pages,
         functions,
         var_ids,
         binder_ids,
@@ -384,19 +377,15 @@ impl Freshener<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
     use super::*;
     use crate::ir::pure_module::PureModule;
     use crate::ir::pure_module_builder::PureModuleBuilder;
-    use crate::ir::pure_module_generator::random_module;
+    use crate::ir::pure_module_generator::{random_entry_args, random_module};
     use crate::ir::pure_to_flat::pure_to_flat;
     use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::flat_evaluator::evaluate_page;
-    use crate::ir::runtime::random::random_value;
+    use crate::ir::runtime::flat_evaluator::evaluate_entry;
     use crate::ir::runtime::value::Value;
-    use crate::symbols::attribute_name::AttributeName;
-    use crate::symbols::type_name::TypeName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
 
@@ -405,31 +394,14 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
+            let entry_args = random_entry_args(&module, &mut rng, &registry);
             let module = pure_to_flat(module);
 
-            let page_args: Vec<(TypeName, HashMap<AttributeName, Value>)> = module
-                .pages
-                .iter()
-                .map(|page| {
-                    let args = page
-                        .parameters
-                        .iter()
-                        .map(|p| {
-                            (
-                                p.name().clone(),
-                                random_value(&mut rng, &p.typ, None, &registry),
-                            )
-                        })
-                        .collect();
-                    (page.name.clone(), args)
-                })
-                .collect();
-
             let before_module = module.to_string();
-            let before: Vec<Option<String>> = page_args
+            let before: Vec<Option<String>> = entry_args
                 .iter()
-                .map(|(page_name, args)| {
-                    match evaluate_page(&module, page_name, args.clone(), None) {
+                .map(|(function, args)| {
+                    match evaluate_entry(&module, function, args.clone()).map(Value::into_markup) {
                         Ok(output) => Some(output),
                         Err(EvalError::RecursionLimit { .. }) => None,
                         Err(error) => panic!("{error}"),
@@ -439,16 +411,18 @@ mod tests {
 
             let module = inline_function_calls(module);
 
-            for ((page_name, args), before) in page_args.iter().zip(&before) {
-                // A page that hit the call depth limit has no output to
+            for ((function, args), before) in entry_args.iter().zip(&before) {
+                // An entry that hit the call depth limit has no output to
                 // preserve, and inlining removes frames from the count.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_page(&module, page_name, args.clone(), None).unwrap();
+                let after = evaluate_entry(&module, function, args.clone())
+                    .unwrap()
+                    .into_markup();
                 assert_eq!(
                     before, &after,
-                    "page {page_name}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    "entry {function}\n-- before --\n{before_module}\n-- after --\n{module}"
                 );
             }
             Ok(())
@@ -469,7 +443,7 @@ mod tests {
                 .function("double", [("x", "Int")], "Int", |t| {
                     t.add(t.var("x"), t.var("x"))
                 })
-                .page("Test", [("n", "Int")], |t| {
+                .entry("Test", [("n", "Int")], "Html", |t| {
                     t.escape(t.int_to_string(t.call("double", vec![("x", t.var("n"))])))
                 })
                 .build(),
@@ -481,27 +455,21 @@ mod tests {
                   let v2: Int = v0 + v1
                   v2
                 }
-                fn body@f1(n@b1: Int) -> Html {
+                entry fn Test@f1(n@b1: Int) -> Html {
                   let v3: Int = b1
                   let v4: Int = call double@f0(v3)
                   let v5: String = v4.to_string()
                   let v6: Html = escape(v5)
                   v6
                 }
-                page Test(n: Int) {
-                  body@f1(n)
-                }
 
                 -- after --
-                fn body@f1(n@b1: Int) -> Html {
+                entry fn Test@f1(n@b1: Int) -> Html {
                   let v3: Int = b1
                   let v7: Int = v3 + v3
                   let v5: String = v7.to_string()
                   let v6: Html = escape(v5)
                   v6
-                }
-                page Test(n: Int) {
-                  body@f1(n)
                 }
             "#]],
         );
@@ -517,7 +485,7 @@ mod tests {
                 .function("outer", [("y", "Int")], "Int", |t| {
                     t.mul(t.call("inner", vec![("x", t.var("y"))]), t.int(2))
                 })
-                .page("Test", [("n", "Int")], |t| {
+                .entry("Test", [("n", "Int")], "Html", |t| {
                     t.escape(t.int_to_string(t.call("outer", vec![("y", t.var("n"))])))
                 })
                 .build(),
@@ -536,19 +504,16 @@ mod tests {
                   let v6: Int = v4 * v5
                   v6
                 }
-                fn body@f2(n@b2: Int) -> Html {
+                entry fn Test@f2(n@b2: Int) -> Html {
                   let v7: Int = b2
                   let v8: Int = call outer@f1(v7)
                   let v9: String = v8.to_string()
                   let v10: Html = escape(v9)
                   v10
                 }
-                page Test(n: Int) {
-                  body@f2(n)
-                }
 
                 -- after --
-                fn body@f2(n@b2: Int) -> Html {
+                entry fn Test@f2(n@b2: Int) -> Html {
                   let v7: Int = b2
                   let v13: Int = 1
                   let v14: Int = v7 + v13
@@ -557,9 +522,6 @@ mod tests {
                   let v9: String = v16.to_string()
                   let v10: Html = escape(v9)
                   v10
-                }
-                page Test(n: Int) {
-                  body@f2(n)
                 }
             "#]],
         );
@@ -574,9 +536,10 @@ mod tests {
                         t.element("li", vec![], vec![t.escape(t.var("item"))])
                     })
                 })
-                .page(
+                .entry(
                     "Test",
                     [("a", "Array[String]"), ("b", "Array[String]")],
+                    "Html",
                     |t| {
                         t.concat(vec![
                             t.call("list", vec![("items", t.var("a"))]),
@@ -598,7 +561,7 @@ mod tests {
                   }
                   v5
                 }
-                fn body@f1(a@b2: Array[String], b@b3: Array[String]) -> Html {
+                entry fn Test@f1(a@b2: Array[String], b@b3: Array[String]) -> Html {
                   let v6: Array[String] = b2
                   let v7: Html = call list@f0(v6)
                   let v8: Array[String] = b3
@@ -606,12 +569,9 @@ mod tests {
                   let v10: Html = concat(v7, v9)
                   v10
                 }
-                page Test(a: Array[String], b: Array[String]) {
-                  body@f1(a, b)
-                }
 
                 -- after --
-                fn body@f1(a@b2: Array[String], b@b3: Array[String]) -> Html {
+                entry fn Test@f1(a@b2: Array[String], b@b3: Array[String]) -> Html {
                   let v6: Array[String] = b2
                   let v15: Html = for b4: String in v6 {
                     let v11: String = b4
@@ -631,9 +591,6 @@ mod tests {
                   let v10: Html = concat(v15, v20)
                   v10
                 }
-                page Test(a: Array[String], b: Array[String]) {
-                  body@f1(a, b)
-                }
             "#]],
         );
     }
@@ -649,7 +606,9 @@ mod tests {
                         t.call("count", vec![("n", t.sub(t.var("n"), t.int(1)))]),
                     )
                 })
-                .page_no_params("Test", |t| t.call("count", vec![("n", t.int(3))]))
+                .entry("Test", [], "Html", |t| {
+                    t.call("count", vec![("n", t.int(3))])
+                })
                 .build(),
             expect![[r#"
                 -- before --
@@ -672,13 +631,10 @@ mod tests {
                   }
                   v8
                 }
-                fn body@f1() -> Html {
+                entry fn Test@f1() -> Html {
                   let v9: Int = 3
                   let v10: Html = call count@f0(v9)
                   v10
-                }
-                page Test() {
-                  body@f1()
                 }
 
                 -- after --
@@ -701,13 +657,10 @@ mod tests {
                   }
                   v8
                 }
-                fn body@f1() -> Html {
+                entry fn Test@f1() -> Html {
                   let v9: Int = 3
                   let v10: Html = call count@f0(v9)
                   v10
-                }
-                page Test() {
-                  body@f1()
                 }
             "#]],
         );
@@ -727,7 +680,9 @@ mod tests {
                 .function("pong", [("n", "Int")], "Html", |t| {
                     t.call("ping", vec![("n", t.var("n"))])
                 })
-                .page_no_params("Test", |t| t.call("ping", vec![("n", t.int(2))]))
+                .entry("Test", [], "Html", |t| {
+                    t.call("ping", vec![("n", t.int(2))])
+                })
                 .build(),
             expect![[r#"
                 -- before --
@@ -755,13 +710,10 @@ mod tests {
                   let v10: Html = call ping@f0(v9)
                   v10
                 }
-                fn body@f2() -> Html {
+                entry fn Test@f2() -> Html {
                   let v11: Int = 2
                   let v12: Html = call ping@f0(v11)
                   v12
-                }
-                page Test() {
-                  body@f2()
                 }
 
                 -- after --
@@ -789,13 +741,10 @@ mod tests {
                   let v10: Html = call ping@f0(v9)
                   v10
                 }
-                fn body@f2() -> Html {
+                entry fn Test@f2() -> Html {
                   let v11: Int = 2
                   let v12: Html = call ping@f0(v11)
                   v12
-                }
-                page Test() {
-                  body@f2()
                 }
             "#]],
         );

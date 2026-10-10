@@ -7,9 +7,9 @@ use crate::symbols::{attribute_name::AttributeName, type_name::TypeName};
 pub enum EvalError {
     #[error("Page '{page}' not found in module")]
     PageNotFound { page: TypeName },
-    #[error("Missing required parameter '{param}' for page '{page}'")]
+    #[error("Missing required parameter '{param}' for function '{function}'")]
     MissingParameter {
-        page: TypeName,
+        function: IrFunction,
         param: AttributeName,
     },
     #[error("Function '{function}' not found in module")]

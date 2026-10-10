@@ -42,7 +42,7 @@ impl Program {
 
         // The page filter compiles only the requested page and what it
         // reaches.
-        let pure_module = orchestrate_pure(
+        let (pure_module, pages) = orchestrate_pure(
             self.typed_modules(),
             OrchestrateOptions {
                 page_filter: Some((document_id.clone(), page_name.clone())),
@@ -56,16 +56,21 @@ impl Program {
             optimize_flat(flat_module)
         };
         let shell = DocumentShell::new(generated_tailwind_css.map(TailwindInjection::Inline), None);
-        let rendered =
-            ir::runtime::flat_evaluator::evaluate_page(&flat_module, page_name, args, Some(&shell));
+        let rendered = ir::runtime::flat_evaluator::evaluate_page(
+            &flat_module,
+            &pages,
+            page_name,
+            args,
+            Some(&shell),
+        );
 
         rendered.map_err(|e| match e {
             EvalError::PageNotFound { page } => EvaluatePageError::PageNotFound {
                 page: page.to_string(),
                 available: self.page_names(),
             },
-            EvalError::MissingParameter { page, param } => EvaluatePageError::MissingParameter {
-                page: page.to_string(),
+            EvalError::MissingParameter { param, .. } => EvaluatePageError::MissingParameter {
+                page: page_name.to_string(),
                 param: param.to_string(),
             },
             EvalError::RecursionLimit { function, limit } => EvaluatePageError::RecursionLimit {

@@ -159,14 +159,20 @@ mod tests {
 
         let typed_modules = program.typed_modules().clone();
         let page_name = TypeName::parse("Test").unwrap();
-        let module = orchestrate_pure(
+        let (module, pages) = orchestrate_pure(
             &typed_modules,
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        flat_evaluator::evaluate_page(&pure_to_flat(module), &page_name, HashMap::new(), None)
-            .expect("evaluator failed")
+        flat_evaluator::evaluate_page(
+            &pure_to_flat(module),
+            &pages,
+            &page_name,
+            HashMap::new(),
+            None,
+        )
+        .expect("evaluator failed")
     }
 
     #[test]

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{
     FlatAttribute, FlatBinding, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule,
-    FlatOp, FlatPageDeclaration,
+    FlatOp,
 };
 use crate::ir::ir_match::{EnumMatchArm, Match};
 use crate::ir::pure_module::{PureAttribute, PureExpr, PureForSource, PureModule};
@@ -23,28 +23,18 @@ pub fn pure_to_flat(module: PureModule) -> FlatModule {
         var_ids: VarIdCounter::new(),
         lets: HashMap::new(),
     };
-    let pages = module
-        .pages
-        .into_iter()
-        .map(|page| FlatPageDeclaration {
-            name: page.name,
-            parameters: page.parameters,
-            head: page.head,
-            body: page.body,
-        })
-        .collect();
     let functions = module
         .functions
         .into_iter()
         .map(|function| FlatFunctionDeclaration {
             function: function.function,
+            entry: function.entry,
             parameters: function.parameters,
             return_type: function.return_type,
             body: lower_block(function.body, &mut cx),
         })
         .collect();
     FlatModule {
-        pages,
         functions,
         var_ids: cx.var_ids,
         binder_ids: module.binder_ids,
@@ -343,32 +333,37 @@ mod tests {
     fn lowers_an_element_with_its_attributes_before_its_children() {
         check(
             PureModuleBuilder::new()
-                .page("Card", [("title", "String"), ("hidden", "Bool")], |t| {
-                    t.element(
-                        "div",
-                        vec![
-                            t.attr("class", t.str("card")),
-                            t.presence("hidden", t.var("hidden")),
-                        ],
-                        vec![t.escape(t.var("title"))],
-                    )
-                })
+                .entry(
+                    "Card",
+                    [("title", "String"), ("hidden", "Bool")],
+                    "Html",
+                    |t| {
+                        t.element(
+                            "div",
+                            vec![
+                                t.attr("class", t.str("card")),
+                                t.presence("hidden", t.var("hidden")),
+                            ],
+                            vec![t.escape(t.var("title"))],
+                        )
+                    },
+                )
                 .build(),
             expect![[r#"
                 -- pure --
-                fn body@f0(title@b0: String, hidden@b1: Bool) -> Html {
+                entry fn Card@f0(
+                  title@b0: String,
+                  hidden@b1: Bool,
+                ) -> Html {
                   html(
                     "div",
                     {class: "card", hidden: b1},
                     concat(escape(b0)),
                   )
                 }
-                page Card(title: String, hidden: Bool) {
-                  body@f0(title, hidden)
-                }
 
                 -- flat --
-                fn body@f0(title@b0: String, hidden@b1: Bool) -> Html {
+                entry fn Card@f0(title@b0: String, hidden@b1: Bool) -> Html {
                   let v0: String = "card"
                   let v1: Bool = b1
                   let v2: String = b0
@@ -376,9 +371,6 @@ mod tests {
                   let v4: Html = concat(v3)
                   let v5: Html = html("div", {class: v0, hidden: v1}, v4)
                   v5
-                }
-                page Card(title: String, hidden: Bool) {
-                  body@f0(title, hidden)
                 }
             "#]],
         );
@@ -388,7 +380,7 @@ mod tests {
     fn lowers_a_loop_body_into_a_nested_block() {
         check(
             PureModuleBuilder::new()
-                .page("Items", [("items", "Array[String]")], |t| {
+                .entry("Items", [("items", "Array[String]")], "Html", |t| {
                     t.element(
                         "ul",
                         vec![],
@@ -400,7 +392,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- pure --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Items@f0(items@b0: Array[String]) -> Html {
                   html(
                     "ul",
                     {},
@@ -411,12 +403,9 @@ mod tests {
                     ),
                   )
                 }
-                page Items(items: Array[String]) {
-                  body@f0(items)
-                }
 
                 -- flat --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Items@f0(items@b0: Array[String]) -> Html {
                   let v0: Array[String] = b0
                   let v5: Html = for b1: String in v0 {
                     let v1: String = b1
@@ -429,9 +418,6 @@ mod tests {
                   let v7: Html = html("ul", {}, v6)
                   v7
                 }
-                page Items(items: Array[String]) {
-                  body@f0(items)
-                }
             "#]],
         );
     }
@@ -440,21 +426,18 @@ mod tests {
     fn lowers_a_range_loop_without_a_variable() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Dots", |t| {
+                .entry("Dots", [], "Html", |t| {
                     t.html_for_range(None, t.int(1), t.int(3), |t| t.text("."))
                 })
                 .build(),
             expect![[r#"
                 -- pure --
-                fn body@f0() -> Html {
+                entry fn Dots@f0() -> Html {
                   for _ in 1..=3 { text(".") }
-                }
-                page Dots() {
-                  body@f0()
                 }
 
                 -- flat --
-                fn body@f0() -> Html {
+                entry fn Dots@f0() -> Html {
                   let v0: Int = 1
                   let v1: Int = 3
                   let v3: Html = for _ in v0..=v1 {
@@ -462,9 +445,6 @@ mod tests {
                     v2
                   }
                   v3
-                }
-                page Dots() {
-                  body@f0()
                 }
             "#]],
         );
@@ -474,7 +454,7 @@ mod tests {
     fn lowers_an_option_match_with_a_binding() {
         check(
             PureModuleBuilder::new()
-                .page("Greeting", [("name", "Option[String]")], |t| {
+                .entry("Greeting", [("name", "Option[String]")], "Html", |t| {
                     t.option_match_expr_with_binding(
                         t.var("name"),
                         "n",
@@ -485,7 +465,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- pure --
-                fn body@f0(name@b0: Option[String]) -> Html {
+                entry fn Greeting@f0(name@b0: Option[String]) -> Html {
                   match b0 {
                     Some(b1: String) => {
                       escape(b1)
@@ -495,12 +475,9 @@ mod tests {
                     }
                   }
                 }
-                page Greeting(name: Option[String]) {
-                  body@f0(name)
-                }
 
                 -- flat --
-                fn body@f0(name@b0: Option[String]) -> Html {
+                entry fn Greeting@f0(name@b0: Option[String]) -> Html {
                   let v0: Option[String] = b0
                   let v4: Html = match v0 {
                     Some(b1: String) => {
@@ -514,9 +491,6 @@ mod tests {
                     }
                   }
                   v4
-                }
-                page Greeting(name: Option[String]) {
-                  body@f0(name)
                 }
             "#]],
         );
@@ -653,7 +627,7 @@ mod tests {
                 .function("double", [("x", "Int")], "Int", |t| {
                     t.add(t.var("x"), t.var("x"))
                 })
-                .page_no_params("Answer", |t| {
+                .entry("Answer", [], "Html", |t| {
                     t.escape(t.int_to_string(t.call("double", vec![("x", t.int(21))])))
                 })
                 .build(),
@@ -662,11 +636,8 @@ mod tests {
                 fn double@f0(x@b0: Int) -> Int {
                   (b0 + b0)
                 }
-                fn body@f1() -> Html {
+                entry fn Answer@f1() -> Html {
                   escape(call double@f0(21).to_string())
-                }
-                page Answer() {
-                  body@f1()
                 }
 
                 -- flat --
@@ -676,15 +647,12 @@ mod tests {
                   let v2: Int = v0 + v1
                   v2
                 }
-                fn body@f1() -> Html {
+                entry fn Answer@f1() -> Html {
                   let v3: Int = 21
                   let v4: Int = call double@f0(v3)
                   let v5: String = v4.to_string()
                   let v6: Html = escape(v5)
                   v6
-                }
-                page Answer() {
-                  body@f1()
                 }
             "#]],
         );

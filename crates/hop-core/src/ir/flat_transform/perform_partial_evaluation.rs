@@ -445,20 +445,16 @@ impl Evaluator<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
     use super::*;
     use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
     use crate::ir::pure_module::PureModule;
     use crate::ir::pure_module_builder::PureModuleBuilder;
-    use crate::ir::pure_module_generator::random_module;
+    use crate::ir::pure_module_generator::{random_entry_args, random_module};
     use crate::ir::pure_to_flat::pure_to_flat;
     use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::flat_evaluator::evaluate_page;
-    use crate::ir::runtime::random::random_value;
+    use crate::ir::runtime::flat_evaluator::evaluate_entry;
     use crate::ir::runtime::value::Value;
-    use crate::symbols::attribute_name::AttributeName;
-    use crate::symbols::type_name::TypeName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
 
@@ -469,13 +465,13 @@ mod tests {
             .into_iter()
             .map(|function| FlatFunctionDeclaration {
                 function: function.function,
+                entry: function.entry,
                 parameters: function.parameters,
                 return_type: function.return_type,
                 body: perform_partial_evaluation(function.body, &mut var_ids),
             })
             .collect();
         FlatModule {
-            pages: module.pages,
             functions,
             var_ids,
             binder_ids: module.binder_ids,
@@ -487,30 +483,15 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
+            let entry_args = random_entry_args(&module, &mut rng, &registry);
             let module = pure_to_flat(module);
 
-            let page_args: Vec<(TypeName, HashMap<AttributeName, Value>)> = module
-                .pages
-                .iter()
-                .map(|page| {
-                    let args = page
-                        .parameters
-                        .iter()
-                        .map(|p| {
-                            (
-                                p.name().clone(),
-                                random_value(&mut rng, &p.typ, None, &registry),
-                            )
-                        })
-                        .collect();
-                    (page.name.clone(), args)
-                })
-                .collect();
-
             let before_module = module.to_string();
-            let before: Vec<Result<String, EvalError>> = page_args
+            let before: Vec<Result<String, EvalError>> = entry_args
                 .iter()
-                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone(), None))
+                .map(|(function, args)| {
+                    evaluate_entry(&module, function, args.clone()).map(Value::into_markup)
+                })
                 .collect();
 
             let module = run(module);
@@ -518,19 +499,19 @@ mod tests {
             // The pass drops no computation but a selected arm's siblings,
             // which never ran, so the output and whether the call depth
             // limit is hit both stay the same.
-            for ((page_name, args), before) in page_args.iter().zip(before) {
-                let after = evaluate_page(&module, page_name, args.clone(), None);
+            for ((function, args), before) in entry_args.iter().zip(before) {
+                let after = evaluate_entry(&module, function, args.clone()).map(Value::into_markup);
                 match (before, after) {
                     (Ok(before), Ok(after)) => assert_eq!(
                         before, after,
-                        "page {page_name}\n-- before --\n{before_module}\n-- after --\n{module}"
+                        "entry {function}\n-- before --\n{before_module}\n-- after --\n{module}"
                     ),
                     (
                         Err(EvalError::RecursionLimit { .. }),
                         Err(EvalError::RecursionLimit { .. }),
                     ) => {}
                     (before, after) => panic!(
-                        "page {page_name}: before {before:?}, after {after:?}\n-- before --\n{before_module}\n-- after --\n{module}"
+                        "entry {function}: before {before:?}, after {after:?}\n-- before --\n{before_module}\n-- after --\n{module}"
                     ),
                 }
             }
@@ -575,13 +556,13 @@ mod tests {
     fn should_select_the_arm_of_a_match_on_a_negated_constant() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     t.bool_match_expr(t.not(t.bool(true)), t.text("yes"), t.text("no"))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: Bool = true
                   let v1: Bool = !v0
                   let v4: Html = match v1 {
@@ -596,19 +577,13 @@ mod tests {
                   }
                   v4
                 }
-                page Test() {
-                  body@f0()
-                }
 
                 -- after --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: Bool = true
                   let v1: Bool = false
                   let v3: Html = text("no")
                   v3
-                }
-                page Test() {
-                  body@f0()
                 }
             "#]],
         );
@@ -618,13 +593,13 @@ mod tests {
     fn should_keep_a_match_on_a_dynamic_subject() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("flag", "Bool")], |t| {
+                .entry("Test", [("flag", "Bool")], "Html", |t| {
                     t.bool_match_expr(t.var("flag"), t.text("yes"), t.text("no"))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0(flag@b0: Bool) -> Html {
+                entry fn Test@f0(flag@b0: Bool) -> Html {
                   let v0: Bool = b0
                   let v3: Html = match v0 {
                     true => {
@@ -637,13 +612,10 @@ mod tests {
                     }
                   }
                   v3
-                }
-                page Test(flag: Bool) {
-                  body@f0(flag)
                 }
 
                 -- after --
-                fn body@f0(flag@b0: Bool) -> Html {
+                entry fn Test@f0(flag@b0: Bool) -> Html {
                   let v0: Bool = b0
                   let v3: Html = match v0 {
                     true => {
@@ -656,9 +628,6 @@ mod tests {
                     }
                   }
                   v3
-                }
-                page Test(flag: Bool) {
-                  body@f0(flag)
                 }
             "#]],
         );
@@ -669,7 +638,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .record("Point", [("x", "Int"), ("y", "Int")])
-                .page("Test", [("n", "Int")], |t| {
+                .entry("Test", [("n", "Int")], "Html", |t| {
                     t.escape(t.int_to_string(t.field_access(
                         t.record("Point", vec![("x", t.var("n")), ("y", t.int(2))]),
                         "x",
@@ -678,7 +647,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0(n@b0: Int) -> Html {
+                entry fn Test@f0(n@b0: Int) -> Html {
                   let v0: Int = b0
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
@@ -687,21 +656,15 @@ mod tests {
                   let v5: Html = escape(v4)
                   v5
                 }
-                page Test(n: Int) {
-                  body@f0(n)
-                }
 
                 -- after --
-                fn body@f0(n@b0: Int) -> Html {
+                entry fn Test@f0(n@b0: Int) -> Html {
                   let v0: Int = b0
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
                   let v4: String = v0.to_string()
                   let v5: Html = escape(v4)
                   v5
-                }
-                page Test(n: Int) {
-                  body@f0(n)
                 }
             "#]],
         );
@@ -740,7 +703,7 @@ mod tests {
     fn should_flatten_a_concat_and_merge_its_adjacent_constants() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("dyn", "String")], |t| {
+                .entry("Test", [("dyn", "String")], "Html", |t| {
                     t.escape(t.string_concat(vec![
                         t.string_concat(vec![t.var("dyn"), t.str("a")]),
                         t.string_concat(vec![t.str("b"), t.var("dyn")]),
@@ -749,7 +712,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0(dyn@b0: String) -> Html {
+                entry fn Test@f0(dyn@b0: String) -> Html {
                   let v0: String = b0
                   let v1: String = "a"
                   let v2: String = concat(v0, v1)
@@ -760,12 +723,9 @@ mod tests {
                   let v7: Html = escape(v6)
                   v7
                 }
-                page Test(dyn: String) {
-                  body@f0(dyn)
-                }
 
                 -- after --
-                fn body@f0(dyn@b0: String) -> Html {
+                entry fn Test@f0(dyn@b0: String) -> Html {
                   let v0: String = b0
                   let v1: String = "a"
                   let v2: String = concat(v0, v1)
@@ -777,9 +737,6 @@ mod tests {
                   let v7: Html = escape(v6)
                   v7
                 }
-                page Test(dyn: String) {
-                  body@f0(dyn)
-                }
             "#]],
         );
     }
@@ -788,13 +745,13 @@ mod tests {
     fn should_drop_empty_strings_and_read_the_one_part_left() {
         check(
             PureModuleBuilder::new()
-                .page("Test", [("dyn", "String")], |t| {
+                .entry("Test", [("dyn", "String")], "Html", |t| {
                     t.escape(t.string_concat(vec![t.str(""), t.var("dyn"), t.str("")]))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0(dyn@b0: String) -> Html {
+                entry fn Test@f0(dyn@b0: String) -> Html {
                   let v0: String = ""
                   let v1: String = b0
                   let v2: String = ""
@@ -802,20 +759,14 @@ mod tests {
                   let v4: Html = escape(v3)
                   v4
                 }
-                page Test(dyn: String) {
-                  body@f0(dyn)
-                }
 
                 -- after --
-                fn body@f0(dyn@b0: String) -> Html {
+                entry fn Test@f0(dyn@b0: String) -> Html {
                   let v0: String = ""
                   let v1: String = b0
                   let v2: String = ""
                   let v4: Html = escape(v1)
                   v4
-                }
-                page Test(dyn: String) {
-                  body@f0(dyn)
                 }
             "#]],
         );
@@ -825,33 +776,27 @@ mod tests {
     fn should_fold_a_concat_of_constants_to_one_constant() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     t.escape(t.string_concat(vec![t.str("Hello, "), t.str("World")]))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: String = "Hello, "
                   let v1: String = "World"
                   let v2: String = concat(v0, v1)
                   let v3: Html = escape(v2)
                   v3
                 }
-                page Test() {
-                  body@f0()
-                }
 
                 -- after --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: String = "Hello, "
                   let v1: String = "World"
                   let v4: String = "Hello, World"
                   let v3: Html = escape(v4)
                   v3
-                }
-                page Test() {
-                  body@f0()
                 }
             "#]],
         );
@@ -861,7 +806,7 @@ mod tests {
     fn should_flatten_a_nested_html_concat() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     t.concat(vec![
                         t.text("a"),
                         t.concat(vec![t.text("b"), t.text("c")]),
@@ -871,7 +816,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: Html = text("a")
                   let v1: Html = text("b")
                   let v2: Html = text("c")
@@ -881,12 +826,9 @@ mod tests {
                   let v6: Html = concat(v0, v3, v5)
                   v6
                 }
-                page Test() {
-                  body@f0()
-                }
 
                 -- after --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: Html = text("a")
                   let v1: Html = text("b")
                   let v2: Html = text("c")
@@ -894,9 +836,6 @@ mod tests {
                   let v4: Html = text("d")
                   let v6: Html = concat(v0, v1, v2, v4)
                   v6
-                }
-                page Test() {
-                  body@f0()
                 }
             "#]],
         );
@@ -957,7 +896,7 @@ mod tests {
     fn should_select_the_some_arm_and_bind_its_value() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     t.option_match_expr_with_binding(
                         t.some(t.str("x")),
                         "v",
@@ -968,7 +907,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: String = "x"
                   let v1: Option[String] = Some(v0)
                   let v5: Html = match v1 {
@@ -984,19 +923,13 @@ mod tests {
                   }
                   v5
                 }
-                page Test() {
-                  body@f0()
-                }
 
                 -- after --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: String = "x"
                   let v1: Option[String] = Some(v0)
                   let v3: Html = escape(v0)
                   v3
-                }
-                page Test() {
-                  body@f0()
                 }
             "#]],
         );
@@ -1030,7 +963,7 @@ mod tests {
     fn should_select_an_arm_through_a_folded_equality() {
         check(
             PureModuleBuilder::new()
-                .page_no_params("Test", |t| {
+                .entry("Test", [], "Html", |t| {
                     t.bool_match_expr(
                         t.eq(t.str("a"), t.str("a")),
                         t.text("same"),
@@ -1040,7 +973,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
                   let v2: Bool = v0 == v1
@@ -1056,20 +989,14 @@ mod tests {
                   }
                   v5
                 }
-                page Test() {
-                  body@f0()
-                }
 
                 -- after --
-                fn body@f0() -> Html {
+                entry fn Test@f0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
                   let v2: Bool = true
                   let v3: Html = text("same")
                   v3
-                }
-                page Test() {
-                  body@f0()
                 }
             "#]],
         );

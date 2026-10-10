@@ -1,5 +1,6 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::hop::typing::TypedModule;
+use crate::ir::ir_page::IrPage;
 use crate::ir::pure_module::PureModule;
 use crate::ir::typed_to_pure;
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -18,7 +19,7 @@ pub struct OrchestrateOptions {
 pub fn orchestrate_pure(
     typed_modules: &HashMap<RootContainedFilePath, TypedModule>,
     options: OrchestrateOptions,
-) -> PureModule {
+) -> (PureModule, Vec<IrPage>) {
     // Take pages from all modules (sorted by module ID for deterministic order)
     let mut document_ids: Vec<_> = typed_modules.keys().cloned().collect();
     document_ids.sort();

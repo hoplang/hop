@@ -1857,13 +1857,13 @@ mod tests {
         );
         let diagnostics = program.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let pure = orchestrate_pure(
+        let (pure, pages) = orchestrate_pure(
             program.typed_modules(),
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        let module = flat_to_writer(pure_to_flat(pure), None);
+        let module = flat_to_writer(pure_to_flat(pure), &pages, None);
         let output = RustTranspiler::new().transpile_module(&module, program.type_registry());
         expected.assert_eq(&output);
     }

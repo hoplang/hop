@@ -2,6 +2,7 @@ use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::Document;
 use crate::document_annotator::DocumentAnnotator;
 use crate::ir::flat_module::FlatModule;
+use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::flat_evaluator;
 use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
 use crate::ir::{flat_to_writer, optimize_flat, pure_to_flat};
@@ -152,9 +153,9 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn execute_evaluator(module: &FlatModule) -> Result<String, String> {
+fn execute_evaluator(module: &FlatModule, pages: &[IrPage]) -> Result<String, String> {
     let page_name = TypeName::parse("Test").unwrap();
-    flat_evaluator::evaluate_page(module, &page_name, HashMap::new(), None)
+    flat_evaluator::evaluate_page(module, pages, &page_name, HashMap::new(), None)
         .map_err(|e| format!("Evaluator failed: {}", e))
 }
 
@@ -198,7 +199,7 @@ fn check_with_asset_path_rewriter(
     let typed_modules = program.typed_modules().clone();
     let registry = program.type_registry();
 
-    let pure = orchestrate_pure(
+    let (pure, pages) = orchestrate_pure(
         &typed_modules,
         OrchestrateOptions {
             asset_path_rewriter,
@@ -209,11 +210,11 @@ fn check_with_asset_path_rewriter(
     let optimized_flat = optimize_flat(pure_to_flat(pure));
 
     // Evaluate the Flat modules before lowering consumes them.
-    let unoptimized_eval = execute_evaluator(&unoptimized_flat);
-    let optimized_eval = execute_evaluator(&optimized_flat);
+    let unoptimized_eval = execute_evaluator(&unoptimized_flat, &pages);
+    let optimized_eval = execute_evaluator(&optimized_flat, &pages);
 
-    let unoptimized_module = flat_to_writer(unoptimized_flat, None);
-    let optimized_module = flat_to_writer(optimized_flat, None);
+    let unoptimized_module = flat_to_writer(unoptimized_flat, &pages, None);
+    let optimized_module = flat_to_writer(optimized_flat, &pages, None);
 
     let unoptimized_ir = unoptimized_module.to_string();
     let optimized_ir = optimized_module.to_string();
@@ -358,15 +359,21 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
+            let pages = IrPage::for_entries(&module);
             let page_name = TypeName::parse("Test").unwrap();
             let module = pure_to_flat(module);
-            let expected =
-                match flat_evaluator::evaluate_page(&module, &page_name, HashMap::new(), None) {
-                    Ok(output) => output.trim().to_string(),
-                    Err(EvalError::RecursionLimit { .. }) => return Ok(()),
-                    Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
-                };
-            let module = flat_to_writer(optimize_flat(module), None);
+            let expected = match flat_evaluator::evaluate_page(
+                &module,
+                &pages,
+                &page_name,
+                HashMap::new(),
+                None,
+            ) {
+                Ok(output) => output.trim().to_string(),
+                Err(EvalError::RecursionLimit { .. }) => return Ok(()),
+                Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
+            };
+            let module = flat_to_writer(optimize_flat(module), &pages, None);
             let ir = module.to_string();
             let ts_code = TsTranspiler::new().transpile_module(&module, &registry);
             if let Err(e) = typecheck_typescript(&ts_code) {
@@ -391,15 +398,21 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
+            let pages = IrPage::for_entries(&module);
             let page_name = TypeName::parse("Test").unwrap();
             let module = pure_to_flat(module);
-            let expected =
-                match flat_evaluator::evaluate_page(&module, &page_name, HashMap::new(), None) {
-                    Ok(output) => output.trim().to_string(),
-                    Err(EvalError::RecursionLimit { .. }) => return Ok(()),
-                    Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
-                };
-            let module = flat_to_writer(optimize_flat(module), None);
+            let expected = match flat_evaluator::evaluate_page(
+                &module,
+                &pages,
+                &page_name,
+                HashMap::new(),
+                None,
+            ) {
+                Ok(output) => output.trim().to_string(),
+                Err(EvalError::RecursionLimit { .. }) => return Ok(()),
+                Err(e) => panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"),
+            };
+            let module = flat_to_writer(optimize_flat(module), &pages, None);
             let ir = module.to_string();
             let rust_code = RustTranspiler::new().transpile_module(&module, &registry);
             let rust_output = execute_rust(&rust_code).unwrap_or_else(|e| {

@@ -9,6 +9,7 @@ use crate::ir::flat_module::{
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumPattern, Match};
+use crate::ir::ir_page::IrPage;
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::runtime::eval_error::EvalError;
 /// The most function frames that may be active at once. A call that would
@@ -32,37 +33,28 @@ type Names = HashMap<VarId, Value>;
 /// arm or a loop removes its binders when it ends.
 type Binders = HashMap<BinderId, Value>;
 
+/// Evaluate a page from the entry functions it points at, each called with
+/// the arguments named by the page's parameters. With a shell, the page
+/// renders as a whole document, the shell around its head and its body.
 pub fn evaluate_page(
     module: &FlatModule,
+    pages: &[IrPage],
     page_name: &TypeName,
-    mut args: HashMap<AttributeName, Value>,
+    args: HashMap<AttributeName, Value>,
     shell: Option<&DocumentShell>,
 ) -> Result<String, EvalError> {
-    let page = module
-        .pages
+    let page = pages
         .iter()
         .find(|page| &page.name == page_name)
         .ok_or_else(|| EvalError::PageNotFound {
             page: page_name.clone(),
         })?;
 
-    let mut values = Vec::with_capacity(page.parameters.len());
-    for param in &page.parameters {
-        if let Some(value) = args.remove(param.name()) {
-            values.push(value);
-        } else {
-            return Err(EvalError::MissingParameter {
-                page: page.name.clone(),
-                param: param.name().clone(),
-            });
-        }
-    }
-
     let head = match &page.head {
-        Some(head) => evaluate_function(&module.functions, head, values.clone(), 0)?.unwrap_html(),
+        Some(head) => evaluate_entry(module, head, args.clone())?.unwrap_html(),
         None => Vec::new(),
     };
-    let body = evaluate_function(&module.functions, &page.body, values, 0)?.unwrap_html();
+    let body = evaluate_entry(module, &page.body, args)?.unwrap_html();
 
     let mut html = String::new();
     match shell {
@@ -79,6 +71,33 @@ pub fn evaluate_page(
         }
     }
     Ok(html)
+}
+
+/// Evaluate a function called from outside the module, on the arguments
+/// named by its parameters.
+pub fn evaluate_entry(
+    module: &FlatModule,
+    function: &IrFunction,
+    mut args: HashMap<AttributeName, Value>,
+) -> Result<Value, EvalError> {
+    let decl = module
+        .functions
+        .iter()
+        .find(|decl| decl.function.id == function.id)
+        .ok_or_else(|| EvalError::FunctionNotFound {
+            function: function.clone(),
+        })?;
+    let mut values = Vec::with_capacity(decl.parameters.len());
+    for param in &decl.parameters {
+        let value = args
+            .remove(param.name())
+            .ok_or_else(|| EvalError::MissingParameter {
+                function: function.clone(),
+                param: param.name().clone(),
+            })?;
+        values.push(value);
+    }
+    evaluate_function(&module.functions, function, values, 0)
 }
 
 /// Evaluate a function on its arguments, one for each parameter in the
@@ -430,10 +449,9 @@ mod tests {
     use super::*;
     use crate::ir::pure_module::PureModule;
     use crate::ir::pure_module_builder::PureModuleBuilder;
-    use crate::ir::pure_module_generator::random_module;
+    use crate::ir::pure_module_generator::{random_entry_args, random_module};
     use crate::ir::pure_to_flat::pure_to_flat;
     use crate::ir::runtime::pure_evaluator;
-    use crate::ir::runtime::random::random_value;
     use crate::symbols::field_name::FieldName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
@@ -444,49 +462,34 @@ mod tests {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
 
-            let page_args: Vec<(TypeName, HashMap<AttributeName, Value>)> = module
-                .pages
-                .iter()
-                .map(|page| {
-                    let args = page
-                        .parameters
-                        .iter()
-                        .map(|p| {
-                            (
-                                p.name().clone(),
-                                random_value(&mut rng, &p.typ, None, &registry),
-                            )
-                        })
-                        .collect();
-                    (page.name.clone(), args)
-                })
-                .collect();
+            let entry_args = random_entry_args(&module, &mut rng, &registry);
 
             let before_module = module.to_string();
-            let before: Vec<Result<String, EvalError>> = page_args
+            let before: Vec<Result<String, EvalError>> = entry_args
                 .iter()
-                .map(|(page_name, args)| {
-                    pure_evaluator::evaluate_page(&module, page_name, args.clone(), None)
+                .map(|(function, args)| {
+                    pure_evaluator::evaluate_entry(&module, function, args.clone())
+                        .map(Value::into_markup)
                 })
                 .collect();
 
             let module = pure_to_flat(module);
 
-            // Lowering keeps the evaluation order and the call depth, so a
-            // page that hits the depth limit in Pure hits it in the Flat IR too.
-            for ((page_name, args), before) in page_args.iter().zip(before) {
-                let after = evaluate_page(&module, page_name, args.clone(), None);
+            // Lowering keeps the evaluation order and the call depth, so an
+            // entry that hits the depth limit in Pure hits it in the Flat IR too.
+            for ((function, args), before) in entry_args.iter().zip(before) {
+                let after = evaluate_entry(&module, function, args.clone()).map(Value::into_markup);
                 match (before, after) {
                     (Ok(before), Ok(after)) => assert_eq!(
                         before, after,
-                        "page {page_name}\n-- pure --\n{before_module}\n-- flat --\n{module}"
+                        "entry {function}\n-- pure --\n{before_module}\n-- flat --\n{module}"
                     ),
                     (
                         Err(EvalError::RecursionLimit { .. }),
                         Err(EvalError::RecursionLimit { .. }),
                     ) => {}
                     (before, after) => panic!(
-                        "page {page_name}: pure {before:?}, flat {after:?}\n-- pure --\n{before_module}\n-- flat --\n{module}"
+                        "entry {function}: pure {before:?}, flat {after:?}\n-- pure --\n{before_module}\n-- flat --\n{module}"
                     ),
                 }
             }
@@ -501,9 +504,16 @@ mod tests {
             .into_iter()
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
-        let page_name = module.pages[0].name.clone();
-        let after =
-            evaluate_page(&module, &page_name, args, None).expect("Evaluation should succeed");
+        let entry = module
+            .functions
+            .iter()
+            .find(|decl| decl.entry)
+            .expect("the module has an entry function")
+            .function
+            .clone();
+        let after = evaluate_entry(&module, &entry, args)
+            .expect("Evaluation should succeed")
+            .into_markup();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}\n"));
     }
 
@@ -511,7 +521,7 @@ mod tests {
     fn should_bind_loop_names_afresh_on_each_iteration() {
         check(
             PureModuleBuilder::new()
-                .page("Items", [("items", "Array[String]")], |t| {
+                .entry("Items", [("items", "Array[String]")], "Html", |t| {
                     t.element(
                         "ul",
                         vec![],
@@ -530,7 +540,7 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                fn body@f0(items@b0: Array[String]) -> Html {
+                entry fn Items@f0(items@b0: Array[String]) -> Html {
                   let v0: Array[String] = b0
                   let v5: Html = for b1: String in v0 {
                     let v1: String = b1
@@ -542,9 +552,6 @@ mod tests {
                   let v6: Html = concat(v5)
                   let v7: Html = html("ul", {}, v6)
                   v7
-                }
-                page Items(items: Array[String]) {
-                  body@f0(items)
                 }
 
                 -- after --
@@ -558,7 +565,7 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .function("diverge", [], "Bool", |t| t.call("diverge", vec![]))
-                .page("Test", [("flag", "Bool")], |t| {
+                .entry("Test", [("flag", "Bool")], "Html", |t| {
                     t.escape(t.bool_match_expr(
                         t.and(t.var("flag"), t.call("diverge", vec![])),
                         t.str("yes"),
@@ -573,7 +580,7 @@ mod tests {
                   let v0: Bool = call diverge@f0()
                   v0
                 }
-                fn body@f1(flag@b0: Bool) -> Html {
+                entry fn Test@f1(flag@b0: Bool) -> Html {
                   let v1: Bool = b0
                   let v3: Bool = match v1 {
                     true => {
@@ -597,9 +604,6 @@ mod tests {
                   let v7: Html = escape(v6)
                   v7
                 }
-                page Test(flag: Bool) {
-                  body@f1(flag)
-                }
 
                 -- after --
                 no
@@ -615,7 +619,7 @@ mod tests {
                     "Shape",
                     [("Dot", vec![]), ("Circle", vec![("radius", "Int")])],
                 )
-                .page("Test", [("shape", "Shape")], |t| {
+                .entry("Test", [("shape", "Shape")], "Html", |t| {
                     t.escape(t.enum_match_expr(t.var("shape"), |arms| {
                         arms.arm("Dot", |t| t.str("dot"));
                         arms.arm_bound("Circle", [("radius", "r")], |t| {
@@ -633,7 +637,7 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                fn body@f0(shape@b0: Shape) -> Html {
+                entry fn Test@f0(shape@b0: Shape) -> Html {
                   let v0: Shape = b0
                   let v4: String = match v0 {
                     Shape::Dot => {
@@ -648,9 +652,6 @@ mod tests {
                   }
                   let v5: Html = escape(v4)
                   v5
-                }
-                page Test(shape: Shape) {
-                  body@f0(shape)
                 }
 
                 -- after --

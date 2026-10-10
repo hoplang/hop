@@ -37,6 +37,14 @@ impl Value {
         }
     }
 
+    /// The markup an Html value renders as. Panics if the value is not Html.
+    #[cfg(test)]
+    pub fn into_markup(self) -> String {
+        let mut markup = String::new();
+        crate::ir::runtime::html_node::write_html(&self.unwrap_html(), &mut markup);
+        markup
+    }
+
     /// Panics if the value is not a Bool.
     pub fn unwrap_bool(self) -> bool {
         match self {
