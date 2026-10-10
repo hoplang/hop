@@ -115,7 +115,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule, FlatPageDeclaration};
+    use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
     use crate::ir::pure_module::PureModule;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
@@ -133,16 +133,7 @@ mod tests {
         FlatModule {
             var_ids: module.var_ids,
             binder_ids: module.binder_ids,
-            pages: module
-                .pages
-                .into_iter()
-                .map(|page| FlatPageDeclaration {
-                    name: page.name,
-                    parameters: page.parameters,
-                    head: page.head.map(eliminate_dead_bindings),
-                    body: eliminate_dead_bindings(page.body),
-                })
-                .collect(),
+            pages: module.pages,
             functions: module
                 .functions
                 .into_iter()
@@ -228,16 +219,22 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: String = "value"
                   let v1: Html = text("Hello")
                   v1
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- after --
-                page Test() {
+                fn body@f0() -> Html {
                   let v1: Html = text("Hello")
                   v1
+                }
+                page Test() {
+                  body@f0()
                 }
             "#]],
         );
@@ -259,33 +256,39 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn f@f0() -> Int {
-                  let v5: Int = call f@f0()
-                  v5
+                  let v0: Int = call f@f0()
+                  v0
                 }
-                page Test(flag@b0: Bool) {
-                  let v0: Bool = b0
-                  let v3: Int = match v0 {
+                fn body@f1(flag@b0: Bool) -> Html {
+                  let v1: Bool = b0
+                  let v4: Int = match v1 {
                     true => {
-                      let v1: Int = call f@f0()
-                      v1
-                    }
-                    false => {
-                      let v2: Int = 0
+                      let v2: Int = call f@f0()
                       v2
                     }
+                    false => {
+                      let v3: Int = 0
+                      v3
+                    }
                   }
-                  let v4: Html = text("Hello")
-                  v4
+                  let v5: Html = text("Hello")
+                  v5
+                }
+                page Test(flag: Bool) {
+                  body@f1(flag)
                 }
 
                 -- after --
                 fn f@f0() -> Int {
-                  let v5: Int = call f@f0()
+                  let v0: Int = call f@f0()
+                  v0
+                }
+                fn body@f1(flag@b0: Bool) -> Html {
+                  let v5: Html = text("Hello")
                   v5
                 }
-                page Test(flag@b0: Bool) {
-                  let v4: Html = text("Hello")
-                  v4
+                page Test(flag: Bool) {
+                  body@f1(flag)
                 }
             "#]],
         );
@@ -301,7 +304,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   let v0: Array[String] = b0
                   let v2: Html = for b1: String in v0 {
                     let v1: Html = text(".")
@@ -309,15 +312,21 @@ mod tests {
                   }
                   v2
                 }
+                page Test(items: Array[String]) {
+                  body@f0(items)
+                }
 
                 -- after --
-                page Test(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   let v0: Array[String] = b0
                   let v2: Html = for _ in v0 {
                     let v1: Html = text(".")
                     v1
                   }
                   v2
+                }
+                page Test(items: Array[String]) {
+                  body@f0(items)
                 }
             "#]],
         );
@@ -338,7 +347,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(name@b0: Option[String]) {
+                fn body@f0(name@b0: Option[String]) -> Html {
                   let v0: Option[String] = b0
                   let v3: Html = match v0 {
                     Some(b1: String) => {
@@ -352,9 +361,12 @@ mod tests {
                   }
                   v3
                 }
+                page Test(name: Option[String]) {
+                  body@f0(name)
+                }
 
                 -- after --
-                page Test(name@b0: Option[String]) {
+                fn body@f0(name@b0: Option[String]) -> Html {
                   let v0: Option[String] = b0
                   let v3: Html = match v0 {
                     Some(_) => {
@@ -367,6 +379,9 @@ mod tests {
                     }
                   }
                   v3
+                }
+                page Test(name: Option[String]) {
+                  body@f0(name)
                 }
             "#]],
         );

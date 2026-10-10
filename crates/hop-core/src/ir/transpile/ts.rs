@@ -3381,11 +3381,11 @@ mod tests {
                   write("<b>hi</b>")
                 }
                 page Test() {
-                  let v0: Html = html {
+                  let v3: Html = html {
                     write_function Frag@f0()
                   }
-                  write_html(v0)
-                  write_html(v0)
+                  write_html(v3)
+                  write_html(v3)
                 }
 
                 -- after --
@@ -3401,13 +3401,13 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0: Html = (() => {
+                    const v_3: Html = (() => {
                         let output: string = "";
                         output += renderFrag_0();
                         return output as Html;
                     })();
-                    output += v_0;
-                    output += v_0;
+                    output += v_3;
+                    output += v_3;
                     return output;
                 }
             "#]],
@@ -3430,10 +3430,10 @@ mod tests {
                   b0
                 }
                 page Test() {
-                  let v0: Int = 5
-                  let v1: Int = call format_price@f0(v0)
-                  let v2: String = v1.to_string()
-                  write_string(v2)
+                  let v1: Int = 5
+                  let v2: Int = call format_price@f0(v1)
+                  let v3: String = v2.to_string()
+                  write_string(v3)
                 }
 
                 -- after --
@@ -3453,10 +3453,10 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0: number = 5;
-                    const v_1: number = renderFormatPrice_0(v_0);
-                    const v_2: string = v_1.toString();
-                    output += escapeHtml(v_2);
+                    const v_1: number = 5;
+                    const v_2: number = renderFormatPrice_0(v_1);
+                    const v_3: string = v_2.toString();
+                    output += escapeHtml(v_3);
                     return output;
                 }
             "#]],
@@ -3493,24 +3493,24 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn foo@f0(x@b0: Int) -> Int {
-                  let v16: Int = 10
-                  let v17: Int = b0 + v16
-                  v17
+                  let v1: Int = 10
+                  let v2: Int = b0 + v1
+                  v2
                 }
                 page Test() {
-                  let v0: Int = 0
-                  let v1: Int = -7
-                  let v2: Int = call foo@f0(v1)
-                  let v9: Int = 10
-                  let v10: Int = call foo@f0(v9)
-                  let v11: String = v10.to_string()
+                  let v3: Int = 0
+                  let v4: Int = -7
+                  let v5: Int = call foo@f0(v4)
+                  let v12: Int = 10
+                  let v13: Int = call foo@f0(v12)
+                  let v14: String = v13.to_string()
                   write("<div>")
-                  for b1: Int in v0..=v2 {
-                    let v4: String = b1.to_string()
-                    write_string(v4)
+                  for b1: Int in v3..=v5 {
+                    let v7: String = b1.to_string()
+                    write_string(v7)
                     write(",")
                   }
-                  write_string(v11)
+                  write_string(v14)
                   write("</div>")
                 }
 
@@ -3526,26 +3526,26 @@ mod tests {
                 }
 
                 function renderFoo_0(b_0: number): number {
-                    const v_16: number = 10;
-                    const v_17: number = (b_0 + v_16) | 0;
-                    return v_17;
+                    const v_1: number = 10;
+                    const v_2: number = (b_0 + v_1) | 0;
+                    return v_2;
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0: number = 0;
-                    const v_1: number = -7;
-                    const v_2: number = renderFoo_0(v_1);
-                    const v_9: number = 10;
-                    const v_10: number = renderFoo_0(v_9);
-                    const v_11: string = v_10.toString();
+                    const v_3: number = 0;
+                    const v_4: number = -7;
+                    const v_5: number = renderFoo_0(v_4);
+                    const v_12: number = 10;
+                    const v_13: number = renderFoo_0(v_12);
+                    const v_14: string = v_13.toString();
                     output += "<div>";
-                    for (let b_1 = v_0; b_1 <= v_2; b_1++) {
-                        const v_4: string = b_1.toString();
-                        output += escapeHtml(v_4);
+                    for (let b_1 = v_3; b_1 <= v_5; b_1++) {
+                        const v_7: string = b_1.toString();
+                        output += escapeHtml(v_7);
                         output += ",";
                     }
-                    output += escapeHtml(v_11);
+                    output += escapeHtml(v_14);
                     output += "</div>";
                     return output;
                 }
@@ -3569,8 +3569,8 @@ mod tests {
                   write("\"></button>")
                 }
                 page Test() {
-                  let v0: String = "1"
-                  write_function Button@f0(v0)
+                  let v3: String = "1"
+                  write_function Button@f0(v3)
                 }
 
                 -- after --
@@ -3594,8 +3594,8 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0: string = "1";
-                    output += renderButton_0(v_0);
+                    const v_3: string = "1";
+                    output += renderButton_0(v_3);
                     return output;
                 }
             "#]],

@@ -16,7 +16,7 @@ use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
-use super::ir_parameter::IrParameter;
+use super::ir_parameter::{IrParameter, PageParameter};
 
 /// A Flat module.
 ///
@@ -41,11 +41,9 @@ pub struct FlatModule {
 #[derive(Debug)]
 pub struct FlatPageDeclaration {
     pub name: TypeName,
-    pub parameters: Vec<IrParameter>,
-    /// Must produce Html, if present.
-    pub head: Option<FlatBlock>,
-    /// Must produce Html.
-    pub body: FlatBlock,
+    pub parameters: Vec<PageParameter>,
+    pub head: Option<IrFunction>,
+    pub body: IrFunction,
 }
 
 /// A function declaration in the Flat IR.
@@ -529,35 +527,25 @@ impl FlatPageDeclaration {
         let parameters = self
             .parameters
             .iter()
-            .map(|param| format!("{}@{}: {}", param.name.as_str(), param.var, param.typ))
+            .map(|param| format!("{}: {}", param.name.as_str(), param.typ))
             .collect::<Vec<_>>()
             .join(", ");
-        let header = BoxDoc::text(format!("page {}({parameters}) {{", self.name.as_str()));
-        // A page with only a body prints the body alone. One with a head
-        // prints both as the members they were declared as.
-        let Some(head) = &self.head else {
-            return header
-                .append(BoxDoc::line().append(self.body.to_doc()).nest(2))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("}"));
-        };
-        let head = BoxDoc::text("fn head() -> Html {")
-            .append(BoxDoc::line().append(head.to_doc()).nest(2))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"));
-        let body = BoxDoc::text("fn body() -> Html {")
-            .append(BoxDoc::line().append(self.body.to_doc()).nest(2))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"));
-        header
-            .append(
-                BoxDoc::line()
-                    .append(head)
-                    .append(BoxDoc::line())
-                    .append(body)
-                    .nest(2),
-            )
-            .append(BoxDoc::line())
+        let arguments = self
+            .parameters
+            .iter()
+            .map(|param| param.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        // The calls the page renders by, each passing the page's arguments.
+        let mut calls = BoxDoc::nil();
+        for function in self.head.iter().chain([&self.body]) {
+            calls = calls
+                .append(BoxDoc::hardline())
+                .append(BoxDoc::text(format!("{function}({arguments})")));
+        }
+        BoxDoc::text(format!("page {}({parameters}) {{", self.name.as_str()))
+            .append(calls.nest(2))
+            .append(BoxDoc::hardline())
             .append(BoxDoc::text("}"))
     }
 }

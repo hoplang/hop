@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::hop::typing::Type;
 use crate::html::write_escaped_html;
@@ -6,14 +6,17 @@ use crate::ir::binder_id::BinderId;
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::flat_module::{
     FlatAttribute, FlatBinding, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule,
-    FlatOp, FlatPageDeclaration,
+    FlatOp,
 };
+use crate::ir::function_id::FunctionId;
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, Match};
 use crate::ir::var_id::VarId;
 use crate::ir::writer_module::{
     WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
     WriterName, WriterOp, WriterPageDeclaration, WriterStmt, WriterValueBlock,
 };
+use crate::symbols::type_name::TypeName;
 
 /// Lower a Flat module to the Writer.
 ///
@@ -27,42 +30,122 @@ use crate::ir::writer_module::{
 /// constant presence settles whether its attribute renders, when the
 /// constant has no other reader.
 ///
-/// With a shell, a page writes a whole document, the shell around its head
-/// and its body. Without one, a page writes its head and its body alone.
+/// The functions a page points at are only ever called by the page, so
+/// they are not lowered as functions but written into the page. With a
+/// shell, a page writes a whole document, the shell around its head and
+/// its body. Without one, a page writes its head and its body alone.
 pub fn flat_to_writer(module: FlatModule, shell: Option<&DocumentShell>) -> WriterModule {
+    let page_functions: HashSet<FunctionId> = module
+        .pages
+        .iter()
+        .flat_map(|page| page.head.iter().chain([&page.body]))
+        .map(|function| function.id)
+        .collect();
+    let (page_functions, functions): (Vec<_>, Vec<_>) = module
+        .functions
+        .into_iter()
+        .partition(|decl| page_functions.contains(&decl.function.id));
+    let mut page_functions: HashMap<FunctionId, FlatFunctionDeclaration> = page_functions
+        .into_iter()
+        .map(|decl| (decl.function.id, decl))
+        .collect();
+    let pages = module
+        .pages
+        .into_iter()
+        .map(|page| {
+            let mut take = |function: &IrFunction| {
+                page_functions
+                    .remove(&function.id)
+                    .expect("each page points at functions of its own")
+            };
+            let head = page.head.as_ref().map(&mut take);
+            let body = take(&page.body);
+            lower_page(page.name, head, body, shell)
+        })
+        .collect();
     WriterModule {
-        pages: module
-            .pages
-            .into_iter()
-            .map(|page| lower_page(page, shell))
-            .collect(),
-        functions: module.functions.into_iter().map(lower_function).collect(),
+        pages,
+        functions: functions.into_iter().map(lower_function).collect(),
     }
 }
 
-fn lower_page(decl: FlatPageDeclaration, shell: Option<&DocumentShell>) -> WriterPageDeclaration {
-    let mut body = Vec::new();
+/// Lower a page from the functions it points at. The page takes the body's
+/// parameters, and the head reads them in place of its own.
+fn lower_page(
+    name: TypeName,
+    head: Option<FlatFunctionDeclaration>,
+    body: FlatFunctionDeclaration,
+    shell: Option<&DocumentShell>,
+) -> WriterPageDeclaration {
+    let head = head.map(|head| {
+        let binders: HashMap<BinderId, BinderId> = head
+            .parameters
+            .iter()
+            .zip(&body.parameters)
+            .map(|(from, to)| (from.var, to.var))
+            .collect();
+        let mut block = head.body;
+        rename_binders(&mut block, &binders);
+        block
+    });
+    let mut statements = Vec::new();
     match shell {
         Some(shell) => {
-            body.push(WriterStmt::Write(shell.before_head.to_string()));
-            if let Some(head) = decl.head {
-                lower_body(head, &mut body);
+            statements.push(WriterStmt::Write(shell.before_head.to_string()));
+            if let Some(head) = head {
+                lower_body(head, &mut statements);
             }
-            body.push(WriterStmt::Write(shell.after_head.clone()));
-            lower_body(decl.body, &mut body);
-            body.push(WriterStmt::Write(shell.after_body.to_string()));
+            statements.push(WriterStmt::Write(shell.after_head.clone()));
+            lower_body(body.body, &mut statements);
+            statements.push(WriterStmt::Write(shell.after_body.to_string()));
         }
         None => {
-            if let Some(head) = decl.head {
-                lower_body(head, &mut body);
+            if let Some(head) = head {
+                lower_body(head, &mut statements);
             }
-            lower_body(decl.body, &mut body);
+            lower_body(body.body, &mut statements);
         }
     }
     WriterPageDeclaration {
-        name: decl.name,
-        parameters: decl.parameters,
-        body,
+        name,
+        parameters: body.parameters,
+        body: statements,
+    }
+}
+
+/// Make every Read of a binder in `binders` read the binder it maps to.
+fn rename_binders(block: &mut FlatBlock, binders: &HashMap<BinderId, BinderId>) {
+    for binding in &mut block.bindings {
+        match &mut binding.op {
+            FlatOp::Read(binder) => {
+                if let Some(to) = binders.get(binder) {
+                    *binder = *to;
+                }
+            }
+            FlatOp::Match(Match::Bool {
+                true_body,
+                false_body,
+                ..
+            }) => {
+                rename_binders(true_body, binders);
+                rename_binders(false_body, binders);
+            }
+            FlatOp::Match(Match::Option {
+                some_arm_body,
+                none_arm_body,
+                ..
+            }) => {
+                rename_binders(some_arm_body, binders);
+                rename_binders(none_arm_body, binders);
+            }
+            FlatOp::Match(Match::Enum { arms, .. }) => {
+                for arm in arms {
+                    rename_binders(&mut arm.body, binders);
+                }
+            }
+            FlatOp::HtmlFor { body, .. } => rename_binders(body, binders),
+            _ => {}
+        }
     }
 }
 
@@ -948,15 +1031,21 @@ mod tests {
             Some(&DocumentShell::new(None, Some("/scripts-deadbeef.js"))),
             expect![[r#"
                 -- pure --
-                page Main() {
+                fn body@f0() -> Html {
                   html("p", {}, concat(text("Hello")))
+                }
+                page Main() {
+                  body@f0()
                 }
 
                 -- flat --
-                page Main() {
+                fn body@f0() -> Html {
                   let v0: Html = text("Hello")
                   let v2: Html = html("p", {}, v0)
                   v2
+                }
+                page Main() {
+                  body@f0()
                 }
 
                 -- writer --
@@ -964,6 +1053,67 @@ mod tests {
                   write("<!doctype html><html><head><meta charset=\"utf-8\"><meta content=\"width=device-width, initial-scale=1\" name=\"viewport\">")
                   write("<script type=\"module\" src=\"/scripts-deadbeef.js\"></script></head><body>")
                   write("<p>Hello</p>")
+                  write("</body></html>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn writes_the_head_into_the_shell_reading_the_parameters_of_the_page() {
+        check(
+            || {
+                PureModuleBuilder::new()
+                    .freeze()
+                    .page_with_head(
+                        "Main",
+                        [("title", "String")],
+                        |t| t.element("title", vec![], vec![t.escape(t.var("title"))]),
+                        |t| t.element("h1", vec![], vec![t.escape(t.var("title"))]),
+                    )
+                    .build()
+            },
+            Some(&DocumentShell::new(None, None)),
+            expect![[r#"
+                -- pure --
+                fn head@f0(title@b0: String) -> Html {
+                  html("title", {}, concat(escape(b0)))
+                }
+                fn body@f1(title@b1: String) -> Html {
+                  html("h1", {}, concat(escape(b1)))
+                }
+                page Main(title: String) {
+                  head@f0(title)
+                  body@f1(title)
+                }
+
+                -- flat --
+                fn head@f0(title@b0: String) -> Html {
+                  let v0: String = b0
+                  let v1: Html = escape(v0)
+                  let v3: Html = html("title", {}, v1)
+                  v3
+                }
+                fn body@f1(title@b1: String) -> Html {
+                  let v4: String = b1
+                  let v5: Html = escape(v4)
+                  let v7: Html = html("h1", {}, v5)
+                  v7
+                }
+                page Main(title: String) {
+                  head@f0(title)
+                  body@f1(title)
+                }
+
+                -- writer --
+                page Main(title@b1: String) {
+                  write("<!doctype html><html><head><meta charset=\"utf-8\"><meta content=\"width=device-width, initial-scale=1\" name=\"viewport\">")
+                  write("<title>")
+                  write_string(b1)
+                  write("</title>")
+                  write("</head><body><h1>")
+                  write_string(b1)
+                  write("</h1>")
                   write("</body></html>")
                 }
             "#]],
@@ -987,21 +1137,27 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test() {
+                fn body@f0() -> Html {
                   html(
                     "div",
                     {class: "base", id: "a<b"},
                     concat(text("Content")),
                   )
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- flat --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: String = "base"
                   let v1: String = "a<b"
                   let v2: Html = text("Content")
                   let v4: Html = html("div", {class: v0, id: v1}, v2)
                   v4
+                }
+                page Test() {
+                  body@f0()
                 }
 
                 -- writer --
@@ -1025,16 +1181,22 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(cls@b0: String) {
+                fn body@f0(cls@b0: String) -> Html {
                   html("div", {data-value: b0}, concat())
+                }
+                page Test(cls: String) {
+                  body@f0(cls)
                 }
 
                 -- flat --
-                page Test(cls@b0: String) {
+                fn body@f0(cls@b0: String) -> Html {
                   let v0: String = b0
                   let v1: Html = concat()
                   let v2: Html = html("div", {data-value: v0}, v1)
                   v2
+                }
+                page Test(cls: String) {
+                  body@f0(cls)
                 }
 
                 -- writer --
@@ -1068,21 +1230,27 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(flag@b0: Bool) {
+                fn body@f0(flag@b0: Bool) -> Html {
                   html(
                     "input",
                     {disabled: true, hidden: false, checked: b0},
                   )
                 }
+                page Test(flag: Bool) {
+                  body@f0(flag)
+                }
 
                 -- flat --
-                page Test(flag@b0: Bool) {
+                fn body@f0(flag@b0: Bool) -> Html {
                   let v0: Bool = true
                   let v1: Bool = false
                   let v2: Bool = b0
                   let v3: Html = concat()
                   let v4: Html = html("input", {disabled: v0, hidden: v1, checked: v2}, v3)
                   v4
+                }
+                page Test(flag: Bool) {
+                  body@f0(flag)
                 }
 
                 -- writer --
@@ -1118,17 +1286,23 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(name@b0: String) {
+                fn body@f0(name@b0: String) -> Html {
                   html("div", {}, concat(html("p", {}, concat(escape(b0)))))
+                }
+                page Test(name: String) {
+                  body@f0(name)
                 }
 
                 -- flat --
-                page Test(name@b0: String) {
+                fn body@f0(name@b0: String) -> Html {
                   let v0: String = b0
                   let v1: Html = escape(v0)
                   let v3: Html = html("p", {}, v1)
                   let v5: Html = html("div", {}, v3)
                   v5
+                }
+                page Test(name: String) {
+                  body@f0(name)
                 }
 
                 -- writer --
@@ -1154,18 +1328,24 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(name@b0: String) {
+                fn body@f0(name@b0: String) -> Html {
                   escape(concat("a<", b0, ">b"))
+                }
+                page Test(name: String) {
+                  body@f0(name)
                 }
 
                 -- flat --
-                page Test(name@b0: String) {
+                fn body@f0(name@b0: String) -> Html {
                   let v0: String = "a<"
                   let v1: String = b0
                   let v2: String = ">b"
                   let v3: String = concat(v0, v1, v2)
                   let v4: Html = escape(v3)
                   v4
+                }
+                page Test(name: String) {
+                  body@f0(name)
                 }
 
                 -- writer --
@@ -1196,7 +1376,7 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test() {
+                fn body@f0() -> Html {
                   concat(
                     text("aaaaaaaaaaaaaaaaaaaaaaaaa"),
                     text("bbbbbbbbbbbbbbbbbbbbbbbbb"),
@@ -1204,15 +1384,21 @@ mod tests {
                     text("ddddddddddddddddddddddddd"),
                   )
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- flat --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: Html = text("aaaaaaaaaaaaaaaaaaaaaaaaa")
                   let v1: Html = text("bbbbbbbbbbbbbbbbbbbbbbbbb")
                   let v2: Html = text("ccccccccccccccccccccccccc")
                   let v3: Html = text("ddddddddddddddddddddddddd")
                   let v4: Html = concat(v0, v1, v2, v3)
                   v4
+                }
+                page Test() {
+                  body@f0()
                 }
 
                 -- writer --
@@ -1243,7 +1429,7 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   concat(
                     text("before "),
                     for b1: String in b0 {
@@ -1252,9 +1438,12 @@ mod tests {
                     text(" after"),
                   )
                 }
+                page Test(items: Array[String]) {
+                  body@f0(items)
+                }
 
                 -- flat --
-                page Test(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   let v0: Html = text("before ")
                   let v1: Array[String] = b0
                   let v6: Html = for b1: String in v1 {
@@ -1266,6 +1455,9 @@ mod tests {
                   let v7: Html = text(" after")
                   let v8: Html = concat(v0, v6, v7)
                   v8
+                }
+                page Test(items: Array[String]) {
+                  body@f0(items)
                 }
 
                 -- writer --
@@ -1297,18 +1489,24 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test() {
+                fn body@f0() -> Html {
                   let b0: Html = html("b", {}, concat(text("hi"))) in {
                     concat(b0, b0)
                   }
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- flat --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: Html = text("hi")
                   let v2: Html = html("b", {}, v0)
                   let v3: Html = concat(v2, v2)
                   v3
+                }
+                page Test() {
+                  body@f0()
                 }
 
                 -- writer --
@@ -1338,14 +1536,17 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   let b1: Html = html("b", {}, concat(text("hi"))) in {
                     for _ in b0 { b1 }
                   }
                 }
+                page Test(items: Array[String]) {
+                  body@f0(items)
+                }
 
                 -- flat --
-                page Test(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   let v0: Html = text("hi")
                   let v2: Html = html("b", {}, v0)
                   let v3: Array[String] = b0
@@ -1353,6 +1554,9 @@ mod tests {
                     v2
                   }
                   v4
+                }
+                page Test(items: Array[String]) {
+                  body@f0(items)
                 }
 
                 -- writer --
@@ -1390,16 +1594,22 @@ mod tests {
                 fn wrap@f0(inner@b0: Html) -> Html {
                   html("div", {}, concat(b0))
                 }
-                page Test() {
+                fn body@f1() -> Html {
                   call wrap@f0(html("b", {}, concat(text("hi"))))
+                }
+                page Test() {
+                  body@f1()
                 }
 
                 -- flat --
-                page Test() {
-                  let v0: Html = text("hi")
-                  let v2: Html = html("b", {}, v0)
-                  let v8: Html = html("div", {}, v2)
+                fn body@f1() -> Html {
+                  let v3: Html = text("hi")
+                  let v5: Html = html("b", {}, v3)
+                  let v8: Html = html("div", {}, v5)
                   v8
+                }
+                page Test() {
+                  body@f1()
                 }
 
                 -- writer --
@@ -1431,15 +1641,21 @@ mod tests {
                 fn square_next@f0(x@b0: Int) -> Int {
                   let b1: Int = (b0 + 1) in { (b1 * b1) }
                 }
-                page Test() {
+                fn body@f1() -> Html {
                   escape(call square_next@f0(2).to_string())
+                }
+                page Test() {
+                  body@f1()
                 }
 
                 -- flat --
+                fn body@f1() -> Html {
+                  let v6: String = "9"
+                  let v7: Html = escape(v6)
+                  v7
+                }
                 page Test() {
-                  let v2: String = "9"
-                  let v3: Html = escape(v2)
-                  v3
+                  body@f1()
                 }
 
                 -- writer --
@@ -1474,7 +1690,7 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(flag@b0: Bool) {
+                fn body@f0(flag@b0: Bool) -> Html {
                   let b1: Card = Card {
                     body: match b0 {
                       true => {
@@ -1488,9 +1704,12 @@ mod tests {
                     b1.body
                   }
                 }
+                page Test(flag: Bool) {
+                  body@f0(flag)
+                }
 
                 -- flat --
-                page Test(flag@b0: Bool) {
+                fn body@f0(flag@b0: Bool) -> Html {
                   let v0: Bool = b0
                   let v3: Html = match v0 {
                     true => {
@@ -1503,6 +1722,9 @@ mod tests {
                     }
                   }
                   v3
+                }
+                page Test(flag: Bool) {
+                  body@f0(flag)
                 }
 
                 -- writer --
@@ -1537,7 +1759,7 @@ mod tests {
             None,
             expect![[r#"
                 -- pure --
-                page Test(flag@b0: Bool, n@b1: Int) {
+                fn body@f0(flag@b0: Bool, n@b1: Int) -> Html {
                   escape(match b0 {
                     true => {
                       (b1 + 1)
@@ -1547,9 +1769,12 @@ mod tests {
                     }
                   }.to_string())
                 }
+                page Test(flag: Bool, n: Int) {
+                  body@f0(flag, n)
+                }
 
                 -- flat --
-                page Test(flag@b0: Bool, n@b1: Int) {
+                fn body@f0(flag@b0: Bool, n@b1: Int) -> Html {
                   let v0: Bool = b0
                   let v5: Int = match v0 {
                     true => {
@@ -1566,6 +1791,9 @@ mod tests {
                   let v6: String = v5.to_string()
                   let v7: Html = escape(v6)
                   v7
+                }
+                page Test(flag: Bool, n: Int) {
+                  body@f0(flag, n)
                 }
 
                 -- writer --

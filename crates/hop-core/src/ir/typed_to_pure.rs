@@ -4,7 +4,7 @@ use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
 use crate::hop::typing::{
     CaseVar, Decision, Type, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
-    TypedPageDeclaration, TypedPattern, TypedRecordUpdateField,
+    TypedPageDeclaration, TypedParameter, TypedPattern, TypedRecordUpdateField,
 };
 use crate::ir::binder_id::BinderId;
 use crate::ir::binder_id::BinderIdCounter;
@@ -18,10 +18,11 @@ use crate::ir::pure_module::PureForSource;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
+use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
-use super::ir_parameter::IrParameter;
+use super::ir_parameter::{IrParameter, PageParameter};
 use super::pure_module::{
     PureAttribute, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
@@ -53,7 +54,7 @@ pub fn typed_to_pure(
 
     let mut compiler = Compiler::new(&mut binder_ids, &mut function_ids, asset_path_rewriter);
 
-    let pages = pages
+    let pages: Vec<CompiledPage> = pages
         .into_iter()
         .map(|page| compiler.compile_page_decl(page))
         .collect();
@@ -69,7 +70,15 @@ pub fn typed_to_pure(
         next += 1;
     }
     functions.sort_by_key(|(index, _)| *index);
-    let functions = functions.into_iter().map(|(_, decl)| decl).collect();
+    let mut functions: Vec<PureFunctionDeclaration> =
+        functions.into_iter().map(|(_, decl)| decl).collect();
+
+    // The functions of the pages come last, numbered after every function
+    // a page reaches.
+    let pages = pages
+        .into_iter()
+        .map(|page| page.declare(&mut function_ids, &mut functions))
+        .collect();
 
     PureModule {
         pages,
@@ -88,6 +97,45 @@ struct Specialization {
     /// from the rest of the calling function.
     shape: Vec<(AttributeName, Type)>,
     function: IrFunction,
+}
+
+/// A page whose head and body are compiled but not yet declared as
+/// functions: the parameters and the body of each.
+struct CompiledPage {
+    name: TypeName,
+    parameters: Vec<PageParameter>,
+    head: Option<(Vec<IrParameter>, PureExpr)>,
+    body: (Vec<IrParameter>, PureExpr),
+}
+
+impl CompiledPage {
+    /// Declare the head and the body as functions, appended to `functions`,
+    /// and point the page at them.
+    fn declare(
+        self,
+        function_ids: &mut FunctionIdCounter,
+        functions: &mut Vec<PureFunctionDeclaration>,
+    ) -> PurePageDeclaration {
+        let mut declare = |function: IrFunction, (parameters, body)| {
+            functions.push(PureFunctionDeclaration {
+                function: function.clone(),
+                parameters,
+                return_type: Type::Html,
+                body,
+            });
+            function
+        };
+        let head = self
+            .head
+            .map(|head| declare(IrFunction::page_head(function_ids.next()), head));
+        let body = declare(IrFunction::page_body(function_ids.next()), self.body);
+        PurePageDeclaration {
+            name: self.name,
+            parameters: self.parameters,
+            head,
+            body,
+        }
+    }
 }
 
 struct Compiler<'a> {
@@ -164,26 +212,45 @@ impl<'a> Compiler<'a> {
         declaration
     }
 
-    fn compile_page_decl(&mut self, page: TypedPageDeclaration) -> PurePageDeclaration {
-        self.push_scope();
-
-        let mut parameters = Vec::with_capacity(page.params.len());
-        for param in page.params {
-            parameters.push(IrParameter {
-                var: self.bind(&param.var_name),
-                name: param.var_name.into(),
-                typ: param.var_type,
-            });
-        }
-
-        let declaration = PurePageDeclaration {
+    fn compile_page_decl(&mut self, page: TypedPageDeclaration) -> CompiledPage {
+        let parameters = page
+            .params
+            .iter()
+            .map(|param| PageParameter {
+                name: param.var_name.clone().into(),
+                typ: param.var_type.clone(),
+            })
+            .collect();
+        CompiledPage {
             name: page.name,
             parameters,
-            head: page.head.as_ref().map(|head| self.compile_expr(head)),
-            body: self.compile_expr(&page.body),
-        };
+            head: page
+                .head
+                .as_ref()
+                .map(|head| self.compile_page_member(&page.params, head)),
+            body: self.compile_page_member(&page.params, &page.body),
+        }
+    }
+
+    /// Compile the head or the body of a page as the body of a function
+    /// that declares the page's parameters, each with a binder of its own.
+    fn compile_page_member(
+        &mut self,
+        params: &[TypedParameter],
+        expr: &TypedExpr,
+    ) -> (Vec<IrParameter>, PureExpr) {
+        self.push_scope();
+        let parameters = params
+            .iter()
+            .map(|param| IrParameter {
+                var: self.bind(&param.var_name),
+                name: param.var_name.clone().into(),
+                typ: param.var_type.clone(),
+            })
+            .collect();
+        let body = self.compile_expr(expr);
         self.pop_scope();
-        declaration
+        (parameters, body)
     }
 
     fn next_binder_id(&mut self) -> BinderId {
@@ -953,7 +1020,14 @@ mod tests {
         let mut function_ids = FunctionIdCounter::new();
         let compiled_page =
             Compiler::new(&mut binder_ids, &mut function_ids, None).compile_page_decl(page);
-        let after = compiled_page.to_string();
+        let mut functions = Vec::new();
+        let page = compiled_page.declare(&mut function_ids, &mut functions);
+        let after = PureModule {
+            pages: vec![page],
+            functions,
+            binder_ids,
+        }
+        .to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -997,13 +1071,15 @@ mod tests {
                 }
 
                 -- after --
+                fn head@f0() -> Html {
+                  concat(html("title", {}, concat(text("Hi"))))
+                }
+                fn body@f1() -> Html {
+                  concat(text("Hello World"))
+                }
                 page MainComp() {
-                  fn head() -> Html {
-                    concat(html("title", {}, concat(text("Hi"))))
-                  }
-                  fn body() -> Html {
-                    concat(text("Hello World"))
-                  }
+                  head@f0()
+                  body@f1()
                 }
             "#]],
         );
@@ -1024,8 +1100,11 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp() {
+                fn body@f0() -> Html {
                   concat(text("Hello World"))
+                }
+                page MainComp() {
+                  body@f0()
                 }
             "#]],
         );
@@ -1047,8 +1126,11 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(name@b0: String) {
+                fn body@f0(name@b0: String) -> Html {
                   concat(text("Hello "), escape(b0))
+                }
+                page MainComp(name: String) {
+                  body@f0(name)
                 }
             "#]],
         );
@@ -1077,8 +1159,11 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp() {
+                fn body@f0() -> Html {
                   concat(html("div", {}, concat(text("Content"))))
+                }
+                page MainComp() {
+                  body@f0()
                 }
             "#]],
         );
@@ -1114,7 +1199,7 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(show@b0: Bool) {
+                fn body@f0(show@b0: Bool) -> Html {
                   concat(
                     let b1: Bool = b0 in {
                       match b1 {
@@ -1127,6 +1212,9 @@ mod tests {
                       }
                     },
                   )
+                }
+                page MainComp(show: Bool) {
+                  body@f0(show)
                 }
             "#]],
         );
@@ -1173,7 +1261,7 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   concat(
                     html(
                       "ul",
@@ -1185,6 +1273,9 @@ mod tests {
                       ),
                     ),
                   )
+                }
+                page MainComp(items: Array[String]) {
+                  body@f0(items)
                 }
             "#]],
         );
@@ -1219,7 +1310,7 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp() {
+                fn body@f0() -> Html {
                   concat(
                     html(
                       "div",
@@ -1227,6 +1318,9 @@ mod tests {
                       concat(text("Content")),
                     ),
                   )
+                }
+                page MainComp() {
+                  body@f0()
                 }
             "#]],
         );
@@ -1264,7 +1358,7 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(cls@b0: String) {
+                fn body@f0(cls@b0: String) -> Html {
                   concat(
                     html(
                       "div",
@@ -1272,6 +1366,9 @@ mod tests {
                       concat(text("Content")),
                     ),
                   )
+                }
+                page MainComp(cls: String) {
+                  body@f0(cls)
                 }
             "#]],
         );
@@ -1312,7 +1409,7 @@ mod tests {
                 }
 
                 -- after --
-                page TestComp(name@b0: String, count@b1: String) {
+                fn body@f0(name@b0: String, count@b1: String) -> Html {
                   concat(
                     html(
                       "div",
@@ -1325,6 +1422,9 @@ mod tests {
                       ),
                     ),
                   )
+                }
+                page TestComp(name: String, count: String) {
+                  body@f0(name, count)
                 }
             "#]],
         );
@@ -1358,7 +1458,7 @@ mod tests {
                 }
 
                 -- after --
-                page TestComp(flag@b0: Bool) {
+                fn body@f0(flag@b0: Bool) -> Html {
                   concat(
                     let b1: Bool = b0 in {
                       match b1 {
@@ -1371,6 +1471,9 @@ mod tests {
                       }
                     },
                   )
+                }
+                page TestComp(flag: Bool) {
+                  body@f0(flag)
                 }
             "#]],
         );
@@ -1399,8 +1502,11 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp() {
+                fn body@f0() -> Html {
                   concat(html("script", {}, concat(text("alert(\"hi\")"))))
+                }
+                page MainComp() {
+                  body@f0()
                 }
             "#]],
         );
@@ -1421,8 +1527,11 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp() {
+                fn body@f0() -> Html {
                   concat(html("br", {}))
+                }
+                page MainComp() {
+                  body@f0()
                 }
             "#]],
         );
@@ -1452,12 +1561,15 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(user@b0: User) {
+                fn body@f0(user@b0: User) -> Html {
                   concat(
                     escape(let b1: User = b0 in {
                       User {name: "Jane", age: b1.age}
                     }.name),
                   )
+                }
+                page MainComp(user: User) {
+                  body@f0(user)
                 }
             "#]],
         );
@@ -1489,12 +1601,15 @@ mod tests {
                 }
 
                 -- after --
-                page MainComp(app@b0: App) {
+                fn body@f0(app@b0: App) -> Html {
                   concat(
                     escape(let b1: State = b0.state in {
                       State {query: b1.query, num: 1}
                     }.query),
                   )
+                }
+                page MainComp(app: App) {
+                  body@f0(app)
                 }
             "#]],
         );
@@ -1550,12 +1665,15 @@ mod tests {
                     concat(text("Go")),
                   )
                 }
-                page Test() {
+                fn body@f2() -> Html {
                   concat(
                     call Button@f0("a"),
                     call Button@f1("b", true),
                     call Button@f0("c"),
                   )
+                }
+                page Test() {
+                  body@f2()
                 }
             "#]],
         );
@@ -1595,8 +1713,11 @@ mod tests {
                 fn Panel@f0(title@b0: String, class@b1: String) -> Html {
                   call Card@f1(b0, "panel", b1)
                 }
-                page Test() {
+                fn body@f2() -> Html {
                   call Panel@f0("Hi", "wide")
+                }
+                page Test() {
+                  body@f2()
                 }
             "#]],
         );
@@ -1661,8 +1782,11 @@ mod tests {
                     ),
                   )
                 }
-                page Test() {
+                fn body@f2() -> Html {
                   call Nest@f0(2, "outer")
+                }
+                page Test() {
+                  body@f2()
                 }
             "#]],
         );
@@ -1695,8 +1819,11 @@ mod tests {
                     concat(text("Go")),
                   )
                 }
-                page Test() {
+                fn body@f1() -> Html {
                   call Button@f0("1", "go")
+                }
+                page Test() {
+                  body@f1()
                 }
             "#]],
         );
@@ -1729,8 +1856,11 @@ mod tests {
                 fn Used@f0() -> Html {
                   html("p", {}, concat(text("used")))
                 }
-                page Test() {
+                fn body@f1() -> Html {
                   call Used@f0()
+                }
+                page Test() {
+                  body@f1()
                 }
             "#]],
         );

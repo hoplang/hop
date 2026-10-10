@@ -46,11 +46,10 @@ pub fn evaluate_page(
             page: page_name.clone(),
         })?;
 
-    let mut names = Names::new();
-    let mut binders = Binders::new();
+    let mut values = Vec::with_capacity(page.parameters.len());
     for param in &page.parameters {
         if let Some(value) = args.remove(param.name()) {
-            binders.insert(param.var, value);
+            values.push(value);
         } else {
             return Err(EvalError::MissingParameter {
                 page: page.name.clone(),
@@ -60,13 +59,10 @@ pub fn evaluate_page(
     }
 
     let head = match &page.head {
-        Some(head) => {
-            evaluate_block(head, &mut names, &mut binders, &module.functions, 0)?.unwrap_html()
-        }
+        Some(head) => evaluate_function(&module.functions, head, values.clone(), 0)?.unwrap_html(),
         None => Vec::new(),
     };
-    let body =
-        evaluate_block(&page.body, &mut names, &mut binders, &module.functions, 0)?.unwrap_html();
+    let body = evaluate_function(&module.functions, &page.body, values, 0)?.unwrap_html();
 
     let mut html = String::new();
     match shell {
@@ -534,7 +530,7 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                page Items(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   let v0: Array[String] = b0
                   let v5: Html = for b1: String in v0 {
                     let v1: String = b1
@@ -546,6 +542,9 @@ mod tests {
                   let v6: Html = concat(v5)
                   let v7: Html = html("ul", {}, v6)
                   v7
+                }
+                page Items(items: Array[String]) {
+                  body@f0(items)
                 }
 
                 -- after --
@@ -571,32 +570,35 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn diverge@f0() -> Bool {
-                  let v7: Bool = call diverge@f0()
-                  v7
+                  let v0: Bool = call diverge@f0()
+                  v0
                 }
-                page Test(flag@b0: Bool) {
-                  let v0: Bool = b0
-                  let v2: Bool = match v0 {
+                fn body@f1(flag@b0: Bool) -> Html {
+                  let v1: Bool = b0
+                  let v3: Bool = match v1 {
                     true => {
-                      let v1: Bool = call diverge@f0()
+                      let v2: Bool = call diverge@f0()
+                      v2
+                    }
+                    false => {
                       v1
                     }
-                    false => {
-                      v0
-                    }
                   }
-                  let v5: String = match v2 {
+                  let v6: String = match v3 {
                     true => {
-                      let v3: String = "yes"
-                      v3
-                    }
-                    false => {
-                      let v4: String = "no"
+                      let v4: String = "yes"
                       v4
                     }
+                    false => {
+                      let v5: String = "no"
+                      v5
+                    }
                   }
-                  let v6: Html = escape(v5)
-                  v6
+                  let v7: Html = escape(v6)
+                  v7
+                }
+                page Test(flag: Bool) {
+                  body@f1(flag)
                 }
 
                 -- after --
@@ -631,7 +633,7 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                page Test(shape@b0: Shape) {
+                fn body@f0(shape@b0: Shape) -> Html {
                   let v0: Shape = b0
                   let v4: String = match v0 {
                     Shape::Dot => {
@@ -646,6 +648,9 @@ mod tests {
                   }
                   let v5: Html = escape(v4)
                   v5
+                }
+                page Test(shape: Shape) {
+                  body@f0(shape)
                 }
 
                 -- after --

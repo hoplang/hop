@@ -448,7 +448,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule, FlatPageDeclaration};
+    use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
     use crate::ir::pure_module::PureModule;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
@@ -464,18 +464,6 @@ mod tests {
 
     fn run(module: FlatModule) -> FlatModule {
         let mut var_ids = module.var_ids;
-        let pages = module
-            .pages
-            .into_iter()
-            .map(|page| FlatPageDeclaration {
-                name: page.name,
-                parameters: page.parameters,
-                head: page
-                    .head
-                    .map(|head| perform_partial_evaluation(head, &mut var_ids)),
-                body: perform_partial_evaluation(page.body, &mut var_ids),
-            })
-            .collect();
         let functions = module
             .functions
             .into_iter()
@@ -487,7 +475,7 @@ mod tests {
             })
             .collect();
         FlatModule {
-            pages,
+            pages: module.pages,
             functions,
             var_ids,
             binder_ids: module.binder_ids,
@@ -593,7 +581,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: Bool = true
                   let v1: Bool = !v0
                   let v4: Html = match v1 {
@@ -608,13 +596,19 @@ mod tests {
                   }
                   v4
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- after --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: Bool = true
                   let v1: Bool = false
                   let v3: Html = text("no")
                   v3
+                }
+                page Test() {
+                  body@f0()
                 }
             "#]],
         );
@@ -630,7 +624,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(flag@b0: Bool) {
+                fn body@f0(flag@b0: Bool) -> Html {
                   let v0: Bool = b0
                   let v3: Html = match v0 {
                     true => {
@@ -644,9 +638,12 @@ mod tests {
                   }
                   v3
                 }
+                page Test(flag: Bool) {
+                  body@f0(flag)
+                }
 
                 -- after --
-                page Test(flag@b0: Bool) {
+                fn body@f0(flag@b0: Bool) -> Html {
                   let v0: Bool = b0
                   let v3: Html = match v0 {
                     true => {
@@ -659,6 +656,9 @@ mod tests {
                     }
                   }
                   v3
+                }
+                page Test(flag: Bool) {
+                  body@f0(flag)
                 }
             "#]],
         );
@@ -678,7 +678,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(n@b0: Int) {
+                fn body@f0(n@b0: Int) -> Html {
                   let v0: Int = b0
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
@@ -687,15 +687,21 @@ mod tests {
                   let v5: Html = escape(v4)
                   v5
                 }
+                page Test(n: Int) {
+                  body@f0(n)
+                }
 
                 -- after --
-                page Test(n@b0: Int) {
+                fn body@f0(n@b0: Int) -> Html {
                   let v0: Int = b0
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
                   let v4: String = v0.to_string()
                   let v5: Html = escape(v4)
                   v5
+                }
+                page Test(n: Int) {
+                  body@f0(n)
                 }
             "#]],
         );
@@ -743,7 +749,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(dyn@b0: String) {
+                fn body@f0(dyn@b0: String) -> Html {
                   let v0: String = b0
                   let v1: String = "a"
                   let v2: String = concat(v0, v1)
@@ -754,9 +760,12 @@ mod tests {
                   let v7: Html = escape(v6)
                   v7
                 }
+                page Test(dyn: String) {
+                  body@f0(dyn)
+                }
 
                 -- after --
-                page Test(dyn@b0: String) {
+                fn body@f0(dyn@b0: String) -> Html {
                   let v0: String = b0
                   let v1: String = "a"
                   let v2: String = concat(v0, v1)
@@ -767,6 +776,9 @@ mod tests {
                   let v6: String = concat(v0, v8, v4)
                   let v7: Html = escape(v6)
                   v7
+                }
+                page Test(dyn: String) {
+                  body@f0(dyn)
                 }
             "#]],
         );
@@ -782,7 +794,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test(dyn@b0: String) {
+                fn body@f0(dyn@b0: String) -> Html {
                   let v0: String = ""
                   let v1: String = b0
                   let v2: String = ""
@@ -790,14 +802,20 @@ mod tests {
                   let v4: Html = escape(v3)
                   v4
                 }
+                page Test(dyn: String) {
+                  body@f0(dyn)
+                }
 
                 -- after --
-                page Test(dyn@b0: String) {
+                fn body@f0(dyn@b0: String) -> Html {
                   let v0: String = ""
                   let v1: String = b0
                   let v2: String = ""
                   let v4: Html = escape(v1)
                   v4
+                }
+                page Test(dyn: String) {
+                  body@f0(dyn)
                 }
             "#]],
         );
@@ -813,21 +831,27 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: String = "Hello, "
                   let v1: String = "World"
                   let v2: String = concat(v0, v1)
                   let v3: Html = escape(v2)
                   v3
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- after --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: String = "Hello, "
                   let v1: String = "World"
                   let v4: String = "Hello, World"
                   let v3: Html = escape(v4)
                   v3
+                }
+                page Test() {
+                  body@f0()
                 }
             "#]],
         );
@@ -847,7 +871,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: Html = text("a")
                   let v1: Html = text("b")
                   let v2: Html = text("c")
@@ -857,9 +881,12 @@ mod tests {
                   let v6: Html = concat(v0, v3, v5)
                   v6
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- after --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: Html = text("a")
                   let v1: Html = text("b")
                   let v2: Html = text("c")
@@ -867,6 +894,9 @@ mod tests {
                   let v4: Html = text("d")
                   let v6: Html = concat(v0, v1, v2, v4)
                   v6
+                }
+                page Test() {
+                  body@f0()
                 }
             "#]],
         );
@@ -938,7 +968,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: String = "x"
                   let v1: Option[String] = Some(v0)
                   let v5: Html = match v1 {
@@ -954,13 +984,19 @@ mod tests {
                   }
                   v5
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- after --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: String = "x"
                   let v1: Option[String] = Some(v0)
                   let v3: Html = escape(v0)
                   v3
+                }
+                page Test() {
+                  body@f0()
                 }
             "#]],
         );
@@ -1004,7 +1040,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
                   let v2: Bool = v0 == v1
@@ -1020,14 +1056,20 @@ mod tests {
                   }
                   v5
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- after --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
                   let v2: Bool = true
                   let v3: Html = text("same")
                   v3
+                }
+                page Test() {
+                  body@f0()
                 }
             "#]],
         );

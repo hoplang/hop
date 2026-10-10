@@ -11,7 +11,7 @@ use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
-use crate::ir::ir_parameter::IrParameter;
+use crate::ir::ir_parameter::{IrParameter, PageParameter};
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::pure_module::{
     PureAttribute, PureExpr, PureForSource, PureFunctionDeclaration, PureModule,
@@ -125,9 +125,12 @@ impl<'a> From<PureModuleBuilder> for PureModuleBodiesBuilder<'a> {
 /// return type.
 type FunctionSignature = (IrFunction, Vec<AttributeName>, Type);
 
-enum DeferredDeclaration {
+type BodyFn<'a> = Box<dyn FnOnce(&PureBuilder) -> PureExpr + 'a>;
+
+enum DeferredDeclaration<'a> {
     Page {
         name: TypeName,
+        head_fn: Option<BodyFn<'a>>,
     },
     Function {
         function: IrFunction,
@@ -136,9 +139,9 @@ enum DeferredDeclaration {
 }
 
 struct Deferred<'a> {
-    declaration: DeferredDeclaration,
+    declaration: DeferredDeclaration<'a>,
     parameters: Vec<(AttributeName, Type)>,
-    body_fn: Box<dyn FnOnce(&PureBuilder) -> PureExpr + 'a>,
+    body_fn: BodyFn<'a>,
 }
 
 /// Collects page and function bodies against a frozen set of types.
@@ -158,7 +161,7 @@ impl<'a> PureModuleBodiesBuilder<'a> {
     }
 
     pub fn page<'p, F>(
-        mut self,
+        self,
         name: &str,
         params: impl IntoIterator<Item = (&'p str, &'p str)>,
         body_fn: F,
@@ -166,6 +169,30 @@ impl<'a> PureModuleBodiesBuilder<'a> {
     where
         F: FnOnce(&PureBuilder) -> PureExpr + 'a,
     {
+        self.push_page(name, params, None, Box::new(body_fn))
+    }
+
+    pub fn page_with_head<'p, H, F>(
+        self,
+        name: &str,
+        params: impl IntoIterator<Item = (&'p str, &'p str)>,
+        head_fn: H,
+        body_fn: F,
+    ) -> Self
+    where
+        H: FnOnce(&PureBuilder) -> PureExpr + 'a,
+        F: FnOnce(&PureBuilder) -> PureExpr + 'a,
+    {
+        self.push_page(name, params, Some(Box::new(head_fn)), Box::new(body_fn))
+    }
+
+    fn push_page<'p>(
+        mut self,
+        name: &str,
+        params: impl IntoIterator<Item = (&'p str, &'p str)>,
+        head_fn: Option<BodyFn<'a>>,
+        body_fn: BodyFn<'a>,
+    ) -> Self {
         let parameters = params
             .into_iter()
             .map(|(name, typ)| (AttributeName::parse(name).unwrap(), self.types.resolve(typ)))
@@ -173,9 +200,10 @@ impl<'a> PureModuleBodiesBuilder<'a> {
         self.deferred.push(Deferred {
             declaration: DeferredDeclaration::Page {
                 name: TypeName::parse(name).expect("Test page name should be valid"),
+                head_fn,
             },
             parameters,
-            body_fn: Box::new(body_fn),
+            body_fn,
         });
         self
     }
@@ -222,19 +250,20 @@ impl<'a> PureModuleBodiesBuilder<'a> {
         self.build_with_registry().0
     }
 
-    pub fn build_with_registry(self) -> (PureModule, TypeRegistry) {
+    pub fn build_with_registry(mut self) -> (PureModule, TypeRegistry) {
         let binder_ids = Rc::new(RefCell::new(BinderIdCounter::new()));
         let callees = Rc::new(self.callees);
-        let mut pages = Vec::new();
-        let mut functions = Vec::new();
-        for deferred in self.deferred {
-            let parameters: Vec<IrParameter> = deferred
-                .parameters
-                .into_iter()
+        // Bind the parameters afresh and build a body of the expected type.
+        let build_body = |parameters: &[(AttributeName, Type)],
+                          body_fn: BodyFn<'a>,
+                          expected_type: &Type|
+         -> (Vec<IrParameter>, PureExpr) {
+            let parameters: Vec<IrParameter> = parameters
+                .iter()
                 .map(|(name, typ)| IrParameter {
-                    name,
+                    name: name.clone(),
                     var: binder_ids.borrow_mut().next(),
-                    typ,
+                    typ: typ.clone(),
                 })
                 .collect();
             let builder = PureBuilder {
@@ -246,24 +275,50 @@ impl<'a> PureModuleBodiesBuilder<'a> {
                 binder_ids: binder_ids.clone(),
                 callees: callees.clone(),
             };
-            let body = (deferred.body_fn)(&builder);
-            let expected_type = match &deferred.declaration {
-                DeferredDeclaration::Page { .. } => Type::Html,
-                DeferredDeclaration::Function { return_type, .. } => return_type.clone(),
-            };
+            let body = body_fn(&builder);
             assert_eq!(
-                body.typ(),
+                &body.typ(),
                 expected_type,
                 "Declaration body must be of type {:?}, got: {}",
                 expected_type,
                 body
             );
+            (parameters, body)
+        };
+        let mut pages = Vec::new();
+        let mut functions = Vec::new();
+        // A page's head and body are functions of their own, numbered after
+        // the declared functions and declared after them.
+        let mut page_functions = Vec::new();
+        for deferred in self.deferred {
             match deferred.declaration {
-                DeferredDeclaration::Page { name } => {
+                DeferredDeclaration::Page { name, head_fn } => {
+                    let mut declare = |body_fn: BodyFn<'a>, function: IrFunction| {
+                        let (parameters, body) =
+                            build_body(&deferred.parameters, body_fn, &Type::Html);
+                        page_functions.push(PureFunctionDeclaration {
+                            function: function.clone(),
+                            parameters,
+                            return_type: Type::Html,
+                            body,
+                        });
+                        function
+                    };
+                    let head = head_fn.map(|head_fn| {
+                        declare(head_fn, IrFunction::page_head(self.function_ids.next()))
+                    });
+                    let body = declare(
+                        deferred.body_fn,
+                        IrFunction::page_body(self.function_ids.next()),
+                    );
                     pages.push(PurePageDeclaration {
                         name,
-                        parameters,
-                        head: None,
+                        parameters: deferred
+                            .parameters
+                            .into_iter()
+                            .map(|(name, typ)| PageParameter { name, typ })
+                            .collect(),
+                        head,
                         body,
                     });
                 }
@@ -271,6 +326,8 @@ impl<'a> PureModuleBodiesBuilder<'a> {
                     function,
                     return_type,
                 } => {
+                    let (parameters, body) =
+                        build_body(&deferred.parameters, deferred.body_fn, &return_type);
                     functions.push(PureFunctionDeclaration {
                         function,
                         parameters,
@@ -280,6 +337,7 @@ impl<'a> PureModuleBodiesBuilder<'a> {
                 }
             }
         }
+        functions.extend(page_functions);
         let module = PureModule {
             pages,
             functions,

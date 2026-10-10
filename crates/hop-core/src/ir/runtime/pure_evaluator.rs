@@ -31,11 +31,10 @@ pub fn evaluate_page(
             page: page_name.clone(),
         })?;
 
-    let mut env = VariableEnv::new();
-
+    let mut values = Vec::with_capacity(page.parameters.len());
     for param in &page.parameters {
         if let Some(value) = args.remove(param.name()) {
-            env.insert(param.var, value);
+            values.push(value);
         } else {
             return Err(EvalError::MissingParameter {
                 page: page.name.clone(),
@@ -45,10 +44,10 @@ pub fn evaluate_page(
     }
 
     let head = match &page.head {
-        Some(head) => evaluate_expr(head, &mut env, &module.functions, 0)?.unwrap_html(),
+        Some(head) => evaluate_function(&module.functions, head, values.clone(), 0)?.unwrap_html(),
         None => Vec::new(),
     };
-    let body = evaluate_expr(&page.body, &mut env, &module.functions, 0)?.unwrap_html();
+    let body = evaluate_function(&module.functions, &page.body, values, 0)?.unwrap_html();
 
     let mut html = String::new();
     match shell {
@@ -523,8 +522,11 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   escape([Holder {nothing: ()}.nothing].len().to_string())
+                }
+                page Test() {
+                  body@f0()
                 }
 
                 -- after --
@@ -545,8 +547,11 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   escape((1, "two").1)
+                }
+                page Test() {
+                  body@f0()
                 }
 
                 -- after --
@@ -567,8 +572,11 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   escape(("alone",).0)
+                }
+                page Test() {
+                  body@f0()
                 }
 
                 -- after --
@@ -590,8 +598,11 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   escape((1, ("deep", 2)).1.0)
+                }
+                page Test() {
+                  body@f0()
                 }
 
                 -- after --
@@ -612,8 +623,11 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   escape((2147483647 + 1).to_string())
+                }
+                page Test() {
+                  body@f0()
                 }
 
                 -- after --
@@ -633,8 +647,11 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   html("div", {}, concat(text("Hello World")))
+                }
+                page Test() {
+                  body@f0()
                 }
 
                 -- after --
@@ -665,8 +682,11 @@ mod tests {
             ],
             expect![[r#"
                 -- before --
-                page Test(cls@b0: String, flag@b1: Bool) {
+                fn body@f0(cls@b0: String, flag@b1: Bool) -> Html {
                   html("input", {class: b0, disabled: b1, checked: false})
+                }
+                page Test(cls: String, flag: Bool) {
+                  body@f0(cls, flag)
                 }
 
                 -- after --
@@ -689,8 +709,11 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                page Test(content@b0: String) {
+                fn body@f0(content@b0: String) -> Html {
                   escape(b0)
+                }
+                page Test(content: String) {
+                  body@f0(content)
                 }
 
                 -- after --
@@ -714,7 +737,7 @@ mod tests {
             vec![("show", Value::Bool(true))],
             expect![[r#"
                 -- before --
-                page Test(show@b0: Bool) {
+                fn body@f0(show@b0: Bool) -> Html {
                   match b0 {
                     true => {
                       html("div", {}, concat(text("Visible")))
@@ -723,6 +746,9 @@ mod tests {
                       concat()
                     }
                   }
+                }
+                page Test(show: Bool) {
+                  body@f0(show)
                 }
 
                 -- after --
@@ -746,7 +772,7 @@ mod tests {
             vec![("show", Value::Bool(false))],
             expect![[r#"
                 -- before --
-                page Test(show@b0: Bool) {
+                fn body@f0(show@b0: Bool) -> Html {
                   match b0 {
                     true => {
                       html("div", {}, concat(text("Hidden")))
@@ -755,6 +781,9 @@ mod tests {
                       concat()
                     }
                   }
+                }
+                page Test(show: Bool) {
+                  body@f0(show)
                 }
 
                 -- after --
@@ -786,10 +815,13 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                page Test(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   for b1: String in b0 {
                     concat(html("li", {}, concat(escape(b1))), text("\n"))
                   }
+                }
+                page Test(items: Array[String]) {
+                  body@f0(items)
                 }
 
                 -- after --
@@ -859,8 +891,11 @@ mod tests {
                     }
                   }
                 }
-                page Test() {
+                fn body@f1() -> Html {
                   escape(call Sum@f0(10).to_string())
+                }
+                page Test() {
+                  body@f1()
                 }
 
                 -- after --

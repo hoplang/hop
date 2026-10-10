@@ -3352,8 +3352,8 @@ mod tests {
                   }
                 }
                 page Test() {
-                  let v0: Color = Green
-                  write_function Badge@f0(v0)
+                  let v5: Color = Green
+                  write_function Badge@f0(v5)
                 }
 
                 -- after --
@@ -3397,8 +3397,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_0: Color = Color::Green;
-                        render_badge_0(output, &v_0);
+                        let v_5: Color = Color::Green;
+                        render_badge_0(output, &v_5);
                     }
                 }
             "#]],
@@ -3499,14 +3499,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn Card@f0(p@b0: Post, tags@b1: Array[String]) -> Html {
-                  let v4: String = b0.title
-                  let v7: Int = b0.views
-                  let v8: String = v7.to_string()
-                  let v11: Int = b1.len()
-                  let v12: String = v11.to_string()
-                  write_string(v4)
-                  write_string(v8)
-                  write_string(v12)
+                  let v1: String = b0.title
+                  let v4: Int = b0.views
+                  let v5: String = v4.to_string()
+                  let v8: Int = b1.len()
+                  let v9: String = v8.to_string()
+                  write_string(v1)
+                  write_string(v5)
+                  write_string(v9)
                 }
                 page Test(post@b2: Post, tags@b3: Array[String]) {
                   write_function Card@f0(b2, b3)
@@ -3546,14 +3546,14 @@ mod tests {
                 }
 
                 fn render_card_0(output: &mut String, b_0: &Post, b_1: &[String]) {
-                    let v_4: &str = &b_0.title;
-                    let v_7: i32 = b_0.views;
-                    let v_8: String = v_7.to_string();
-                    let v_11: i32 = b_1.len() as i32;
-                    let v_12: String = v_11.to_string();
-                    write_escaped_html(v_4, output);
-                    write_escaped_html(&v_8, output);
-                    write_escaped_html(&v_12, output);
+                    let v_1: &str = &b_0.title;
+                    let v_4: i32 = b_0.views;
+                    let v_5: String = v_4.to_string();
+                    let v_8: i32 = b_1.len() as i32;
+                    let v_9: String = v_8.to_string();
+                    write_escaped_html(v_1, output);
+                    write_escaped_html(&v_5, output);
+                    write_escaped_html(&v_9, output);
                 }
 
                 impl View for Test {
@@ -3590,10 +3590,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn Show@f0(t@b0: Tag) -> Html {
-                  let v3: Wrap = {tag: b0}
-                  let v4: Tag = v3.tag
-                  let v5: String = v4.name
-                  write_string(v5)
+                  let v1: Wrap = {tag: b0}
+                  let v2: Tag = v1.tag
+                  let v3: String = v2.name
+                  write_string(v3)
                 }
                 page Test(tag@b1: Tag) {
                   write_function Show@f0(b1)
@@ -3636,10 +3636,10 @@ mod tests {
                 }
 
                 fn render_show_0(output: &mut String, b_0: &Tag) {
-                    let v_3: Wrap = Wrap { tag: b_0.clone() };
-                    let v_4: &Tag = &v_3.tag;
-                    let v_5: &str = &v_4.name;
-                    write_escaped_html(v_5, output);
+                    let v_1: Wrap = Wrap { tag: b_0.clone() };
+                    let v_2: &Tag = &v_1.tag;
+                    let v_3: &str = &v_2.name;
+                    write_escaped_html(v_3, output);
                 }
 
                 impl View for Test {
@@ -3741,9 +3741,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn Role@f0(role@b0: String) -> Html {
-                  let v3: String = "admin"
-                  let v4: Bool = b0 == v3
-                  match v4 {
+                  let v1: String = "admin"
+                  let v2: Bool = b0 == v1
+                  match v2 {
                     true => {
                       write("yes")
                     }
@@ -3771,9 +3771,9 @@ mod tests {
                 }
 
                 fn render_role_0(output: &mut String, b_0: &str) {
-                    let v_3: &str = "admin";
-                    let v_4: bool = b_0 == v_3;
-                    if v_4 {
+                    let v_1: &str = "admin";
+                    let v_2: bool = b_0 == v_1;
+                    if v_2 {
                         output.push_str("yes");
                     } else {
                         output.push_str("no");
@@ -4020,11 +4020,11 @@ mod tests {
                   write("<b>hi</b>")
                 }
                 page Test() {
-                  let v0: Html = html {
+                  let v3: Html = html {
                     write_function Frag@f0()
                   }
-                  write_html(v0)
-                  write_html(v0)
+                  write_html(v3)
+                  write_html(v3)
                 }
 
                 -- after --
@@ -4054,14 +4054,14 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_0: Html = {
+                        let v_3: Html = {
                             let mut buf: String = String::new();
                             let mut output: &mut String = &mut buf;
                             render_frag_0(output);
                             Html(buf)
                         };
-                        output.push_str(&v_0.0);
-                        output.push_str(&v_0.0);
+                        output.push_str(&v_3.0);
+                        output.push_str(&v_3.0);
                     }
                 }
             "#]],
@@ -4084,10 +4084,10 @@ mod tests {
                   b0
                 }
                 page Test() {
-                  let v0: Int = 5
-                  let v1: Int = call format_price@f0(v0)
-                  let v2: String = v1.to_string()
-                  write_string(v2)
+                  let v1: Int = 5
+                  let v2: Int = call format_price@f0(v1)
+                  let v3: String = v2.to_string()
+                  write_string(v3)
                 }
 
                 -- after --
@@ -4126,10 +4126,10 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_0: i32 = 5_i32;
-                        let v_1: i32 = render_format_price_0(v_0);
-                        let v_2: String = v_1.to_string();
-                        write_escaped_html(&v_2, output);
+                        let v_1: i32 = 5_i32;
+                        let v_2: i32 = render_format_price_0(v_1);
+                        let v_3: String = v_2.to_string();
+                        write_escaped_html(&v_3, output);
                     }
                 }
             "#]],
@@ -4166,24 +4166,24 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn foo@f0(x@b0: Int) -> Int {
-                  let v16: Int = 10
-                  let v17: Int = b0 + v16
-                  v17
+                  let v1: Int = 10
+                  let v2: Int = b0 + v1
+                  v2
                 }
                 page Test() {
-                  let v0: Int = 0
-                  let v1: Int = -7
-                  let v2: Int = call foo@f0(v1)
-                  let v9: Int = 10
-                  let v10: Int = call foo@f0(v9)
-                  let v11: String = v10.to_string()
+                  let v3: Int = 0
+                  let v4: Int = -7
+                  let v5: Int = call foo@f0(v4)
+                  let v12: Int = 10
+                  let v13: Int = call foo@f0(v12)
+                  let v14: String = v13.to_string()
                   write("<div>")
-                  for b1: Int in v0..=v2 {
-                    let v4: String = b1.to_string()
-                    write_string(v4)
+                  for b1: Int in v3..=v5 {
+                    let v7: String = b1.to_string()
+                    write_string(v7)
                     write(",")
                   }
-                  write_string(v11)
+                  write_string(v14)
                   write("</div>")
                 }
 
@@ -4212,9 +4212,9 @@ mod tests {
                 pub struct Test {}
 
                 fn render_foo_0(b_0: i32) -> i32 {
-                    let v_16: i32 = 10_i32;
-                    let v_17: i32 = b_0.wrapping_add(v_16);
-                    v_17
+                    let v_1: i32 = 10_i32;
+                    let v_2: i32 = b_0.wrapping_add(v_1);
+                    v_2
                 }
 
                 impl View for Test {
@@ -4225,19 +4225,19 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_0: i32 = 0_i32;
-                        let v_1: i32 = -7_i32;
-                        let v_2: i32 = render_foo_0(v_1);
-                        let v_9: i32 = 10_i32;
-                        let v_10: i32 = render_foo_0(v_9);
-                        let v_11: String = v_10.to_string();
+                        let v_3: i32 = 0_i32;
+                        let v_4: i32 = -7_i32;
+                        let v_5: i32 = render_foo_0(v_4);
+                        let v_12: i32 = 10_i32;
+                        let v_13: i32 = render_foo_0(v_12);
+                        let v_14: String = v_13.to_string();
                         output.push_str("<div>");
-                        for b_1 in v_0..=v_2 {
-                            let v_4: String = b_1.to_string();
-                            write_escaped_html(&v_4, output);
+                        for b_1 in v_3..=v_5 {
+                            let v_7: String = b_1.to_string();
+                            write_escaped_html(&v_7, output);
                             output.push_str(",");
                         }
-                        write_escaped_html(&v_11, output);
+                        write_escaped_html(&v_14, output);
                         output.push_str("</div>");
                     }
                 }

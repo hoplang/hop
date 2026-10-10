@@ -1,4 +1,4 @@
-use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule, FlatPageDeclaration};
+use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
 use crate::ir::flat_transform;
 
 /// Optimize the module: inline every call that can be, then in every body
@@ -6,23 +6,6 @@ use crate::ir::flat_transform;
 pub fn optimize_flat(module: FlatModule) -> FlatModule {
     let module = flat_transform::inline_function_calls(module);
     let mut var_ids = module.var_ids;
-    let pages = module
-        .pages
-        .into_iter()
-        .map(|page| FlatPageDeclaration {
-            name: page.name,
-            parameters: page.parameters,
-            head: page.head.map(|head| {
-                flat_transform::eliminate_dead_bindings(flat_transform::perform_partial_evaluation(
-                    head,
-                    &mut var_ids,
-                ))
-            }),
-            body: flat_transform::eliminate_dead_bindings(
-                flat_transform::perform_partial_evaluation(page.body, &mut var_ids),
-            ),
-        })
-        .collect();
     let functions = module
         .functions
         .into_iter()
@@ -36,7 +19,7 @@ pub fn optimize_flat(module: FlatModule) -> FlatModule {
         })
         .collect();
     FlatModule {
-        pages,
+        pages: module.pages,
         functions,
         var_ids,
         binder_ids: module.binder_ids,
@@ -141,7 +124,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Items(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   let v0: String = "value"
                   let v1: Array[String] = b0
                   let v6: Html = for b2: String in v1 {
@@ -155,9 +138,12 @@ mod tests {
                   let v8: Html = html("ul", {}, v7)
                   v8
                 }
+                page Items(items: Array[String]) {
+                  body@f0(items)
+                }
 
                 -- after --
-                page Items(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   let v1: Array[String] = b0
                   let v6: Html = for b2: String in v1 {
                     let v2: String = b2
@@ -167,6 +153,9 @@ mod tests {
                   }
                   let v8: Html = html("ul", {}, v6)
                   v8
+                }
+                page Items(items: Array[String]) {
+                  body@f0(items)
                 }
             "#]],
         );
@@ -188,7 +177,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                page Test() {
+                fn body@f0() -> Html {
                   let v0: Bool = true
                   let v4: Html = match v0 {
                     true => {
@@ -204,11 +193,17 @@ mod tests {
                   let v5: Html = concat(v4)
                   v5
                 }
+                page Test() {
+                  body@f0()
+                }
 
                 -- after --
-                page Test() {
+                fn body@f0() -> Html {
                   let v1: Html = text("yes")
                   v1
+                }
+                page Test() {
+                  body@f0()
                 }
             "#]],
         );
@@ -228,24 +223,30 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn double@f0(x@b0: Int) -> Int {
-                  let v4: Int = b0
-                  let v5: Int = b0
-                  let v6: Int = v4 + v5
+                  let v0: Int = b0
+                  let v1: Int = b0
+                  let v2: Int = v0 + v1
+                  v2
+                }
+                fn body@f1() -> Html {
+                  let v3: Int = 21
+                  let v4: Int = call double@f0(v3)
+                  let v5: String = v4.to_string()
+                  let v6: Html = escape(v5)
                   v6
                 }
                 page Test() {
-                  let v0: Int = 21
-                  let v1: Int = call double@f0(v0)
-                  let v2: String = v1.to_string()
-                  let v3: Html = escape(v2)
-                  v3
+                  body@f1()
                 }
 
                 -- after --
+                fn body@f1() -> Html {
+                  let v5: String = "42"
+                  let v6: Html = escape(v5)
+                  v6
+                }
                 page Test() {
-                  let v2: String = "42"
-                  let v3: Html = escape(v2)
-                  v3
+                  body@f1()
                 }
             "#]],
         );

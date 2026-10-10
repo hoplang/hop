@@ -29,8 +29,8 @@ pub fn pure_to_flat(module: PureModule) -> FlatModule {
         .map(|page| FlatPageDeclaration {
             name: page.name,
             parameters: page.parameters,
-            head: page.head.map(|head| lower_block(head, &mut cx)),
-            body: lower_block(page.body, &mut cx),
+            head: page.head,
+            body: page.body,
         })
         .collect();
     let functions = module
@@ -356,16 +356,19 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- pure --
-                page Card(title@b0: String, hidden@b1: Bool) {
+                fn body@f0(title@b0: String, hidden@b1: Bool) -> Html {
                   html(
                     "div",
                     {class: "card", hidden: b1},
                     concat(escape(b0)),
                   )
                 }
+                page Card(title: String, hidden: Bool) {
+                  body@f0(title, hidden)
+                }
 
                 -- flat --
-                page Card(title@b0: String, hidden@b1: Bool) {
+                fn body@f0(title@b0: String, hidden@b1: Bool) -> Html {
                   let v0: String = "card"
                   let v1: Bool = b1
                   let v2: String = b0
@@ -373,6 +376,9 @@ mod tests {
                   let v4: Html = concat(v3)
                   let v5: Html = html("div", {class: v0, hidden: v1}, v4)
                   v5
+                }
+                page Card(title: String, hidden: Bool) {
+                  body@f0(title, hidden)
                 }
             "#]],
         );
@@ -394,7 +400,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- pure --
-                page Items(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   html(
                     "ul",
                     {},
@@ -405,9 +411,12 @@ mod tests {
                     ),
                   )
                 }
+                page Items(items: Array[String]) {
+                  body@f0(items)
+                }
 
                 -- flat --
-                page Items(items@b0: Array[String]) {
+                fn body@f0(items@b0: Array[String]) -> Html {
                   let v0: Array[String] = b0
                   let v5: Html = for b1: String in v0 {
                     let v1: String = b1
@@ -419,6 +428,9 @@ mod tests {
                   let v6: Html = concat(v5)
                   let v7: Html = html("ul", {}, v6)
                   v7
+                }
+                page Items(items: Array[String]) {
+                  body@f0(items)
                 }
             "#]],
         );
@@ -434,12 +446,15 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- pure --
-                page Dots() {
+                fn body@f0() -> Html {
                   for _ in 1..=3 { text(".") }
+                }
+                page Dots() {
+                  body@f0()
                 }
 
                 -- flat --
-                page Dots() {
+                fn body@f0() -> Html {
                   let v0: Int = 1
                   let v1: Int = 3
                   let v3: Html = for _ in v0..=v1 {
@@ -447,6 +462,9 @@ mod tests {
                     v2
                   }
                   v3
+                }
+                page Dots() {
+                  body@f0()
                 }
             "#]],
         );
@@ -467,7 +485,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- pure --
-                page Greeting(name@b0: Option[String]) {
+                fn body@f0(name@b0: Option[String]) -> Html {
                   match b0 {
                     Some(b1: String) => {
                       escape(b1)
@@ -477,9 +495,12 @@ mod tests {
                     }
                   }
                 }
+                page Greeting(name: Option[String]) {
+                  body@f0(name)
+                }
 
                 -- flat --
-                page Greeting(name@b0: Option[String]) {
+                fn body@f0(name@b0: Option[String]) -> Html {
                   let v0: Option[String] = b0
                   let v4: Html = match v0 {
                     Some(b1: String) => {
@@ -493,6 +514,9 @@ mod tests {
                     }
                   }
                   v4
+                }
+                page Greeting(name: Option[String]) {
+                  body@f0(name)
                 }
             "#]],
         );
@@ -638,23 +662,29 @@ mod tests {
                 fn double@f0(x@b0: Int) -> Int {
                   (b0 + b0)
                 }
-                page Answer() {
+                fn body@f1() -> Html {
                   escape(call double@f0(21).to_string())
+                }
+                page Answer() {
+                  body@f1()
                 }
 
                 -- flat --
                 fn double@f0(x@b0: Int) -> Int {
-                  let v4: Int = b0
-                  let v5: Int = b0
-                  let v6: Int = v4 + v5
+                  let v0: Int = b0
+                  let v1: Int = b0
+                  let v2: Int = v0 + v1
+                  v2
+                }
+                fn body@f1() -> Html {
+                  let v3: Int = 21
+                  let v4: Int = call double@f0(v3)
+                  let v5: String = v4.to_string()
+                  let v6: Html = escape(v5)
                   v6
                 }
                 page Answer() {
-                  let v0: Int = 21
-                  let v1: Int = call double@f0(v0)
-                  let v2: String = v1.to_string()
-                  let v3: Html = escape(v2)
-                  v3
+                  body@f1()
                 }
             "#]],
         );
@@ -936,52 +966,16 @@ mod tests {
             let (module, _) = random_module(u);
             let mut lets = HashSet::new();
             let nodes: usize = module
-                .pages
+                .functions
                 .iter()
-                .map(|page| {
-                    page.head
-                        .iter()
-                        .map(|head| count_nodes(head, &mut lets))
-                        .sum::<usize>()
-                        + count_nodes(&page.body, &mut lets)
-                })
-                .sum::<usize>()
-                + module
-                    .functions
-                    .iter()
-                    .map(|function| count_nodes(&function.body, &mut lets))
-                    .sum::<usize>();
+                .map(|function| count_nodes(&function.body, &mut lets))
+                .sum();
 
             let module = pure_to_flat(module);
 
             // Each Pure node that computes a value became one binding.
             let mut seen = HashSet::new();
             let mut seen_binders = HashSet::new();
-            for page in &module.pages {
-                let mut names: Vec<(VarId, Type)> = Vec::new();
-                let mut binders: Vec<(BinderId, Type)> = Vec::new();
-                for param in &page.parameters {
-                    assert!(
-                        seen_binders.insert(param.var),
-                        "{} is bound twice",
-                        param.var
-                    );
-                    binders.push((param.var, param.typ.clone()));
-                }
-                if let Some(head) = &page.head {
-                    let head =
-                        check_block(head, &mut names, &mut binders, &mut seen, &mut seen_binders);
-                    assert_eq!(head, Type::Html);
-                }
-                let body = check_block(
-                    &page.body,
-                    &mut names,
-                    &mut binders,
-                    &mut seen,
-                    &mut seen_binders,
-                );
-                assert_eq!(body, Type::Html);
-            }
             for function in &module.functions {
                 let mut names: Vec<(VarId, Type)> = Vec::new();
                 let mut binders: Vec<(BinderId, Type)> = Vec::new();
@@ -1003,17 +997,10 @@ mod tests {
                 assert_eq!(body, function.return_type);
             }
             let bindings: usize = module
-                .pages
+                .functions
                 .iter()
-                .map(|page| {
-                    page.head.iter().map(count_bindings).sum::<usize>() + count_bindings(&page.body)
-                })
-                .sum::<usize>()
-                + module
-                    .functions
-                    .iter()
-                    .map(|function| count_bindings(&function.body))
-                    .sum::<usize>();
+                .map(|function| count_bindings(&function.body))
+                .sum();
             assert_eq!(nodes, bindings);
             Ok(())
         });
