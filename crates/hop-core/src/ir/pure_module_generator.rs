@@ -315,6 +315,21 @@ impl PureGenerator<'_, '_> {
         candidates
     }
 
+    /// With even odds, pick a reference to a variable in scope whose type fits,
+    /// when there is one.
+    fn var_in_scope(&mut self, b: &PureBuilder, fits: impl Fn(&Type) -> bool) -> Option<PureExpr> {
+        let candidates: Vec<&str> = b
+            .vars()
+            .iter()
+            .filter(|(_, _, ty)| fits(ty))
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        if candidates.is_empty() || !self.coin() {
+            return None;
+        }
+        Some(b.var(self.u.choose(&candidates).unwrap()))
+    }
+
     fn fresh_var_name(&mut self) -> String {
         let n = self.next_var;
         self.next_var += 1;
@@ -521,6 +536,19 @@ impl PureGenerator<'_, '_> {
                 b.var(self.u.choose(&candidates).unwrap())
             }
             P::FieldAccess => {
+                let var = self.var_in_scope(b, |ty| {
+                    record_fields
+                        .iter()
+                        .any(|(record, _)| b.resolve_type(record) == *ty)
+                });
+                if let Some(object) = var {
+                    let fields: Vec<&String> = record_fields
+                        .iter()
+                        .filter(|(record, _)| b.resolve_type(record) == object.typ())
+                        .map(|(_, field)| field)
+                        .collect();
+                    return b.field_access(object, self.u.choose(&fields).unwrap());
+                }
                 let (record, field) = self.u.choose(&record_fields).unwrap().clone();
                 let record_ty = b.resolve_type(&record);
                 let object = self.expr(b, &record_ty, depth - 1);
@@ -540,8 +568,13 @@ impl PureGenerator<'_, '_> {
                 b.bool_match_expr(subject, true_body, false_body)
             }
             P::OptionMatch => {
-                let option_ty = Type::Option(Box::new(b.resolve_type(&self.random_type_string(1))));
-                let subject = self.expr(b, &option_ty, depth - 1);
+                let subject = self
+                    .var_in_scope(b, |ty| matches!(ty, Type::Option(_)))
+                    .unwrap_or_else(|| {
+                        let option_ty =
+                            Type::Option(Box::new(b.resolve_type(&self.random_type_string(1))));
+                        self.expr(b, &option_ty, depth - 1)
+                    });
                 if self.coin() {
                     let binding = self.fresh_var_name();
                     let none_body = self.expr(b, target, depth - 1);
@@ -558,9 +591,21 @@ impl PureGenerator<'_, '_> {
                 }
             }
             P::EnumMatch => {
-                let info = self.u.choose(&self.enums).unwrap().clone();
+                let enum_types: Vec<Type> = self
+                    .enums
+                    .iter()
+                    .map(|info| b.resolve_type(&info.name))
+                    .collect();
+                let var = self.var_in_scope(b, |ty| enum_types.contains(ty));
+                let info = match &var {
+                    Some(var) => {
+                        let index = enum_types.iter().position(|ty| *ty == var.typ()).unwrap();
+                        self.enums[index].clone()
+                    }
+                    None => self.u.choose(&self.enums).unwrap().clone(),
+                };
                 let subject_ty = b.resolve_type(&info.name);
-                let subject = self.expr(b, &subject_ty, depth - 1);
+                let subject = var.unwrap_or_else(|| self.expr(b, &subject_ty, depth - 1));
                 let arm_plan = self.enum_match_arms(&info.variants);
                 b.enum_match_expr(subject, |arms| {
                     for (variant, bindings) in &arm_plan {
@@ -628,13 +673,23 @@ impl PureGenerator<'_, '_> {
                 b.int_to_float(operand)
             }
             P::OptionIsNone => {
-                let option_ty = Type::Option(Box::new(b.resolve_type(&self.random_type_string(1))));
-                let operand = self.expr(b, &option_ty, depth - 1);
+                let operand = self
+                    .var_in_scope(b, |ty| matches!(ty, Type::Option(_)))
+                    .unwrap_or_else(|| {
+                        let option_ty =
+                            Type::Option(Box::new(b.resolve_type(&self.random_type_string(1))));
+                        self.expr(b, &option_ty, depth - 1)
+                    });
                 b.option_is_none(operand)
             }
             P::OptionIsSome => {
-                let option_ty = Type::Option(Box::new(b.resolve_type(&self.random_type_string(1))));
-                let operand = self.expr(b, &option_ty, depth - 1);
+                let operand = self
+                    .var_in_scope(b, |ty| matches!(ty, Type::Option(_)))
+                    .unwrap_or_else(|| {
+                        let option_ty =
+                            Type::Option(Box::new(b.resolve_type(&self.random_type_string(1))));
+                        self.expr(b, &option_ty, depth - 1)
+                    });
                 b.option_is_some(operand)
             }
             P::StringIsEmpty => {
@@ -642,16 +697,39 @@ impl PureGenerator<'_, '_> {
                 b.string_is_empty(operand)
             }
             P::ArrayIsEmpty => {
-                let array_ty = Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
-                let operand = self.expr(b, &array_ty, depth - 1);
+                let operand = self
+                    .var_in_scope(b, |ty| matches!(ty, Type::Array(_)))
+                    .unwrap_or_else(|| {
+                        let array_ty =
+                            Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
+                        self.expr(b, &array_ty, depth - 1)
+                    });
                 b.array_is_empty(operand)
             }
             P::ArrayLength => {
-                let array_ty = Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
-                let operand = self.expr(b, &array_ty, depth - 1);
+                let operand = self
+                    .var_in_scope(b, |ty| matches!(ty, Type::Array(_)))
+                    .unwrap_or_else(|| {
+                        let array_ty =
+                            Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
+                        self.expr(b, &array_ty, depth - 1)
+                    });
                 b.array_length(operand)
             }
             P::TupleIndex => {
+                let var = self.var_in_scope(
+                    b,
+                    |ty| matches!(ty, Type::Tuple(elements) if elements.contains(target)),
+                );
+                if let Some(tuple) = var {
+                    let Type::Tuple(elements) = tuple.typ() else {
+                        unreachable!("the variable has a tuple type")
+                    };
+                    let indices: Vec<usize> = (0..elements.len())
+                        .filter(|&index| elements[index] == *target)
+                        .collect();
+                    return b.tuple_index(tuple, *self.u.choose(&indices).unwrap());
+                }
                 let arity = self.count(1..=3);
                 let index = self.index(arity);
                 let elements = (0..arity)
@@ -721,8 +799,13 @@ impl PureGenerator<'_, '_> {
                 b.concat(parts)
             }
             P::HtmlForArray => {
-                let array_ty = Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
-                let array = self.expr(b, &array_ty, depth);
+                let array = self
+                    .var_in_scope(b, |ty| matches!(ty, Type::Array(_)))
+                    .unwrap_or_else(|| {
+                        let array_ty =
+                            Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
+                        self.expr(b, &array_ty, depth)
+                    });
                 let var = self.fresh_var_name();
                 b.html_for(Some(&var), array, |b| self.expr(b, &Type::Html, depth - 1))
             }
