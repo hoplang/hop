@@ -306,9 +306,9 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(module: PureModule, expected: Expect) {
-        let before = module.to_string();
-        let after = pure_to_flat(module).to_string();
-        expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
+        let pure = module.to_string();
+        let flat = pure_to_flat(module).to_string();
+        expected.assert_eq(&format!("-- pure --\n{pure}\n-- flat --\n{flat}"));
     }
 
     #[test]
@@ -322,12 +322,12 @@ mod tests {
                 })
                 .build(),
             expect![[r#"
-                -- before --
+                -- pure --
                 fn square_next@f0(x@b0: Int) -> Int {
                   let b1: Int = (b0 + 1) in { (b1 * b1) }
                 }
 
-                -- after --
+                -- flat --
                 fn square_next@f0(x@b0: Int) -> Int {
                   let v0: Int = b0
                   let v1: Int = 1
@@ -355,7 +355,7 @@ mod tests {
                 })
                 .build(),
             expect![[r#"
-                -- before --
+                -- pure --
                 page Card(title@b0: String, hidden@b1: Bool) {
                   html(
                     "div",
@@ -364,7 +364,7 @@ mod tests {
                   )
                 }
 
-                -- after --
+                -- flat --
                 page Card(title@b0: String, hidden@b1: Bool) {
                   let v0: String = "card"
                   let v1: Bool = b1
@@ -393,7 +393,7 @@ mod tests {
                 })
                 .build(),
             expect![[r#"
-                -- before --
+                -- pure --
                 page Items(items@b0: Array[String]) {
                   html(
                     "ul",
@@ -406,7 +406,7 @@ mod tests {
                   )
                 }
 
-                -- after --
+                -- flat --
                 page Items(items@b0: Array[String]) {
                   let v0: Array[String] = b0
                   let v5: Html = for b1: String in v0 {
@@ -433,12 +433,12 @@ mod tests {
                 })
                 .build(),
             expect![[r#"
-                -- before --
+                -- pure --
                 page Dots() {
                   for _ in 1..=3 { text(".") }
                 }
 
-                -- after --
+                -- flat --
                 page Dots() {
                   let v0: Int = 1
                   let v1: Int = 3
@@ -466,7 +466,7 @@ mod tests {
                 })
                 .build(),
             expect![[r#"
-                -- before --
+                -- pure --
                 page Greeting(name@b0: Option[String]) {
                   match b0 {
                     Some(b1: String) => {
@@ -478,7 +478,7 @@ mod tests {
                   }
                 }
 
-                -- after --
+                -- flat --
                 page Greeting(name@b0: Option[String]) {
                   let v0: Option[String] = b0
                   let v4: Html = match v0 {
@@ -527,7 +527,7 @@ mod tests {
                 })
                 .build(),
             expect![[r#"
-                -- before --
+                -- pure --
                 fn origin_x@f0(shape@b0: Shape) -> Int {
                   match b0 {
                     Shape::Dot => {
@@ -542,7 +542,7 @@ mod tests {
                   Shape::Circle {center: Point {x: 1, y: 2}}
                 }
 
-                -- after --
+                -- flat --
                 fn origin_x@f0(shape@b0: Shape) -> Int {
                   let v0: Shape = b0
                   let v4: Int = match v0 {
@@ -581,7 +581,7 @@ mod tests {
                 })
                 .build(),
             expect![[r#"
-                -- before --
+                -- pure --
                 fn both@f0(a@b0: Bool, b@b1: Bool) -> Bool {
                   (b0 && (!b1))
                 }
@@ -589,7 +589,7 @@ mod tests {
                   (b2 || (!b3))
                 }
 
-                -- after --
+                -- flat --
                 fn both@f0(a@b0: Bool, b@b1: Bool) -> Bool {
                   let v0: Bool = b0
                   let v3: Bool = match v0 {
@@ -634,7 +634,7 @@ mod tests {
                 })
                 .build(),
             expect![[r#"
-                -- before --
+                -- pure --
                 fn double@f0(x@b0: Int) -> Int {
                   (b0 + b0)
                 }
@@ -642,7 +642,7 @@ mod tests {
                   escape(call double@f0(21).to_string())
                 }
 
-                -- after --
+                -- flat --
                 fn double@f0(x@b0: Int) -> Int {
                   let v4: Int = b0
                   let v5: Int = b0
@@ -669,12 +669,12 @@ mod tests {
                 })
                 .build(),
             expect![[r#"
-                -- before --
+                -- pure --
                 fn first@f0() -> Int {
                   (1, "a").0
                 }
 
-                -- after --
+                -- flat --
                 fn first@f0() -> Int {
                   let v0: Int = 1
                   let v1: String = "a"

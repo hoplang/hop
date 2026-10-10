@@ -924,13 +924,17 @@ mod tests {
         });
     }
 
-    /// Prints the module through the Writer lowering and through the Flat IR and
-    /// the Writer lowering, so the two can be compared side by side.
+    /// Prints the module as Pure IR, as the optimized Flat IR it lowers to, and as
+    /// the Writer IR that Flat IR lowers to, so each step can be compared.
     fn check(build: impl Fn() -> PureModule, shell: Option<&DocumentShell>, expected: Expect) {
         let module = build();
         let pure = module.to_string();
-        let writer = flat_to_writer(optimize_flat(pure_to_flat(module)), shell).to_string();
-        expected.assert_eq(&format!("-- pure --\n{pure}\n-- writer --\n{writer}"));
+        let flat_module = optimize_flat(pure_to_flat(module));
+        let flat = flat_module.to_string();
+        let writer = flat_to_writer(flat_module, shell).to_string();
+        expected.assert_eq(&format!(
+            "-- pure --\n{pure}\n-- flat --\n{flat}\n-- writer --\n{writer}"
+        ));
     }
 
     #[test]
@@ -946,6 +950,13 @@ mod tests {
                 -- pure --
                 page Main() {
                   html("p", {}, concat(text("Hello")))
+                }
+
+                -- flat --
+                page Main() {
+                  let v0: Html = text("Hello")
+                  let v2: Html = html("p", {}, v0)
+                  v2
                 }
 
                 -- writer --
@@ -984,6 +995,15 @@ mod tests {
                   )
                 }
 
+                -- flat --
+                page Test() {
+                  let v0: String = "base"
+                  let v1: String = "a<b"
+                  let v2: Html = text("Content")
+                  let v4: Html = html("div", {class: v0, id: v1}, v2)
+                  v4
+                }
+
                 -- writer --
                 page Test() {
                   write("<div class=\"base\" id=\"a&lt;b\">Content</div>")
@@ -1007,6 +1027,14 @@ mod tests {
                 -- pure --
                 page Test(cls@b0: String) {
                   html("div", {data-value: b0}, concat())
+                }
+
+                -- flat --
+                page Test(cls@b0: String) {
+                  let v0: String = b0
+                  let v1: Html = concat()
+                  let v2: Html = html("div", {data-value: v0}, v1)
+                  v2
                 }
 
                 -- writer --
@@ -1047,6 +1075,16 @@ mod tests {
                   )
                 }
 
+                -- flat --
+                page Test(flag@b0: Bool) {
+                  let v0: Bool = true
+                  let v1: Bool = false
+                  let v2: Bool = b0
+                  let v3: Html = concat()
+                  let v4: Html = html("input", {disabled: v0, hidden: v1, checked: v2}, v3)
+                  v4
+                }
+
                 -- writer --
                 page Test(flag@b0: Bool) {
                   write("<input disabled")
@@ -1084,6 +1122,15 @@ mod tests {
                   html("div", {}, concat(html("p", {}, concat(escape(b0)))))
                 }
 
+                -- flat --
+                page Test(name@b0: String) {
+                  let v0: String = b0
+                  let v1: Html = escape(v0)
+                  let v3: Html = html("p", {}, v1)
+                  let v5: Html = html("div", {}, v3)
+                  v5
+                }
+
                 -- writer --
                 page Test(name@b0: String) {
                   write("<div><p>")
@@ -1109,6 +1156,16 @@ mod tests {
                 -- pure --
                 page Test(name@b0: String) {
                   escape(concat("a<", b0, ">b"))
+                }
+
+                -- flat --
+                page Test(name@b0: String) {
+                  let v0: String = "a<"
+                  let v1: String = b0
+                  let v2: String = ">b"
+                  let v3: String = concat(v0, v1, v2)
+                  let v4: Html = escape(v3)
+                  v4
                 }
 
                 -- writer --
@@ -1146,6 +1203,16 @@ mod tests {
                     text("ccccccccccccccccccccccccc"),
                     text("ddddddddddddddddddddddddd"),
                   )
+                }
+
+                -- flat --
+                page Test() {
+                  let v0: Html = text("aaaaaaaaaaaaaaaaaaaaaaaaa")
+                  let v1: Html = text("bbbbbbbbbbbbbbbbbbbbbbbbb")
+                  let v2: Html = text("ccccccccccccccccccccccccc")
+                  let v3: Html = text("ddddddddddddddddddddddddd")
+                  let v4: Html = concat(v0, v1, v2, v3)
+                  v4
                 }
 
                 -- writer --
@@ -1186,6 +1253,21 @@ mod tests {
                   )
                 }
 
+                -- flat --
+                page Test(items@b0: Array[String]) {
+                  let v0: Html = text("before ")
+                  let v1: Array[String] = b0
+                  let v6: Html = for b1: String in v1 {
+                    let v2: String = b1
+                    let v3: Html = escape(v2)
+                    let v5: Html = html("li", {}, v3)
+                    v5
+                  }
+                  let v7: Html = text(" after")
+                  let v8: Html = concat(v0, v6, v7)
+                  v8
+                }
+
                 -- writer --
                 page Test(items@b0: Array[String]) {
                   write("before ")
@@ -1221,6 +1303,14 @@ mod tests {
                   }
                 }
 
+                -- flat --
+                page Test() {
+                  let v0: Html = text("hi")
+                  let v2: Html = html("b", {}, v0)
+                  let v3: Html = concat(v2, v2)
+                  v3
+                }
+
                 -- writer --
                 page Test() {
                   let v2: Html = html {
@@ -1252,6 +1342,17 @@ mod tests {
                   let b1: Html = html("b", {}, concat(text("hi"))) in {
                     for _ in b0 { b1 }
                   }
+                }
+
+                -- flat --
+                page Test(items@b0: Array[String]) {
+                  let v0: Html = text("hi")
+                  let v2: Html = html("b", {}, v0)
+                  let v3: Array[String] = b0
+                  let v4: Html = for _ in v3 {
+                    v2
+                  }
+                  v4
                 }
 
                 -- writer --
@@ -1293,6 +1394,14 @@ mod tests {
                   call wrap@f0(html("b", {}, concat(text("hi"))))
                 }
 
+                -- flat --
+                page Test() {
+                  let v0: Html = text("hi")
+                  let v2: Html = html("b", {}, v0)
+                  let v8: Html = html("div", {}, v2)
+                  v8
+                }
+
                 -- writer --
                 page Test() {
                   write("<div><b>hi</b></div>")
@@ -1324,6 +1433,13 @@ mod tests {
                 }
                 page Test() {
                   escape(call square_next@f0(2).to_string())
+                }
+
+                -- flat --
+                page Test() {
+                  let v2: String = "9"
+                  let v3: Html = escape(v2)
+                  v3
                 }
 
                 -- writer --
@@ -1373,6 +1489,22 @@ mod tests {
                   }
                 }
 
+                -- flat --
+                page Test(flag@b0: Bool) {
+                  let v0: Bool = b0
+                  let v3: Html = match v0 {
+                    true => {
+                      let v1: Html = text("a")
+                      v1
+                    }
+                    false => {
+                      let v2: Html = text("b")
+                      v2
+                    }
+                  }
+                  v3
+                }
+
                 -- writer --
                 page Test(flag@b0: Bool) {
                   match b0 {
@@ -1414,6 +1546,26 @@ mod tests {
                       0
                     }
                   }.to_string())
+                }
+
+                -- flat --
+                page Test(flag@b0: Bool, n@b1: Int) {
+                  let v0: Bool = b0
+                  let v5: Int = match v0 {
+                    true => {
+                      let v1: Int = b1
+                      let v2: Int = 1
+                      let v3: Int = v1 + v2
+                      v3
+                    }
+                    false => {
+                      let v4: Int = 0
+                      v4
+                    }
+                  }
+                  let v6: String = v5.to_string()
+                  let v7: Html = escape(v6)
+                  v7
                 }
 
                 -- writer --
