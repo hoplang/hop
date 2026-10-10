@@ -1005,618 +1005,13 @@ mod tests {
 
     use super::*;
     use crate::document::Document;
-    use crate::hop::typing::{
-        TypeRegistryBuilder, TypedAttrs, build_page, build_page_no_params, build_page_with_types,
-    };
-    use crate::html::HtmlElementKind;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
     use crate::program::Program;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    fn check(page: TypedPageDeclaration, expected: Expect) {
-        let before = page.to_string();
-        let mut binder_ids = BinderIdCounter::new();
-        let mut function_ids = FunctionIdCounter::new();
-        let compiled_page =
-            Compiler::new(&mut binder_ids, &mut function_ids, None).compile_page_decl(page);
-        let mut functions = Vec::new();
-        let page = compiled_page.declare(&mut function_ids, &mut functions);
-        let after = PureModule {
-            pages: vec![page],
-            functions,
-            binder_ids,
-        }
-        .to_string();
-        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
-        expected.assert_eq(&output);
-    }
-
-    #[test]
-    fn should_compile_the_head_and_the_body() {
-        let mut page = build_page_no_params("MainComp", |t| {
-            t.text("Hello World");
-        });
-        page.head = Some(TypedExpr::HtmlConcat {
-            parts: vec![TypedExpr::Element {
-                element: HtmlElementKind::Title,
-                attrs: TypedAttrs {
-                    attributes: vec![],
-                    spread: None,
-                },
-                children: Box::new(TypedExpr::HtmlConcat {
-                    parts: vec![TypedExpr::HtmlText {
-                        value: CheapString::new("Hi".to_string()),
-                    }],
-                }),
-            }],
-        });
-        check(
-            page,
-            expect![[r#"
-                -- before --
-                page MainComp() {
-                  fn head() -> Html {
-                    concat(
-                      html(
-                        tag: "title",
-                        attrs: [],
-                        children: concat(text("Hi")),
-                      ),
-                    )
-                  }
-                  fn body() -> Html {
-                    concat(text("Hello World"))
-                  }
-                }
-
-                -- after --
-                fn head@f0() -> Html {
-                  concat(html("title", {}, concat(text("Hi"))))
-                }
-                fn body@f1() -> Html {
-                  concat(text("Hello World"))
-                }
-                page MainComp() {
-                  head@f0()
-                  body@f1()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_simple_text() {
-        check(
-            build_page_no_params("MainComp", |t| {
-                t.text("Hello World");
-            }),
-            expect![[r#"
-                -- before --
-                page MainComp() {
-                  fn body() -> Html {
-                    concat(text("Hello World"))
-                  }
-                }
-
-                -- after --
-                fn body@f0() -> Html {
-                  concat(text("Hello World"))
-                }
-                page MainComp() {
-                  body@f0()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_text_expression() {
-        check(
-            build_page("MainComp", [("name", Type::String)], |t| {
-                t.text("Hello ");
-                t.text_expr(t.var_expr("name"));
-            }),
-            expect![[r#"
-                -- before --
-                page MainComp(name: String) {
-                  fn body() -> Html {
-                    concat(text("Hello "), escape(name))
-                  }
-                }
-
-                -- after --
-                fn body@f0(name@b0: String) -> Html {
-                  concat(text("Hello "), escape(b0))
-                }
-                page MainComp(name: String) {
-                  body@f0(name)
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_html_element() {
-        check(
-            build_page_no_params("MainComp", |t| {
-                t.div(vec![], |t| {
-                    t.text("Content");
-                });
-            }),
-            expect![[r#"
-                -- before --
-                page MainComp() {
-                  fn body() -> Html {
-                    concat(
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(text("Content")),
-                      ),
-                    )
-                  }
-                }
-
-                -- after --
-                fn body@f0() -> Html {
-                  concat(html("div", {}, concat(text("Content"))))
-                }
-                page MainComp() {
-                  body@f0()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_if_html() {
-        check(
-            build_page("MainComp", [("show", Type::Bool)], |t| {
-                t.if_html(t.var_expr("show"), |t| {
-                    t.div(vec![], |t| {
-                        t.text("Visible");
-                    });
-                });
-            }),
-            expect![[r#"
-                -- before --
-                page MainComp(show: Bool) {
-                  fn body() -> Html {
-                    concat(
-                      match show {
-                        true => concat(
-                          html(
-                            tag: "div",
-                            attrs: [],
-                            children: concat(text("Visible")),
-                          ),
-                        ),
-                        false => concat(),
-                      },
-                    )
-                  }
-                }
-
-                -- after --
-                fn body@f0(show@b0: Bool) -> Html {
-                  concat(
-                    let b1: Bool = b0 in {
-                      match b1 {
-                        true => {
-                          concat(html("div", {}, concat(text("Visible"))))
-                        }
-                        false => {
-                          concat()
-                        }
-                      }
-                    },
-                  )
-                }
-                page MainComp(show: Bool) {
-                  body@f0(show)
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_for_html() {
-        check(
-            build_page(
-                "MainComp",
-                vec![("items", Type::Array(Box::new(Type::String)))],
-                |t| {
-                    t.ul(vec![], |t| {
-                        t.for_html("item", t.var_expr("items"), |t| {
-                            t.li(vec![], |t| {
-                                t.text_expr(t.var_expr("item"));
-                            });
-                        });
-                    });
-                },
-            ),
-            expect![[r#"
-                -- before --
-                page MainComp(items: Array[String]) {
-                  fn body() -> Html {
-                    concat(
-                      html(
-                        tag: "ul",
-                        attrs: [],
-                        children: concat(
-                          for item in items {
-                            concat(
-                              html(
-                                tag: "li",
-                                attrs: [],
-                                children: concat(escape(item)),
-                              ),
-                            )
-                          },
-                        ),
-                      ),
-                    )
-                  }
-                }
-
-                -- after --
-                fn body@f0(items@b0: Array[String]) -> Html {
-                  concat(
-                    html(
-                      "ul",
-                      {},
-                      concat(
-                        for b1: String in b0 {
-                          concat(html("li", {}, concat(escape(b1))))
-                        },
-                      ),
-                    ),
-                  )
-                }
-                page MainComp(items: Array[String]) {
-                  body@f0(items)
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_static_attributes() {
-        check(
-            build_page_no_params("MainComp", |t| {
-                t.div(
-                    vec![
-                        ("class", t.string_literal("base")),
-                        ("id", t.string_literal("test")),
-                    ],
-                    |t| {
-                        t.text("Content");
-                    },
-                );
-            }),
-            expect![[r#"
-                -- before --
-                page MainComp() {
-                  fn body() -> Html {
-                    concat(
-                      html(
-                        tag: "div",
-                        attrs: [class: escape("base"), id: escape("test")],
-                        children: concat(text("Content")),
-                      ),
-                    )
-                  }
-                }
-
-                -- after --
-                fn body@f0() -> Html {
-                  concat(
-                    html(
-                      "div",
-                      {class: "base", id: "test"},
-                      concat(text("Content")),
-                    ),
-                  )
-                }
-                page MainComp() {
-                  body@f0()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_dynamic_attributes() {
-        check(
-            build_page("MainComp", [("cls", Type::String)], |t| {
-                t.div(
-                    vec![
-                        ("class", t.string_literal("base")),
-                        ("data-value", t.var_expr("cls")),
-                    ],
-                    |t| {
-                        t.text("Content");
-                    },
-                );
-            }),
-            expect![[r#"
-                -- before --
-                page MainComp(cls: String) {
-                  fn body() -> Html {
-                    concat(
-                      html(
-                        tag: "div",
-                        attrs: [
-                          class: escape("base"),
-                          data-value: escape(cls),
-                        ],
-                        children: concat(text("Content")),
-                      ),
-                    )
-                  }
-                }
-
-                -- after --
-                fn body@f0(cls@b0: String) -> Html {
-                  concat(
-                    html(
-                      "div",
-                      {class: "base", data-value: b0},
-                      concat(text("Content")),
-                    ),
-                  )
-                }
-                page MainComp(cls: String) {
-                  body@f0(cls)
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_generate_development_mode_bootstrap() {
-        check(
-            build_page(
-                "TestComp",
-                vec![("name", Type::String), ("count", Type::String)],
-                |t| {
-                    t.div(vec![], |t| {
-                        t.text("Hello ");
-                        t.text_expr(t.var_expr("name"));
-                        t.text(", count: ");
-                        t.text_expr(t.var_expr("count"));
-                    });
-                },
-            ),
-            expect![[r#"
-                -- before --
-                page TestComp(name: String, count: String) {
-                  fn body() -> Html {
-                    concat(
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(
-                          text("Hello "),
-                          escape(name),
-                          text(", count: "),
-                          escape(count),
-                        ),
-                      ),
-                    )
-                  }
-                }
-
-                -- after --
-                fn body@f0(name@b0: String, count@b1: String) -> Html {
-                  concat(
-                    html(
-                      "div",
-                      {},
-                      concat(
-                        text("Hello "),
-                        escape(b0),
-                        text(", count: "),
-                        escape(b1),
-                      ),
-                    ),
-                  )
-                }
-                page TestComp(name: String, count: String) {
-                  body@f0(name, count)
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_bool_match_html() {
-        check(
-            build_page("TestComp", vec![("flag", Type::Bool)], |t| {
-                t.bool_match_html(
-                    t.var_expr("flag"),
-                    |t| {
-                        t.text("yes");
-                    },
-                    |t| {
-                        t.text("no");
-                    },
-                );
-            }),
-            expect![[r#"
-                -- before --
-                page TestComp(flag: Bool) {
-                  fn body() -> Html {
-                    concat(
-                      match flag {
-                        true => concat(text("yes")),
-                        false => concat(text("no")),
-                      },
-                    )
-                  }
-                }
-
-                -- after --
-                fn body@f0(flag@b0: Bool) -> Html {
-                  concat(
-                    let b1: Bool = b0 in {
-                      match b1 {
-                        true => {
-                          concat(text("yes"))
-                        }
-                        false => {
-                          concat(text("no"))
-                        }
-                      }
-                    },
-                  )
-                }
-                page TestComp(flag: Bool) {
-                  body@f0(flag)
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_inline_script() {
-        check(
-            build_page_no_params("MainComp", |t| {
-                t.html("script", vec![], |t| {
-                    t.text("alert(\"hi\")");
-                });
-            }),
-            expect![[r#"
-                -- before --
-                page MainComp() {
-                  fn body() -> Html {
-                    concat(
-                      html(
-                        tag: "script",
-                        attrs: [],
-                        children: concat(text("alert(\"hi\")")),
-                      ),
-                    )
-                  }
-                }
-
-                -- after --
-                fn body@f0() -> Html {
-                  concat(html("script", {}, concat(text("alert(\"hi\")"))))
-                }
-                page MainComp() {
-                  body@f0()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_void_element() {
-        check(
-            build_page_no_params("MainComp", |t| {
-                t.html("br", vec![], |_| {});
-            }),
-            expect![[r#"
-                -- before --
-                page MainComp() {
-                  fn body() -> Html {
-                    concat(html(tag: "br", attrs: []))
-                  }
-                }
-
-                -- after --
-                fn body@f0() -> Html {
-                  concat(html("br", {}))
-                }
-                page MainComp() {
-                  body@f0()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_record_update_of_variable() {
-        check(
-            build_page_with_types(
-                TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
-                "MainComp",
-                [("user", "User")],
-                |t| {
-                    let updated = t.record_update(
-                        t.var_expr("user"),
-                        vec![("name", t.string_literal("Jane"))],
-                    );
-                    t.text_expr(t.field_access(updated, "name"));
-                },
-            ),
-            expect![[r#"
-                -- before --
-                page MainComp(user: User) {
-                  fn body() -> Html {
-                    concat(escape(User {...user, name: "Jane"}.name))
-                  }
-                }
-
-                -- after --
-                fn body@f0(user@b0: User) -> Html {
-                  concat(
-                    escape(let b1: User = b0 in {
-                      User {name: "Jane", age: b1.age}
-                    }.name),
-                  )
-                }
-                page MainComp(user: User) {
-                  body@f0(user)
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_record_update_of_expression() {
-        check(
-            build_page_with_types(
-                TypeRegistryBuilder::new()
-                    .record("State", [("query", "String"), ("num", "Int")])
-                    .record("App", [("state", "State")]),
-                "MainComp",
-                [("app", "App")],
-                |t| {
-                    let next = t.record_update(
-                        t.field_access(t.var_expr("app"), "state"),
-                        vec![("num", t.int_literal(1))],
-                    );
-                    t.text_expr(t.field_access(next, "query"));
-                },
-            ),
-            expect![[r#"
-                -- before --
-                page MainComp(app: App) {
-                  fn body() -> Html {
-                    concat(escape(State {...app.state, num: 1}.query))
-                  }
-                }
-
-                -- after --
-                fn body@f0(app@b0: App) -> Html {
-                  concat(
-                    escape(let b1: State = b0.state in {
-                      State {query: b1.query, num: 1}
-                    }.query),
-                  )
-                }
-                page MainComp(app: App) {
-                  body@f0(app)
-                }
-            "#]],
-        );
-    }
-
     /// Compile a module written in source, without optimization.
-    fn check_source(source: &str, expected: Expect) {
+    fn check(source: &str, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();
         let mut program = Program::new();
         program.update_hop_document(
@@ -1635,8 +1030,279 @@ mod tests {
     }
 
     #[test]
+    fn should_compile_the_head_and_the_body() {
+        check(
+            indoc! {r#"
+                page Test() {
+                  fn head() -> Html {
+                    <title>Hi</title>
+                  }
+                  fn body() -> Html {
+                    <>Hello World</>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn head@f0() -> Html {
+                  html("title", {}, concat(text("Hi")))
+                }
+                fn body@f1() -> Html {
+                  concat(text("Hello World"))
+                }
+                page Test() {
+                  head@f0()
+                  body@f1()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_text_expression() {
+        check(
+            indoc! {r#"
+                page Test(name: String) {
+                  fn body() -> Html {
+                    <>Hello {name}</>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn body@f0(name@b0: String) -> Html {
+                  concat(text("Hello "), escape(b0))
+                }
+                page Test(name: String) {
+                  body@f0(name)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_html_element() {
+        check(
+            indoc! {r#"
+                page Test() {
+                  fn body() -> Html {
+                    <div>Content</div>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn body@f0() -> Html {
+                  html("div", {}, concat(text("Content")))
+                }
+                page Test() {
+                  body@f0()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_for_html() {
+        check(
+            indoc! {r#"
+                page Test(items: Array[String]) {
+                  fn body() -> Html {
+                    <ul>
+                      {for item in items {
+                        <li>{item}</li>
+                      }}
+                    </ul>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn body@f0(items@b0: Array[String]) -> Html {
+                  html(
+                    "ul",
+                    {},
+                    concat(
+                      for b1: String in b0 {
+                        html("li", {}, concat(escape(b1)))
+                      },
+                    ),
+                  )
+                }
+                page Test(items: Array[String]) {
+                  body@f0(items)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_static_attributes() {
+        check(
+            indoc! {r#"
+                page Test() {
+                  fn body() -> Html {
+                    <div class="base" id="test">Content</div>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn body@f0() -> Html {
+                  html(
+                    "div",
+                    {class: "base", id: "test"},
+                    concat(text("Content")),
+                  )
+                }
+                page Test() {
+                  body@f0()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_dynamic_attributes() {
+        check(
+            indoc! {r#"
+                page Test(cls: String) {
+                  fn body() -> Html {
+                    <div class="base" data-value={cls}>Content</div>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn body@f0(cls@b0: String) -> Html {
+                  html(
+                    "div",
+                    {class: "base", data-value: b0},
+                    concat(text("Content")),
+                  )
+                }
+                page Test(cls: String) {
+                  body@f0(cls)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_bool_match_html() {
+        check(
+            indoc! {r#"
+                page Test(flag: Bool) {
+                  fn body() -> Html {
+                    match flag {
+                      true => <>yes</>,
+                      false => <>no</>,
+                    }
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn body@f0(flag@b0: Bool) -> Html {
+                  let b1: Bool = b0 in {
+                    match b1 {
+                      true => {
+                        concat(text("yes"))
+                      }
+                      false => {
+                        concat(text("no"))
+                      }
+                    }
+                  }
+                }
+                page Test(flag: Bool) {
+                  body@f0(flag)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_void_element() {
+        check(
+            indoc! {r#"
+                page Test() {
+                  fn body() -> Html {
+                    <br/>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn body@f0() -> Html {
+                  html("br", {})
+                }
+                page Test() {
+                  body@f0()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_record_update_of_variable() {
+        check(
+            indoc! {r#"
+                record User {
+                  name: String,
+                  age: Int,
+                }
+
+                page Test(user: User) {
+                  fn body() -> Html {
+                    <>{(User {...user, name: "Jane"}).name}</>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn body@f0(user@b0: User) -> Html {
+                  concat(
+                    escape(let b1: User = b0 in {
+                      User {name: "Jane", age: b1.age}
+                    }.name),
+                  )
+                }
+                page Test(user: User) {
+                  body@f0(user)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_record_update_of_expression() {
+        check(
+            indoc! {r#"
+                record State {
+                  query: String,
+                  num: Int,
+                }
+
+                record App {
+                  state: State,
+                }
+
+                page Test(app: App) {
+                  fn body() -> Html {
+                    <>{(State {...app.state, num: 1}).query}</>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn body@f0(app@b0: App) -> Html {
+                  concat(
+                    escape(let b1: State = b0.state in {
+                      State {query: b1.query, num: 1}
+                    }.query),
+                  )
+                }
+                page Test(app: App) {
+                  body@f0(app)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_specialize_a_function_for_each_attribute_list_it_is_called_with() {
-        check_source(
+        check(
             indoc! {r#"
                 fn Button(...rest) -> Html {
                   <button ...rest>
@@ -1681,7 +1347,7 @@ mod tests {
 
     #[test]
     fn should_forward_a_rest_through_a_function_into_an_element() {
-        check_source(
+        check(
             indoc! {r#"
                 fn Card(
                   title: String,
@@ -1725,7 +1391,7 @@ mod tests {
 
     #[test]
     fn should_specialize_a_recursive_function_with_a_rest() {
-        check_source(
+        check(
             indoc! {r#"
                 fn Nest(
                   depth: Int,
@@ -1794,7 +1460,7 @@ mod tests {
 
     #[test]
     fn should_name_a_parameter_after_the_attribute_it_receives() {
-        check_source(
+        check(
             indoc! {r#"
                 fn Button(...rest) -> Html {
                   <button ...rest>
@@ -1831,7 +1497,7 @@ mod tests {
 
     #[test]
     fn should_compile_only_the_functions_the_pages_reach() {
-        check_source(
+        check(
             indoc! {r#"
                 fn Used() -> Html {
                   <p>used</p>

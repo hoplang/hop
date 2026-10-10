@@ -35,10 +35,6 @@ pub use typed_pattern::TypedPattern;
 
 #[cfg(test)]
 mod type_registry_builder;
-#[cfg(test)]
-mod typed_ast_builder;
 
 #[cfg(test)]
 pub use type_registry_builder::{TestTypes, TypeRegistryBuilder};
-#[cfg(test)]
-pub use typed_ast_builder::{build_page, build_page_no_params, build_page_with_types};
