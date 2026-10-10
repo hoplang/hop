@@ -1377,6 +1377,127 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn rest_named_after_a_parameter_it_forwards() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String, ...rest) -> Html {
+                  <div ...rest>
+                    {title}
+                  </div>
+                }
+
+                fn Panel(...title) -> Html {
+                  <Card ...title/>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Panel title="Home" id="p"/>
+                  }
+                }
+            "#},
+            r#"<div id="p">Home</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Card@f1(title@b2: String, id@b3: String) -> Html {
+                  write("<div id=\"")
+                  write_string(b3)
+                  write("\">")
+                  write_string(b2)
+                  write("</div>")
+                }
+                fn Panel@f0(title@b0: String, id@b1: String) -> Html {
+                  write_function Card@f1(b0, b1)
+                }
+                page Test() {
+                  let v8: String = "Home"
+                  let v9: String = "p"
+                  write_function Panel@f0(v8, v9)
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div id=\"p\">Home</div>")
+                }
+                -- expected output --
+                <div id="p">Home</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_named_after_the_only_parameter_it_forwards() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(title: String) -> Html {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                fn Panel(...title) -> Html {
+                  <Card ...title/>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <Panel title="Home"/>
+                  }
+                }
+            "#},
+            r#"<div>Home</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Card@f1(title@b1: String) -> Html {
+                  write("<div>")
+                  write_string(b1)
+                  write("</div>")
+                }
+                fn Panel@f0(title@b0: String) -> Html {
+                  write_function Card@f1(b0)
+                }
+                page Test() {
+                  let v6: String = "Home"
+                  write_function Panel@f0(v6)
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div>Home</div>")
+                }
+                -- expected output --
+                <div>Home</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn bool_attribute_is_present_when_true_and_absent_when_false() {
         check(
             indoc! {r#"
