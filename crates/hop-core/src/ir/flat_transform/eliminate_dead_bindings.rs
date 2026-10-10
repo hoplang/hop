@@ -48,8 +48,8 @@ fn eliminate(block: FlatBlock, live: &mut Live) -> FlatBlock {
                     false_body,
                 } => Match::Bool {
                     subject,
-                    true_body: Box::new(eliminate(*true_body, live)),
-                    false_body: Box::new(eliminate(*false_body, live)),
+                    true_body: eliminate(true_body, live),
+                    false_body: eliminate(false_body, live),
                 },
                 Match::Option {
                     subject,
@@ -57,14 +57,14 @@ fn eliminate(block: FlatBlock, live: &mut Live) -> FlatBlock {
                     some_arm_body,
                     none_arm_body,
                 } => {
-                    let some_arm_body = Box::new(eliminate(*some_arm_body, live));
+                    let some_arm_body = eliminate(some_arm_body, live);
                     let some_arm_binding =
                         some_arm_binding.filter(|binder| live.binders.contains(&binder.var));
                     Match::Option {
                         subject,
                         some_arm_binding,
                         some_arm_body,
-                        none_arm_body: Box::new(eliminate(*none_arm_body, live)),
+                        none_arm_body: eliminate(none_arm_body, live),
                     }
                 }
                 Match::Enum { subject, arms } => Match::Enum {

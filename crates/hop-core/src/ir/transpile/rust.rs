@@ -1037,7 +1037,7 @@ impl Transpiler for RustTranspiler {
             } => {
                 let if_doc = arena
                     .text("if ")
-                    .append(self.name_place(arena, **subject))
+                    .append(self.name_place(arena, *subject))
                     .append(arena.text(" {"))
                     .append(
                         arena
@@ -1105,7 +1105,7 @@ impl Transpiler for RustTranspiler {
 
                 arena
                     .text("match ")
-                    .append(self.name_ref(arena, **subject))
+                    .append(self.name_ref(arena, *subject))
                     .append(arena.text(" {"))
                     .append(
                         arena
@@ -1119,7 +1119,7 @@ impl Transpiler for RustTranspiler {
                     .append(arena.text("}"))
             }
             Match::Enum { subject, arms } => {
-                let variants = self.subject_variants(**subject);
+                let variants = self.subject_variants(*subject);
                 let arm_docs: Vec<Doc<'a>> = arms
                     .iter()
                     .map(|arm| {
@@ -1140,7 +1140,7 @@ impl Transpiler for RustTranspiler {
 
                 arena
                     .text("match ")
-                    .append(self.name_ref(arena, **subject))
+                    .append(self.name_ref(arena, *subject))
                     .append(arena.text(" {"))
                     .append(
                         arena
@@ -1681,7 +1681,7 @@ impl Transpiler for RustTranspiler {
                 true_body,
                 false_body,
             } => {
-                let subject_doc = self.name_place(arena, **subject);
+                let subject_doc = self.name_place(arena, *subject);
                 let true_arm = arena
                     .text("true => ")
                     .append(self.transpile_arm_block(arena, true_body))
@@ -1721,7 +1721,7 @@ impl Transpiler for RustTranspiler {
                         (Binding::Borrowed, binder.typ.clone()),
                     );
                 }
-                let subject_doc = self.name_ref(arena, **subject);
+                let subject_doc = self.name_ref(arena, *subject);
                 let some_arm = arena
                     .text(some_pattern)
                     .append(arena.text(" => "))
@@ -1747,8 +1747,8 @@ impl Transpiler for RustTranspiler {
                     .append(arena.text("}"))
             }
             Match::Enum { subject, arms } => {
-                let variants = self.subject_variants(**subject);
-                let subject_doc = self.name_ref(arena, **subject);
+                let variants = self.subject_variants(*subject);
+                let subject_doc = self.name_ref(arena, *subject);
                 let arm_docs: Vec<Doc<'a>> = arms
                     .iter()
                     .map(|arm: &'a EnumMatchArm<WriterValueBlock>| {

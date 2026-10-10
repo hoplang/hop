@@ -94,83 +94,74 @@ fn evaluate_expr(
             result
         }
 
-        PureExpr::Match {
-            match_: Match::Enum { subject, arms },
-            ..
-        } => {
-            let (variant_name, fields) =
-                evaluate_expr(subject, env, function_decls, depth)?.unwrap_enum();
-            let mut matching_arms = arms.iter().filter(|arm| {
-                let EnumPattern::Variant {
-                    variant_name: pattern_variant,
-                    ..
-                } = &arm.pattern;
-                variant_name == *pattern_variant
-            });
-            let arm = matching_arms
-                .next()
-                .unwrap_or_else(|| panic!("No matching arm found for variant '{}'", variant_name));
-            assert!(
-                matching_arms.next().is_none(),
-                "Multiple matching arms found for variant '{}'",
-                variant_name
-            );
-            for (field_name, binder) in &arm.bindings {
-                let (_, field) = fields
-                    .iter()
-                    .find(|(name, _)| name == field_name)
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Field '{}' not found in enum variant '{}'",
-                            field_name, variant_name
-                        )
-                    });
-                env.insert(binder.var, field.clone());
-            }
-            let result = evaluate_expr(&arm.body, env, function_decls, depth);
-            for (_, binder) in &arm.bindings {
-                env.remove(&binder.var);
-            }
-            result
-        }
-
-        PureExpr::Match {
-            match_:
-                Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                },
-            ..
-        } => {
-            if evaluate_expr(subject, env, function_decls, depth)?.unwrap_bool() {
-                evaluate_expr(true_body, env, function_decls, depth)
-            } else {
-                evaluate_expr(false_body, env, function_decls, depth)
-            }
-        }
-
-        PureExpr::Match {
-            match_:
-                Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body,
-                    none_arm_body,
-                },
-            ..
-        } => match evaluate_expr(subject, env, function_decls, depth)?.unwrap_option() {
-            Some(inner) => {
-                if let Some(binder) = some_arm_binding {
-                    env.insert(binder.var, *inner);
+        PureExpr::Match { match_, .. } => match &**match_ {
+            Match::Enum { subject, arms } => {
+                let (variant_name, fields) =
+                    evaluate_expr(subject, env, function_decls, depth)?.unwrap_enum();
+                let mut matching_arms = arms.iter().filter(|arm| {
+                    let EnumPattern::Variant {
+                        variant_name: pattern_variant,
+                        ..
+                    } = &arm.pattern;
+                    variant_name == *pattern_variant
+                });
+                let arm = matching_arms.next().unwrap_or_else(|| {
+                    panic!("No matching arm found for variant '{}'", variant_name)
+                });
+                assert!(
+                    matching_arms.next().is_none(),
+                    "Multiple matching arms found for variant '{}'",
+                    variant_name
+                );
+                for (field_name, binder) in &arm.bindings {
+                    let (_, field) = fields
+                        .iter()
+                        .find(|(name, _)| name == field_name)
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Field '{}' not found in enum variant '{}'",
+                                field_name, variant_name
+                            )
+                        });
+                    env.insert(binder.var, field.clone());
                 }
-                let result = evaluate_expr(some_arm_body, env, function_decls, depth);
-                if let Some(binder) = some_arm_binding {
+                let result = evaluate_expr(&arm.body, env, function_decls, depth);
+                for (_, binder) in &arm.bindings {
                     env.remove(&binder.var);
                 }
                 result
             }
-            None => evaluate_expr(none_arm_body, env, function_decls, depth),
+
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => {
+                if evaluate_expr(subject, env, function_decls, depth)?.unwrap_bool() {
+                    evaluate_expr(true_body, env, function_decls, depth)
+                } else {
+                    evaluate_expr(false_body, env, function_decls, depth)
+                }
+            }
+
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => match evaluate_expr(subject, env, function_decls, depth)?.unwrap_option() {
+                Some(inner) => {
+                    if let Some(binder) = some_arm_binding {
+                        env.insert(binder.var, *inner);
+                    }
+                    let result = evaluate_expr(some_arm_body, env, function_decls, depth);
+                    if let Some(binder) = some_arm_binding {
+                        env.remove(&binder.var);
+                    }
+                    result
+                }
+                None => evaluate_expr(none_arm_body, env, function_decls, depth),
+            },
         },
 
         PureExpr::VariableReference { value, .. } => Ok(env.get(value).clone()),

@@ -93,7 +93,7 @@ pub enum PureExpr {
     ///
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
-        match_: Match<PureExpr, PureExpr>,
+        match_: Box<Match<PureExpr, PureExpr>>,
         typ: Type,
     },
 
@@ -333,7 +333,7 @@ impl PureExpr {
                 f(body);
             }
 
-            PureExpr::Match { match_, .. } => match match_ {
+            PureExpr::Match { match_, .. } => match &**match_ {
                 Match::Bool {
                     subject,
                     true_body,

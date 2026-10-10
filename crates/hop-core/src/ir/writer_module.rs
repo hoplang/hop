@@ -237,7 +237,7 @@ impl WriterOp {
             WriterOp::Match(match_) => match match_ {
                 Match::Bool { subject, .. }
                 | Match::Option { subject, .. }
-                | Match::Enum { subject, .. } => f(**subject),
+                | Match::Enum { subject, .. } => f(*subject),
             },
         }
     }

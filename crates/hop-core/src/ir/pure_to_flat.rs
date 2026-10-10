@@ -74,15 +74,15 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
             None => FlatOp::Read(value),
         },
 
-        PureExpr::Match { match_, .. } => FlatOp::Match(match match_ {
+        PureExpr::Match { match_, .. } => FlatOp::Match(match *match_ {
             Match::Bool {
                 subject,
                 true_body,
                 false_body,
             } => Match::Bool {
-                subject: Box::new(lower_expr(*subject, out, cx)),
-                true_body: Box::new(lower_block(*true_body, cx)),
-                false_body: Box::new(lower_block(*false_body, cx)),
+                subject: lower_expr(subject, out, cx),
+                true_body: lower_block(true_body, cx),
+                false_body: lower_block(false_body, cx),
             },
             Match::Option {
                 subject,
@@ -90,13 +90,13 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
                 some_arm_body,
                 none_arm_body,
             } => Match::Option {
-                subject: Box::new(lower_expr(*subject, out, cx)),
+                subject: lower_expr(subject, out, cx),
                 some_arm_binding,
-                some_arm_body: Box::new(lower_block(*some_arm_body, cx)),
-                none_arm_body: Box::new(lower_block(*none_arm_body, cx)),
+                some_arm_body: lower_block(some_arm_body, cx),
+                none_arm_body: lower_block(none_arm_body, cx),
             },
             Match::Enum { subject, arms } => {
-                let subject = lower_expr(*subject, out, cx);
+                let subject = lower_expr(subject, out, cx);
                 let arms = arms
                     .into_iter()
                     .map(|arm| EnumMatchArm {
@@ -105,10 +105,7 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
                         body: lower_block(arm.body, cx),
                     })
                     .collect();
-                Match::Enum {
-                    subject: Box::new(subject),
-                    arms,
-                }
+                Match::Enum { subject, arms }
             }
         }),
 
@@ -254,12 +251,12 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
         PureExpr::BoolLogicalAnd { left, right, .. } => {
             let left = lower_expr(*left, out, cx);
             FlatOp::Match(Match::Bool {
-                subject: Box::new(left),
-                true_body: Box::new(lower_block(*right, cx)),
-                false_body: Box::new(FlatBlock {
+                subject: left,
+                true_body: lower_block(*right, cx),
+                false_body: FlatBlock {
                     bindings: Vec::new(),
                     result: left,
-                }),
+                },
             })
         }
 
@@ -269,12 +266,12 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
         PureExpr::BoolLogicalOr { left, right, .. } => {
             let left = lower_expr(*left, out, cx);
             FlatOp::Match(Match::Bool {
-                subject: Box::new(left),
-                true_body: Box::new(FlatBlock {
+                subject: left,
+                true_body: FlatBlock {
                     bindings: Vec::new(),
                     result: left,
-                }),
-                false_body: Box::new(lower_block(*right, cx)),
+                },
+                false_body: lower_block(*right, cx),
             })
         }
     };
@@ -840,7 +837,7 @@ mod tests {
                     true_body,
                     false_body,
                 }) => {
-                    assert_eq!(type_of(names, **subject), &Type::Bool);
+                    assert_eq!(type_of(names, *subject), &Type::Bool);
                     let true_type = check_block(true_body, names, binders, seen, seen_binders);
                     let false_type = check_block(false_body, names, binders, seen, seen_binders);
                     assert_eq!(true_type, false_type);
@@ -852,7 +849,7 @@ mod tests {
                     some_arm_body,
                     none_arm_body,
                 }) => {
-                    let Type::Option(inner) = type_of(names, **subject).clone() else {
+                    let Type::Option(inner) = type_of(names, *subject).clone() else {
                         panic!("{} matches {subject}, which is not an Option", binding.name);
                     };
                     if let Some(binder) = some_arm_binding {

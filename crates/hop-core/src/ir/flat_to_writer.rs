@@ -333,7 +333,7 @@ impl Lowerer {
                             true_body,
                             false_body,
                         } => {
-                            self.read(**subject, Reader::Value, depth);
+                            self.read(*subject, Reader::Value, depth);
                             self.analyze(true_body, depth, output);
                             self.analyze(false_body, depth, output);
                         }
@@ -343,12 +343,12 @@ impl Lowerer {
                             none_arm_body,
                             ..
                         } => {
-                            self.read(**subject, Reader::Value, depth);
+                            self.read(*subject, Reader::Value, depth);
                             self.analyze(some_arm_body, depth, output);
                             self.analyze(none_arm_body, depth, output);
                         }
                         Match::Enum { subject, arms } => {
-                            self.read(**subject, Reader::Value, depth);
+                            self.read(*subject, Reader::Value, depth);
                             for arm in arms {
                                 self.analyze(&arm.body, depth, output);
                             }
@@ -457,9 +457,9 @@ impl Lowerer {
                         true_body,
                         false_body,
                     } => Match::Bool {
-                        subject: Box::new(self.name(*subject)),
-                        true_body: Box::new(self.lower_value_block(*true_body)),
-                        false_body: Box::new(self.lower_value_block(*false_body)),
+                        subject: self.name(subject),
+                        true_body: self.lower_value_block(true_body),
+                        false_body: self.lower_value_block(false_body),
                     },
                     Match::Option {
                         subject,
@@ -467,13 +467,13 @@ impl Lowerer {
                         some_arm_body,
                         none_arm_body,
                     } => Match::Option {
-                        subject: Box::new(self.name(*subject)),
+                        subject: self.name(subject),
                         some_arm_binding,
-                        some_arm_body: Box::new(self.lower_value_block(*some_arm_body)),
-                        none_arm_body: Box::new(self.lower_value_block(*none_arm_body)),
+                        some_arm_body: self.lower_value_block(some_arm_body),
+                        none_arm_body: self.lower_value_block(none_arm_body),
                     },
                     Match::Enum { subject, arms } => Match::Enum {
-                        subject: Box::new(self.name(*subject)),
+                        subject: self.name(subject),
                         arms: arms
                             .into_iter()
                             .map(|arm| EnumMatchArm {
@@ -616,9 +616,9 @@ impl Lowerer {
                                     let mut true_body = Vec::new();
                                     write(&mut true_body, &format!(" {}", name.as_str()));
                                     unit.push(WriterStmt::Match(Match::Bool {
-                                        subject: Box::new(self.name(present)),
-                                        true_body: Box::new(true_body),
-                                        false_body: Box::new(Vec::new()),
+                                        subject: self.name(present),
+                                        true_body,
+                                        false_body: Vec::new(),
                                     }));
                                 }
                             }
@@ -674,13 +674,13 @@ impl Lowerer {
                     false_body,
                 } => {
                     let mut true_statements = Vec::new();
-                    self.lower_output_block(*true_body, &mut true_statements);
+                    self.lower_output_block(true_body, &mut true_statements);
                     let mut false_statements = Vec::new();
-                    self.lower_output_block(*false_body, &mut false_statements);
+                    self.lower_output_block(false_body, &mut false_statements);
                     Match::Bool {
-                        subject: Box::new(self.name(*subject)),
-                        true_body: Box::new(true_statements),
-                        false_body: Box::new(false_statements),
+                        subject: self.name(subject),
+                        true_body: true_statements,
+                        false_body: false_statements,
                     }
                 }
                 Match::Option {
@@ -690,18 +690,18 @@ impl Lowerer {
                     none_arm_body,
                 } => {
                     let mut some_statements = Vec::new();
-                    self.lower_output_block(*some_arm_body, &mut some_statements);
+                    self.lower_output_block(some_arm_body, &mut some_statements);
                     let mut none_statements = Vec::new();
-                    self.lower_output_block(*none_arm_body, &mut none_statements);
+                    self.lower_output_block(none_arm_body, &mut none_statements);
                     Match::Option {
-                        subject: Box::new(self.name(*subject)),
+                        subject: self.name(subject),
                         some_arm_binding,
-                        some_arm_body: Box::new(some_statements),
-                        none_arm_body: Box::new(none_statements),
+                        some_arm_body: some_statements,
+                        none_arm_body: none_statements,
                     }
                 }
                 Match::Enum { subject, arms } => Match::Enum {
-                    subject: Box::new(self.name(*subject)),
+                    subject: self.name(subject),
                     arms: arms
                         .into_iter()
                         .map(|arm| {
@@ -801,7 +801,7 @@ mod tests {
                     true_body,
                     false_body,
                 }) => {
-                    assert_eq!(type_of(names, **subject), &Type::Bool);
+                    assert_eq!(type_of(names, *subject), &Type::Bool);
                     check_stmts(true_body, names);
                     check_stmts(false_body, names);
                 }
@@ -811,7 +811,7 @@ mod tests {
                     some_arm_body,
                     none_arm_body,
                 }) => {
-                    let Type::Option(inner) = type_of(names, **subject).clone() else {
+                    let Type::Option(inner) = type_of(names, *subject).clone() else {
                         panic!("a match on {subject}, which is not an Option");
                     };
                     if let Some(binder) = some_arm_binding {
@@ -823,7 +823,7 @@ mod tests {
                     check_stmts(none_arm_body, names);
                 }
                 WriterStmt::Match(Match::Enum { subject, arms }) => {
-                    type_of(names, **subject);
+                    type_of(names, *subject);
                     for arm in arms {
                         for (_, binder) in &arm.bindings {
                             names.push((WriterName::Binder(binder.var), binder.typ.clone()));
@@ -935,7 +935,7 @@ mod tests {
                 true_body,
                 false_body,
             }) => {
-                assert_eq!(type_of(names, **subject), &Type::Bool);
+                assert_eq!(type_of(names, *subject), &Type::Bool);
                 let true_type = check_value_block(true_body, names);
                 let false_type = check_value_block(false_body, names);
                 assert_eq!(true_type, false_type);
@@ -947,7 +947,7 @@ mod tests {
                 some_arm_body,
                 none_arm_body,
             }) => {
-                let Type::Option(inner) = type_of(names, **subject).clone() else {
+                let Type::Option(inner) = type_of(names, *subject).clone() else {
                     panic!("a match on {subject}, which is not an Option");
                 };
                 if let Some(binder) = some_arm_binding {

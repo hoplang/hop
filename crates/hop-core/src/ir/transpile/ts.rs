@@ -930,7 +930,7 @@ impl Transpiler for TsTranspiler {
             } => {
                 let if_doc = arena
                     .text("if (")
-                    .append(arena.text(name_ident(**subject)))
+                    .append(arena.text(name_ident(*subject)))
                     .append(arena.text(") {"))
                     .append(self.transpile_block(arena, true_body))
                     .append(arena.text("}"));
@@ -951,16 +951,16 @@ impl Transpiler for TsTranspiler {
                 none_arm_body,
             } => self.transpile_option_cases(
                 arena,
-                **subject,
+                *subject,
                 some_arm_binding.as_ref(),
-                some_arm_body.as_ref(),
-                none_arm_body.as_ref(),
+                some_arm_body,
+                none_arm_body,
                 |this, body| this.transpile_statements(arena, body),
                 "break;",
             ),
             Match::Enum { subject, arms } => self.transpile_enum_cases(
                 arena,
-                **subject,
+                *subject,
                 arms,
                 |this, body| this.transpile_statements(arena, body),
                 "break;",
@@ -1387,7 +1387,7 @@ impl Transpiler for TsTranspiler {
             } => {
                 if true_body.lets.is_empty() && false_body.lets.is_empty() {
                     return arena
-                        .text(name_ident(**subject))
+                        .text(name_ident(*subject))
                         .append(arena.text(" ? "))
                         .append(arena.text(name_ident(true_body.result)))
                         .append(arena.text(" : "))
@@ -1395,7 +1395,7 @@ impl Transpiler for TsTranspiler {
                 }
                 let body = arena
                     .text("if (")
-                    .append(arena.text(name_ident(**subject)))
+                    .append(arena.text(name_ident(*subject)))
                     .append(arena.text(") {"))
                     .append(
                         arena
@@ -1423,10 +1423,10 @@ impl Transpiler for TsTranspiler {
             } => {
                 let body = self.transpile_option_cases(
                     arena,
-                    **subject,
+                    *subject,
                     some_arm_binding.as_ref(),
-                    some_arm_body.as_ref(),
-                    none_arm_body.as_ref(),
+                    some_arm_body,
+                    none_arm_body,
                     |this, block| this.transpile_value_block(arena, block),
                     "",
                 );
@@ -1435,7 +1435,7 @@ impl Transpiler for TsTranspiler {
             Match::Enum { subject, arms } => {
                 let body = self.transpile_enum_cases(
                     arena,
-                    **subject,
+                    *subject,
                     arms,
                     |this, block| this.transpile_value_block(arena, block),
                     "",

@@ -99,17 +99,17 @@ impl Evaluator<'_> {
                         false_body,
                     } => match self.ops.get(&subject) {
                         Some(FlatOp::BoolLiteral(true)) => {
-                            self.select_arm(name, *true_body, out);
+                            self.select_arm(name, true_body, out);
                             return;
                         }
                         Some(FlatOp::BoolLiteral(false)) => {
-                            self.select_arm(name, *false_body, out);
+                            self.select_arm(name, false_body, out);
                             return;
                         }
                         _ => Match::Bool {
                             subject,
-                            true_body: Box::new(self.evaluate_block(*true_body)),
-                            false_body: Box::new(self.evaluate_block(*false_body)),
+                            true_body: self.evaluate_block(true_body),
+                            false_body: self.evaluate_block(false_body),
                         },
                     },
                     Match::Option {
@@ -123,18 +123,18 @@ impl Evaluator<'_> {
                             if let Some(binder) = some_arm_binding {
                                 self.binders.insert(binder.var, inner);
                             }
-                            self.select_arm(name, *some_arm_body, out);
+                            self.select_arm(name, some_arm_body, out);
                             return;
                         }
                         Some(FlatOp::Option(None)) => {
-                            self.select_arm(name, *none_arm_body, out);
+                            self.select_arm(name, none_arm_body, out);
                             return;
                         }
                         _ => Match::Option {
                             subject,
                             some_arm_binding,
-                            some_arm_body: Box::new(self.evaluate_block(*some_arm_body)),
-                            none_arm_body: Box::new(self.evaluate_block(*none_arm_body)),
+                            some_arm_body: self.evaluate_block(some_arm_body),
+                            none_arm_body: self.evaluate_block(none_arm_body),
                         },
                     },
                     Match::Enum { subject, arms } => match self.ops.get(&subject) {

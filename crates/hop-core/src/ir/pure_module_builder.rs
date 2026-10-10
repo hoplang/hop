@@ -717,10 +717,10 @@ impl PureBuilder {
             .expect("enum_match_expr requires at least one arm");
 
         PureExpr::Match {
-            match_: Match::Enum {
-                subject: Box::new(subject),
+            match_: Box::new(Match::Enum {
+                subject,
                 arms: arms.arms,
-            },
+            }),
             typ,
         }
     }
@@ -742,11 +742,11 @@ impl PureBuilder {
         let result_type = true_body.typ();
 
         PureExpr::Match {
-            match_: Match::Bool {
-                subject: Box::new(subject),
-                true_body: Box::new(true_body),
-                false_body: Box::new(false_body),
-            },
+            match_: Box::new(Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            }),
             typ: result_type,
         }
     }
@@ -772,12 +772,12 @@ impl PureBuilder {
         let result_type = some_body.typ();
 
         PureExpr::Match {
-            match_: Match::Option {
-                subject: Box::new(subject),
+            match_: Box::new(Match::Option {
+                subject,
                 some_arm_binding: None,
-                some_arm_body: Box::new(some_body),
-                none_arm_body: Box::new(none_body),
-            },
+                some_arm_body: some_body,
+                none_arm_body: none_body,
+            }),
             typ: result_type,
         }
     }
@@ -811,15 +811,15 @@ impl PureBuilder {
         let result_type = some_body.typ();
 
         PureExpr::Match {
-            match_: Match::Option {
-                subject: Box::new(subject),
+            match_: Box::new(Match::Option {
+                subject,
                 some_arm_binding: Some(IrBinder {
                     var: binding,
                     typ: inner_type,
                 }),
-                some_arm_body: Box::new(some_body),
-                none_arm_body: Box::new(none_body),
-            },
+                some_arm_body: some_body,
+                none_arm_body: none_body,
+            }),
             typ: result_type,
         }
     }

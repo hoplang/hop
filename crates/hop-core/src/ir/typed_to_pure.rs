@@ -317,19 +317,19 @@ impl<'a> Compiler<'a> {
                 true_case,
                 false_case,
             } => {
-                let subject = Box::new(PureExpr::VariableReference {
+                let subject = PureExpr::VariableReference {
                     value: case_vars[&variable.id],
                     typ: variable.typ.clone(),
-                });
+                };
                 let true_body = self.compile_decision(&true_case.body, arms, typ, used, case_vars);
                 let false_body =
                     self.compile_decision(&false_case.body, arms, typ, used, case_vars);
                 PureExpr::Match {
-                    match_: Match::Bool {
+                    match_: Box::new(Match::Bool {
                         subject,
-                        true_body: Box::new(true_body),
-                        false_body: Box::new(false_body),
-                    },
+                        true_body,
+                        false_body,
+                    }),
                     typ: typ.clone(),
                 }
             }
@@ -338,10 +338,10 @@ impl<'a> Compiler<'a> {
                 some_case,
                 none_case,
             } => {
-                let subject = Box::new(PureExpr::VariableReference {
+                let subject = PureExpr::VariableReference {
                     value: case_vars[&variable.id],
                     typ: variable.typ.clone(),
-                });
+                };
                 let binding = if used.contains(&some_case.var.id) {
                     let var = self.next_binder_id();
                     case_vars.insert(some_case.var.id, var);
@@ -355,20 +355,20 @@ impl<'a> Compiler<'a> {
                 let some_body = self.compile_decision(&some_case.body, arms, typ, used, case_vars);
                 let none_body = self.compile_decision(&none_case.body, arms, typ, used, case_vars);
                 PureExpr::Match {
-                    match_: Match::Option {
+                    match_: Box::new(Match::Option {
                         subject,
                         some_arm_binding: binding,
-                        some_arm_body: Box::new(some_body),
-                        none_arm_body: Box::new(none_body),
-                    },
+                        some_arm_body: some_body,
+                        none_arm_body: none_body,
+                    }),
                     typ: typ.clone(),
                 }
             }
             Decision::SwitchEnum { variable, cases } => {
-                let subject = Box::new(PureExpr::VariableReference {
+                let subject = PureExpr::VariableReference {
                     value: case_vars[&variable.id],
                     typ: variable.typ.clone(),
-                });
+                };
                 let enum_arms = cases
                     .iter()
                     .map(|case| {
@@ -401,10 +401,10 @@ impl<'a> Compiler<'a> {
                     })
                     .collect();
                 PureExpr::Match {
-                    match_: Match::Enum {
+                    match_: Box::new(Match::Enum {
                         subject,
                         arms: enum_arms,
-                    },
+                    }),
                     typ: typ.clone(),
                 }
             }
@@ -969,21 +969,21 @@ impl<'a> Compiler<'a> {
                 default,
                 typ,
             } => {
-                let subject = Box::new(self.compile_expr(option));
+                let subject = self.compile_expr(option);
                 let binding = self.next_binder_id();
                 PureExpr::Match {
-                    match_: Match::Option {
+                    match_: Box::new(Match::Option {
                         subject,
                         some_arm_binding: Some(IrBinder {
                             var: binding,
                             typ: typ.clone(),
                         }),
-                        some_arm_body: Box::new(PureExpr::VariableReference {
+                        some_arm_body: PureExpr::VariableReference {
                             value: binding,
                             typ: typ.clone(),
-                        }),
-                        none_arm_body: Box::new(self.compile_expr(default)),
-                    },
+                        },
+                        none_arm_body: self.compile_expr(default),
+                    }),
                     typ: typ.clone(),
                 }
             }

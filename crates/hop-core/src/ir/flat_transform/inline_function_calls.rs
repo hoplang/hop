@@ -174,17 +174,12 @@ fn inline_block(
                     false_body,
                 } => Match::Bool {
                     subject,
-                    true_body: Box::new(inline_block(
-                        *true_body, decls, recursive, var_ids, binder_ids, renames,
-                    )),
-                    false_body: Box::new(inline_block(
-                        *false_body,
-                        decls,
-                        recursive,
-                        var_ids,
-                        binder_ids,
-                        renames,
-                    )),
+                    true_body: inline_block(
+                        true_body, decls, recursive, var_ids, binder_ids, renames,
+                    ),
+                    false_body: inline_block(
+                        false_body, decls, recursive, var_ids, binder_ids, renames,
+                    ),
                 },
                 Match::Option {
                     subject,
@@ -194,22 +189,22 @@ fn inline_block(
                 } => Match::Option {
                     subject,
                     some_arm_binding,
-                    some_arm_body: Box::new(inline_block(
-                        *some_arm_body,
+                    some_arm_body: inline_block(
+                        some_arm_body,
                         decls,
                         recursive,
                         var_ids,
                         binder_ids,
                         renames,
-                    )),
-                    none_arm_body: Box::new(inline_block(
-                        *none_arm_body,
+                    ),
+                    none_arm_body: inline_block(
+                        none_arm_body,
                         decls,
                         recursive,
                         var_ids,
                         binder_ids,
                         renames,
-                    )),
+                    ),
                 },
                 Match::Enum { subject, arms } => Match::Enum {
                     subject,
@@ -304,9 +299,9 @@ impl Freshener<'_> {
                     true_body,
                     false_body,
                 } => Match::Bool {
-                    subject: Box::new(self.name(**subject)),
-                    true_body: Box::new(self.freshen_block(true_body)),
-                    false_body: Box::new(self.freshen_block(false_body)),
+                    subject: self.name(*subject),
+                    true_body: self.freshen_block(true_body),
+                    false_body: self.freshen_block(false_body),
                 },
                 Match::Option {
                     subject,
@@ -314,19 +309,19 @@ impl Freshener<'_> {
                     some_arm_body,
                     none_arm_body,
                 } => {
-                    let subject = Box::new(self.name(**subject));
+                    let subject = self.name(*subject);
                     let some_arm_binding = some_arm_binding
                         .as_ref()
                         .map(|binder| self.fresh_binder(binder));
                     Match::Option {
                         subject,
                         some_arm_binding,
-                        some_arm_body: Box::new(self.freshen_block(some_arm_body)),
-                        none_arm_body: Box::new(self.freshen_block(none_arm_body)),
+                        some_arm_body: self.freshen_block(some_arm_body),
+                        none_arm_body: self.freshen_block(none_arm_body),
                     }
                 }
                 Match::Enum { subject, arms } => Match::Enum {
-                    subject: Box::new(self.name(**subject)),
+                    subject: self.name(*subject),
                     arms: arms
                         .iter()
                         .map(|arm| {

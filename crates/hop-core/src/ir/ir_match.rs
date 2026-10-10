@@ -29,23 +29,23 @@ pub struct EnumMatchArm<Body> {
 pub enum Match<Subj, Body> {
     /// An enum match, e.g. `match color { Color::Red => "red", ... }`
     Enum {
-        subject: Box<Subj>,
+        subject: Subj,
         arms: Vec<EnumMatchArm<Body>>,
     },
 
     /// A boolean match, e.g. `match flag { true => "yes", false => "no" }`
     Bool {
-        subject: Box<Subj>,
-        true_body: Box<Body>,
-        false_body: Box<Body>,
+        subject: Subj,
+        true_body: Body,
+        false_body: Body,
     },
 
     /// An option match, e.g. `match opt { Some(x) => x, None => "empty" }`
     Option {
-        subject: Box<Subj>,
+        subject: Subj,
         some_arm_binding: Option<IrBinder>,
-        some_arm_body: Box<Body>,
-        none_arm_body: Box<Body>,
+        some_arm_body: Body,
+        none_arm_body: Body,
     },
 }
 
@@ -66,8 +66,8 @@ impl<Subj, Body> Match<Subj, Body> {
             } => (
                 subject,
                 vec![
-                    ("true".to_string(), &**true_body),
-                    ("false".to_string(), &**false_body),
+                    ("true".to_string(), true_body),
+                    ("false".to_string(), false_body),
                 ],
             ),
             Match::Option {
@@ -83,8 +83,8 @@ impl<Subj, Body> Match<Subj, Body> {
                 (
                     subject,
                     vec![
-                        (some_pattern, &**some_arm_body),
-                        ("None".to_string(), &**none_arm_body),
+                        (some_pattern, some_arm_body),
+                        ("None".to_string(), none_arm_body),
                     ],
                 )
             }
