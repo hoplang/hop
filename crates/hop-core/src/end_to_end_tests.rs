@@ -13567,6 +13567,508 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn html_bound_outside_a_loop_renders_in_every_iteration() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let star = <b>*</b>;
+                    for _ in 1..=3 {
+                      star
+                    }
+                  }
+                }
+            "#},
+            "<b>*</b><b>*</b><b>*</b>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v2: Html = html {
+                    write("<b>*</b>")
+                  }
+                  let v3: Int = 1
+                  let v4: Int = 3
+                  for _ in v3..=v4 {
+                    write_html(v2)
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  let v2: Html = html {
+                    write("<b>*</b>")
+                  }
+                  let v3: Int = 1
+                  let v4: Int = 3
+                  for _ in v3..=v4 {
+                    write_html(v2)
+                  }
+                }
+                -- expected output --
+                <b>*</b><b>*</b><b>*</b>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn html_bound_before_a_match_renders_in_the_arm_that_reads_it() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    for flag in [true, false] {
+                      let mark = <b>yes</b>;
+                      match flag {
+                        true => mark,
+                        false => <i>no</i>,
+                      }
+                    }
+                  }
+                }
+            "#},
+            "<b>yes</b><i>no</i>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0: Bool = true
+                  let v1: Bool = false
+                  let v2: Array[Bool] = [v0, v1]
+                  for b0: Bool in v2 {
+                    match b0 {
+                      true => {
+                        write("<b>yes</b>")
+                      }
+                      false => {
+                        write("<i>no</i>")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  let v0: Bool = true
+                  let v1: Bool = false
+                  let v2: Array[Bool] = [v0, v1]
+                  for b0: Bool in v2 {
+                    match b0 {
+                      true => {
+                        write("<b>yes</b>")
+                      }
+                      false => {
+                        write("<i>no</i>")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                <b>yes</b><i>no</i>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn html_match_used_twice() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    for flag in [true, false] {
+                      let mark = match flag {
+                        true => <b>yes</b>,
+                        false => <i>no</i>,
+                      };
+                      <p>
+                        {mark}
+                        {mark}
+                      </p>
+                    }
+                  }
+                }
+            "#},
+            "<p><b>yes</b><b>yes</b></p><p><i>no</i><i>no</i></p>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0: Bool = true
+                  let v1: Bool = false
+                  let v2: Array[Bool] = [v0, v1]
+                  for b0: Bool in v2 {
+                    let v20: Html = html {
+                      match b0 {
+                        true => {
+                          write("<b>yes</b>")
+                        }
+                        false => {
+                          write("<i>no</i>")
+                        }
+                      }
+                    }
+                    write("<p>")
+                    write_html(v20)
+                    write_html(v20)
+                    write("</p>")
+                  }
+                }
+                -- ir (optimized) --
+                page Test() {
+                  let v0: Bool = true
+                  let v1: Bool = false
+                  let v2: Array[Bool] = [v0, v1]
+                  for b0: Bool in v2 {
+                    let v18: Html = html {
+                      match b0 {
+                        true => {
+                          write("<b>yes</b>")
+                        }
+                        false => {
+                          write("<i>no</i>")
+                        }
+                      }
+                    }
+                    write("<p>")
+                    write_html(v18)
+                    write_html(v18)
+                    write("</p>")
+                  }
+                }
+                -- expected output --
+                <p><b>yes</b><b>yes</b></p><p><i>no</i><i>no</i></p>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn html_call_used_twice() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Countdown(n: Int) -> Html {
+                  match n > 0 {
+                    true => {
+                      <>
+                        <b>
+                          {n.to_string()}
+                        </b>
+                        <Countdown n={n - 1}/>
+                      </>
+                    },
+                    false => <>go</>,
+                  }
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    let count = <Countdown n={2}/>;
+                    <p>
+                      {count}
+                      {count}
+                    </p>
+                  }
+                }
+            "#},
+            "<p><b>2</b><b>1</b>go<b>2</b><b>1</b>go</p>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Countdown@f0(n@b1: Int) -> Html {
+                  let v0: Int = 0
+                  let v2: Bool = v0 < b1
+                  match v2 {
+                    true => {
+                      let v21: String = b1.to_string()
+                      let v26: Int = 1
+                      let v27: Int = b1 - v26
+                      write("<b>")
+                      write_string(v21)
+                      write("</b>")
+                      write_function Countdown@f0(v27)
+                    }
+                    false => {
+                      write("go")
+                    }
+                  }
+                }
+                page Test() {
+                  let v16: Int = 2
+                  let v17: Html = html {
+                    write_function Countdown@f0(v16)
+                  }
+                  write("<p>")
+                  write_html(v17)
+                  write_html(v17)
+                  write("</p>")
+                }
+                -- ir (optimized) --
+                fn Countdown@f0(n@b1: Int) -> Html {
+                  let v0: Int = 0
+                  let v2: Bool = v0 < b1
+                  match v2 {
+                    true => {
+                      let v21: String = b1.to_string()
+                      let v25: Int = 1
+                      let v26: Int = b1 - v25
+                      write("<b>")
+                      write_string(v21)
+                      write("</b>")
+                      write_function Countdown@f0(v26)
+                    }
+                    false => {
+                      write("go")
+                    }
+                  }
+                }
+                page Test() {
+                  let v16: Int = 2
+                  let v17: Html = html {
+                    write_function Countdown@f0(v16)
+                  }
+                  write("<p>")
+                  write_html(v17)
+                  write_html(v17)
+                  write("</p>")
+                }
+                -- expected output --
+                <p><b>2</b><b>1</b>go<b>2</b><b>1</b>go</p>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn html_loop_used_twice() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let stars = for _ in 1..=2 {
+                      <b>*</b>
+                    };
+                    <p>
+                      {stars}
+                      {stars}
+                    </p>
+                  }
+                }
+            "#},
+            "<p><b>*</b><b>*</b><b>*</b><b>*</b></p>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v0: Int = 1
+                  let v1: Int = 2
+                  let v5: Html = html {
+                    for _ in v0..=v1 {
+                      write("<b>*</b>")
+                    }
+                  }
+                  write("<p>")
+                  write_html(v5)
+                  write_html(v5)
+                  write("</p>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  let v0: Int = 1
+                  let v1: Int = 2
+                  let v5: Html = html {
+                    for _ in v0..=v1 {
+                      write("<b>*</b>")
+                    }
+                  }
+                  write("<p>")
+                  write_html(v5)
+                  write_html(v5)
+                  write("</p>")
+                }
+                -- expected output --
+                <p><b>*</b><b>*</b><b>*</b><b>*</b></p>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn html_built_in_a_recursive_function_returning_a_record() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record Card {
+                  title: String,
+                  body: Html,
+                }
+
+                fn deepest(depth: Int) -> Card {
+                  match depth > 0 {
+                    true => deepest(depth - 1),
+                    false => Card {title: "bottom", body: <b>reached</b>},
+                  }
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    let card = deepest(2);
+                    <section>
+                      <h1>
+                        {card.title}
+                      </h1>
+                      {card.body}
+                    </section>
+                  }
+                }
+            "#},
+            "<section><h1>bottom</h1><b>reached</b></section>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn deepest@f0(depth@b1: Int) -> Card {
+                  let v0: Int = 0
+                  let v2: Bool = v0 < b1
+                  let v31: Card = match v2 {
+                    true => {
+                      let v23: Int = 1
+                      let v24: Int = b1 - v23
+                      let v25: Card = call deepest@f0(v24)
+                      v25
+                    }
+                    false => {
+                      let v26: String = "bottom"
+                      let v29: Html = html {
+                        write("<b>reached</b>")
+                      }
+                      let v30: Card = {title: v26, body: v29}
+                      v30
+                    }
+                  }
+                  v31
+                }
+                page Test() {
+                  let v13: Int = 2
+                  let v14: Card = call deepest@f0(v13)
+                  let v15: String = v14.title
+                  let v19: Html = v14.body
+                  write("<section><h1>")
+                  write_string(v15)
+                  write("</h1>")
+                  write_html(v19)
+                  write("</section>")
+                }
+                -- ir (optimized) --
+                fn deepest@f0(depth@b1: Int) -> Card {
+                  let v0: Int = 0
+                  let v2: Bool = v0 < b1
+                  let v30: Card = match v2 {
+                    true => {
+                      let v23: Int = 1
+                      let v24: Int = b1 - v23
+                      let v25: Card = call deepest@f0(v24)
+                      v25
+                    }
+                    false => {
+                      let v26: String = "bottom"
+                      let v28: Html = html {
+                        write("<b>reached</b>")
+                      }
+                      let v29: Card = {title: v26, body: v28}
+                      v29
+                    }
+                  }
+                  v30
+                }
+                page Test() {
+                  let v13: Int = 2
+                  let v14: Card = call deepest@f0(v13)
+                  let v15: String = v14.title
+                  let v19: Html = v14.body
+                  write("<section><h1>")
+                  write_string(v15)
+                  write("</h1>")
+                  write_html(v19)
+                  write("</section>")
+                }
+                -- expected output --
+                <section><h1>bottom</h1><b>reached</b></section>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn recursive_function_with_non_recursive_sibling() {
         check(
             indoc! {r#"
