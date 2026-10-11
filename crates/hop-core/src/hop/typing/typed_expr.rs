@@ -1,7 +1,6 @@
 use std::fmt::{self, Display};
 
 use crate::document::CheapString;
-use crate::hop::typing::compile_match::Decision;
 use crate::hop::typing::typed_pattern::TypedPattern;
 use crate::html::HtmlElementKind;
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -83,13 +82,12 @@ pub enum TypedExpr {
         typ: Type,
     },
 
-    /// A match expression, with the decision tree its arms compile to.
+    /// A match expression, whose patterns cover every value of the
+    /// subject's type and are each reached by some value.
     Match {
         subject: Box<Self>,
-        /// The arms in source order. `Body::value` in the decision indexes
-        /// into these.
+        /// The arms in source order.
         arms: Vec<(TypedPattern, Self)>,
-        decision: Decision,
         typ: Type,
     },
 

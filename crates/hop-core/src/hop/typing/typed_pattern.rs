@@ -1,28 +1,38 @@
 use pretty::BoxDoc;
 
+use crate::hop::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
+/// A pattern of a match arm. `N` names what a binding binds, a variable
+/// name in the typed AST and a binder in the IR.
 #[derive(Debug, Clone)]
-pub enum TypedPattern {
+pub enum Pattern<N> {
     Wildcard,
+    /// Binds the value it matches, of type `typ`.
     Binding {
-        name: VarName,
+        name: N,
+        typ: Type,
     },
     Constructor {
         constructor: Constructor,
-        args: Vec<TypedPattern>,
-        fields: Vec<TypedField>,
+        args: Vec<Pattern<N>>,
+        fields: Vec<PatternField<N>>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedField {
+pub struct PatternField<N> {
     pub name: FieldName,
+    /// The position of the field in its record or variant declaration.
     pub index: usize,
-    pub pattern: TypedPattern,
+    pub pattern: Pattern<N>,
 }
+
+pub type TypedPattern = Pattern<VarName>;
+
+pub type TypedField = PatternField<VarName>;
 
 /// A constructor pattern (non-wildcard pattern that matches a specific value)
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -91,7 +101,7 @@ impl TypedPattern {
                     // Record pattern: User {name: x, age: y}
                     let fields_doc = BoxDoc::intersperse(
                         fields.iter().map(|field| {
-                            if let TypedPattern::Binding { name: var_name } = &field.pattern {
+                            if let TypedPattern::Binding { name: var_name, .. } = &field.pattern {
                                 if var_name.as_str() == field.name.as_str() {
                                     return BoxDoc::text(field.name.as_str());
                                 }
@@ -117,7 +127,7 @@ impl TypedPattern {
                 }
             }
             TypedPattern::Wildcard => BoxDoc::text("_"),
-            TypedPattern::Binding { name } => BoxDoc::text(name.as_str()),
+            TypedPattern::Binding { name, .. } => BoxDoc::text(name.as_str()),
         }
     }
 }

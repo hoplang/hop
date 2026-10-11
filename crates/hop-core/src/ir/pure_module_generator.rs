@@ -1,10 +1,13 @@
-use crate::hop::typing::{Type, TypeRegistry};
+use crate::hop::typing::{Constructor, Pattern, PatternField, Type, TypeRegistry};
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_match::IrPattern;
 use crate::ir::pure_module::{PureExpr, PureModule};
-use crate::ir::pure_module_builder::{PureBuilder, PureModuleBuilder};
+use crate::ir::pure_module_builder::{PureBuilder, PureModuleBuilder, ScopedVar};
 use crate::ir::runtime::random::random_value;
 use crate::ir::runtime::value::Value;
 use crate::symbols::attribute_name::AttributeName;
+use crate::symbols::field_name::FieldName;
+use crate::symbols::type_name::TypeName;
 use arbitrary::Unstructured;
 use rand::Rng;
 use std::cell::RefCell;
@@ -423,6 +426,111 @@ impl PureGenerator<'_, '_> {
         arms
     }
 
+    /// A random pattern for values of `typ` that tests at most `depth`
+    /// constructors on any path from its root. A pattern of depth zero
+    /// matches every value. The variables it binds are pushed to `vars`.
+    fn pattern(
+        &mut self,
+        b: &PureBuilder,
+        typ: &Type,
+        depth: usize,
+        vars: &mut Vec<ScopedVar>,
+    ) -> IrPattern {
+        if depth > 0 && self.index(3) > 0 {
+            match typ {
+                Type::Bool => {
+                    let constructor = if self.coin() {
+                        Constructor::BoolTrue
+                    } else {
+                        Constructor::BoolFalse
+                    };
+                    return Pattern::Constructor {
+                        constructor,
+                        args: Vec::new(),
+                        fields: Vec::new(),
+                    };
+                }
+                Type::Option(inner) => {
+                    return if self.coin() {
+                        Pattern::Constructor {
+                            constructor: Constructor::OptionSome,
+                            args: vec![self.pattern(b, inner, depth - 1, vars)],
+                            fields: Vec::new(),
+                        }
+                    } else {
+                        Pattern::Constructor {
+                            constructor: Constructor::OptionNone,
+                            args: Vec::new(),
+                            fields: Vec::new(),
+                        }
+                    };
+                }
+                Type::Tuple(elements) => {
+                    return Pattern::Constructor {
+                        constructor: Constructor::Tuple,
+                        args: elements
+                            .iter()
+                            .map(|element| self.pattern(b, element, depth - 1, vars))
+                            .collect(),
+                        fields: Vec::new(),
+                    };
+                }
+                Type::Named { .. } => {
+                    let record = self
+                        .records
+                        .iter()
+                        .find(|record| b.resolve_type(&record.name) == *typ)
+                        .cloned();
+                    let (constructor, fields) = match record {
+                        Some(record) => (
+                            Constructor::Record {
+                                type_name: TypeName::parse(&record.name).unwrap(),
+                            },
+                            record.fields,
+                        ),
+                        None => {
+                            let info = self
+                                .enums
+                                .iter()
+                                .find(|info| b.resolve_type(&info.name) == *typ)
+                                .cloned()
+                                .expect("a named type is a declared record or enum");
+                            let (variant, fields) = self.u.choose(&info.variants).unwrap().clone();
+                            (
+                                Constructor::EnumVariant {
+                                    type_name: TypeName::parse(&info.name).unwrap(),
+                                    variant_name: TypeName::parse(&variant).unwrap(),
+                                },
+                                fields,
+                            )
+                        }
+                    };
+                    let fields = fields
+                        .iter()
+                        .enumerate()
+                        .map(|(index, (field, field_ty))| PatternField {
+                            name: FieldName::parse(field).unwrap(),
+                            index,
+                            pattern: self.pattern(b, &b.resolve_type(field_ty), depth - 1, vars),
+                        })
+                        .collect();
+                    return Pattern::Constructor {
+                        constructor,
+                        args: Vec::new(),
+                        fields,
+                    };
+                }
+                _ => {}
+            }
+        }
+        if self.coin() {
+            return Pattern::Wildcard;
+        }
+        let (pattern, var) = b.binding_pattern(&self.fresh_var_name(), typ.clone());
+        vars.push(var);
+        pattern
+    }
+
     /// Generate a random expression of the target type.
     fn expr(&mut self, b: &PureBuilder, target: &Type, depth: usize) -> PureExpr {
         enum P {
@@ -448,6 +556,7 @@ impl PureGenerator<'_, '_> {
             StringIsEmpty,
             ArrayIsEmpty,
             ArrayLength,
+            PatternMatch,
             TupleIndex,
             Neg,
             Add,
@@ -471,7 +580,13 @@ impl PureGenerator<'_, '_> {
             if !record_fields.is_empty() {
                 productions.push(P::FieldAccess);
             }
-            productions.extend([P::Let, P::BoolMatch, P::OptionMatch, P::TupleIndex]);
+            productions.extend([
+                P::Let,
+                P::BoolMatch,
+                P::OptionMatch,
+                P::PatternMatch,
+                P::TupleIndex,
+            ]);
             if !self.enums.is_empty() {
                 productions.push(P::EnumMatch);
             }
@@ -743,6 +858,34 @@ impl PureGenerator<'_, '_> {
                     .collect();
                 let tuple = self.expr(b, &Type::Tuple(elements), depth - 1);
                 b.tuple_index(tuple, index)
+            }
+            P::PatternMatch => {
+                let subject = self
+                    .var_in_scope(b, |ty| {
+                        matches!(
+                            ty,
+                            Type::Bool | Type::Option(_) | Type::Tuple(_) | Type::Named { .. }
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        let elements = (0..self.count(1..=3))
+                            .map(|_| b.resolve_type(&self.random_type_string(1)))
+                            .collect();
+                        self.expr(b, &Type::Tuple(elements), depth - 1)
+                    });
+                let subject_ty = subject.typ();
+                let mut arms = Vec::new();
+                for _ in 0..self.count(1..=3) {
+                    let mut vars = Vec::new();
+                    let pattern = self.pattern(b, &subject_ty, 2, &mut vars);
+                    arms.push((pattern, vars));
+                }
+                // A last arm that matches every value makes the match
+                // exhaustive, whether or not the arms before it are.
+                let mut vars = Vec::new();
+                let pattern = self.pattern(b, &subject_ty, 0, &mut vars);
+                arms.push((pattern, vars));
+                b.pattern_match_expr(subject, arms, |b| self.expr(b, target, depth - 1))
             }
             P::Neg => {
                 let operand = self.expr(b, target, depth - 1);

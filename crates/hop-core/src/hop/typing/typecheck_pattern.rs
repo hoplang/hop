@@ -71,7 +71,10 @@ pub fn typecheck_pattern(
                 return None;
             }
             bindings.push((name.clone(), subject_type.clone(), range.clone()));
-            Some(TypedPattern::Binding { name: name.clone() })
+            Some(TypedPattern::Binding {
+                name: name.clone(),
+                typ: subject_type.clone(),
+            })
         }
 
         (ParsedPattern::BoolTrue { .. }, Some(ResolvedType::Bool)) => {

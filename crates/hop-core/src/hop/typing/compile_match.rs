@@ -16,7 +16,7 @@ use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_error::TypeErrorKind;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::hop::typing::typed_pattern::Constructor;
-use crate::hop::typing::typed_pattern::{TypedField, TypedPattern};
+use crate::hop::typing::typed_pattern::{Pattern, PatternField, TypedPattern};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -34,18 +34,18 @@ impl std::fmt::Display for CaseVar {
 
 /// A binding introduced by a pattern match (i.e. `name = source`).
 #[derive(Clone, Debug)]
-pub struct Binding {
+pub struct Binding<N> {
     /// The name of the variable to bind.
-    pub name: VarName,
+    pub name: N,
     /// The case variable to bind from.
     pub source: CaseVar,
 }
 
 /// The body of code to evaluate in case of a match.
 #[derive(Clone, Debug)]
-pub struct Body {
+pub struct Body<N> {
     /// Any variables to bind before running the code.
-    pub bindings: Vec<Binding>,
+    pub bindings: Vec<Binding<N>>,
     /// The branch to run in case of a match.
     pub value: usize,
 }
@@ -59,13 +59,13 @@ pub struct Variable {
 
 /// A single case (or row) in a match expression/table.
 #[derive(Clone, Debug)]
-struct Row {
-    columns: Vec<Column>,
-    body: Body,
+struct Row<N> {
+    columns: Vec<Column<N>>,
+    body: Body<N>,
 }
 
-impl Row {
-    fn remove_column(&mut self, variable: &Variable) -> Option<Column> {
+impl<N> Row<N> {
+    fn remove_column(&mut self, variable: &Variable) -> Option<Column<N>> {
         self.columns
             .iter()
             .position(|c| c.variable.id == variable.id)
@@ -79,57 +79,57 @@ impl Row {
 /// that variable. A row may contain multiple columns, though this wouldn't be
 /// exposed to the source language.
 #[derive(Clone, Debug)]
-struct Column {
+struct Column<N> {
     variable: Variable,
-    pattern: TypedPattern,
+    pattern: Pattern<N>,
 }
 
 /// A case for boolean pattern matching - no bindings possible.
 #[derive(Clone, Debug)]
-pub struct BoolCase {
-    pub body: Decision,
+pub struct BoolCase<N> {
+    pub body: Decision<N>,
 }
 
 /// A case for the Some variant of Option - exactly one potential binding.
 #[derive(Clone, Debug)]
-pub struct OptionSomeCase {
+pub struct OptionSomeCase<N> {
     /// The case variable holding the inner value.
     pub var: Variable,
-    pub body: Decision,
+    pub body: Decision<N>,
 }
 
 /// A case for the None variant of Option - no bindings.
 #[derive(Clone, Debug)]
-pub struct OptionNoneCase {
-    pub body: Decision,
+pub struct OptionNoneCase<N> {
+    pub body: Decision<N>,
 }
 
 /// A case for an enum variant - may have multiple field bindings.
 #[derive(Clone, Debug)]
-pub struct EnumCase {
+pub struct EnumCase<N> {
     pub type_name: TypeName,
     pub variant_name: TypeName,
     /// Bindings for each field in the variant.
     pub bindings: Vec<FieldBinding>,
-    pub body: Decision,
+    pub body: Decision<N>,
 }
 
 /// A case for record destructuring - has bindings for each field.
 #[derive(Clone, Debug)]
-pub struct RecordCase {
+pub struct RecordCase<N> {
     /// Used for debug formatting in tests
     pub _type_name: TypeName,
     /// Bindings for each field in the record.
     pub bindings: Vec<FieldBinding>,
-    pub body: Decision,
+    pub body: Decision<N>,
 }
 
 /// A case for tuple destructuring - has a case variable for each element.
 #[derive(Clone, Debug)]
-pub struct TupleCase {
+pub struct TupleCase<N> {
     /// The case variables holding the tuple's elements, in order.
     pub elements: Vec<Variable>,
-    pub body: Decision,
+    pub body: Decision<N>,
 }
 
 /// A binding for a field in a record or enum variant.
@@ -143,44 +143,44 @@ pub struct FieldBinding {
 
 /// A decision tree compiled from a list of match cases.
 #[derive(Clone, Debug)]
-pub enum Decision {
+pub enum Decision<N> {
     /// A pattern is matched and the right-hand value is to be returned.
-    Success(Body),
+    Success(Body<N>),
 
     /// Switch on a boolean value.
     SwitchBool {
         variable: Variable,
-        true_case: Box<BoolCase>,
-        false_case: Box<BoolCase>,
+        true_case: Box<BoolCase<N>>,
+        false_case: Box<BoolCase<N>>,
     },
 
     /// Switch on an Option value.
     SwitchOption {
         variable: Variable,
-        some_case: Box<OptionSomeCase>,
-        none_case: Box<OptionNoneCase>,
+        some_case: Box<OptionSomeCase<N>>,
+        none_case: Box<OptionNoneCase<N>>,
     },
 
     /// Switch on an enum value.
     SwitchEnum {
         variable: Variable,
-        cases: Vec<EnumCase>,
+        cases: Vec<EnumCase<N>>,
     },
 
     /// Match a record (single case, destructures fields).
     SwitchRecord {
         variable: Variable,
-        case: Box<RecordCase>,
+        case: Box<RecordCase<N>>,
     },
 
     /// Match a tuple (single case, destructures elements).
     SwitchTuple {
         variable: Variable,
-        case: Box<TupleCase>,
+        case: Box<TupleCase<N>>,
     },
 }
 
-impl Decision {
+impl<N> Decision<N> {
     /// Collect every case variable the tree reads, as the subject of a
     /// switch or as the source of a binding.
     pub fn collect_used(&self, used: &mut HashSet<CaseVar>) {
@@ -241,11 +241,11 @@ struct VarInfo {
 /// Checks if a pattern introduces no bindings and requires no runtime discrimination.
 /// This is true for wildcards and for record and tuple patterns where all fields or
 /// elements are free from bindings (since records and tuples have only one constructor).
-fn is_free_from_bindings(pattern: &TypedPattern) -> bool {
+fn is_free_from_bindings<N>(pattern: &Pattern<N>) -> bool {
     match pattern {
-        TypedPattern::Wildcard => true,
-        TypedPattern::Binding { .. } => false,
-        TypedPattern::Constructor {
+        Pattern::Wildcard => true,
+        Pattern::Binding { .. } => false,
+        Pattern::Constructor {
             constructor,
             args,
             fields,
@@ -297,12 +297,14 @@ pub enum MatchErrorSite {
     Pattern(usize),
 }
 
-/// Compile a collection of patterns into a decision tree.
+/// Compile a collection of patterns into a decision tree, rejecting a match
+/// without arms, a match some value does not match, an arm no value reaches
+/// and a match that neither branches nor binds.
 pub fn compile_match(
     registry: &TypeRegistry,
     patterns: &[TypedPattern],
     subject_type: Type,
-) -> Result<Decision, MatchError> {
+) -> Result<Decision<VarName>, MatchError> {
     if patterns.is_empty() {
         return Err(MatchError {
             kind: Box::new(TypeErrorKind::MatchNoArms {}),
@@ -310,39 +312,7 @@ pub fn compile_match(
         });
     }
 
-    let subject_var = Variable {
-        id: CaseVar(0),
-        typ: subject_type,
-    };
-    let mut next_case = 1;
-
-    let rows: Vec<Row> = patterns
-        .iter()
-        .enumerate()
-        .map(|(idx, pattern)| Row {
-            columns: vec![Column {
-                variable: subject_var.clone(),
-                pattern: pattern.clone(),
-            }],
-            body: Body {
-                bindings: Vec::new(),
-                value: idx,
-            },
-        })
-        .collect();
-
-    let mut reachable = Vec::new();
-    let mut missing_patterns = Vec::new();
-    let mut var_info = HashMap::new();
-
-    let tree = compile_rows(
-        &mut next_case,
-        registry,
-        &mut reachable,
-        &mut missing_patterns,
-        &mut var_info,
-        rows,
-    );
+    let (tree, reachable, missing_patterns) = compile_arms(registry, patterns, subject_type);
 
     if let Some(index) = (0..patterns.len()).find(|i| !reachable.contains(i)) {
         return Err(MatchError {
@@ -380,14 +350,69 @@ pub fn compile_match(
     Ok(tree)
 }
 
-fn compile_rows(
+/// Compile the patterns of a match the typechecker accepted into a decision
+/// tree. Every value matches one of them, so the tree is complete.
+pub fn compile_decision_tree<N: Clone>(
+    registry: &TypeRegistry,
+    patterns: &[Pattern<N>],
+    subject_type: Type,
+) -> Decision<N> {
+    let (tree, _, _) = compile_arms(registry, patterns, subject_type);
+    tree.expect("an accepted match has a pattern for every value")
+}
+
+/// Compile the patterns into a decision tree, which is None when some value
+/// matches none of them. Also returns the indices of the patterns some value
+/// reaches, and a pattern for each value that matches none.
+fn compile_arms<N: Clone>(
+    registry: &TypeRegistry,
+    patterns: &[Pattern<N>],
+    subject_type: Type,
+) -> (Option<Decision<N>>, Vec<usize>, Vec<Pattern<N>>) {
+    let subject_var = Variable {
+        id: CaseVar(0),
+        typ: subject_type,
+    };
+    let mut next_case = 1;
+
+    let rows: Vec<Row<N>> = patterns
+        .iter()
+        .enumerate()
+        .map(|(idx, pattern)| Row {
+            columns: vec![Column {
+                variable: subject_var.clone(),
+                pattern: pattern.clone(),
+            }],
+            body: Body {
+                bindings: Vec::new(),
+                value: idx,
+            },
+        })
+        .collect();
+
+    let mut reachable = Vec::new();
+    let mut missing_patterns = Vec::new();
+    let mut var_info = HashMap::new();
+
+    let tree = compile_rows(
+        &mut next_case,
+        registry,
+        &mut reachable,
+        &mut missing_patterns,
+        &mut var_info,
+        rows,
+    );
+    (tree, reachable, missing_patterns)
+}
+
+fn compile_rows<N: Clone>(
     next_case: &mut usize,
     registry: &TypeRegistry,
     reachable: &mut Vec<usize>,
-    missing_patterns: &mut Vec<TypedPattern>,
+    missing_patterns: &mut Vec<Pattern<N>>,
     var_info: &mut HashMap<CaseVar, VarInfo>,
-    mut rows: Vec<Row>,
-) -> Option<Decision> {
+    mut rows: Vec<Row<N>>,
+) -> Option<Decision<N>> {
     if rows.is_empty() {
         missing_patterns.push(witness_for_var(var_info, CaseVar(0)));
         return None;
@@ -396,15 +421,15 @@ fn compile_rows(
     for row in &mut rows {
         // Remove wildcards and move binding patterns into the body
         row.columns.retain(|col| match &col.pattern {
-            TypedPattern::Wildcard => false,
-            TypedPattern::Binding { name } => {
+            Pattern::Wildcard => false,
+            Pattern::Binding { name, .. } => {
                 row.body.bindings.push(Binding {
                     name: name.clone(),
                     source: col.variable.id,
                 });
                 false
             }
-            TypedPattern::Constructor { .. } => !is_free_from_bindings(&col.pattern),
+            Pattern::Constructor { .. } => !is_free_from_bindings(&col.pattern),
         });
     }
 
@@ -519,7 +544,7 @@ fn compile_rows(
     // assign the correct sub matches to these constructors.
     for mut row in rows {
         if let Some(col) = row.remove_column(&branch_var) {
-            if let TypedPattern::Constructor {
+            if let Pattern::Constructor {
                 constructor: cons,
                 args,
                 fields,
@@ -687,7 +712,7 @@ fn compile_rows(
 
 /// Given a row, returns the variable in that row that's referred to the
 /// most across all rows.
-fn find_branch_variable(rows: &[Row]) -> Variable {
+fn find_branch_variable<N>(rows: &[Row<N>]) -> Variable {
     let mut counts: HashMap<CaseVar, usize> = HashMap::new();
     for row in rows {
         for col in &row.columns {
@@ -714,16 +739,16 @@ fn fresh_var(next_case: &mut usize, typ: Type) -> Variable {
 /// Starting from the root variable, it traverses `var_info` to reconstruct the
 /// pattern that would be needed to make the match exhaustive. A variable that
 /// no switch has tested is a wildcard.
-fn witness_for_var(var_info: &HashMap<CaseVar, VarInfo>, var: CaseVar) -> TypedPattern {
+fn witness_for_var<N>(var_info: &HashMap<CaseVar, VarInfo>, var: CaseVar) -> Pattern<N> {
     let Some(info) = var_info.get(&var) else {
-        return TypedPattern::Wildcard;
+        return Pattern::Wildcard;
     };
     let mut args = Vec::new();
     let mut fields = Vec::new();
     for (index, (field_name, sub_var)) in info.args.iter().enumerate() {
         let pattern = witness_for_var(var_info, sub_var.id);
         match field_name {
-            Some(name) => fields.push(TypedField {
+            Some(name) => fields.push(PatternField {
                 name: name.clone(),
                 index,
                 pattern,
@@ -731,7 +756,7 @@ fn witness_for_var(var_info: &HashMap<CaseVar, VarInfo>, var: CaseVar) -> TypedP
             None => args.push(pattern),
         }
     }
-    TypedPattern::Constructor {
+    Pattern::Constructor {
         constructor: info.constructor.clone(),
         args,
         fields,
@@ -838,7 +863,7 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    fn format_decision(decision: &Decision, indent: usize) -> String {
+    fn format_decision(decision: &Decision<VarName>, indent: usize) -> String {
         let pad = "  ".repeat(indent);
         match decision {
             Decision::Success(body) => {

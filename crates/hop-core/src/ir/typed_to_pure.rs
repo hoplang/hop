@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
 use crate::hop::typing::{
-    CaseVar, Decision, Type, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
-    TypedPageDeclaration, TypedParameter, TypedPattern, TypedRecordUpdateField,
+    Constructor, Pattern, PatternField, Type, TypedAttribute, TypedExpr, TypedFunctionDeclaration,
+    TypedLoopSource, TypedPageDeclaration, TypedParameter, TypedPattern, TypedRecordUpdateField,
 };
 use crate::ir::binder_id::BinderId;
 use crate::ir::binder_id::BinderIdCounter;
@@ -12,7 +12,7 @@ use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
+use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::pure_module::PureForSource;
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -20,7 +20,7 @@ use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::ir_page::IrPage;
 use super::ir_parameter::IrParameter;
@@ -286,198 +286,31 @@ impl<'a> Compiler<'a> {
         panic!("undefined variable: {name}");
     }
 
-    /// Compile the decision tree of a match. Only the case variables in
-    /// `used` are bound, and `case_vars` maps every case variable bound so far
-    /// to the IR variable that holds it.
-    fn compile_decision(
-        &mut self,
-        decision: &Decision,
-        arms: &[(TypedPattern, TypedExpr)],
-        typ: &Type,
-        used: &HashSet<CaseVar>,
-        case_vars: &mut HashMap<CaseVar, BinderId>,
-    ) -> PureExpr {
-        match decision {
-            Decision::Success(body) => {
-                // The arm's pattern variables name the case variables they
-                // read from, so the body refers to those directly.
-                self.push_scope();
-                for binding in &body.bindings {
-                    self.scopes
-                        .last_mut()
-                        .expect("scope stack should not be empty")
-                        .push((binding.name.clone(), case_vars[&binding.source]));
-                }
-                let result = self.compile_expr(&arms[body.value].1);
-                self.pop_scope();
-                result
-            }
-            Decision::SwitchBool {
-                variable,
-                true_case,
-                false_case,
-            } => {
-                let subject = PureExpr::VariableReference {
-                    value: case_vars[&variable.id],
-                    typ: variable.typ.clone(),
-                };
-                let true_body = self.compile_decision(&true_case.body, arms, typ, used, case_vars);
-                let false_body =
-                    self.compile_decision(&false_case.body, arms, typ, used, case_vars);
-                PureExpr::Match {
-                    match_: Box::new(Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    }),
-                    typ: typ.clone(),
-                }
-            }
-            Decision::SwitchOption {
-                variable,
-                some_case,
-                none_case,
-            } => {
-                let subject = PureExpr::VariableReference {
-                    value: case_vars[&variable.id],
-                    typ: variable.typ.clone(),
-                };
-                let binding = if used.contains(&some_case.var.id) {
-                    let var = self.next_binder_id();
-                    case_vars.insert(some_case.var.id, var);
-                    Some(IrBinder {
-                        var,
-                        typ: some_case.var.typ.clone(),
-                    })
-                } else {
-                    None
-                };
-                let some_body = self.compile_decision(&some_case.body, arms, typ, used, case_vars);
-                let none_body = self.compile_decision(&none_case.body, arms, typ, used, case_vars);
-                PureExpr::Match {
-                    match_: Box::new(Match::Option {
-                        subject,
-                        some_arm_binding: binding,
-                        some_arm_body: some_body,
-                        none_arm_body: none_body,
-                    }),
-                    typ: typ.clone(),
-                }
-            }
-            Decision::SwitchEnum { variable, cases } => {
-                let subject = PureExpr::VariableReference {
-                    value: case_vars[&variable.id],
-                    typ: variable.typ.clone(),
-                };
-                let enum_arms = cases
+    /// Bind the variables of a pattern in the current scope, and return the
+    /// pattern with each binding binding its binder.
+    fn compile_pattern(&mut self, pattern: &TypedPattern) -> IrPattern {
+        match pattern {
+            Pattern::Wildcard => Pattern::Wildcard,
+            Pattern::Binding { name, typ } => Pattern::Binding {
+                name: self.bind(name),
+                typ: typ.clone(),
+            },
+            Pattern::Constructor {
+                constructor,
+                args,
+                fields,
+            } => Pattern::Constructor {
+                constructor: constructor.clone(),
+                args: args.iter().map(|arg| self.compile_pattern(arg)).collect(),
+                fields: fields
                     .iter()
-                    .map(|case| {
-                        let bindings = case
-                            .bindings
-                            .iter()
-                            .filter_map(|binding| {
-                                if !used.contains(&binding.var.id) {
-                                    return None;
-                                }
-                                let var = self.next_binder_id();
-                                case_vars.insert(binding.var.id, var);
-                                Some((
-                                    binding.field_name.clone(),
-                                    IrBinder {
-                                        var,
-                                        typ: binding.var.typ.clone(),
-                                    },
-                                ))
-                            })
-                            .collect();
-                        EnumMatchArm {
-                            pattern: EnumPattern::Variant {
-                                type_name: case.type_name.clone(),
-                                variant_name: case.variant_name.clone(),
-                            },
-                            bindings,
-                            body: self.compile_decision(&case.body, arms, typ, used, case_vars),
-                        }
+                    .map(|field| PatternField {
+                        name: field.name.clone(),
+                        index: field.index,
+                        pattern: self.compile_pattern(&field.pattern),
                     })
-                    .collect();
-                PureExpr::Match {
-                    match_: Box::new(Match::Enum {
-                        subject,
-                        arms: enum_arms,
-                    }),
-                    typ: typ.clone(),
-                }
-            }
-            Decision::SwitchRecord { variable, case } => {
-                // Bind each field a pattern reads to its case variable, the
-                // first field outermost.
-                let mut lets = Vec::new();
-                for binding in &case.bindings {
-                    if !used.contains(&binding.var.id) {
-                        continue;
-                    }
-                    let value = PureExpr::FieldAccess {
-                        record: Box::new(PureExpr::VariableReference {
-                            value: case_vars[&variable.id],
-                            typ: variable.typ.clone(),
-                        }),
-                        field: binding.field_name.clone(),
-                        typ: binding.var.typ.clone(),
-                    };
-                    let var = self.next_binder_id();
-                    case_vars.insert(binding.var.id, var);
-                    let binder = IrBinder {
-                        var,
-                        typ: binding.var.typ.clone(),
-                    };
-                    lets.push((binder, value));
-                }
-                let mut result = self.compile_decision(&case.body, arms, typ, used, case_vars);
-                for (var, value) in lets.into_iter().rev() {
-                    result = PureExpr::Let {
-                        var,
-                        value: Box::new(value),
-                        body: Box::new(result),
-                        typ: typ.clone(),
-                    };
-                }
-                result
-            }
-            Decision::SwitchTuple { variable, case } => {
-                // Bind each element a pattern reads to its case variable, the
-                // first element outermost.
-                let mut lets = Vec::new();
-                for (index, element) in case.elements.iter().enumerate() {
-                    if !used.contains(&element.id) {
-                        continue;
-                    }
-                    let value = PureExpr::TupleIndex {
-                        tuple: Box::new(PureExpr::VariableReference {
-                            value: case_vars[&variable.id],
-                            typ: variable.typ.clone(),
-                        }),
-                        index,
-                        typ: element.typ.clone(),
-                    };
-                    let var = self.next_binder_id();
-                    case_vars.insert(element.id, var);
-                    let binder = IrBinder {
-                        var,
-                        typ: element.typ.clone(),
-                    };
-                    lets.push((binder, value));
-                }
-                let mut result = self.compile_decision(&case.body, arms, typ, used, case_vars);
-                for (var, value) in lets.into_iter().rev() {
-                    result = PureExpr::Let {
-                        var,
-                        value: Box::new(value),
-                        body: Box::new(result),
-                        typ: typ.clone(),
-                    };
-                }
-                result
-            }
+                    .collect(),
+            },
         }
     }
 
@@ -714,25 +547,20 @@ impl<'a> Compiler<'a> {
                     .collect(),
                 typ: typ.clone(),
             },
-            TypedExpr::Match {
-                subject,
-                arms,
-                decision,
-                typ,
-            } => {
-                let mut used = HashSet::new();
-                decision.collect_used(&mut used);
-                let value = Box::new(self.compile_expr(subject));
-                let var = self.next_binder_id();
-                let mut case_vars = HashMap::from([(CaseVar(0), var)]);
-                let body = self.compile_decision(decision, arms, typ, &used, &mut case_vars);
-                PureExpr::Let {
-                    var: IrBinder {
-                        var,
-                        typ: value.typ(),
-                    },
-                    value,
-                    body: Box::new(body),
+            TypedExpr::Match { subject, arms, typ } => {
+                let subject = self.compile_expr(subject);
+                let arms = arms
+                    .iter()
+                    .map(|(pattern, body)| {
+                        self.push_scope();
+                        let pattern = self.compile_pattern(pattern);
+                        let body = self.compile_expr(body);
+                        self.pop_scope();
+                        IrMatchArm { pattern, body }
+                    })
+                    .collect();
+                PureExpr::Match {
+                    match_: Box::new(IrMatch { subject, arms }),
                     typ: typ.clone(),
                 }
             }
@@ -972,17 +800,32 @@ impl<'a> Compiler<'a> {
                 let subject = self.compile_expr(option);
                 let binding = self.next_binder_id();
                 PureExpr::Match {
-                    match_: Box::new(Match::Option {
+                    match_: Box::new(IrMatch {
                         subject,
-                        some_arm_binding: Some(IrBinder {
-                            var: binding,
-                            typ: typ.clone(),
-                        }),
-                        some_arm_body: PureExpr::VariableReference {
-                            value: binding,
-                            typ: typ.clone(),
-                        },
-                        none_arm_body: self.compile_expr(default),
+                        arms: vec![
+                            IrMatchArm {
+                                pattern: Pattern::Constructor {
+                                    constructor: Constructor::OptionSome,
+                                    args: vec![Pattern::Binding {
+                                        name: binding,
+                                        typ: typ.clone(),
+                                    }],
+                                    fields: Vec::new(),
+                                },
+                                body: PureExpr::VariableReference {
+                                    value: binding,
+                                    typ: typ.clone(),
+                                },
+                            },
+                            IrMatchArm {
+                                pattern: Pattern::Constructor {
+                                    constructor: Constructor::OptionNone,
+                                    args: Vec::new(),
+                                    fields: Vec::new(),
+                                },
+                                body: self.compile_expr(default),
+                            },
+                        ],
                     }),
                     typ: typ.clone(),
                 }
@@ -1188,14 +1031,53 @@ mod tests {
             "#},
             expect![[r#"
                 entry fn body@f0(flag@b0: Bool) -> Html {
-                  let b1: Bool = b0 in {
-                    match b1 {
-                      true => {
-                        concat(text("yes"))
-                      }
-                      false => {
-                        concat(text("no"))
-                      }
+                  match b0 {
+                    true => {
+                      concat(text("yes"))
+                    }
+                    false => {
+                      concat(text("no"))
+                    }
+                  }
+                }
+                page Test: body@f0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_keep_the_arms_of_a_match_as_written() {
+        check(
+            indoc! {r#"
+                enum Status {
+                  Active,
+                  Away {since: String},
+                }
+
+                page Test(signed_in: Bool, status: Status) {
+                  fn body() -> Html {
+                    match (signed_in, status) {
+                      (true, Status::Away {since}) => <p>{since}</p>,
+                      (true, _) => <p>here</p>,
+                      (false, _) => <p>guest</p>,
+                    }
+                  }
+                }
+            "#},
+            expect![[r#"
+                entry fn body@f0(
+                  signed_in@b0: Bool,
+                  status@b1: Status,
+                ) -> Html {
+                  match (b0, b1) {
+                    (true, Status::Away {since@b2: String}) => {
+                      html("p", {}, concat(escape(b2)))
+                    }
+                    (true, _) => {
+                      html("p", {}, concat(text("here")))
+                    }
+                    (false, _) => {
+                      html("p", {}, concat(text("guest")))
                     }
                   }
                 }
@@ -1396,32 +1278,28 @@ mod tests {
                     "div",
                     {id: b1},
                     concat(
-                      let b2: Bool = (0 < b0) in {
-                        match b2 {
-                          true => {
-                            call Nest@f1((b0 - 1), "inner")
-                          }
-                          false => {
-                            concat()
-                          }
+                      match (0 < b0) {
+                        true => {
+                          call Nest@f1((b0 - 1), "inner")
+                        }
+                        false => {
+                          concat()
                         }
                       },
                     ),
                   )
                 }
-                fn Nest@f1(depth@b3: Int, class@b4: String) -> Html {
+                fn Nest@f1(depth@b2: Int, class@b3: String) -> Html {
                   html(
                     "div",
-                    {class: b4},
+                    {class: b3},
                     concat(
-                      let b5: Bool = (0 < b3) in {
-                        match b5 {
-                          true => {
-                            call Nest@f1((b3 - 1), "inner")
-                          }
-                          false => {
-                            concat()
-                          }
+                      match (0 < b2) {
+                        true => {
+                          call Nest@f1((b2 - 1), "inner")
+                        }
+                        false => {
+                          concat()
                         }
                       },
                     ),

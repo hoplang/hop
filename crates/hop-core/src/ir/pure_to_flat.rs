@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
+use crate::hop::typing::{Constructor, Pattern};
 use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{
     FlatAttribute, FlatBinding, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule,
     FlatOp,
 };
-use crate::ir::ir_match::{EnumMatchArm, Match};
+use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::pure_module::{PureAttribute, PureExpr, PureForSource, PureModule};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
@@ -74,40 +75,19 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
             None => FlatOp::Read(value),
         },
 
-        PureExpr::Match { match_, .. } => FlatOp::Match(match *match_ {
-            Match::Bool {
-                subject,
-                true_body,
-                false_body,
-            } => Match::Bool {
+        PureExpr::Match { match_, .. } => {
+            let IrMatch { subject, arms } = *match_;
+            FlatOp::Match(IrMatch {
                 subject: lower_expr(subject, out, cx),
-                true_body: lower_block(true_body, cx),
-                false_body: lower_block(false_body, cx),
-            },
-            Match::Option {
-                subject,
-                some_arm_binding,
-                some_arm_body,
-                none_arm_body,
-            } => Match::Option {
-                subject: lower_expr(subject, out, cx),
-                some_arm_binding,
-                some_arm_body: lower_block(some_arm_body, cx),
-                none_arm_body: lower_block(none_arm_body, cx),
-            },
-            Match::Enum { subject, arms } => {
-                let subject = lower_expr(subject, out, cx);
-                let arms = arms
+                arms: arms
                     .into_iter()
-                    .map(|arm| EnumMatchArm {
+                    .map(|arm| IrMatchArm {
                         pattern: arm.pattern,
-                        bindings: arm.bindings,
                         body: lower_block(arm.body, cx),
                     })
-                    .collect();
-                Match::Enum { subject, arms }
-            }
-        }),
+                    .collect(),
+            })
+        }
 
         PureExpr::FieldAccess { record, field, .. } => FlatOp::FieldAccess {
             record: lower_expr(*record, out, cx),
@@ -250,13 +230,29 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
         // which is false.
         PureExpr::BoolLogicalAnd { left, right, .. } => {
             let left = lower_expr(*left, out, cx);
-            FlatOp::Match(Match::Bool {
+            FlatOp::Match(IrMatch {
                 subject: left,
-                true_body: lower_block(*right, cx),
-                false_body: FlatBlock {
-                    bindings: Vec::new(),
-                    result: left,
-                },
+                arms: vec![
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::BoolTrue,
+                            args: Vec::new(),
+                            fields: Vec::new(),
+                        },
+                        body: lower_block(*right, cx),
+                    },
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::BoolFalse,
+                            args: Vec::new(),
+                            fields: Vec::new(),
+                        },
+                        body: FlatBlock {
+                            bindings: Vec::new(),
+                            result: left,
+                        },
+                    },
+                ],
             })
         }
 
@@ -265,13 +261,29 @@ fn lower_expr(expr: PureExpr, out: &mut Vec<FlatBinding>, cx: &mut Lowering) -> 
         // which is true.
         PureExpr::BoolLogicalOr { left, right, .. } => {
             let left = lower_expr(*left, out, cx);
-            FlatOp::Match(Match::Bool {
+            FlatOp::Match(IrMatch {
                 subject: left,
-                true_body: FlatBlock {
-                    bindings: Vec::new(),
-                    result: left,
-                },
-                false_body: lower_block(*right, cx),
+                arms: vec![
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::BoolTrue,
+                            args: Vec::new(),
+                            fields: Vec::new(),
+                        },
+                        body: FlatBlock {
+                            bindings: Vec::new(),
+                            result: left,
+                        },
+                    },
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::BoolFalse,
+                            args: Vec::new(),
+                            fields: Vec::new(),
+                        },
+                        body: lower_block(*right, cx),
+                    },
+                ],
             })
         }
     };
@@ -287,6 +299,7 @@ mod tests {
     use super::*;
     use crate::hop::typing::{ComparableType, EquatableType, NumericType, Type};
     use crate::ir::ir_binary_op::IrBinaryOp;
+    use crate::ir::ir_match::IrPattern;
     use crate::ir::ir_unary_op::IrUnaryOp;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
@@ -704,22 +717,8 @@ mod tests {
         let mut count = block.bindings.len();
         for binding in &block.bindings {
             match &binding.op {
-                FlatOp::Match(Match::Bool {
-                    true_body,
-                    false_body,
-                    ..
-                }) => {
-                    count += count_bindings(true_body) + count_bindings(false_body);
-                }
-                FlatOp::Match(Match::Option {
-                    some_arm_body,
-                    none_arm_body,
-                    ..
-                }) => {
-                    count += count_bindings(some_arm_body) + count_bindings(none_arm_body);
-                }
-                FlatOp::Match(Match::Enum { arms, .. }) => {
-                    for arm in arms {
+                FlatOp::Match(match_) => {
+                    for arm in &match_.arms {
                         count += count_bindings(&arm.body);
                     }
                 }
@@ -832,52 +831,11 @@ mod tests {
                     assert_eq!(type_of(names, *right), &typ);
                     Some(Type::Bool)
                 }
-                FlatOp::Match(Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                }) => {
-                    assert_eq!(type_of(names, *subject), &Type::Bool);
-                    let true_type = check_block(true_body, names, binders, seen, seen_binders);
-                    let false_type = check_block(false_body, names, binders, seen, seen_binders);
-                    assert_eq!(true_type, false_type);
-                    Some(true_type)
-                }
-                FlatOp::Match(Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body,
-                    none_arm_body,
-                }) => {
-                    let Type::Option(inner) = type_of(names, *subject).clone() else {
-                        panic!("{} matches {subject}, which is not an Option", binding.name);
-                    };
-                    if let Some(binder) = some_arm_binding {
-                        assert_eq!(binder.typ, *inner, "{} has the wrong type", binder.var);
-                        assert!(
-                            seen_binders.insert(binder.var),
-                            "{} is bound twice",
-                            binder.var
-                        );
-                        binders.push((binder.var, binder.typ.clone()));
-                    }
-                    let some_type = check_block(some_arm_body, names, binders, seen, seen_binders);
-                    binders.truncate(binders_len);
-                    let none_type = check_block(none_arm_body, names, binders, seen, seen_binders);
-                    assert_eq!(some_type, none_type);
-                    Some(some_type)
-                }
-                FlatOp::Match(Match::Enum { arms, .. }) => {
+                FlatOp::Match(match_) => {
+                    let subject_type = type_of(names, match_.subject).clone();
                     let mut arm_type = None;
-                    for arm in arms {
-                        for (_, binder) in &arm.bindings {
-                            assert!(
-                                seen_binders.insert(binder.var),
-                                "{} is bound twice",
-                                binder.var
-                            );
-                            binders.push((binder.var, binder.typ.clone()));
-                        }
+                    for arm in &match_.arms {
+                        check_pattern(&arm.pattern, Some(&subject_type), binders, seen_binders);
                         let typ = check_block(&arm.body, names, binders, seen, seen_binders);
                         binders.truncate(binders_len);
                         if let Some(arm_type) = &arm_type {
@@ -923,6 +881,59 @@ mod tests {
         let result = type_of(names, block.result).clone();
         names.truncate(names_len);
         result
+    }
+
+    /// Asserts that a pattern fits the type of what it matches, where that
+    /// type is known without the declarations of records and enums, and
+    /// that each binder it binds is bound once. Its binders come into
+    /// scope.
+    fn check_pattern(
+        pattern: &IrPattern,
+        typ: Option<&Type>,
+        binders: &mut Vec<(BinderId, Type)>,
+        seen_binders: &mut HashSet<BinderId>,
+    ) {
+        match pattern {
+            Pattern::Wildcard => {}
+            Pattern::Binding {
+                name,
+                typ: binder_type,
+            } => {
+                if let Some(typ) = typ {
+                    assert_eq!(binder_type, typ, "{name} has the wrong type");
+                }
+                assert!(seen_binders.insert(*name), "{name} is bound twice");
+                binders.push((*name, binder_type.clone()));
+            }
+            Pattern::Constructor {
+                constructor,
+                args,
+                fields,
+            } => {
+                let arg_types: Vec<Option<&Type>> = match (constructor, typ) {
+                    (Constructor::BoolTrue | Constructor::BoolFalse, Some(typ)) => {
+                        assert_eq!(typ, &Type::Bool);
+                        Vec::new()
+                    }
+                    (Constructor::OptionSome, Some(Type::Option(inner))) => vec![Some(inner)],
+                    (Constructor::OptionNone, Some(Type::Option(_))) => Vec::new(),
+                    (Constructor::Tuple, Some(Type::Tuple(elements))) => {
+                        assert_eq!(args.len(), elements.len());
+                        elements.iter().map(Some).collect()
+                    }
+                    (_, Some(typ @ (Type::Option(_) | Type::Tuple(_) | Type::Bool))) => {
+                        panic!("{constructor:?} cannot match a value of type {typ}")
+                    }
+                    _ => args.iter().map(|_| None).collect(),
+                };
+                for (arg, arg_type) in args.iter().zip(arg_types) {
+                    check_pattern(arg, arg_type, binders, seen_binders);
+                }
+                for field in fields {
+                    check_pattern(&field.pattern, None, binders, seen_binders);
+                }
+            }
+        }
     }
 
     #[test]

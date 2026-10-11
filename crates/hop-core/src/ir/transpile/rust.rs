@@ -8,7 +8,7 @@ use crate::dependency_graph::DependencyGraph;
 use crate::hop::typing::{EnumVariant, ResolvedType, Type, TypeRegistry};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
+use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::writer_module::{
     WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
     WriterName, WriterOp, WriterPageDeclaration, WriterStmt, WriterValueBlock,
@@ -1027,10 +1027,10 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterName, Vec<WriterStmt>>,
+        match_: &'a IrSwitch<WriterName, Vec<WriterStmt>>,
     ) -> Doc<'a> {
         match match_ {
-            Match::Bool {
+            IrSwitch::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -1063,7 +1063,7 @@ impl Transpiler for RustTranspiler {
                         .append(arena.text("}"))
                 }
             }
-            Match::Option {
+            IrSwitch::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -1118,7 +1118,7 @@ impl Transpiler for RustTranspiler {
                     .append(arena.hardline())
                     .append(arena.text("}"))
             }
-            Match::Enum { subject, arms } => {
+            IrSwitch::Enum { subject, arms } => {
                 let variants = self.subject_variants(*subject);
                 let arm_docs: Vec<Doc<'a>> = arms
                     .iter()
@@ -1673,10 +1673,10 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterName, WriterValueBlock>,
+        match_: &'a IrSwitch<WriterName, WriterValueBlock>,
     ) -> Doc<'a> {
         match match_ {
-            Match::Bool {
+            IrSwitch::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -1705,7 +1705,7 @@ impl Transpiler for RustTranspiler {
                     .append(arena.hardline())
                     .append(arena.text("}"))
             }
-            Match::Option {
+            IrSwitch::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -1746,7 +1746,7 @@ impl Transpiler for RustTranspiler {
                     .append(arena.hardline())
                     .append(arena.text("}"))
             }
-            Match::Enum { subject, arms } => {
+            IrSwitch::Enum { subject, arms } => {
                 let variants = self.subject_variants(*subject);
                 let subject_doc = self.name_ref(arena, *subject);
                 let arm_docs: Vec<Doc<'a>> = arms
@@ -1863,7 +1863,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let module = flat_to_writer(pure_to_flat(pure), &pages, None);
+        let module = flat_to_writer(pure_to_flat(pure), program.type_registry(), &pages, None);
         let output = RustTranspiler::new().transpile_module(&module, program.type_registry());
         expected.assert_eq(&output);
     }
@@ -2528,10 +2528,10 @@ mod tests {
                             Expr::Literal { .. } => {
                                 output.push_str("lit");
                             }
-                            Expr::Neg { inner: b_2 } => {
-                                match &**b_2 {
-                                    Expr::Literal { value: b_4 } => {
-                                        write_escaped_html(b_4, output);
+                            Expr::Neg { inner: b_4 } => {
+                                match &**b_4 {
+                                    Expr::Literal { value: b_5 } => {
+                                        write_escaped_html(b_5, output);
                                     }
                                     Expr::Neg { .. } => {
                                         output.push_str("nested");
@@ -2607,8 +2607,8 @@ mod tests {
                         let v_1: &Option<Node> = &*b_0.next;
                         match v_1 {
                             Some(b_2) => {
-                                let v_3: &str = &b_2.value;
-                                write_escaped_html(v_3, output);
+                                let v_10: &str = &b_2.value;
+                                write_escaped_html(v_10, output);
                             }
                             None => {
                                 output.push_str("end");
@@ -2760,8 +2760,8 @@ mod tests {
                         let v_2: IntList = IntList::Cons { head: v_0, tail: Box::new(v_1.clone()) };
                         match &v_2 {
                             IntList::Cons { head: b_2, .. } => {
-                                let v_4: String = b_2.to_string();
-                                write_escaped_html(&v_4, output);
+                                let v_11: String = b_2.to_string();
+                                write_escaped_html(&v_11, output);
                             }
                             IntList::Nil => {
                                 output.push_str("done");
@@ -2921,57 +2921,57 @@ mod tests {
 
                     fn write(self, output: &mut String) {
                         let Test { time: b_0 } = self;
-                        let v_20: String = match &b_0 {
+                        let v_52: String = match &b_0 {
                             TimeAgo::JustNow => {
-                                let v_1: &str = "just now";
-                                v_1.to_string()
+                                let v_35: &str = "just now";
+                                v_35.to_string()
                             },
-                            TimeAgo::MinutesAgo { count: b_2 } => {
-                                let v_3: i32 = 1_i32;
-                                let v_4: bool = *b_2 == v_3;
-                                let v_10: String = match v_4 {
+                            TimeAgo::MinutesAgo { count: b_3 } => {
+                                let v_37: i32 = 1_i32;
+                                let v_38: bool = *b_3 == v_37;
+                                let v_43: String = match v_38 {
                                     true => {
-                                        let v_5: &str = "1 minute ago";
-                                        v_5.to_string()
+                                        let v_39: &str = "1 minute ago";
+                                        v_39.to_string()
                                     },
                                     false => {
-                                        let v_7: String = b_2.to_string();
-                                        let v_8: &str = " minutes ago";
-                                        let v_9: String = {
+                                        let v_40: String = b_3.to_string();
+                                        let v_41: &str = " minutes ago";
+                                        let v_42: String = {
                                             let mut s: String = String::new();
-                                            s.push_str(&v_7);
-                                            s.push_str(v_8);
+                                            s.push_str(&v_40);
+                                            s.push_str(v_41);
                                             s
                                         };
-                                        v_9
+                                        v_42
                                     },
                                 };
-                                v_10
+                                v_43
                             },
                             TimeAgo::HoursAgo { count: b_4 } => {
-                                let v_12: i32 = 1_i32;
-                                let v_13: bool = *b_4 == v_12;
-                                let v_19: String = match v_13 {
+                                let v_45: i32 = 1_i32;
+                                let v_46: bool = *b_4 == v_45;
+                                let v_51: String = match v_46 {
                                     true => {
-                                        let v_14: &str = "1 hour ago";
-                                        v_14.to_string()
+                                        let v_47: &str = "1 hour ago";
+                                        v_47.to_string()
                                     },
                                     false => {
-                                        let v_16: String = b_4.to_string();
-                                        let v_17: &str = " hours ago";
-                                        let v_18: String = {
+                                        let v_48: String = b_4.to_string();
+                                        let v_49: &str = " hours ago";
+                                        let v_50: String = {
                                             let mut s: String = String::new();
-                                            s.push_str(&v_16);
-                                            s.push_str(v_17);
+                                            s.push_str(&v_48);
+                                            s.push_str(v_49);
                                             s
                                         };
-                                        v_18
+                                        v_50
                                     },
                                 };
-                                v_19
+                                v_51
                             },
                         };
-                        write_escaped_html(&v_20, output);
+                        write_escaped_html(&v_52, output);
                     }
                 }
             "#]],
@@ -3025,23 +3025,23 @@ mod tests {
                     fn write(self, output: &mut String) {
                         let v_0: &str = "world";
                         let v_1: Option<String> = Some(v_0.to_string());
-                        let v_6: String = match &v_1 {
+                        let v_13: String = match &v_1 {
                             Some(b_1) => {
-                                let v_2: &str = "hello ";
-                                let v_4: String = {
+                                let v_10: &str = "hello ";
+                                let v_11: String = {
                                     let mut s: String = String::new();
-                                    s.push_str(v_2);
+                                    s.push_str(v_10);
                                     s.push_str(b_1);
                                     s
                                 };
-                                v_4
+                                v_11
                             },
                             None => {
-                                let v_5: &str = "nobody";
-                                v_5.to_string()
+                                let v_12: &str = "nobody";
+                                v_12.to_string()
                             },
                         };
-                        write_escaped_html(&v_6, output);
+                        write_escaped_html(&v_13, output);
                     }
                 }
             "#]],

@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
 use crate::document::CheapString;
-use crate::hop::typing::Type;
+use crate::hop::typing::{Constructor, Pattern, Type};
 use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
 use crate::ir::ir_binary_op::IrBinaryOp;
-use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
+use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
+use crate::symbols::field_name::FieldName;
 
 /// A pass that evaluates the constant parts of a block at compile time.
 ///
@@ -15,9 +16,9 @@ use crate::ir::value_id::{ValueId, ValueIdCounter};
 ///   with the backend semantics.
 /// - A field access on a record constructor reads the constructor's
 ///   operand, and a tuple index on a tuple constructor likewise.
-/// - A match whose subject is a constructor runs the selected arm in place
-///   of the match, and a Read of one of the arm's binders is the
-///   constructor's operand it binds.
+/// - A match runs an arm in place of the match when the constructors of
+///   the subject show that the arm matches and no arm before it does, and
+///   a Read of a binder of its pattern is the constructor operand it binds.
 /// - A string concat takes the parts of a nested concat as its own, drops
 ///   empty constants and merges adjacent constants. An html concat takes
 ///   the parts of a nested concat as its own. A concat of one part is that
@@ -76,6 +77,79 @@ impl Evaluator<'_> {
         }
     }
 
+    /// Whether the value of `name` surely matches the pattern, surely does
+    /// not, or None when the ops of the bindings kept so far do not tell.
+    /// On a sure match, each binding of the pattern is pushed to `bound`
+    /// with the name of the part it binds.
+    fn match_known(
+        &self,
+        pattern: &IrPattern,
+        name: ValueId,
+        bound: &mut Vec<(BinderId, ValueId)>,
+    ) -> Option<bool> {
+        let (constructor, args, fields) = match pattern {
+            Pattern::Wildcard => return Some(true),
+            Pattern::Binding { name: binder, .. } => {
+                bound.push((*binder, name));
+                return Some(true);
+            }
+            Pattern::Constructor {
+                constructor,
+                args,
+                fields,
+            } => (constructor, args, fields),
+        };
+        let field_parts = |operands: &[(FieldName, ValueId)]| {
+            fields
+                .iter()
+                .map(|field| {
+                    let (_, operand) = operands
+                        .iter()
+                        .find(|(name, _)| *name == field.name)
+                        .unwrap_or_else(|| panic!("no field {}", field.name.as_str()));
+                    (&field.pattern, *operand)
+                })
+                .collect::<Vec<_>>()
+        };
+        let parts = match (constructor, self.ops.get(&name)?) {
+            (Constructor::BoolTrue, FlatOp::BoolLiteral(value)) => return Some(*value),
+            (Constructor::BoolFalse, FlatOp::BoolLiteral(value)) => return Some(!*value),
+            (Constructor::OptionSome, FlatOp::Option(Some(inner))) => vec![(&args[0], *inner)],
+            (Constructor::OptionSome, FlatOp::Option(None)) => return Some(false),
+            (Constructor::OptionNone, FlatOp::Option(inner)) => return Some(inner.is_none()),
+            (
+                Constructor::EnumVariant { variant_name, .. },
+                FlatOp::Enum {
+                    variant_name: op_variant,
+                    fields: operands,
+                },
+            ) => {
+                if variant_name != op_variant {
+                    return Some(false);
+                }
+                field_parts(operands)
+            }
+            (Constructor::Record { .. }, FlatOp::Record { fields: operands }) => {
+                field_parts(operands)
+            }
+            (Constructor::Tuple, FlatOp::Tuple(elements)) => {
+                args.iter().zip(elements.iter().copied()).collect()
+            }
+            _ => return None,
+        };
+        // A part that surely does not match settles it, whatever the
+        // other parts do.
+        let mut sure = Some(true);
+        for (pattern, part) in parts {
+            match self.match_known(pattern, part, bound) {
+                Some(false) => return Some(false),
+                None => sure = None,
+                Some(true) => {}
+            }
+        }
+        sure
+    }
+
     /// Run the arm selected for the match `name`, its bindings joining the
     /// block the match sits in, and let the readers of `name` read the
     /// arm's result.
@@ -91,105 +165,41 @@ impl Evaluator<'_> {
         let FlatBinding { name, typ, mut op } = binding;
         op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
         let op = match op {
-            FlatOp::Match(match_) => {
-                let match_ = match match_ {
-                    Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    } => match self.ops.get(&subject) {
-                        Some(FlatOp::BoolLiteral(true)) => {
-                            self.select_arm(name, true_body, out);
-                            return;
+            FlatOp::Match(IrMatch { subject, arms }) => {
+                // The first arm the subject surely matches is selected,
+                // unless an arm before it may match as well.
+                let mut selected = None;
+                for (index, arm) in arms.iter().enumerate() {
+                    let mut bound = Vec::new();
+                    match self.match_known(&arm.pattern, subject, &mut bound) {
+                        Some(true) => {
+                            selected = Some((index, bound));
+                            break;
                         }
-                        Some(FlatOp::BoolLiteral(false)) => {
-                            self.select_arm(name, false_body, out);
-                            return;
-                        }
-                        _ => Match::Bool {
-                            subject,
-                            true_body: self.evaluate_block(true_body),
-                            false_body: self.evaluate_block(false_body),
-                        },
-                    },
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body,
-                    } => match self.ops.get(&subject) {
-                        Some(FlatOp::Option(Some(inner))) => {
-                            let inner = *inner;
-                            if let Some(binder) = some_arm_binding {
-                                self.binders.insert(binder.var, inner);
-                            }
-                            self.select_arm(name, some_arm_body, out);
-                            return;
-                        }
-                        Some(FlatOp::Option(None)) => {
-                            self.select_arm(name, none_arm_body, out);
-                            return;
-                        }
-                        _ => Match::Option {
-                            subject,
-                            some_arm_binding,
-                            some_arm_body: self.evaluate_block(some_arm_body),
-                            none_arm_body: self.evaluate_block(none_arm_body),
-                        },
-                    },
-                    Match::Enum { subject, arms } => match self.ops.get(&subject) {
-                        Some(FlatOp::Enum {
-                            variant_name,
-                            fields,
-                        }) => {
-                            let variant_name = variant_name.clone();
-                            let fields = fields.clone();
-                            let arm = arms
-                                .into_iter()
-                                .find(|arm| {
-                                    let EnumPattern::Variant {
-                                        variant_name: pattern,
-                                        ..
-                                    } = &arm.pattern;
-                                    *pattern == variant_name
-                                })
-                                .unwrap_or_else(|| {
-                                    panic!("no match arm for variant {}", variant_name.as_str())
-                                });
-                            for (field, binder) in arm.bindings {
-                                let value = fields
-                                    .iter()
-                                    .find(|(name, _)| *name == field)
-                                    .map(|(_, value)| *value)
-                                    .unwrap_or_else(|| {
-                                        panic!(
-                                            "variant {} has no field {}",
-                                            variant_name.as_str(),
-                                            field.as_str()
-                                        )
-                                    });
-                                self.binders.insert(binder.var, value);
-                            }
-                            self.select_arm(name, arm.body, out);
-                            return;
-                        }
-                        _ => Match::Enum {
-                            subject,
-                            arms: arms
-                                .into_iter()
-                                .map(|arm| EnumMatchArm {
-                                    pattern: arm.pattern,
-                                    bindings: arm.bindings,
-                                    body: self.evaluate_block(arm.body),
-                                })
-                                .collect(),
-                        },
-                    },
-                };
+                        Some(false) => {}
+                        None => break,
+                    }
+                }
+                if let Some((index, bound)) = selected {
+                    self.binders.extend(bound);
+                    let arm = arms
+                        .into_iter()
+                        .nth(index)
+                        .expect("the selected arm is one of the arms");
+                    self.select_arm(name, arm.body, out);
+                    return;
+                }
+                let arms = arms
+                    .into_iter()
+                    .map(|arm| IrMatchArm {
+                        pattern: arm.pattern,
+                        body: self.evaluate_block(arm.body),
+                    })
+                    .collect();
                 out.push(FlatBinding {
                     name,
                     typ,
-                    op: FlatOp::Match(match_),
+                    op: FlatOp::Match(IrMatch { subject, arms }),
                 });
                 return;
             }
@@ -447,6 +457,7 @@ impl Evaluator<'_> {
 mod tests {
 
     use super::*;
+    use crate::document::Document;
     use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
     use crate::ir::pure_module::PureModule;
     use crate::ir::pure_module_builder::PureModuleBuilder;
@@ -455,7 +466,11 @@ mod tests {
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entry;
     use crate::ir::runtime::value::Value;
+    use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
+    use crate::program::Program;
+    use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::{Expect, expect};
+    use indoc::indoc;
     use rand::{SeedableRng, rngs::SmallRng};
 
     fn run(module: FlatModule) -> FlatModule {
@@ -524,6 +539,151 @@ mod tests {
         let before = module.to_string();
         let after = run(module).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
+    }
+
+    /// Like `check`, on the Pure IR the source compiles to.
+    fn check_source(source: &str, expected: Expect) {
+        let document_id = RootContainedFilePath::new("main.hop").unwrap();
+        let mut program = Program::new();
+        program.update_hop_document(
+            &document_id,
+            Document::new(document_id.clone(), source.to_string()),
+        );
+        let diagnostics = program.diagnostics();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let (pure, _) = orchestrate_pure(program.typed_modules(), OrchestrateOptions::default());
+        check(pure, expected);
+    }
+
+    #[test]
+    fn should_select_an_arm_a_partly_known_subject_surely_matches() {
+        check_source(
+            indoc! {r#"
+                page Test(nickname: Option[String]) {
+                  fn body() -> Html {
+                    match (true, nickname) {
+                      (false, _) => <p>guest</p>,
+                      (true, name) => <p>{name.unwrap_or("member")}</p>,
+                    }
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- before --
+                entry fn body@f0(nickname@b0: Option[String]) -> Html {
+                  let v0: Bool = true
+                  let v1: Option[String] = b0
+                  let v2: (Bool, Option[String]) = (v0, v1)
+                  let v13: Html = match v2 {
+                    (false, _) => {
+                      let v3: Html = text("guest")
+                      let v4: Html = concat(v3)
+                      let v5: Html = html("p", {}, v4)
+                      v5
+                    }
+                    (true, b1: Option[String]) => {
+                      let v6: Option[String] = b1
+                      let v9: String = match v6 {
+                        Some(b2: String) => {
+                          let v7: String = b2
+                          v7
+                        }
+                        None => {
+                          let v8: String = "member"
+                          v8
+                        }
+                      }
+                      let v10: Html = escape(v9)
+                      let v11: Html = concat(v10)
+                      let v12: Html = html("p", {}, v11)
+                      v12
+                    }
+                  }
+                  v13
+                }
+
+                -- after --
+                entry fn body@f0(nickname@b0: Option[String]) -> Html {
+                  let v0: Bool = true
+                  let v1: Option[String] = b0
+                  let v2: (Bool, Option[String]) = (v0, v1)
+                  let v9: String = match v1 {
+                    Some(b2: String) => {
+                      let v7: String = b2
+                      v7
+                    }
+                    None => {
+                      let v8: String = "member"
+                      v8
+                    }
+                  }
+                  let v10: Html = escape(v9)
+                  let v12: Html = html("p", {}, v10)
+                  v12
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_keep_a_match_when_an_arm_before_the_one_that_matches_may_match() {
+        check_source(
+            indoc! {r#"
+                page Test(nickname: Option[String]) {
+                  fn body() -> Html {
+                    match (true, nickname) {
+                      (true, Some(name)) => <p>{name}</p>,
+                      (_, _) => <p>member</p>,
+                    }
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- before --
+                entry fn body@f0(nickname@b0: Option[String]) -> Html {
+                  let v0: Bool = true
+                  let v1: Option[String] = b0
+                  let v2: (Bool, Option[String]) = (v0, v1)
+                  let v10: Html = match v2 {
+                    (true, Some(b1: String)) => {
+                      let v3: String = b1
+                      let v4: Html = escape(v3)
+                      let v5: Html = concat(v4)
+                      let v6: Html = html("p", {}, v5)
+                      v6
+                    }
+                    (_, _) => {
+                      let v7: Html = text("member")
+                      let v8: Html = concat(v7)
+                      let v9: Html = html("p", {}, v8)
+                      v9
+                    }
+                  }
+                  v10
+                }
+
+                -- after --
+                entry fn body@f0(nickname@b0: Option[String]) -> Html {
+                  let v0: Bool = true
+                  let v1: Option[String] = b0
+                  let v2: (Bool, Option[String]) = (v0, v1)
+                  let v10: Html = match v2 {
+                    (true, Some(b1: String)) => {
+                      let v3: String = b1
+                      let v4: Html = escape(v3)
+                      let v6: Html = html("p", {}, v4)
+                      v6
+                    }
+                    (_, _) => {
+                      let v7: Html = text("member")
+                      let v9: Html = html("p", {}, v7)
+                      v9
+                    }
+                  }
+                  v10
+                }
+            "#]],
+        );
     }
 
     #[test]

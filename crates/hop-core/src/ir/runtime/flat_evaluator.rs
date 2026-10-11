@@ -8,7 +8,6 @@ use crate::ir::flat_module::{
 };
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::{EnumPattern, Match};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::runtime::eval_error::EvalError;
@@ -352,72 +351,27 @@ fn evaluate_op(
             evaluate_function(functions, function, values, depth)?
         }
 
-        FlatOp::Match(Match::Enum { subject, arms }) => {
-            let (variant_name, fields) = names[subject].clone().unwrap_enum();
-            let mut matching_arms = arms.iter().filter(|arm| {
-                let EnumPattern::Variant {
-                    variant_name: pattern_variant,
-                    ..
-                } = &arm.pattern;
-                variant_name == *pattern_variant
-            });
-            let arm = matching_arms
-                .next()
-                .unwrap_or_else(|| panic!("No matching arm found for variant '{}'", variant_name));
-            assert!(
-                matching_arms.next().is_none(),
-                "Multiple matching arms found for variant '{}'",
-                variant_name
-            );
-            for (field_name, binder) in &arm.bindings {
-                let (_, field) = fields
-                    .iter()
-                    .find(|(name, _)| name == field_name)
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Field '{}' not found in enum variant '{}'",
-                            field_name, variant_name
-                        )
-                    });
-                binders.insert(binder.var, field.clone());
+        FlatOp::Match(match_) => {
+            let subject = names[&match_.subject].clone();
+            let mut bound = Vec::new();
+            let arm = match_
+                .arms
+                .iter()
+                .find(|arm| {
+                    bound.clear();
+                    subject.matches(&arm.pattern, &mut bound)
+                })
+                .unwrap_or_else(|| panic!("No arm matches {subject:?}"));
+            let arm_binders: Vec<_> = bound.iter().map(|(binder, _)| *binder).collect();
+            for (binder, value) in bound {
+                binders.insert(binder, value);
             }
             let result = evaluate_block(&arm.body, names, binders, functions, depth);
-            for (_, binder) in &arm.bindings {
-                binders.remove(&binder.var);
+            for binder in &arm_binders {
+                binders.remove(binder);
             }
             result?
         }
-
-        FlatOp::Match(Match::Bool {
-            subject,
-            true_body,
-            false_body,
-        }) => {
-            if names[subject].clone().unwrap_bool() {
-                evaluate_block(true_body, names, binders, functions, depth)?
-            } else {
-                evaluate_block(false_body, names, binders, functions, depth)?
-            }
-        }
-
-        FlatOp::Match(Match::Option {
-            subject,
-            some_arm_binding,
-            some_arm_body,
-            none_arm_body,
-        }) => match names[subject].clone().unwrap_option() {
-            Some(inner) => {
-                if let Some(binder) = some_arm_binding {
-                    binders.insert(binder.var, *inner);
-                }
-                let result = evaluate_block(some_arm_body, names, binders, functions, depth);
-                if let Some(binder) = some_arm_binding {
-                    binders.remove(&binder.var);
-                }
-                result?
-            }
-            None => evaluate_block(none_arm_body, names, binders, functions, depth)?,
-        },
 
         FlatOp::HtmlFor { var, source, body } => {
             let items = match source {

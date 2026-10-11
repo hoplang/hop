@@ -148,29 +148,28 @@ pub fn typecheck_match(
 
     // Exhaustiveness and reachability are only checked when every pattern
     // typechecks, so that pattern indices line up with the arms
-    let tree = if typed_patterns.len() == arms.len() {
+    let compiles = if typed_patterns.len() == arms.len() {
         match compile_match(registry, &typed_patterns, subject_type) {
-            Ok(tree) => Some(tree),
+            Ok(_) => true,
             Err(error) => {
                 let range = match error.site {
                     MatchErrorSite::Subject => subject.range(),
                     MatchErrorSite::Pattern(index) => arms[index].pattern.range(),
                 };
                 errors.push(TypeError::new(*error.kind, range.clone()));
-                None
+                false
             }
         }
     } else {
-        None
+        false
     };
-    if typed_bodies.len() != arms.len() {
+    if !compiles || typed_bodies.len() != arms.len() {
         return None;
     }
 
     Some(TypedExpr::Match {
         subject: Box::new(typed_subject),
         arms: typed_patterns.into_iter().zip(typed_bodies).collect(),
-        decision: tree?,
         typ: result_type?,
     })
 }

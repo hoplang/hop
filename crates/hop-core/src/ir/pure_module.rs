@@ -8,7 +8,7 @@ use crate::ir::binder_id::BinderIdCounter;
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::Match;
+use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
@@ -89,11 +89,11 @@ pub enum PureExpr {
         typ: Type,
     },
 
-    /// A Match expression over an Enum, Bool, or Option.
+    /// A Match expression, with the arms of the source.
     ///
-    /// Matching is exhaustive, a value must match at least one branch.
+    /// Matching is exhaustive, a value must match at least one arm.
     Match {
-        match_: Box<Match<PureExpr, PureExpr>>,
+        match_: Box<IrMatch<PureExpr, PureExpr>>,
         typ: Type,
     },
 
@@ -190,6 +190,8 @@ pub enum PureExpr {
     Tuple { elements: Vec<PureExpr>, typ: Type },
 
     /// A TupleIndex expression.
+    // Only tests construct it until the language has syntax for it.
+    #[allow(dead_code)]
     TupleIndex {
         tuple: Box<PureExpr>,
         index: usize,
@@ -333,33 +335,12 @@ impl PureExpr {
                 f(body);
             }
 
-            PureExpr::Match { match_, .. } => match &**match_ {
-                Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                } => {
-                    f(subject);
-                    f(true_body);
-                    f(false_body);
+            PureExpr::Match { match_, .. } => {
+                f(&match_.subject);
+                for arm in &match_.arms {
+                    f(&arm.body);
                 }
-                Match::Option {
-                    subject,
-                    some_arm_body,
-                    none_arm_body,
-                    ..
-                } => {
-                    f(subject);
-                    f(some_arm_body);
-                    f(none_arm_body);
-                }
-                Match::Enum { subject, arms } => {
-                    f(subject);
-                    for arm in arms {
-                        f(&arm.body);
-                    }
-                }
-            },
+            }
 
             PureExpr::HtmlFor { source, body, .. } => {
                 match &**source {

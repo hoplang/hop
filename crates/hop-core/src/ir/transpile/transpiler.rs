@@ -4,7 +4,7 @@ use crate::hop::typing::{
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::Match;
+use crate::ir::ir_switch::IrSwitch;
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::writer_module::{
     WriterForSource, WriterFunctionDeclaration, WriterLet, WriterModule, WriterName, WriterOp,
@@ -69,7 +69,7 @@ pub trait Transpiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterName, Vec<WriterStmt>>,
+        match_: &'a IrSwitch<WriterName, Vec<WriterStmt>>,
     ) -> Doc<'a>;
     fn transpile_statement<'a>(
         &mut self,
@@ -290,7 +290,7 @@ pub trait Transpiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterName, WriterValueBlock>,
+        match_: &'a IrSwitch<WriterName, WriterValueBlock>,
     ) -> Doc<'a>;
     fn transpile_function_call_value<'a>(
         &mut self,

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::hop::typing::Type;
+use crate::hop::typing::{Type, TypeRegistry};
 use crate::html::write_escaped_html;
 use crate::ir::binder_id::BinderId;
 use crate::ir::document_shell::DocumentShell;
@@ -8,10 +8,11 @@ use crate::ir::flat_module::{
     FlatAttribute, FlatBinding, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule,
     FlatOp,
 };
+use crate::ir::flat_transform::lower_matches;
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::{EnumMatchArm, Match};
 use crate::ir::ir_page::IrPage;
+use crate::ir::ir_switch::{EnumMatchArm, IrSwitch};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_module::{
     WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
@@ -20,6 +21,9 @@ use crate::ir::writer_module::{
 use crate::symbols::type_name::TypeName;
 
 /// Lower a Flat module to the Writer.
+///
+/// The matches lower to switches first, see `lower_matches`, since a Writer
+/// match switches on one constructor at a time.
 ///
 /// Values stay lets, in their order, except a Read, which is folded into
 /// its readers so they read the binder. Html is written. An Html binding that
@@ -39,9 +43,11 @@ use crate::symbols::type_name::TypeName;
 /// and its body alone.
 pub fn flat_to_writer(
     module: FlatModule,
+    registry: &TypeRegistry,
     pages: &[IrPage],
     shell: Option<&DocumentShell>,
 ) -> WriterModule {
+    let module = lower_matches(module, registry);
     let page_functions: HashSet<FunctionId> = pages
         .iter()
         .flat_map(|page| page.head.iter().chain([&page.body]))
@@ -127,24 +133,8 @@ fn rename_binders(block: &mut FlatBlock, binders: &HashMap<BinderId, BinderId>) 
                     *binder = *to;
                 }
             }
-            FlatOp::Match(Match::Bool {
-                true_body,
-                false_body,
-                ..
-            }) => {
-                rename_binders(true_body, binders);
-                rename_binders(false_body, binders);
-            }
-            FlatOp::Match(Match::Option {
-                some_arm_body,
-                none_arm_body,
-                ..
-            }) => {
-                rename_binders(some_arm_body, binders);
-                rename_binders(none_arm_body, binders);
-            }
-            FlatOp::Match(Match::Enum { arms, .. }) => {
-                for arm in arms {
+            FlatOp::Match(match_) => {
+                for arm in &mut match_.arms {
                     rename_binders(&mut arm.body, binders);
                 }
             }
@@ -327,32 +317,9 @@ impl Lowerer {
                 }
                 FlatOp::Match(match_) => {
                     let output = matches!(binding.typ, Type::Html);
-                    match match_ {
-                        Match::Bool {
-                            subject,
-                            true_body,
-                            false_body,
-                        } => {
-                            self.read(*subject, Reader::Value, depth);
-                            self.analyze(true_body, depth, output);
-                            self.analyze(false_body, depth, output);
-                        }
-                        Match::Option {
-                            subject,
-                            some_arm_body,
-                            none_arm_body,
-                            ..
-                        } => {
-                            self.read(*subject, Reader::Value, depth);
-                            self.analyze(some_arm_body, depth, output);
-                            self.analyze(none_arm_body, depth, output);
-                        }
-                        Match::Enum { subject, arms } => {
-                            self.read(*subject, Reader::Value, depth);
-                            for arm in arms {
-                                self.analyze(&arm.body, depth, output);
-                            }
-                        }
+                    self.read(match_.subject, Reader::Value, depth);
+                    for arm in &match_.arms {
+                        self.analyze(&arm.body, depth, output);
                     }
                 }
                 FlatOp::HtmlFor { source, body, .. } => {
@@ -451,28 +418,28 @@ impl Lowerer {
                     self.lower_html_op(op, &mut body);
                     WriterOp::HtmlLiteral(body)
                 }
-                FlatOp::Match(match_) => WriterOp::Match(match match_ {
-                    Match::Bool {
+                FlatOp::Match(match_) => WriterOp::Match(match match_.into_switch() {
+                    IrSwitch::Bool {
                         subject,
                         true_body,
                         false_body,
-                    } => Match::Bool {
+                    } => IrSwitch::Bool {
                         subject: self.name(subject),
                         true_body: self.lower_value_block(true_body),
                         false_body: self.lower_value_block(false_body),
                     },
-                    Match::Option {
+                    IrSwitch::Option {
                         subject,
                         some_arm_binding,
                         some_arm_body,
                         none_arm_body,
-                    } => Match::Option {
+                    } => IrSwitch::Option {
                         subject: self.name(subject),
                         some_arm_binding,
                         some_arm_body: self.lower_value_block(some_arm_body),
                         none_arm_body: self.lower_value_block(none_arm_body),
                     },
-                    Match::Enum { subject, arms } => Match::Enum {
+                    IrSwitch::Enum { subject, arms } => IrSwitch::Enum {
                         subject: self.name(subject),
                         arms: arms
                             .into_iter()
@@ -615,7 +582,7 @@ impl Lowerer {
                                 None => {
                                     let mut true_body = Vec::new();
                                     write(&mut true_body, &format!(" {}", name.as_str()));
-                                    unit.push(WriterStmt::Match(Match::Bool {
+                                    unit.push(WriterStmt::Match(IrSwitch::Bool {
                                         subject: self.name(present),
                                         true_body,
                                         false_body: Vec::new(),
@@ -667,8 +634,8 @@ impl Lowerer {
                 });
             }
 
-            FlatOp::Match(match_) => out.push(WriterStmt::Match(match match_ {
-                Match::Bool {
+            FlatOp::Match(match_) => out.push(WriterStmt::Match(match match_.into_switch() {
+                IrSwitch::Bool {
                     subject,
                     true_body,
                     false_body,
@@ -677,13 +644,13 @@ impl Lowerer {
                     self.lower_output_block(true_body, &mut true_statements);
                     let mut false_statements = Vec::new();
                     self.lower_output_block(false_body, &mut false_statements);
-                    Match::Bool {
+                    IrSwitch::Bool {
                         subject: self.name(subject),
                         true_body: true_statements,
                         false_body: false_statements,
                     }
                 }
-                Match::Option {
+                IrSwitch::Option {
                     subject,
                     some_arm_binding,
                     some_arm_body,
@@ -693,14 +660,14 @@ impl Lowerer {
                     self.lower_output_block(some_arm_body, &mut some_statements);
                     let mut none_statements = Vec::new();
                     self.lower_output_block(none_arm_body, &mut none_statements);
-                    Match::Option {
+                    IrSwitch::Option {
                         subject: self.name(subject),
                         some_arm_binding,
                         some_arm_body: some_statements,
                         none_arm_body: none_statements,
                     }
                 }
-                Match::Enum { subject, arms } => Match::Enum {
+                IrSwitch::Enum { subject, arms } => IrSwitch::Enum {
                     subject: self.name(subject),
                     arms: arms
                         .into_iter()
@@ -796,7 +763,7 @@ mod tests {
                     check_stmts(body, names);
                     names.truncate(scope_len);
                 }
-                WriterStmt::Match(Match::Bool {
+                WriterStmt::Match(IrSwitch::Bool {
                     subject,
                     true_body,
                     false_body,
@@ -805,7 +772,7 @@ mod tests {
                     check_stmts(true_body, names);
                     check_stmts(false_body, names);
                 }
-                WriterStmt::Match(Match::Option {
+                WriterStmt::Match(IrSwitch::Option {
                     subject,
                     some_arm_binding,
                     some_arm_body,
@@ -822,7 +789,7 @@ mod tests {
                     names.truncate(scope_len);
                     check_stmts(none_arm_body, names);
                 }
-                WriterStmt::Match(Match::Enum { subject, arms }) => {
+                WriterStmt::Match(IrSwitch::Enum { subject, arms }) => {
                     type_of(names, *subject);
                     for arm in arms {
                         for (_, binder) in &arm.bindings {
@@ -930,7 +897,7 @@ mod tests {
                 check_stmts(body, names);
                 Some(Type::Html)
             }
-            WriterOp::Match(Match::Bool {
+            WriterOp::Match(IrSwitch::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -941,7 +908,7 @@ mod tests {
                 assert_eq!(true_type, false_type);
                 Some(true_type)
             }
-            WriterOp::Match(Match::Option {
+            WriterOp::Match(IrSwitch::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -960,7 +927,7 @@ mod tests {
                 assert_eq!(some_type, none_type);
                 Some(some_type)
             }
-            WriterOp::Match(Match::Enum { arms, .. }) => {
+            WriterOp::Match(IrSwitch::Enum { arms, .. }) => {
                 let mut arm_type = None;
                 for arm in arms {
                     for (_, binder) in &arm.bindings {
@@ -982,9 +949,10 @@ mod tests {
     #[test]
     fn fuzz_random_modules_lower_to_well_scoped_statements() {
         arbtest::arbtest(|u| {
-            let (module, _) = random_module(u);
+            let (module, registry) = random_module(u);
             let pages = IrPage::for_entries(&module);
-            let module = flat_to_writer(optimize_flat(pure_to_flat(module)), &pages, None);
+            let module =
+                flat_to_writer(optimize_flat(pure_to_flat(module)), &registry, &pages, None);
             for page in &module.pages {
                 let mut names: Vec<(WriterName, Type)> = page
                     .parameters
@@ -1016,14 +984,19 @@ mod tests {
     /// Prints the module as Pure IR, as the optimized Flat IR it lowers to, and as
     /// the Writer IR that Flat IR lowers to, so each step can be compared.
     /// Each entry function renders a page of its own, named after it.
-    fn check(build: impl Fn() -> PureModule, shell: Option<&DocumentShell>, expected: Expect) {
-        let module = build();
+    fn check(
+        build: impl Fn() -> (PureModule, TypeRegistry),
+        shell: Option<&DocumentShell>,
+        expected: Expect,
+    ) {
+        let (module, registry) = build();
         let pages = IrPage::for_entries(&module);
-        check_pages(module, &pages, shell, expected);
+        check_pages(module, &registry, &pages, shell, expected);
     }
 
     fn check_pages(
         module: PureModule,
+        registry: &TypeRegistry,
         pages: &[IrPage],
         shell: Option<&DocumentShell>,
         expected: Expect,
@@ -1031,7 +1004,7 @@ mod tests {
         let pure = module.to_string();
         let flat_module = optimize_flat(pure_to_flat(module));
         let flat = flat_module.to_string();
-        let writer = flat_to_writer(flat_module, pages, shell).to_string();
+        let writer = flat_to_writer(flat_module, registry, pages, shell).to_string();
         expected.assert_eq(&format!(
             "-- pure --\n{pure}\n-- flat --\n{flat}\n-- writer --\n{writer}"
         ));
@@ -1045,7 +1018,7 @@ mod tests {
                     .entry("Main", [], "Html", |t| {
                         t.element("p", vec![], vec![t.text("Hello")])
                     })
-                    .build()
+                    .build_with_registry()
             },
             Some(&DocumentShell::new(None, Some("/scripts-deadbeef.js"))),
             expect![[r#"
@@ -1074,14 +1047,14 @@ mod tests {
 
     #[test]
     fn writes_the_head_into_the_shell_reading_the_parameters_of_the_page() {
-        let module = PureModuleBuilder::new()
+        let (module, registry) = PureModuleBuilder::new()
             .entry("head", [("title", "String")], "Html", |t| {
                 t.element("title", vec![], vec![t.escape(t.var("title"))])
             })
             .entry("body", [("title", "String")], "Html", |t| {
                 t.element("h1", vec![], vec![t.escape(t.var("title"))])
             })
-            .build();
+            .build_with_registry();
         let page = IrPage {
             name: TypeName::parse("Main").unwrap(),
             head: Some(module.functions[0].function.clone()),
@@ -1089,6 +1062,7 @@ mod tests {
         };
         check_pages(
             module,
+            &registry,
             &[page],
             Some(&DocumentShell::new(None, None)),
             expect![[r#"
@@ -1141,7 +1115,7 @@ mod tests {
                             vec![t.text("Content")],
                         )
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1179,7 +1153,7 @@ mod tests {
                     .entry("Test", [("cls", "String")], "Html", |t| {
                         t.element("div", vec![t.attr("data-value", t.var("cls"))], vec![])
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1222,7 +1196,7 @@ mod tests {
                             vec![],
                         )
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1272,7 +1246,7 @@ mod tests {
                             vec![t.element("p", vec![], vec![t.escape(t.var("name"))])],
                         )
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1308,7 +1282,7 @@ mod tests {
                     .entry("Test", [("name", "String")], "Html", |t| {
                         t.escape(t.string_concat(vec![t.str("a<"), t.var("name"), t.str(">b")]))
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1350,7 +1324,7 @@ mod tests {
                             t.text("ddddddddddddddddddddddddd"),
                         ])
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1397,7 +1371,7 @@ mod tests {
                             t.text(" after"),
                         ])
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1451,7 +1425,7 @@ mod tests {
                             t.concat(vec![t.var("x"), t.var("x")])
                         })
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1492,7 +1466,7 @@ mod tests {
                             t.html_for(None, t.var("items"), |t| t.var("x"))
                         })
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1541,7 +1515,7 @@ mod tests {
                             vec![("inner", t.element("b", vec![], vec![t.text("hi")]))],
                         )
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1582,7 +1556,7 @@ mod tests {
                     .entry("Test", [], "Html", |t| {
                         t.escape(t.int_to_string(t.call("square_next", vec![("x", t.int(2))])))
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1628,7 +1602,7 @@ mod tests {
                             |t| t.field_access(t.var("card"), "body"),
                         )
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1691,7 +1665,7 @@ mod tests {
                             t.int(0),
                         )))
                     })
-                    .build()
+                    .build_with_registry()
             },
             None,
             expect![[r#"
@@ -1729,18 +1703,18 @@ mod tests {
 
                 -- writer --
                 page Test(flag@b0: Bool, n@b1: Int) {
-                  let v5: Int = match b0 {
+                  let v12: Int = match b0 {
                     true => {
-                      let v2: Int = 1
-                      let v3: Int = b1 + v2
-                      v3
+                      let v9: Int = 1
+                      let v10: Int = b1 + v9
+                      v10
                     }
                     false => {
-                      let v4: Int = 0
-                      v4
+                      let v11: Int = 0
+                      v11
                     }
                   }
-                  let v6: String = v5.to_string()
+                  let v6: String = v12.to_string()
                   write_string(v6)
                 }
             "#]],

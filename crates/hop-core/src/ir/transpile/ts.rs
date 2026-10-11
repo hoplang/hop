@@ -7,8 +7,8 @@ use super::transpiler::Transpiler;
 use crate::hop::typing::{Type, TypeRegistry};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
 use crate::ir::ir_parameter::IrParameter;
+use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::writer_module::{
     WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
     WriterName, WriterPageDeclaration, WriterStmt, WriterValueBlock,
@@ -920,10 +920,10 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterName, Vec<WriterStmt>>,
+        match_: &'a IrSwitch<WriterName, Vec<WriterStmt>>,
     ) -> Doc<'a> {
         match match_ {
-            Match::Bool {
+            IrSwitch::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -944,7 +944,7 @@ impl Transpiler for TsTranspiler {
                         .append(arena.text("}"))
                 }
             }
-            Match::Option {
+            IrSwitch::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -958,7 +958,7 @@ impl Transpiler for TsTranspiler {
                 |this, body| this.transpile_statements(arena, body),
                 "break;",
             ),
-            Match::Enum { subject, arms } => self.transpile_enum_cases(
+            IrSwitch::Enum { subject, arms } => self.transpile_enum_cases(
                 arena,
                 *subject,
                 arms,
@@ -1377,10 +1377,10 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<WriterName, WriterValueBlock>,
+        match_: &'a IrSwitch<WriterName, WriterValueBlock>,
     ) -> Doc<'a> {
         match match_ {
-            Match::Bool {
+            IrSwitch::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -1415,7 +1415,7 @@ impl Transpiler for TsTranspiler {
                     .append(arena.text("}"));
                 self.transpile_iife(arena, body)
             }
-            Match::Option {
+            IrSwitch::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -1432,7 +1432,7 @@ impl Transpiler for TsTranspiler {
                 );
                 self.transpile_iife(arena, body)
             }
-            Match::Enum { subject, arms } => {
+            IrSwitch::Enum { subject, arms } => {
                 let body = self.transpile_enum_cases(
                     arena,
                     *subject,
@@ -1597,7 +1597,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let module = flat_to_writer(pure_to_flat(pure), &pages, None);
+        let module = flat_to_writer(pure_to_flat(pure), program.type_registry(), &pages, None);
         let output = TsTranspiler::new().transpile_module(&module, program.type_registry());
         expected.assert_eq(&output);
     }
@@ -2195,24 +2195,24 @@ mod tests {
 
                 export function ColorName({color: b_0}: {color: Color.Color}): string {
                     let output: string = "";
-                    const v_4: string = (() => {
+                    const v_10: string = (() => {
                         const s_0: Color.Color = b_0;
                         switch (s_0._tag) {
                             case "Red": {
-                                const v_1: string = "red";
-                                return v_1;
+                                const v_7: string = "red";
+                                return v_7;
                             }
                             case "Green": {
-                                const v_2: string = "green";
-                                return v_2;
+                                const v_8: string = "green";
+                                return v_8;
                             }
                             case "Blue": {
-                                const v_3: string = "blue";
-                                return v_3;
+                                const v_9: string = "blue";
+                                return v_9;
                             }
                         }
                     })();
-                    output += escapeHtml(v_4);
+                    output += escapeHtml(v_10);
                     return output;
                 }
             "#]],
@@ -2242,16 +2242,16 @@ mod tests {
 
                 export function IsActive({active: b_0}: {active: boolean}): string {
                     let output: string = "";
-                    const v_3: string = (() => {
+                    const v_8: string = (() => {
                         if (b_0) {
-                            const v_1: string = "yes";
-                            return v_1;
+                            const v_6: string = "yes";
+                            return v_6;
                         } else {
-                            const v_2: string = "no";
-                            return v_2;
+                            const v_7: string = "no";
+                            return v_7;
                         }
                     })();
-                    output += escapeHtml(v_3);
+                    output += escapeHtml(v_8);
                     return output;
                 }
             "#]],
@@ -2292,20 +2292,20 @@ mod tests {
 
                 export function CheckOption({opt: b_0}: {opt: Option.Option<number>}): string {
                     let output: string = "";
-                    const v_3: string = (() => {
+                    const v_8: string = (() => {
                         const s_0: Option.Option<number> = b_0;
                         switch (s_0.tag) {
                             case "Some": {
-                                const v_1: string = "has value";
-                                return v_1;
+                                const v_6: string = "has value";
+                                return v_6;
                             }
                             case "None": {
-                                const v_2: string = "empty";
-                                return v_2;
+                                const v_7: string = "empty";
+                                return v_7;
                             }
                         }
                     })();
-                    output += escapeHtml(v_3);
+                    output += escapeHtml(v_8);
                     return output;
                 }
             "#]],
@@ -2355,42 +2355,42 @@ mod tests {
                     opt: Option.Option<Option.Option<boolean>>
                 }): string {
                     let output: string = "";
-                    const v_9: string = (() => {
+                    const v_16: string = (() => {
                         const s_0: Option.Option<Option.Option<boolean>> = b_0;
                         switch (s_0.tag) {
                             case "Some": {
-                                const b_2 = s_0.value;
-                                const v_7: string = (() => {
-                                    const s_1: Option.Option<boolean> = b_2;
+                                const b_1 = s_0.value;
+                                const v_14: string = (() => {
+                                    const s_1: Option.Option<boolean> = b_1;
                                     switch (s_1.tag) {
                                         case "Some": {
-                                            const b_3 = s_1.value;
-                                            const v_5: string = (() => {
-                                                if (b_3) {
-                                                    const v_3: string = "some-some-true";
-                                                    return v_3;
+                                            const b_2 = s_1.value;
+                                            const v_12: string = (() => {
+                                                if (b_2) {
+                                                    const v_10: string = "some-some-true";
+                                                    return v_10;
                                                 } else {
-                                                    const v_4: string = "some-some-false";
-                                                    return v_4;
+                                                    const v_11: string = "some-some-false";
+                                                    return v_11;
                                                 }
                                             })();
-                                            return v_5;
+                                            return v_12;
                                         }
                                         case "None": {
-                                            const v_6: string = "some-none";
-                                            return v_6;
+                                            const v_13: string = "some-none";
+                                            return v_13;
                                         }
                                     }
                                 })();
-                                return v_7;
+                                return v_14;
                             }
                             case "None": {
-                                const v_8: string = "none";
-                                return v_8;
+                                const v_15: string = "none";
+                                return v_15;
                             }
                         }
                     })();
-                    output += escapeHtml(v_9);
+                    output += escapeHtml(v_16);
                     return output;
                 }
             "#]],
@@ -2500,34 +2500,34 @@ mod tests {
                     const v_0: string = "hello";
                     const v_1: Option.Option<string> = Option.some<string>(v_0);
                     const v_2: Option.Option<string> = Option.none<string>();
-                    const v_5: string = (() => {
+                    const v_14: string = (() => {
                         const s_0: Option.Option<string> = v_1;
                         switch (s_0.tag) {
                             case "Some": {
-                                const v_3: string = "has value";
-                                return v_3;
+                                const v_12: string = "has value";
+                                return v_12;
                             }
                             case "None": {
-                                const v_4: string = "empty";
-                                return v_4;
+                                const v_13: string = "empty";
+                                return v_13;
                             }
                         }
                     })();
-                    const v_9: string = (() => {
+                    const v_17: string = (() => {
                         const s_1: Option.Option<string> = v_2;
                         switch (s_1.tag) {
                             case "Some": {
-                                const v_7: string = "HAS";
-                                return v_7;
+                                const v_15: string = "HAS";
+                                return v_15;
                             }
                             case "None": {
-                                const v_8: string = "EMPTY";
-                                return v_8;
+                                const v_16: string = "EMPTY";
+                                return v_16;
                             }
                         }
                     })();
-                    output += escapeHtml(v_5);
-                    output += escapeHtml(v_9);
+                    output += escapeHtml(v_14);
+                    output += escapeHtml(v_17);
                     return output;
                 }
             "#]],
@@ -2640,13 +2640,13 @@ mod tests {
                     const s_0: Option.Option<string> = v_1;
                     switch (s_0.tag) {
                         case "Some": {
-                            const b_1 = s_0.value;
-                            const v_3: Option.Option<string> = Option.some<string>(b_1);
-                            const s_1: Option.Option<string> = v_3;
+                            const b_3 = s_0.value;
+                            const v_20: Option.Option<string> = Option.some<string>(b_3);
+                            const s_1: Option.Option<string> = v_20;
                             switch (s_1.tag) {
                                 case "Some": {
-                                    const b_3 = s_1.value;
-                                    output += escapeHtml(b_3);
+                                    const b_4 = s_1.value;
+                                    output += escapeHtml(b_4);
                                     break;
                                 }
                                 case "None": {
@@ -2691,16 +2691,16 @@ mod tests {
                 export function IsActive({active: b_0}: {active: boolean}): string {
                     let output: string = "";
                     const v_1: boolean = !b_0;
-                    const v_4: string = (() => {
+                    const v_9: string = (() => {
                         if (v_1) {
-                            const v_2: string = "yes";
-                            return v_2;
+                            const v_7: string = "yes";
+                            return v_7;
                         } else {
-                            const v_3: string = "no";
-                            return v_3;
+                            const v_8: string = "no";
+                            return v_8;
                         }
                     })();
-                    output += escapeHtml(v_4);
+                    output += escapeHtml(v_9);
                     return output;
                 }
             "#]],
@@ -2758,22 +2758,22 @@ mod tests {
                     let output: string = "";
                     const v_0: number = 42;
                     const v_1: Outcome.Outcome = Outcome.Success({value: v_0});
-                    const v_5: string = (() => {
+                    const v_12: string = (() => {
                         const s_0: Outcome.Outcome = v_1;
                         switch (s_0._tag) {
                             case "Success": {
-                                const { value: b_2 } = s_0;
-                                const v_3: string = b_2.toString();
-                                return v_3;
+                                const { value: b_3 } = s_0;
+                                const v_10: string = b_3.toString();
+                                return v_10;
                             }
                             case "Failure": {
-                                const { message: b_3 } = s_0;
-                                return b_3;
+                                const { message: b_4 } = s_0;
+                                return b_4;
                             }
                         }
                     })();
                     output += "<div>";
-                    output += escapeHtml(v_5);
+                    output += escapeHtml(v_12);
                     output += "</div>";
                     return output;
                 }
@@ -2830,15 +2830,15 @@ mod tests {
                     const s_0: Outcome.Outcome = b_0;
                     switch (s_0._tag) {
                         case "Success": {
-                            const { value: b_2 } = s_0;
+                            const { value: b_3 } = s_0;
                             output += "Value: ";
-                            output += escapeHtml(b_2);
+                            output += escapeHtml(b_3);
                             break;
                         }
                         case "Failure": {
-                            const { message: b_3 } = s_0;
+                            const { message: b_4 } = s_0;
                             output += "Error: ";
-                            output += escapeHtml(b_3);
+                            output += escapeHtml(b_4);
                             break;
                         }
                     }

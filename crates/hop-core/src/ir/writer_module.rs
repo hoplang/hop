@@ -8,7 +8,7 @@ use crate::ir::binder_id::BinderId;
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::Match;
+use crate::ir::ir_switch::IrSwitch;
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
@@ -127,7 +127,7 @@ pub enum WriterStmt {
     },
 
     /// Run the arm that matches. Matching is exhaustive.
-    Match(Match<WriterName, Vec<WriterStmt>>),
+    Match(IrSwitch<WriterName, Vec<WriterStmt>>),
 }
 
 /// The computation of a let. Operands are names.
@@ -189,7 +189,7 @@ pub enum WriterOp {
     HtmlLiteral(Vec<WriterStmt>),
 
     /// A match over a value that is not Html. Each arm produces the value.
-    Match(Match<WriterName, WriterValueBlock>),
+    Match(IrSwitch<WriterName, WriterValueBlock>),
 }
 
 impl WriterOp {
@@ -235,9 +235,9 @@ impl WriterOp {
             }
 
             WriterOp::Match(match_) => match match_ {
-                Match::Bool { subject, .. }
-                | Match::Option { subject, .. }
-                | Match::Enum { subject, .. } => f(*subject),
+                IrSwitch::Bool { subject, .. }
+                | IrSwitch::Option { subject, .. }
+                | IrSwitch::Enum { subject, .. } => f(*subject),
             },
         }
     }

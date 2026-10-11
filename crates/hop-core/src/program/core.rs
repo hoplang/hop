@@ -248,7 +248,7 @@ impl Program {
         } else {
             optimize_flat(flat)
         };
-        let module = flat_to_writer(flat, &pages, Some(&shell));
+        let module = flat_to_writer(flat, &self.type_registry, &pages, Some(&shell));
 
         match target {
             TargetLanguage::Typescript => {

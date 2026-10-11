@@ -1,7 +1,7 @@
 use crate::document::CheapString;
 use crate::hop::typing::{
-    ComparableType, EnumVariant, EquatableType, NumericType, ResolvedType, TestTypes, Type,
-    TypeRegistry, TypeRegistryBuilder,
+    ComparableType, Constructor, EnumVariant, EquatableType, NumericType, Pattern, PatternField,
+    ResolvedType, TestTypes, Type, TypeRegistry, TypeRegistryBuilder,
 };
 use crate::html::HtmlElementKind;
 use crate::ir::binder_id::BinderId;
@@ -10,7 +10,7 @@ use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::{EnumMatchArm, EnumPattern, Match};
+use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::pure_module::{
@@ -254,7 +254,7 @@ impl<'a> PureModuleBodiesBuilder<'a> {
     }
 }
 
-type ScopedVar = (String, BinderId, Type);
+pub type ScopedVar = (String, BinderId, Type);
 
 pub struct PureBuilder {
     var_stack: Vec<ScopedVar>,
@@ -717,7 +717,7 @@ impl PureBuilder {
             .expect("enum_match_expr requires at least one arm");
 
         PureExpr::Match {
-            match_: Box::new(Match::Enum {
+            match_: Box::new(IrMatch {
                 subject,
                 arms: arms.arms,
             }),
@@ -742,10 +742,26 @@ impl PureBuilder {
         let result_type = true_body.typ();
 
         PureExpr::Match {
-            match_: Box::new(Match::Bool {
+            match_: Box::new(IrMatch {
                 subject,
-                true_body,
-                false_body,
+                arms: vec![
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::BoolTrue,
+                            args: Vec::new(),
+                            fields: Vec::new(),
+                        },
+                        body: true_body,
+                    },
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::BoolFalse,
+                            args: Vec::new(),
+                            fields: Vec::new(),
+                        },
+                        body: false_body,
+                    },
+                ],
             }),
             typ: result_type,
         }
@@ -772,11 +788,26 @@ impl PureBuilder {
         let result_type = some_body.typ();
 
         PureExpr::Match {
-            match_: Box::new(Match::Option {
+            match_: Box::new(IrMatch {
                 subject,
-                some_arm_binding: None,
-                some_arm_body: some_body,
-                none_arm_body: none_body,
+                arms: vec![
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::OptionSome,
+                            args: vec![Pattern::Wildcard],
+                            fields: Vec::new(),
+                        },
+                        body: some_body,
+                    },
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::OptionNone,
+                            args: Vec::new(),
+                            fields: Vec::new(),
+                        },
+                        body: none_body,
+                    },
+                ],
             }),
             typ: result_type,
         }
@@ -811,16 +842,75 @@ impl PureBuilder {
         let result_type = some_body.typ();
 
         PureExpr::Match {
-            match_: Box::new(Match::Option {
+            match_: Box::new(IrMatch {
                 subject,
-                some_arm_binding: Some(IrBinder {
-                    var: binding,
-                    typ: inner_type,
-                }),
-                some_arm_body: some_body,
-                none_arm_body: none_body,
+                arms: vec![
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::OptionSome,
+                            args: vec![Pattern::Binding {
+                                name: binding,
+                                typ: inner_type,
+                            }],
+                            fields: Vec::new(),
+                        },
+                        body: some_body,
+                    },
+                    IrMatchArm {
+                        pattern: Pattern::Constructor {
+                            constructor: Constructor::OptionNone,
+                            args: Vec::new(),
+                            fields: Vec::new(),
+                        },
+                        body: none_body,
+                    },
+                ],
             }),
             typ: result_type,
+        }
+    }
+
+    /// A binding pattern for a fresh binder of `typ`, and the variable it
+    /// brings into the scope of its arm's body as `name`.
+    pub fn binding_pattern(&self, name: &str, typ: Type) -> (IrPattern, ScopedVar) {
+        let binder = self.bind();
+        (
+            Pattern::Binding {
+                name: binder,
+                typ: typ.clone(),
+            },
+            (name.to_string(), binder, typ),
+        )
+    }
+
+    /// A match with the given arms in order, whose patterns must cover
+    /// every value of the subject's type. Each arm's body is built with the
+    /// variables its pattern binds in scope.
+    pub fn pattern_match_expr(
+        &self,
+        subject: PureExpr,
+        arms: Vec<(IrPattern, Vec<ScopedVar>)>,
+        mut body_fn: impl FnMut(&Self) -> PureExpr,
+    ) -> PureExpr {
+        let arms: Vec<IrMatchArm<PureExpr>> = arms
+            .into_iter()
+            .map(|(pattern, vars)| IrMatchArm {
+                pattern,
+                body: body_fn(&self.scoped(vars)),
+            })
+            .collect();
+        let typ = arms.first().expect("a match has an arm").body.typ();
+        for arm in &arms {
+            assert_eq!(
+                arm.body.typ(),
+                typ,
+                "Match arms must all have the same type, got: {}",
+                arm.body
+            );
+        }
+        PureExpr::Match {
+            match_: Box::new(IrMatch { subject, arms }),
+            typ,
         }
     }
 
@@ -1148,7 +1238,7 @@ pub struct EnumMatchExprArms<'a> {
     builder: &'a PureBuilder,
     type_name: TypeName,
     variants: Vec<EnumVariant>,
-    arms: Vec<EnumMatchArm<PureExpr>>,
+    arms: Vec<IrMatchArm<PureExpr>>,
     result_type: Option<Type>,
 }
 
@@ -1188,12 +1278,37 @@ impl EnumMatchExprArms<'_> {
             ),
             None => self.result_type = Some(body.typ()),
         }
-        self.arms.push(EnumMatchArm {
-            pattern: EnumPattern::Variant {
-                type_name: self.type_name.clone(),
-                variant_name: TypeName::parse(variant).unwrap(),
+        // A pattern names every field of its variant, so a field the arm
+        // does not bind is a wildcard.
+        let fields = self
+            .variants
+            .iter()
+            .find(|v| v.name.as_str() == variant)
+            .expect("resolve_arm_bindings found the variant")
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| PatternField {
+                name: field.name.clone(),
+                index,
+                pattern: match bindings.iter().find(|(name, _)| *name == field.name) {
+                    Some((_, binder)) => Pattern::Binding {
+                        name: binder.var,
+                        typ: binder.typ.clone(),
+                    },
+                    None => Pattern::Wildcard,
+                },
+            })
+            .collect();
+        self.arms.push(IrMatchArm {
+            pattern: Pattern::Constructor {
+                constructor: Constructor::EnumVariant {
+                    type_name: self.type_name.clone(),
+                    variant_name: TypeName::parse(variant).unwrap(),
+                },
+                args: Vec::new(),
+                fields,
             },
-            bindings,
             body,
         });
     }
@@ -1244,15 +1359,17 @@ fn resolve_arm_bindings<'s>(
     (bindings, scoped_vars)
 }
 
-fn assert_exhaustive<B>(enum_name: &TypeName, variants: &[EnumVariant], arms: &[EnumMatchArm<B>]) {
+fn assert_exhaustive<B>(enum_name: &TypeName, variants: &[EnumVariant], arms: &[IrMatchArm<B>]) {
     for variant in variants {
         let count = arms
             .iter()
             .filter(|arm| {
                 matches!(
                     &arm.pattern,
-                    EnumPattern::Variant { variant_name, .. }
-                        if variant_name.as_str() == variant.name.as_str()
+                    Pattern::Constructor {
+                        constructor: Constructor::EnumVariant { variant_name, .. },
+                        ..
+                    } if variant_name.as_str() == variant.name.as_str()
                 )
             })
             .count();

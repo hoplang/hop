@@ -9,7 +9,7 @@ use crate::ir::binder_id::{BinderId, BinderIdCounter};
 use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_match::Match;
+use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::attribute_name::AttributeName;
@@ -176,11 +176,12 @@ pub enum FlatOp {
         args: Vec<ValueId>,
     },
 
-    /// A match over an Enum, Bool, or Option name. Each arm is a block
-    /// that produces the match's value.
+    /// A match with the arms of the source. Each arm is a block that
+    /// produces the match's value, and a Read of a binder of its pattern
+    /// reads the part of the subject the binder binds.
     ///
     /// Matching is exhaustive, a value must match at least one arm.
-    Match(Match<ValueId, FlatBlock>),
+    Match(IrMatch<ValueId, FlatBlock>),
 
     /// A foldMap over the source, concatenating the body's Html once per
     /// element in iteration order.
@@ -253,11 +254,7 @@ impl FlatOp {
                 }
             }
 
-            FlatOp::Match(match_) => match match_ {
-                Match::Bool { subject, .. }
-                | Match::Option { subject, .. }
-                | Match::Enum { subject, .. } => f(*subject),
-            },
+            FlatOp::Match(match_) => f(match_.subject),
 
             FlatOp::HtmlFor { source, .. } => match source {
                 FlatForSource::Array(array) => f(*array),
@@ -327,11 +324,7 @@ impl FlatOp {
                 }
             }
 
-            FlatOp::Match(match_) => match match_ {
-                Match::Bool { subject, .. }
-                | Match::Option { subject, .. }
-                | Match::Enum { subject, .. } => f(subject),
-            },
+            FlatOp::Match(match_) => f(&mut match_.subject),
 
             FlatOp::HtmlFor { source, .. } => match source {
                 FlatForSource::Array(array) => f(array),

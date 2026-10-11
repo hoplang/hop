@@ -1,13 +1,11 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
-use crate::ir::binder_id::{BinderId, BinderIdCounter};
-use crate::ir::flat_module::{
-    FlatBinding, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule, FlatOp,
-};
+use crate::ir::binder_id::BinderIdCounter;
+use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
+use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
-use crate::ir::ir_binder::IrBinder;
-use crate::ir::ir_match::{EnumMatchArm, Match};
+use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// A pass that replaces a call to a non-recursive function with the
@@ -91,24 +89,8 @@ fn collect_callees(block: &FlatBlock, out: &mut BTreeSet<FunctionId>) {
             FlatOp::Call { function, .. } => {
                 out.insert(function.id);
             }
-            FlatOp::Match(Match::Bool {
-                true_body,
-                false_body,
-                ..
-            }) => {
-                collect_callees(true_body, out);
-                collect_callees(false_body, out);
-            }
-            FlatOp::Match(Match::Option {
-                some_arm_body,
-                none_arm_body,
-                ..
-            }) => {
-                collect_callees(some_arm_body, out);
-                collect_callees(none_arm_body, out);
-            }
-            FlatOp::Match(Match::Enum { arms, .. }) => {
-                for arm in arms {
+            FlatOp::Match(match_) => {
+                for arm in &match_.arms {
                     collect_callees(&arm.body, out);
                 }
             }
@@ -153,72 +135,25 @@ fn inline_block(
                     .zip(args)
                     .map(|(param, arg)| (param.var, arg))
                     .collect();
-                let mut freshener = Freshener {
-                    value_ids,
-                    binder_ids,
-                    arguments,
-                    names: HashMap::new(),
-                    binders: HashMap::new(),
-                };
-                let body = freshener.freshen_block(&decl.body);
+                let body =
+                    Freshener::new(value_ids, binder_ids, arguments).freshen_block(&decl.body);
                 bindings.extend(body.bindings);
                 // The result is a fresh name or an argument, and neither is
                 // ever renamed, so no read goes through two renames.
                 renames.insert(name, body.result);
                 continue;
             }
-            FlatOp::Match(match_) => FlatOp::Match(match match_ {
-                Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                } => Match::Bool {
-                    subject,
-                    true_body: inline_block(
-                        true_body, decls, recursive, value_ids, binder_ids, renames,
-                    ),
-                    false_body: inline_block(
-                        false_body, decls, recursive, value_ids, binder_ids, renames,
-                    ),
-                },
-                Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body,
-                    none_arm_body,
-                } => Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body: inline_block(
-                        some_arm_body,
-                        decls,
-                        recursive,
-                        value_ids,
-                        binder_ids,
-                        renames,
-                    ),
-                    none_arm_body: inline_block(
-                        none_arm_body,
-                        decls,
-                        recursive,
-                        value_ids,
-                        binder_ids,
-                        renames,
-                    ),
-                },
-                Match::Enum { subject, arms } => Match::Enum {
-                    subject,
-                    arms: arms
-                        .into_iter()
-                        .map(|arm| EnumMatchArm {
-                            pattern: arm.pattern,
-                            bindings: arm.bindings,
-                            body: inline_block(
-                                arm.body, decls, recursive, value_ids, binder_ids, renames,
-                            ),
-                        })
-                        .collect(),
-                },
+            FlatOp::Match(IrMatch { subject, arms }) => FlatOp::Match(IrMatch {
+                subject,
+                arms: arms
+                    .into_iter()
+                    .map(|arm| IrMatchArm {
+                        pattern: arm.pattern,
+                        body: inline_block(
+                            arm.body, decls, recursive, value_ids, binder_ids, renames,
+                        ),
+                    })
+                    .collect(),
             }),
             FlatOp::HtmlFor { var, source, body } => FlatOp::HtmlFor {
                 var,
@@ -232,141 +167,6 @@ fn inline_block(
     FlatBlock {
         bindings,
         result: renames.get(&block.result).copied().unwrap_or(block.result),
-    }
-}
-
-/// Copies a callee body for one call, with fresh names and binders, so the
-/// copy shares nothing with the declaration or any other copy.
-struct Freshener<'a> {
-    value_ids: &'a mut ValueIdCounter,
-    binder_ids: &'a mut BinderIdCounter,
-    /// The argument for each parameter.
-    arguments: HashMap<BinderId, ValueId>,
-    /// The name in the copy of every binding in scope so far: the argument
-    /// for a Read of a parameter, and a fresh name for any other binding.
-    names: HashMap<ValueId, ValueId>,
-    /// The fresh binder in the copy of every loop or arm binder in scope so
-    /// far.
-    binders: HashMap<BinderId, BinderId>,
-}
-
-impl Freshener<'_> {
-    fn name(&self, name: ValueId) -> ValueId {
-        self.names.get(&name).copied().unwrap_or_else(|| {
-            unreachable!("a callee body binds every name it reads, and {name} is not bound")
-        })
-    }
-
-    fn fresh_binder(&mut self, binder: &IrBinder) -> IrBinder {
-        let var = self.binder_ids.next();
-        self.binders.insert(binder.var, var);
-        IrBinder {
-            var,
-            typ: binder.typ.clone(),
-        }
-    }
-
-    fn freshen_block(&mut self, block: &FlatBlock) -> FlatBlock {
-        let bindings = block
-            .bindings
-            .iter()
-            .filter_map(|binding| self.freshen_binding(binding))
-            .collect();
-        FlatBlock {
-            bindings,
-            result: self.name(block.result),
-        }
-    }
-
-    /// The copy of a binding, or nothing for a Read of a parameter, whose
-    /// name stands for the argument in the copy.
-    fn freshen_binding(&mut self, binding: &FlatBinding) -> Option<FlatBinding> {
-        let op = match &binding.op {
-            FlatOp::Read(binder) => {
-                if let Some(argument) = self.arguments.get(binder) {
-                    self.names.insert(binding.name, *argument);
-                    return None;
-                }
-                FlatOp::Read(self.binders.get(binder).copied().unwrap_or_else(|| {
-                    unreachable!(
-                        "a callee body binds every binder it reads, and {binder} is not bound"
-                    )
-                }))
-            }
-            FlatOp::Match(match_) => FlatOp::Match(match match_ {
-                Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                } => Match::Bool {
-                    subject: self.name(*subject),
-                    true_body: self.freshen_block(true_body),
-                    false_body: self.freshen_block(false_body),
-                },
-                Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body,
-                    none_arm_body,
-                } => {
-                    let subject = self.name(*subject);
-                    let some_arm_binding = some_arm_binding
-                        .as_ref()
-                        .map(|binder| self.fresh_binder(binder));
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body: self.freshen_block(some_arm_body),
-                        none_arm_body: self.freshen_block(none_arm_body),
-                    }
-                }
-                Match::Enum { subject, arms } => Match::Enum {
-                    subject: self.name(*subject),
-                    arms: arms
-                        .iter()
-                        .map(|arm| {
-                            let bindings = arm
-                                .bindings
-                                .iter()
-                                .map(|(field, binder)| (field.clone(), self.fresh_binder(binder)))
-                                .collect();
-                            EnumMatchArm {
-                                pattern: arm.pattern.clone(),
-                                bindings,
-                                body: self.freshen_block(&arm.body),
-                            }
-                        })
-                        .collect(),
-                },
-            }),
-            FlatOp::HtmlFor { var, source, body } => {
-                let source = match source {
-                    FlatForSource::Array(array) => FlatForSource::Array(self.name(*array)),
-                    FlatForSource::RangeInclusive { start, end } => FlatForSource::RangeInclusive {
-                        start: self.name(*start),
-                        end: self.name(*end),
-                    },
-                };
-                let var = var.as_ref().map(|binder| self.fresh_binder(binder));
-                FlatOp::HtmlFor {
-                    var,
-                    source,
-                    body: self.freshen_block(body),
-                }
-            }
-            op => {
-                let mut op = op.clone();
-                op.for_each_operand_mut(&mut |operand| *operand = self.name(*operand));
-                op
-            }
-        };
-        let name = self.value_ids.next();
-        self.names.insert(binding.name, name);
-        Some(FlatBinding {
-            name,
-            typ: binding.typ.clone(),
-            op,
-        })
     }
 }
 

@@ -11,6 +11,7 @@ mod ir_function;
 mod ir_match;
 pub mod ir_page;
 pub mod ir_parameter;
+mod ir_switch;
 mod ir_unary_op;
 pub mod pure_module;
 mod pure_to_flat;

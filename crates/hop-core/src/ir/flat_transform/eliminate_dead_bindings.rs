@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 
+use crate::hop::typing::Pattern;
 use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
-use crate::ir::ir_match::{EnumMatchArm, Match};
+use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::ValueId;
 
 /// A pass that removes the bindings nothing reads.
@@ -10,8 +11,7 @@ use crate::ir::value_id::ValueId;
 /// Every op is pure, so a binding whose name no later binding, nested
 /// block or result reads computes nothing anyone sees, and goes away with
 /// the blocks nested in it. A binder that no remaining Read reads goes away
-/// too: an unused loop variable or option binding becomes `_`, and unused
-/// enum arm bindings leave their arm.
+/// too: an unused loop variable or binding of a pattern becomes `_`.
 pub fn eliminate_dead_bindings(block: FlatBlock) -> FlatBlock {
     let mut live = Live {
         names: HashSet::new(),
@@ -41,51 +41,23 @@ fn eliminate(block: FlatBlock, live: &mut Live) -> FlatBlock {
         }
         let FlatBinding { name, typ, op } = binding;
         let op = match op {
-            FlatOp::Match(match_) => FlatOp::Match(match match_ {
-                Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                } => Match::Bool {
-                    subject,
-                    true_body: eliminate(true_body, live),
-                    false_body: eliminate(false_body, live),
-                },
-                Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body,
-                    none_arm_body,
-                } => {
-                    let some_arm_body = eliminate(some_arm_body, live);
-                    let some_arm_binding =
-                        some_arm_binding.filter(|binder| live.binders.contains(&binder.var));
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body: eliminate(none_arm_body, live),
-                    }
-                }
-                Match::Enum { subject, arms } => Match::Enum {
-                    subject,
-                    arms: arms
-                        .into_iter()
-                        .map(|arm| {
-                            let body = eliminate(arm.body, live);
-                            let bindings = arm
-                                .bindings
-                                .into_iter()
-                                .filter(|(_, binder)| live.binders.contains(&binder.var))
-                                .collect();
-                            EnumMatchArm {
-                                pattern: arm.pattern,
-                                bindings,
-                                body,
+            FlatOp::Match(IrMatch { subject, arms }) => FlatOp::Match(IrMatch {
+                subject,
+                arms: arms
+                    .into_iter()
+                    .map(|arm| {
+                        let body = eliminate(arm.body, live);
+                        let mut pattern = arm.pattern;
+                        pattern.for_each_binding_mut(&mut |binding| {
+                            if let Pattern::Binding { name, .. } = binding
+                                && !live.binders.contains(name)
+                            {
+                                *binding = Pattern::Wildcard;
                             }
-                        })
-                        .collect(),
-                },
+                        });
+                        IrMatchArm { pattern, body }
+                    })
+                    .collect(),
             }),
             FlatOp::HtmlFor { var, source, body } => {
                 let body = eliminate(body, live);
@@ -387,7 +359,7 @@ mod tests {
                       let v1: Int = 0
                       v1
                     }
-                    Shape::Rect {width@b1: Int} => {
+                    Shape::Rect {width@b1: Int, height: _} => {
                       let v2: Int = b1
                       v2
                     }

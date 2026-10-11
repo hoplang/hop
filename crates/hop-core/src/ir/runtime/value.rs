@@ -1,3 +1,6 @@
+use crate::hop::typing::{Constructor, Pattern};
+use crate::ir::binder_id::BinderId;
+use crate::ir::ir_match::IrPattern;
 use crate::ir::runtime::html_node::HtmlNode;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
 
@@ -101,14 +104,50 @@ impl Value {
         }
     }
 
-    /// Panics if the value is not an Enum.
-    pub fn unwrap_enum(self) -> (TypeName, Vec<(FieldName, Value)>) {
-        match self {
-            Value::Enum {
-                variant_name,
+    /// Whether the value matches the pattern. Each binding of a pattern
+    /// that matches is pushed to `bound` with the part of the value it
+    /// binds. Panics if the value does not have the pattern's type.
+    pub fn matches(&self, pattern: &IrPattern, bound: &mut Vec<(BinderId, Value)>) -> bool {
+        let (constructor, args, fields) = match pattern {
+            Pattern::Wildcard => return true,
+            Pattern::Binding { name, .. } => {
+                bound.push((*name, self.clone()));
+                return true;
+            }
+            Pattern::Constructor {
+                constructor,
+                args,
                 fields,
-            } => (variant_name, fields),
-            _ => panic!("Expected an Enum value, found {self:?}"),
+            } => (constructor, args, fields),
+        };
+        let field_matches = |values: &[(FieldName, Value)], bound: &mut Vec<(BinderId, Value)>| {
+            fields.iter().all(|field| {
+                let (_, value) = values
+                    .iter()
+                    .find(|(name, _)| *name == field.name)
+                    .unwrap_or_else(|| panic!("{self:?} has no field {}", field.name.as_str()));
+                value.matches(&field.pattern, bound)
+            })
+        };
+        match (constructor, self) {
+            (Constructor::BoolTrue, Value::Bool(value)) => *value,
+            (Constructor::BoolFalse, Value::Bool(value)) => !*value,
+            (Constructor::OptionSome, Value::Option(Some(inner))) => inner.matches(&args[0], bound),
+            (Constructor::OptionSome, Value::Option(None)) => false,
+            (Constructor::OptionNone, Value::Option(inner)) => inner.is_none(),
+            (
+                Constructor::EnumVariant { variant_name, .. },
+                Value::Enum {
+                    variant_name: value_variant,
+                    fields: values,
+                },
+            ) => variant_name == value_variant && field_matches(values, bound),
+            (Constructor::Record { .. }, Value::Record(values)) => field_matches(values, bound),
+            (Constructor::Tuple, Value::Tuple(elements)) => args
+                .iter()
+                .zip(elements)
+                .all(|(arg, element)| element.matches(arg, bound)),
+            _ => panic!("{self:?} cannot match the pattern {pattern:?}"),
         }
     }
 }
