@@ -42,6 +42,8 @@ const FLOATS: &[f64] = &[
     f64::NAN,
 ];
 
+const SCALARS: &[&str] = &["Int", "String", "Bool", "Float"];
+
 /// Elements to generate, each with whether it is void.
 const ELEMENTS: &[(&str, bool)] = &[
     ("div", false),
@@ -96,6 +98,49 @@ struct FunctionInfo {
     return_type: String,
 }
 
+#[derive(Clone)]
+pub struct GeneratorConfig {
+    pub record_count: RangeInclusive<usize>,
+    pub enum_count: RangeInclusive<usize>,
+    pub function_count: RangeInclusive<usize>,
+    /// Ignored for the module with a test view, which has a single entry.
+    pub entry_count: RangeInclusive<usize>,
+    /// For functions and entries alike.
+    pub parameter_count: RangeInclusive<usize>,
+    pub arrays: bool,
+    pub options: bool,
+    pub tuples: bool,
+    /// Loops over arrays and ranges.
+    pub loops: bool,
+    /// Matches on patterns of any shape, which may bind.
+    pub pattern_matches: bool,
+    /// Escaped strings in Html.
+    pub escapes: bool,
+    /// Parameters of any type. Without it, every parameter of a function or
+    /// entry is an Int, Float, String or Bool.
+    pub complex_parameters: bool,
+}
+
+impl Default for GeneratorConfig {
+    /// Every feature, in the counts `random_module` has always generated.
+    fn default() -> Self {
+        GeneratorConfig {
+            record_count: 0..=3,
+            enum_count: 0..=3,
+            function_count: 0..=2,
+            entry_count: 1..=3,
+            parameter_count: 0..=3,
+            arrays: true,
+            options: true,
+            tuples: true,
+            loops: true,
+            pattern_matches: true,
+            escapes: true,
+            complex_parameters: true,
+        }
+    }
+}
+
 /// Which named types may be referenced at a type position.
 #[derive(Clone, Copy)]
 enum NamedTypes {
@@ -108,6 +153,7 @@ enum NamedTypes {
 
 struct PureGenerator<'a, 'b> {
     u: &'a mut Unstructured<'b>,
+    config: GeneratorConfig,
     declared_names: Vec<String>,
     records: Vec<RecordInfo>,
     enums: Vec<EnumInfo>,
@@ -117,19 +163,21 @@ struct PureGenerator<'a, 'b> {
 
 /// Generate a random well-typed Pure module.
 pub fn random_module(u: &mut Unstructured<'_>) -> (PureModule, TypeRegistry) {
-    random_module_inner(u, false)
+    random_module_inner(u, false, GeneratorConfig::default())
 }
 
 pub fn random_module_with_test_view(u: &mut Unstructured<'_>) -> (PureModule, TypeRegistry) {
-    random_module_inner(u, true)
+    random_module_inner(u, true, GeneratorConfig::default())
 }
 
 fn random_module_inner(
     u: &mut Unstructured<'_>,
     single_test_entry: bool,
+    config: GeneratorConfig,
 ) -> (PureModule, TypeRegistry) {
     let mut g = PureGenerator {
         u,
+        config: config.clone(),
         declared_names: Vec::new(),
         records: Vec::new(),
         enums: Vec::new(),
@@ -139,8 +187,8 @@ fn random_module_inner(
 
     // Name every type before generating any field types, so that a field
     // can refer to a type declared later or to the one being declared.
-    let record_count = g.count(0..=3);
-    let enum_count = g.count(0..=3);
+    let record_count = g.count(config.record_count.clone());
+    let enum_count = g.count(config.enum_count.clone());
     g.declared_names = (0..record_count)
         .map(|i| format!("R{i}"))
         .chain((0..enum_count).map(|i| format!("E{i}")))
@@ -197,12 +245,17 @@ fn random_module_inner(
     let mut bodies = builder.freeze();
 
     // Generate functions
-    let function_count = g.borrow_mut().count(0..=2);
+    let function_count = g.borrow_mut().count(config.function_count.clone());
     for i in 0..function_count {
         let info = {
             let mut g = g.borrow_mut();
-            let params = (0..g.count(0..=3))
-                .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
+            let params = (0..g.count(config.parameter_count.clone()))
+                .map(|_| {
+                    (
+                        g.fresh_var_name(),
+                        g.type_string(2, NamedTypes::Any, config.complex_parameters),
+                    )
+                })
                 .collect();
             let info = FunctionInfo {
                 name: format!("C{i}"),
@@ -230,12 +283,17 @@ fn random_module_inner(
             g.borrow_mut().expr(b, &Type::Html, DEPTH)
         });
     } else {
-        let entry_count = g.borrow_mut().count(1..=3);
+        let entry_count = g.borrow_mut().count(config.entry_count.clone());
         for i in 0..entry_count {
             let params: Vec<(String, String)> = {
                 let mut g = g.borrow_mut();
-                (0..g.count(0..=3))
-                    .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
+                (0..g.count(config.parameter_count.clone()))
+                    .map(|_| {
+                        (
+                            g.fresh_var_name(),
+                            g.type_string(2, NamedTypes::Any, config.complex_parameters),
+                        )
+                    })
                     .collect()
             };
             bodies = bodies.entry(
@@ -341,18 +399,21 @@ impl PureGenerator<'_, '_> {
 
     /// A random source-syntax type string. E.g. `Array[String]`.
     fn random_type_string(&mut self, depth: usize) -> String {
-        self.type_string(depth, NamedTypes::Any)
+        self.type_string(depth, NamedTypes::Any, true)
     }
 
     /// A random source-syntax type string for a field of the record or
     /// enum currently being declared.
     fn random_field_type_string(&mut self, depth: usize) -> String {
-        self.type_string(depth, NamedTypes::Complete)
+        self.type_string(depth, NamedTypes::Complete, true)
     }
 
-    fn type_string(&mut self, depth: usize, named: NamedTypes) -> String {
+    /// A type of the kinds the config allows, or a scalar when it is not
+    /// `complex`.
+    fn type_string(&mut self, depth: usize, named: NamedTypes, complex: bool) -> String {
         enum P {
             Scalar,
+            Html,
             Named,
             Array,
             Option,
@@ -360,27 +421,42 @@ impl PureGenerator<'_, '_> {
         }
         let mut kinds = vec![P::Scalar];
         let named_count = self.named_type_count(named);
-        if named_count > 0 {
-            kinds.push(P::Named);
-        }
-        if depth > 0 {
-            kinds.extend([P::Array, P::Option, P::Tuple]);
+        if complex {
+            kinds.push(P::Html);
+            if named_count > 0 {
+                kinds.push(P::Named);
+            }
+            if depth > 0 {
+                if self.config.arrays {
+                    kinds.push(P::Array);
+                }
+                if self.config.options {
+                    kinds.push(P::Option);
+                }
+                if self.config.tuples {
+                    kinds.push(P::Tuple);
+                }
+            }
         }
         match self.u.choose(&kinds).unwrap() {
-            P::Scalar => {
-                let scalars = ["Int", "String", "Bool", "Float", "Html"];
-                scalars[self.index(scalars.len())].to_string()
-            }
+            P::Scalar => SCALARS[self.index(SCALARS.len())].to_string(),
+            P::Html => "Html".to_string(),
             P::Named => {
                 let i = self.index(named_count);
                 self.named_type(named, i)
             }
-            P::Array => format!("Array[{}]", self.type_string(depth - 1, NamedTypes::Any)),
-            P::Option => format!("Option[{}]", self.type_string(depth - 1, NamedTypes::Any)),
+            P::Array => format!(
+                "Array[{}]",
+                self.type_string(depth - 1, NamedTypes::Any, complex)
+            ),
+            P::Option => format!(
+                "Option[{}]",
+                self.type_string(depth - 1, NamedTypes::Any, complex)
+            ),
             P::Tuple => {
                 let arity = self.count(0..=3);
                 let elements: Vec<String> = (0..arity)
-                    .map(|_| self.type_string(depth - 1, named))
+                    .map(|_| self.type_string(depth - 1, named, complex))
                     .collect();
                 if arity == 1 {
                     format!("({},)", elements[0])
@@ -538,9 +614,10 @@ impl PureGenerator<'_, '_> {
             Var,
             FieldAccess,
             Let,
-            BoolMatch,
-            OptionMatch,
-            EnumMatch,
+            MatchPattern,
+            MatchBool,
+            MatchOption,
+            MatchEnum,
             Eq,
             Lt,
             Lte,
@@ -556,19 +633,17 @@ impl PureGenerator<'_, '_> {
             StringIsEmpty,
             ArrayIsEmpty,
             ArrayLength,
-            PatternMatch,
             TupleIndex,
             Neg,
             Add,
             Sub,
             Mul,
-            Text,
-            Escape,
-            Element,
+            HtmlEscape,
+            HtmlElement,
+            HtmlText,
             HtmlConcat,
             HtmlForArray,
             HtmlForRange,
-            HtmlIf,
             Call,
         }
         let mut productions = vec![P::Lit];
@@ -577,42 +652,37 @@ impl PureGenerator<'_, '_> {
         }
         let record_fields = self.record_fields_of_type(b, target);
         if depth > 0 {
+            productions.extend([P::Let, P::MatchBool]);
             if !record_fields.is_empty() {
                 productions.push(P::FieldAccess);
             }
-            productions.extend([
-                P::Let,
-                P::BoolMatch,
-                P::OptionMatch,
-                P::PatternMatch,
-                P::TupleIndex,
-            ]);
+            if self.config.options {
+                productions.push(P::MatchOption);
+            }
+            if self.config.pattern_matches {
+                productions.push(P::MatchPattern);
+            }
+            if self.config.tuples {
+                productions.push(P::TupleIndex);
+            }
             if !self.enums.is_empty() {
-                productions.push(P::EnumMatch);
+                productions.push(P::MatchEnum);
             }
             if *target == Type::Bool {
-                productions.extend([
-                    P::Eq,
-                    P::Lt,
-                    P::Lte,
-                    P::Not,
-                    P::And,
-                    P::Or,
-                    P::OptionIsNone,
-                    P::OptionIsSome,
-                    P::StringIsEmpty,
-                    P::ArrayIsEmpty,
-                ]);
+                productions.extend([P::Eq, P::Lt, P::Lte, P::Not, P::And, P::Or]);
+                if self.config.options {
+                    productions.extend([P::OptionIsNone, P::OptionIsSome]);
+                }
+                productions.push(P::StringIsEmpty);
+                if self.config.arrays {
+                    productions.push(P::ArrayIsEmpty);
+                }
             }
             if *target == Type::Int {
-                productions.extend([
-                    P::ArrayLength,
-                    P::Neg,
-                    P::Add,
-                    P::Sub,
-                    P::Mul,
-                    P::FloatToInt,
-                ]);
+                if self.config.arrays {
+                    productions.push(P::ArrayLength);
+                }
+                productions.extend([P::Neg, P::Add, P::Sub, P::Mul, P::FloatToInt]);
             }
             if *target == Type::Float {
                 productions.extend([P::Neg, P::Add, P::Sub, P::Mul, P::IntToFloat]);
@@ -621,15 +691,17 @@ impl PureGenerator<'_, '_> {
                 productions.extend([P::Concat, P::IntToString]);
             }
             if *target == Type::Html {
-                productions.extend([
-                    P::Text,
-                    P::Escape,
-                    P::Element,
-                    P::HtmlConcat,
-                    P::HtmlForArray,
-                    P::HtmlForRange,
-                    P::HtmlIf,
-                ]);
+                productions.push(P::HtmlText);
+                if self.config.escapes {
+                    productions.push(P::HtmlEscape);
+                }
+                productions.extend([P::HtmlElement, P::HtmlConcat]);
+                if self.config.loops && self.config.arrays {
+                    productions.push(P::HtmlForArray);
+                }
+                if self.config.loops {
+                    productions.push(P::HtmlForRange);
+                }
             }
             if self
                 .functions
@@ -676,13 +748,13 @@ impl PureGenerator<'_, '_> {
                     self.expr(b, target, depth - 1)
                 })
             }
-            P::BoolMatch => {
+            P::MatchBool => {
                 let subject = self.expr(b, &Type::Bool, depth - 1);
                 let true_body = self.expr(b, target, depth - 1);
                 let false_body = self.expr(b, target, depth - 1);
                 b.bool_match_expr(subject, true_body, false_body)
             }
-            P::OptionMatch => {
+            P::MatchOption => {
                 let subject = self
                     .var_in_scope(b, |ty| matches!(ty, Type::Option(_)))
                     .unwrap_or_else(|| {
@@ -705,7 +777,7 @@ impl PureGenerator<'_, '_> {
                     b.option_match_expr(subject, some_body, none_body)
                 }
             }
-            P::EnumMatch => {
+            P::MatchEnum => {
                 let enum_types: Vec<Type> = self
                     .enums
                     .iter()
@@ -859,7 +931,7 @@ impl PureGenerator<'_, '_> {
                 let tuple = self.expr(b, &Type::Tuple(elements), depth - 1);
                 b.tuple_index(tuple, index)
             }
-            P::PatternMatch => {
+            P::MatchPattern => {
                 let subject = self
                     .var_in_scope(b, |ty| {
                         matches!(
@@ -868,6 +940,9 @@ impl PureGenerator<'_, '_> {
                         )
                     })
                     .unwrap_or_else(|| {
+                        if !self.config.tuples {
+                            return self.expr(b, &Type::Bool, depth - 1);
+                        }
                         let elements = (0..self.count(1..=3))
                             .map(|_| b.resolve_type(&self.random_type_string(1)))
                             .collect();
@@ -906,12 +981,12 @@ impl PureGenerator<'_, '_> {
                 let right = self.expr(b, target, depth - 1);
                 b.mul(left, right)
             }
-            P::Text => b.text(self.u.choose(TEXTS).unwrap()),
-            P::Escape => {
+            P::HtmlText => b.text(self.u.choose(TEXTS).unwrap()),
+            P::HtmlEscape => {
                 let operand = self.expr(b, &Type::String, depth - 1);
                 b.escape(operand)
             }
-            P::Element => {
+            P::HtmlElement => {
                 let (tag, void) = *self.u.choose(ELEMENTS).unwrap();
                 // Attribute names are unique within an element, so each
                 // candidate is included at most once.
@@ -961,12 +1036,6 @@ impl PureGenerator<'_, '_> {
                 b.html_for_range(var.as_deref(), start, end, |b| {
                     self.expr(b, &Type::Html, depth - 1)
                 })
-            }
-            P::HtmlIf => {
-                let condition = self.expr(b, &Type::Bool, depth - 1);
-                let true_body = self.expr(b, &Type::Html, depth - 1);
-                let false_body = b.concat(Vec::new());
-                b.bool_match_expr(condition, true_body, false_body)
             }
             P::Call => {
                 let candidates: Vec<FunctionInfo> = self
