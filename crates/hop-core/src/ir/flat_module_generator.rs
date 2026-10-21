@@ -552,7 +552,7 @@ impl FlatGenerator<'_, '_> {
         let candidates = self.readable(b, typ);
         let value = match candidates.get(self.index(candidates.len() + 1)) {
             Some(name) => *name,
-            None => self.literal(b, typ, depth),
+            None => self.leaf(b, typ, depth),
         };
         if *typ == Type::Html {
             self.used.insert(value);
@@ -640,7 +640,7 @@ impl FlatGenerator<'_, '_> {
     /// blocks it nests nest at most `depth` deep.
     fn production(&mut self, b: &FlatBlockBuilder<'_>, target: &Type, depth: usize) -> ValueId {
         enum P {
-            Lit,
+            Leaf,
             FieldAccess,
             MatchPattern,
             MatchBool,
@@ -673,7 +673,7 @@ impl FlatGenerator<'_, '_> {
             HtmlForRange,
             Call,
         }
-        let mut productions = vec![P::Lit];
+        let mut productions = vec![P::Leaf];
         let record_fields = self.record_fields_of_type(b, target);
         if !record_fields.is_empty() {
             productions.push(P::FieldAccess);
@@ -729,7 +729,7 @@ impl FlatGenerator<'_, '_> {
             }
         }
         match self.u.choose(&productions).unwrap() {
-            P::Lit => self.literal(b, target, MAX_LITERAL_DEPTH),
+            P::Leaf => self.leaf(b, target, MAX_LITERAL_DEPTH),
             P::FieldAccess => {
                 let var =
                     self.var_in_scope(b, |ty| record_fields.iter().any(|(record, _)| record == ty));
@@ -1057,11 +1057,9 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
-    /// A literal of the target type, its parts nesting at most `depth`
-    /// values deep.
-    fn literal(&mut self, b: &FlatBlockBuilder<'_>, target: &Type, depth: usize) -> ValueId {
-        // Note: we use saturating_sub here since we might be forced to construct
-        // something deeper than depth.
+    /// A leaf of the target type, its parts nesting at most `depth`
+    /// values deep (or deeper if the target type forces it).
+    fn leaf(&mut self, b: &FlatBlockBuilder<'_>, target: &Type, depth: usize) -> ValueId {
         let Type::Data(target) = target else {
             return match self.index(3) {
                 0 => b.html_concat(Vec::new()),
@@ -1159,14 +1157,217 @@ impl FlatGenerator<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ir::flat_module::{FlatBlock, FlatOp};
+    use crate::ir::runtime::EvalError;
+    use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use expect_test::{Expect, expect};
     use rand::{RngExt, SeedableRng, rngs::SmallRng};
+    use std::collections::BTreeMap;
 
     fn check(seed: u64, len: usize, expected: Expect) {
         let mut rng = SmallRng::seed_from_u64(seed);
         let bytes: Vec<u8> = (0..len).map(|_| rng.random()).collect();
         let (module, registry) = random_module(&mut Unstructured::new(&bytes));
         expected.assert_eq(&format!("{registry}\n{module}"));
+    }
+
+    /// Mark the names read on the way to the result of `block`, walking the
+    /// bindings backwards as dead binding elimination does. `live` is
+    /// shared with nested blocks, since names are unique.
+    fn mark_live(block: &FlatBlock, live: &mut HashSet<ValueId>) {
+        live.insert(block.result);
+        for binding in block.bindings.iter().rev() {
+            if !live.contains(&binding.binder.var) {
+                continue;
+            }
+            match &binding.op {
+                FlatOp::Match(match_) => {
+                    for arm in &match_.arms {
+                        mark_live(&arm.body, live);
+                    }
+                }
+                FlatOp::HtmlFor(for_) => mark_live(&for_.body, live),
+                _ => {}
+            }
+            binding.op.for_each_operand(&mut |operand| {
+                live.insert(operand);
+            });
+        }
+    }
+
+    /// Mark the names whose values depend on the parameters, walking the
+    /// bindings forwards from the parameters. A binding depends on them
+    /// when an operand does, a pattern binding or loop variable when the
+    /// subject or array does, and a match or loop also when the result of
+    /// a nested block does. Gives whether the result of `block` depends on
+    /// them. `dynamic` is shared with nested blocks, since names are unique.
+    fn mark_dynamic(block: &FlatBlock, dynamic: &mut HashSet<ValueId>) -> bool {
+        for binding in &block.bindings {
+            let mut depends = false;
+            binding.op.for_each_operand(&mut |operand| {
+                depends |= dynamic.contains(&operand);
+            });
+            match &binding.op {
+                FlatOp::Match(match_) => {
+                    let subject = depends;
+                    for arm in &match_.arms {
+                        if subject {
+                            arm.pattern.for_each_binding(&mut |binder| {
+                                dynamic.insert(binder.var);
+                            });
+                        }
+                        depends |= mark_dynamic(&arm.body, dynamic);
+                    }
+                }
+                FlatOp::HtmlFor(for_) => {
+                    if depends && let Some(var) = &for_.var {
+                        dynamic.insert(var.var);
+                    }
+                    depends |= mark_dynamic(&for_.body, dynamic);
+                }
+                _ => {}
+            }
+            if depends {
+                dynamic.insert(binding.binder.var);
+            }
+        }
+        dynamic.contains(&block.result)
+    }
+
+    /// Count the ops of `block` by kind: every op, the ops that are live,
+    /// and the live ops that depend on the parameters.
+    fn count_ops(
+        block: &FlatBlock,
+        live: &HashSet<ValueId>,
+        dynamic: &HashSet<ValueId>,
+        counts: &mut BTreeMap<String, [usize; 3]>,
+    ) {
+        for binding in &block.bindings {
+            let debug = format!("{:?}", binding.op);
+            let kind = debug.trim_start_matches("Data(").split('(').next().unwrap();
+            let column = counts.entry(kind.to_string()).or_default();
+            column[0] += 1;
+            if live.contains(&binding.binder.var) {
+                column[1] += 1;
+                if dynamic.contains(&binding.binder.var) {
+                    column[2] += 1;
+                }
+            }
+            match &binding.op {
+                FlatOp::Match(match_) => {
+                    for arm in &match_.arms {
+                        count_ops(&arm.body, live, dynamic, counts);
+                    }
+                }
+                FlatOp::HtmlFor(for_) => count_ops(&for_.body, live, dynamic, counts),
+                _ => {}
+            }
+        }
+    }
+
+    /// Report how often each kind of op occurs in a generated module, what
+    /// share of those is live, that is read on the way to the result, what
+    /// share is live and depends on the parameters, and how many
+    /// entrypoints hit the limits of the evaluator. Every input is as long
+    /// as the longest arbtest gives.
+    #[test]
+    fn should_report_generator_stats() {
+        const SAMPLES: usize = 200;
+        const INPUT_LEN: usize = 65_536;
+        let mut rng = SmallRng::seed_from_u64(0);
+        let mut counts = BTreeMap::new();
+        let (mut entrypoints, mut diverged, mut too_long) = (0, 0, 0);
+        let (mut consumed, mut most_consumed, mut exhausted) = (0, 0, 0);
+        for _ in 0..SAMPLES {
+            let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
+            let mut u = Unstructured::new(&bytes);
+            let (module, registry) = random_module(&mut u);
+            let used = INPUT_LEN - u.len();
+            consumed += used;
+            most_consumed = most_consumed.max(used);
+            exhausted += u.is_empty() as usize;
+            for (function, args) in random_entrypoint_args(&module, &mut rng, &registry) {
+                entrypoints += 1;
+                let result = evaluate_entrypoint(&module, &function, args);
+                diverged += matches!(result, Err(EvalError::RecursionLimit { .. })) as usize;
+                too_long += matches!(result, Err(EvalError::ArrayLengthLimit { .. })) as usize;
+            }
+            let mut live = HashSet::new();
+            let mut dynamic = HashSet::new();
+            for function in &module.functions {
+                mark_live(&function.body, &mut live);
+                dynamic.extend(function.parameters.iter().map(|param| param.binder.var));
+                mark_dynamic(&function.body, &mut dynamic);
+            }
+            for function in &module.functions {
+                count_ops(&function.body, &live, &dynamic, &mut counts);
+            }
+        }
+        let mut report = format!(
+            "{} of {INPUT_LEN} input bytes consumed per module on average, at most {most_consumed}\n\
+             {exhausted} of {SAMPLES} modules exhaust the input\n\
+             {diverged} of {entrypoints} entrypoints hit the recursion limit\n\
+             {too_long} of {entrypoints} entrypoints hit the array length limit\n\n\
+             {:<20}{:>10}{:>8}{:>8}\n",
+            consumed / SAMPLES,
+            "op",
+            "ops/module",
+            "% live",
+            "% dyn"
+        );
+        for (kind, [generated, live, dynamic]) in counts {
+            let per_module = generated as f64 / SAMPLES as f64;
+            let live = 100.0 * live as f64 / generated as f64;
+            let dynamic = 100.0 * dynamic as f64 / generated as f64;
+            report.push_str(&format!(
+                "{kind:<20}{per_module:>10.1}{live:>8.1}{dynamic:>8.1}\n"
+            ));
+        }
+        expect![[r#"
+            1019 of 65536 input bytes consumed per module on average, at most 4272
+            0 of 200 modules exhaust the input
+            8 of 408 entrypoints hit the recursion limit
+            0 of 408 entrypoints hit the array length limit
+
+            op                  ops/module  % live   % dyn
+            Array                     25.3    12.7     0.4
+            ArrayFromRange             0.9   100.0     0.0
+            ArrayIsEmpty               0.9     3.2     1.6
+            ArrayLength                1.2     1.6     0.4
+            BoolLiteral               12.3    18.7     0.0
+            BoolNegation               1.0     1.0     0.0
+            Call                       1.8    27.9     7.3
+            Enum                      28.7     8.5     0.3
+            Equals                     1.0     0.5     0.0
+            FieldAccess                1.4     1.8     0.4
+            FloatLiteral              16.0     6.3     0.0
+            FloatToInt                 1.2     0.8     0.0
+            HtmlConcat                11.5    98.0     7.5
+            HtmlElement                5.3    96.3     5.9
+            HtmlEscape                 1.8    99.2     2.5
+            HtmlFor                    1.8    98.9    11.6
+            HtmlText                   5.3    96.4     0.0
+            IntLiteral                18.7    15.3     0.0
+            IntToFloat                 1.3     1.1     0.0
+            IntToString                2.4     3.6     0.2
+            LessThan                   1.1     2.3     0.0
+            LessThanOrEqual            0.9     2.2     0.0
+            Match                     20.9    22.9     6.1
+            NumericAdd                 2.5     1.2     0.2
+            NumericMultiply            2.6     0.4     0.0
+            NumericNegation            2.4     0.8     0.0
+            NumericSubtract            2.3     1.3     0.0
+            Option                    24.9    14.1     0.4
+            OptionIsNone               0.9     3.3     0.6
+            OptionIsSome               0.9     1.7     0.0
+            Record                    23.4     6.2     0.4
+            StringConcat               2.4     3.8     0.0
+            StringIsEmpty              0.9     1.1     0.0
+            StringLiteral             17.3    23.2     0.0
+            Tuple                     44.3     8.0     0.6
+            TupleIndex                22.9     3.0     0.3
+        "#]]
+        .assert_eq(&report);
     }
 
     #[test]
