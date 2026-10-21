@@ -12,14 +12,8 @@ pub enum EvalError {
         function: IrFunction,
         param: AttributeName,
     },
-    #[error("Function '{function}' not found in module")]
-    FunctionNotFound { function: IrFunction },
-    #[error("Function '{function}' takes {expected} arguments but was given {found}")]
-    ArgumentCount {
-        function: IrFunction,
-        expected: usize,
-        found: usize,
-    },
     #[error("Function '{function}' exceeded the call depth limit of {limit}")]
     RecursionLimit { function: IrFunction, limit: usize },
+    #[error("An array exceeded the array length limit of {limit}")]
+    ArrayLengthLimit { limit: usize },
 }

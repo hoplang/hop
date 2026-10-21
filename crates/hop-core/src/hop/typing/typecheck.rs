@@ -1,4 +1,4 @@
-use super::{Type, TypedExpr};
+use super::{DataType, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
@@ -9,7 +9,7 @@ use crate::hop::parsing::{
     ParsedPattern, ParsedRecordDeclaration, ParsedType,
 };
 use crate::hop::typing::export::Export;
-use crate::hop::typing::resolve_type::resolve_type;
+use crate::hop::typing::resolve_type::{resolve_data_type, resolve_type};
 use crate::hop::typing::rest_spread::{
     RestSpreadTarget, collect_spreads, pair_rest_spread, resolve_rest_targets,
 };
@@ -17,9 +17,7 @@ use crate::hop::typing::type_env::{
     FunctionSignature, Name, NameKind, ParamEntry, Row, Tail, TypeEnv,
 };
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
-use crate::hop::typing::type_registry::{
-    EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
-};
+use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::typed_module::{
     TypedFunctionDeclaration, TypedModule, TypedPageDeclaration, TypedParameter,
@@ -158,7 +156,7 @@ fn typecheck_module(
                     continue;
                 }
                 let kind = match export {
-                    Export::Type { .. } => NameKind::Type(Type::Named {
+                    Export::Type { .. } => NameKind::Type(DataType::Named {
                         module: imported_module.to_file_path(),
                         name: TypeName::new(imported_name.clone())
                             .expect("an exported type has a valid type name"),
@@ -192,7 +190,7 @@ fn typecheck_module(
             }) => (
                 type_name.to_cheap_string(),
                 type_name_range,
-                NameKind::Type(Type::Named {
+                NameKind::Type(DataType::Named {
                     module: document_id.clone(),
                     name: type_name.clone(),
                 }),
@@ -406,11 +404,17 @@ fn typecheck_record_declaration(
     let mut typed_fields = Vec::new();
 
     for field in fields {
-        let Some(resolved_type) = resolve_type(&field.field_type, names, definition_links, errors)
+        let Some(resolved_type) =
+            resolve_data_type(&field.field_type, names, definition_links, errors)
         else {
             continue;
         };
-        validate_examples_annotation(&field.examples, &resolved_type, &field.name_range, errors);
+        validate_examples_annotation(
+            &field.examples,
+            &Type::Data(resolved_type.clone()),
+            &field.name_range,
+            errors,
+        );
         typed_fields.push(RecordField {
             name: field.name.clone(),
             typ: resolved_type,
@@ -453,13 +457,13 @@ fn typecheck_enum_declaration(
         let mut typed_fields = Vec::new();
         for field in &variant.fields {
             let Some(resolved_type) =
-                resolve_type(&field.field_type, names, definition_links, errors)
+                resolve_data_type(&field.field_type, names, definition_links, errors)
             else {
                 continue;
             };
             validate_examples_annotation(
                 &field.examples,
-                &resolved_type,
+                &Type::Data(resolved_type.clone()),
                 &field.name_range,
                 errors,
             );
@@ -600,47 +604,7 @@ fn typecheck_page_declaration(
             continue;
         };
 
-        // A host cannot construct Html, so no page parameter may contain it.
-        // Named types are visited once, which stops recursive types.
-        let mut pending = vec![&param_type];
-        let mut visited: Vec<&Type> = Vec::new();
-        let mut contains_html = false;
-        while let Some(typ) = pending.pop() {
-            match registry.resolve(typ) {
-                Some(ResolvedType::Html) => {
-                    contains_html = true;
-                    break;
-                }
-                Some(ResolvedType::Array(inner) | ResolvedType::Option(inner)) => {
-                    pending.push(inner);
-                }
-                Some(ResolvedType::Tuple(elements)) => pending.extend(elements),
-                Some(ResolvedType::Record { fields, .. }) => {
-                    if !visited.contains(&typ) {
-                        visited.push(typ);
-                        pending.extend(fields.iter().map(|field| &field.typ));
-                    }
-                }
-                Some(ResolvedType::Enum { variants, .. }) => {
-                    if !visited.contains(&typ) {
-                        visited.push(typ);
-                        pending.extend(
-                            variants
-                                .iter()
-                                .flat_map(|variant| variant.fields.iter().map(|field| &field.typ)),
-                        );
-                    }
-                }
-                Some(
-                    ResolvedType::String
-                    | ResolvedType::Bool
-                    | ResolvedType::Int
-                    | ResolvedType::Float,
-                )
-                | None => {}
-            }
-        }
-        if contains_html {
+        if param_type == Type::Html {
             errors.push(TypeError::new(
                 TypeErrorKind::HtmlInPageParameter,
                 param.var_type.range().clone(),
@@ -917,7 +881,7 @@ fn validate_examples_annotation(
 ) {
     let Some(examples) = examples else { return };
     if let Some(pattern) = &examples.pattern {
-        if *resolved_type != Type::String {
+        if *resolved_type != Type::STRING {
             errors.push(TypeError::new(
                 TypeErrorKind::PatternOnNonString {
                     found: resolved_type.clone(),
@@ -941,7 +905,7 @@ fn validate_examples_annotation(
         }
     }
     if examples.min.is_some() || examples.max.is_some() {
-        if *resolved_type != Type::Int {
+        if *resolved_type != Type::INT {
             errors.push(TypeError::new(
                 TypeErrorKind::MinMaxOnNonInt {
                     found: resolved_type.clone(),
@@ -959,7 +923,7 @@ fn validate_examples_annotation(
         }
     }
     if examples.min_len.is_some() || examples.max_len.is_some() {
-        if !matches!(*resolved_type, Type::Array(_)) {
+        if !matches!(*resolved_type, Type::Data(DataType::Array(_))) {
             errors.push(TypeError::new(
                 TypeErrorKind::MinMaxLenOnNonArray {
                     found: resolved_type.clone(),
@@ -1311,7 +1275,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Foo() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape("tab	here and "quotes" and back\slash")),
@@ -1365,7 +1329,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Foo() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [title: escape("tab	here and "quotes" and back\slash")],
                     children: concat(),
@@ -1480,55 +1444,42 @@ mod tests {
     }
 
     #[test]
-    fn rejects_page_parameters_with_html_inside_arrays_options_and_tuples() {
+    fn rejects_html_inside_arrays_options_and_tuples() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                page Main(
+                fn Main(
                   items: Array[Html],
                   footer: Option[Html],
                   pair: (String, Html),
-                ) {
-                  fn body() -> Html {
-                    <>
-                      {for item in items {
-                        item
-                      }}
-                      {match footer {
-                        Some(f) => f,
-                        None => <></>,
-                      }}
-                      {match pair {
-                        (_, h) => h,
-                      }}
-                    </>
-                  }
+                ) -> Html {
+                  <></>
                 }
             "#},
             expect![[r#"
-                error: Html is not allowed in page parameters
-                  --> main.hop (line 2, col 10)
-                 1 | page Main(
-                 2 |   items: Array[Html],
-                   |          ^^^^^^^^^^^
+                error: Html is not allowed inside another type
+                  --> main.hop (line 2, col 16)
+                1 | fn Main(
+                2 |   items: Array[Html],
+                  |                ^^^^
 
-                error: Html is not allowed in page parameters
-                  --> main.hop (line 3, col 11)
-                 2 |   items: Array[Html],
-                 3 |   footer: Option[Html],
-                   |           ^^^^^^^^^^^^
+                error: Html is not allowed inside another type
+                  --> main.hop (line 3, col 18)
+                2 |   items: Array[Html],
+                3 |   footer: Option[Html],
+                  |                  ^^^^
 
-                error: Html is not allowed in page parameters
-                  --> main.hop (line 4, col 9)
-                 3 |   footer: Option[Html],
-                 4 |   pair: (String, Html),
-                   |         ^^^^^^^^^^^^^^
+                error: Html is not allowed inside another type
+                  --> main.hop (line 4, col 18)
+                3 |   footer: Option[Html],
+                4 |   pair: (String, Html),
+                  |                  ^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_page_parameter_of_record_type_with_html_field() {
+    fn rejects_html_in_record_and_enum_fields() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -1537,100 +1488,63 @@ mod tests {
                   bio: Html,
                 }
 
-                page Main(user: User) {
-                  fn body() -> Html {
-                    user.bio
-                  }
-                }
-            "#},
-            expect![[r#"
-                error: Html is not allowed in page parameters
-                  --> main.hop (line 6, col 17)
-                 5 | 
-                 6 | page Main(user: User) {
-                   |                 ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_page_parameter_of_enum_type_with_html_in_variant_field() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
                 enum Notice {
                   Empty,
                   Rich {content: Html},
                 }
-
-                page Main(notice: Notice) {
-                  fn body() -> Html {
-                    match notice {
-                      Notice::Empty => <></>,
-                      Notice::Rich {content} => content,
-                    }
-                  }
-                }
             "#},
             expect![[r#"
-                error: Html is not allowed in page parameters
-                  --> main.hop (line 6, col 19)
-                 5 | 
-                 6 | page Main(notice: Notice) {
-                   |                   ^^^^^^
+                error: Html is not allowed inside another type
+                  --> main.hop (line 3, col 8)
+                2 |   name: String,
+                3 |   bio: Html,
+                  |        ^^^^
+
+                error: Html is not allowed inside another type
+                  --> main.hop (line 8, col 18)
+                7 |   Empty,
+                8 |   Rich {content: Html},
+                  |                  ^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_page_parameter_of_imported_record_type_with_html_field() {
-        reject(
-            indoc! {r#"
-                -- other.hop --
-                pub record Post {
-                  body: Html,
-                }
-                -- main.hop --
-                import other::Post
-
-                page Main(post: Post) {
-                  fn body() -> Html {
-                    post.body
-                  }
-                }
-            "#},
-            expect![[r#"
-                error: Html is not allowed in page parameters
-                  --> main.hop (line 3, col 17)
-                2 | 
-                3 | page Main(post: Post) {
-                  |                 ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_page_parameter_of_recursive_record_type_with_html_field() {
+    fn rejects_html_built_into_an_option_an_array_or_a_tuple() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                record Item {
-                  label: Html,
-                  children: Array[Item],
+                fn Badge() -> Html {
+                  let badge = Some(<b>new</b>);
+                  <></>
                 }
-
-                page Main(item: Item) {
-                  fn body() -> Html {
-                    item.label
-                  }
+                fn Rows() -> Html {
+                  let rows = [<li>a</li>, <li>b</li>];
+                  <></>
+                }
+                fn Pair() -> Html {
+                  let pair = (1, <i>c</i>);
+                  <></>
                 }
             "#},
             expect![[r#"
-                error: Html is not allowed in page parameters
-                  --> main.hop (line 6, col 17)
-                 5 | 
-                 6 | page Main(item: Item) {
-                   |                 ^^^^
+                error: Html is not allowed inside another type
+                  --> main.hop (line 2, col 20)
+                 1 | fn Badge() -> Html {
+                 2 |   let badge = Some(<b>new</b>);
+                   |                    ^^^^^^^^^^
+
+                error: Html is not allowed inside another type
+                  --> main.hop (line 6, col 15)
+                 5 | fn Rows() -> Html {
+                 6 |   let rows = [<li>a</li>, <li>b</li>];
+                   |               ^^^^^^^^^^
+
+                error: Html is not allowed inside another type
+                  --> main.hop (line 10, col 18)
+                 9 | fn Pair() -> Html {
+                10 |   let pair = (1, <i>c</i>);
+                   |                  ^^^^^^^^
             "#]],
         );
     }
@@ -1703,7 +1617,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(first: String, last: String) -> Html {
-                  let name = ((first + " ") + last) in let greeting = ("Hello " + name) in html(
+                  let name = ((first + " ") + last) in let greeting = ("Hello " + name) in element(
                     tag: "h1",
                     attrs: [],
                     children: concat(escape(greeting)),
@@ -1886,7 +1800,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
             "#]],
         );
@@ -1906,13 +1820,13 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
                       concat(
-                        html(tag: "b", attrs: [], children: concat(text("x"))),
-                        html(tag: "i", attrs: [], children: concat(text("y"))),
+                        element(tag: "b", attrs: [], children: concat(text("x"))),
+                        element(tag: "i", attrs: [], children: concat(text("y"))),
                       ),
                     ),
                   )
@@ -1937,7 +1851,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main() -> Html {
@@ -1967,7 +1881,7 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  html(tag: "p", attrs: [], children: concat(escape(Label(name: "a < b"))))
+                  element(tag: "p", attrs: [], children: concat(escape(Label(name: "a < b"))))
                 }
             "#]],
         );
@@ -1993,7 +1907,7 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  html(tag: "p", attrs: [], children: concat(escape(Label(name: "a < b"))))
+                  element(tag: "p", attrs: [], children: concat(escape(Label(name: "a < b"))))
                 }
             "#]],
         );
@@ -2019,7 +1933,7 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "p",
                     attrs: [],
                     children: concat(escape(Count(a: 1, b: 2).to_string())),
@@ -2045,11 +1959,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main() -> Html {
-                  Card(children: html(tag: "p", attrs: [], children: concat(text("hi"))))
+                  Card(children: element(tag: "p", attrs: [], children: concat(text("hi"))))
                 }
             "#]],
         );
@@ -2166,11 +2080,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Badge(label: String, children: Html) -> Html {
-                  html(tag: "span", attrs: [], children: concat(escape(label), children))
+                  element(tag: "span", attrs: [], children: concat(escape(label), children))
                 }
 
                 fn Dot() -> Html {
-                  html(tag: "i", attrs: [], children: concat())
+                  element(tag: "i", attrs: [], children: concat())
                 }
 
                 fn Flag(on: Bool) -> String {
@@ -2178,20 +2092,20 @@ mod tests {
                 }
 
                 fn Main(name: String) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
                       Badge(
                         label: "new",
                         children: concat(
-                          html(tag: "b", attrs: [], children: concat(text("!"))),
+                          element(tag: "b", attrs: [], children: concat(text("!"))),
                         ),
                       ),
                       Badge(
                         label: "new",
                         children: concat(
-                          html(tag: "b", attrs: [], children: concat(text("!"))),
+                          element(tag: "b", attrs: [], children: concat(text("!"))),
                         ),
                       ),
                       Badge(label: name, children: concat()),
@@ -2365,15 +2279,15 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Badge(label: String, children: Html) -> Html {
-                  html(tag: "span", attrs: [], children: concat(escape(label), children))
+                  element(tag: "span", attrs: [], children: concat(escape(label), children))
                 }
 
                 fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -2382,13 +2296,13 @@ mod tests {
                       Badge(
                         label: "new",
                         children: concat(
-                          html(tag: "b", attrs: [], children: concat(text("!"))),
+                          element(tag: "b", attrs: [], children: concat(text("!"))),
                         ),
                       ),
                       Badge(
                         label: "new",
                         children: concat(
-                          html(tag: "b", attrs: [], children: concat(text("!"))),
+                          element(tag: "b", attrs: [], children: concat(text("!"))),
                         ),
                       ),
                       Card(children: concat()),
@@ -2397,12 +2311,12 @@ mod tests {
                       Card(children: concat()),
                       Card(
                         children: concat(
-                          html(tag: "i", attrs: [], children: concat(text("x"))),
+                          element(tag: "i", attrs: [], children: concat(text("x"))),
                         ),
                       ),
                       Card(
                         children: concat(
-                          html(tag: "i", attrs: [], children: concat(text("x"))),
+                          element(tag: "i", attrs: [], children: concat(text("x"))),
                         ),
                       ),
                     ),
@@ -2622,7 +2536,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Button(kind: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "button",
                     attrs: [class: escape(kind), ...rest],
                     children: concat(escape(kind)),
@@ -2630,11 +2544,11 @@ mod tests {
                 }
 
                 fn Card(title: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(title)))
+                  element(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
                 fn Main(name: String) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -2822,15 +2736,15 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Badge(label: String) -> Html {
-                  html(tag: "span", attrs: [], children: concat(escape(label)))
+                  element(tag: "span", attrs: [], children: concat(escape(label)))
                 }
 
                 fn Card(title: String, ...rest) -> Html {
-                  html(tag: "div", attrs: [...rest], children: concat(escape(title)))
+                  element(tag: "div", attrs: [...rest], children: concat(escape(title)))
                 }
 
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -2872,7 +2786,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(title: String, ...rest) -> Html {
-                  html(tag: "div", attrs: [...rest], children: concat(escape(title)))
+                  element(tag: "div", attrs: [...rest], children: concat(escape(title)))
                 }
 
                 fn Main() -> Html {
@@ -2921,7 +2835,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Button(kind: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "button",
                     attrs: [class: escape(kind), ...rest],
                     children: concat(escape(kind)),
@@ -2929,7 +2843,7 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -2973,11 +2887,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(title: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(title)))
+                  element(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -3184,7 +3098,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main() -> Html {
@@ -3210,7 +3124,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main() -> Html {
@@ -3238,7 +3152,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main() -> Html {
@@ -3264,7 +3178,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main(children: Html) -> Html {
@@ -3311,7 +3225,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Tree(children: Html) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(Tree(children: concat(children))),
@@ -3434,7 +3348,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "h1",
                     attrs: [],
                     children: concat(text("Hello, "), Main(), text("!")),
@@ -3623,7 +3537,7 @@ mod tests {
             expect![[r#"
                 -- other.hop --
                 fn Foo() -> Html {
-                  html(tag: "span", attrs: [], children: concat(text("hi")))
+                  element(tag: "span", attrs: [], children: concat(text("hi")))
                 }
 
                 -- main.hop --
@@ -3654,7 +3568,7 @@ mod tests {
 
                 -- main.hop --
                 fn Main(foo: Foo) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(foo.name)))
+                  element(tag: "div", attrs: [], children: concat(escape(foo.name)))
                 }
 
                 -- type registry --
@@ -3689,7 +3603,7 @@ mod tests {
 
                 -- main.hop --
                 fn Main(color: Color) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -4379,7 +4293,7 @@ mod tests {
 
                 fn Main(a: Bool, b: String) -> Html {
                   match a {
-                    true => html(tag: "div", attrs: [], children: concat(escape(b))),
+                    true => element(tag: "div", attrs: [], children: concat(escape(b))),
                     false => concat(),
                   }
                 }
@@ -4531,7 +4445,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(params: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(params)))
+                  element(tag: "div", attrs: [], children: concat(escape(params)))
                 }
             "#]],
         );
@@ -4553,7 +4467,7 @@ mod tests {
                 -- main.hop --
                 fn ToggleComp(enabled: Bool) -> Html {
                   match enabled {
-                    true => html(tag: "div", attrs: [], children: concat(text("Enabled"))),
+                    true => element(tag: "div", attrs: [], children: concat(text("Enabled"))),
                     false => concat(),
                   }
                 }
@@ -4577,7 +4491,7 @@ mod tests {
                 -- main.hop --
                 fn CounterComp(count: Float) -> Html {
                   match (count == 0) {
-                    true => html(tag: "div", attrs: [], children: concat(text("Zero"))),
+                    true => element(tag: "div", attrs: [], children: concat(text("Zero"))),
                     false => concat(),
                   }
                 }
@@ -4652,7 +4566,7 @@ mod tests {
                 -- main.hop --
                 fn ListComp(items: Array[String]) -> Html {
                   for item in items {
-                    html(tag: "div", attrs: [], children: concat(escape(item)))
+                    element(tag: "div", attrs: [], children: concat(escape(item)))
                   }
                 }
             "#]],
@@ -4680,7 +4594,7 @@ mod tests {
                 -- main.hop --
                 fn Main(params: Params) -> Html {
                   match (params.x == params.y) {
-                    true => html(
+                    true => element(
                       tag: "div",
                       attrs: [],
                       children: concat(text("Values are equal")),
@@ -4851,7 +4765,11 @@ mod tests {
                 -- a/bar.hop --
                 fn WidgetComp(config: Config) -> Html {
                   match config.enabled {
-                    true => html(tag: "div", attrs: [], children: concat(escape(config.title))),
+                    true => element(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(config.title)),
+                    ),
                     false => concat(),
                   }
                 }
@@ -5067,7 +4985,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(user: User) -> Html {
-                  html(
+                  element(
                     tag: "a",
                     attrs: [href: escape(user.url), class: escape(user.theme)],
                     children: concat(text("Link")),
@@ -5107,7 +5025,7 @@ mod tests {
                 }
 
                 fn Main(children: Html) -> Html {
-                  html(tag: "strong", attrs: [], children: concat(children))
+                  element(tag: "strong", attrs: [], children: concat(children))
                 }
             "#]],
         );
@@ -5355,7 +5273,7 @@ mod tests {
                 -- main.hop --
                 fn ListItems(items: Array[String]) -> Html {
                   for item in items {
-                    html(tag: "li", attrs: [], children: concat(escape(item)))
+                    element(tag: "li", attrs: [], children: concat(escape(item)))
                   }
                 }
 
@@ -5495,7 +5413,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(user: User) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(user.name)))
+                  element(tag: "div", attrs: [], children: concat(escape(user.name)))
                 }
 
                 -- type registry --
@@ -5520,7 +5438,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(user: User) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
+                  element(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
 
                 -- type registry --
@@ -5715,7 +5633,7 @@ mod tests {
 
                 -- bar.hop --
                 fn Bar(user: User) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
+                  element(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
 
                 -- baz.hop --
@@ -5766,7 +5684,7 @@ mod tests {
             expect![[r#"
                 -- colors.hop --
                 fn ColorDisplay(color: Color) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -5928,7 +5846,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(color: Color) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -6232,7 +6150,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(user: User) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -6278,7 +6196,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(o: Outer) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(o.inner.value)))
+                  element(tag: "div", attrs: [], children: concat(escape(o.inner.value)))
                 }
 
                 -- type registry --
@@ -6315,7 +6233,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(root: Folder) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(root.name)))
+                  element(tag: "div", attrs: [], children: concat(escape(root.name)))
                 }
 
                 -- type registry --
@@ -6865,7 +6783,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main() -> Html {
@@ -7277,7 +7195,7 @@ mod tests {
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
                   match x {
-                    Some(name) => html(
+                    Some(name) => element(
                       tag: "div",
                       attrs: [class: escape(name)],
                       children: concat(),
@@ -7579,7 +7497,7 @@ mod tests {
                 -- main.hop --
                 fn Main(items: Array[String]) -> Html {
                   for item in items {
-                    html(tag: "li", attrs: [], children: concat(escape(item)))
+                    element(tag: "li", attrs: [], children: concat(escape(item)))
                   }
                 }
             "#]],
@@ -7601,7 +7519,7 @@ mod tests {
                 -- main.hop --
                 fn Main(n: Int) -> Html {
                   for i in 1..=n {
-                    html(tag: "span", attrs: [], children: concat(escape(i.to_string())))
+                    element(tag: "span", attrs: [], children: concat(escape(i.to_string())))
                   }
                 }
             "#]],
@@ -7623,7 +7541,7 @@ mod tests {
                 -- main.hop --
                 fn Main(n: Int) -> Html {
                   for _ in 1..=n {
-                    html(tag: "span", attrs: [], children: concat(text(".")))
+                    element(tag: "span", attrs: [], children: concat(text(".")))
                   }
                 }
             "#]],
@@ -7649,7 +7567,7 @@ mod tests {
                 -- main.hop --
                 fn Main(items: Array[Item]) -> Html {
                   for item in items {
-                    let name = item.name in html(
+                    let name = item.name in element(
                       tag: "li",
                       attrs: [],
                       children: concat(escape(name)),
@@ -7683,7 +7601,11 @@ mod tests {
                 -- main.hop --
                 fn Main(n: Int) -> Html {
                   for _ in 1..=n {
-                    html(tag: "li", attrs: [], children: concat(escape(Item {name: "x"}.name)))
+                    element(
+                      tag: "li",
+                      attrs: [],
+                      children: concat(escape(Item {name: "x"}.name)),
+                    )
                   }
                 }
 
@@ -7958,13 +7880,13 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
                       match x {
-                        Some(v) => html(tag: "span", attrs: [], children: concat(escape(v))),
-                        None => html(tag: "span", attrs: [], children: concat(text("none"))),
+                        Some(v) => element(tag: "span", attrs: [], children: concat(escape(v))),
+                        None => element(tag: "span", attrs: [], children: concat(text("none"))),
                       },
                     ),
                   )
@@ -8014,7 +7936,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(is_required: Bool) -> Html {
-                  html(
+                  element(
                     tag: "input",
                     attrs: [required: is_required, disabled: true, readonly: false],
                   )
@@ -8114,11 +8036,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Button(...rest) -> Html {
-                  html(tag: "button", attrs: [...rest], children: concat(text("Save")))
+                  element(tag: "button", attrs: [...rest], children: concat(text("Save")))
                 }
 
                 fn Main(busy: Bool) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -8357,7 +8279,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  html(tag: "my-widget", attrs: [foo: escape("x")], children: concat())
+                  element(tag: "my-widget", attrs: [foo: escape("x")], children: concat())
                 }
             "#]],
         );
@@ -8537,17 +8459,17 @@ mod tests {
                 fn Main(u: String) -> Html {
                   concat(
                     Script(rest: [src: escape("/app.js")]),
-                    html(tag: "script", attrs: [src: escape("/app.js")], children: concat()),
-                    html(
+                    element(tag: "script", attrs: [src: escape("/app.js")], children: concat()),
+                    element(
                       tag: "iframe",
                       attrs: [src: escape(u), srcdoc: escape("<p>hi</p>")],
                       children: concat(),
                     ),
-                    html(
+                    element(
                       tag: "svg",
                       attrs: [],
                       children: concat(
-                        html(
+                        element(
                           tag: "set",
                           attrs: [attributeName: escape("fill"), to: escape("red")],
                           children: concat(),
@@ -8558,7 +8480,7 @@ mod tests {
                 }
 
                 fn Script(...rest) -> Html {
-                  html(tag: "script", attrs: [...rest], children: concat())
+                  element(tag: "script", attrs: [...rest], children: concat())
                 }
             "#]],
         );
@@ -8595,7 +8517,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  html(tag: "a", attrs: [href: escape("/")], children: concat(text("link")))
+                  element(tag: "a", attrs: [href: escape("/")], children: concat(text("link")))
                 }
             "#]],
         );
@@ -8640,7 +8562,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Btn(children: Html, ...rest) -> Html {
-                  html(tag: "button", attrs: [...rest], children: concat(children))
+                  element(tag: "button", attrs: [...rest], children: concat(children))
                 }
 
                 fn Main() -> Html {
@@ -8662,7 +8584,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [data-x: escape("1"), aria-label: escape("hello")],
                     children: concat(),
@@ -8684,11 +8606,15 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "svg",
                     attrs: [viewBox: escape("0 0 10 10")],
                     children: concat(
-                      html(tag: "path", attrs: [d: escape("M0 0 L10 10")], children: concat()),
+                      element(
+                        tag: "path",
+                        attrs: [d: escape("M0 0 L10 10")],
+                        children: concat(),
+                      ),
                     ),
                   )
                 }
@@ -8701,7 +8627,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Separator(children?: Option[Html] = None) -> Html {
+                fn Separator(children?: String = "") -> Html {
                   <li>separator</li>
                 }
                 fn Main() -> Html {
@@ -8711,7 +8637,7 @@ mod tests {
             expect![[r#"
                 warning: Unused variable children
                   --> main.hop (line 1, col 14)
-                1 | fn Separator(children?: Option[Html] = None) -> Html {
+                1 | fn Separator(children?: String = "") -> Html {
                   |              ^^^^^^^^
             "#]],
         );
@@ -8730,7 +8656,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let name = "World" in html(
+                  let name = "World" in element(
                     tag: "div",
                     attrs: [],
                     children: concat(text("Hello "), escape(name)),
@@ -8753,7 +8679,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let name = "World" in html(
+                  let name = "World" in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(name)),
@@ -8776,7 +8702,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let count = 42 in html(
+                  let count = 42 in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(count.to_string())),
@@ -8799,7 +8725,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let price = 2.5 in html(
+                  let price = 2.5 in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(price.to_int().to_string())),
@@ -8822,7 +8748,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let items = [1, 2, 3] in html(
+                  let items = [1, 2, 3] in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(items.len().to_string())),
@@ -8846,7 +8772,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let user = User {name: "Alice", age: 30} in html(
+                  let user = User {name: "Alice", age: 30} in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(user.name)),
@@ -8876,7 +8802,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(user: User) -> Html {
-                  let updated = User {...user, name: "Jane"} in html(
+                  let updated = User {...user, name: "Jane"} in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(updated.name)),
@@ -8907,7 +8833,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(app: App) -> Html {
-                  let next = State {...app.state, num: 1} in html(
+                  let next = State {...app.state, num: 1} in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(next.query)),
@@ -8941,7 +8867,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(user: User) -> Html {
-                  let updated = User {...user, name: "Jane", age: 30} in html(
+                  let updated = User {...user, name: "Jane", age: 30} in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(updated.name)),
@@ -8993,7 +8919,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let first = "Hello" in let second = "World" in html(
+                  let first = "Hello" in let second = "World" in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(first), escape(second)),
@@ -9017,7 +8943,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let greeting = "Hello" in let shout = greeting in html(
+                  let greeting = "Hello" in let shout = greeting in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(shout)),
@@ -9150,12 +9076,12 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Html {
                   concat(
-                    let name = "First" in html(
+                    let name = "First" in element(
                       tag: "div",
                       attrs: [],
                       children: concat(escape(name)),
                     ),
-                    let name = "Second" in html(
+                    let name = "Second" in element(
                       tag: "div",
                       attrs: [],
                       children: concat(escape(name)),
@@ -9200,7 +9126,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let first = "Hello" in let second = "World" in html(
+                  let first = "Hello" in let second = "World" in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(first), text(" "), escape(second)),
@@ -9266,7 +9192,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let greeting = "Hello" in let message = greeting in html(
+                  let greeting = "Hello" in let message = greeting in element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(message)),
@@ -9295,7 +9221,7 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Html {
                   let x = 0 in let y = (x + 1) in let z = (y + 2) in match (z == 3) {
-                    true => html(tag: "div", attrs: [], children: concat(text("correct"))),
+                    true => element(tag: "div", attrs: [], children: concat(text("correct"))),
                     false => concat(),
                   }
                 }
@@ -9409,7 +9335,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   fn body() -> Html {
-                    html(tag: "div", attrs: [], children: concat(text("Hello")))
+                    element(tag: "div", attrs: [], children: concat(text("Hello")))
                   }
                 }
             "#]],
@@ -9574,12 +9500,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "svg",
                     attrs: [],
                     children: concat(
-                      html(tag: "path", attrs: [d: escape("M0 0")], children: concat()),
-                      html(tag: "circle", attrs: [r: escape("1")], children: concat()),
+                      element(tag: "path", attrs: [d: escape("M0 0")], children: concat()),
+                      element(tag: "circle", attrs: [r: escape("1")], children: concat()),
                     ),
                   )
                 }
@@ -9602,7 +9528,7 @@ mod tests {
                 -- main.hop --
                 page Main(name: String) {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: concat(text("Hello, "), escape(name), text("!")),
@@ -9628,7 +9554,7 @@ mod tests {
                 -- main.hop --
                 page Main(name: String, age: Int) {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: concat(
@@ -9669,7 +9595,7 @@ mod tests {
                 }
 
                 fn Greeting(name: String) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(text("Hello, "), escape(name), text("!")),
@@ -9979,7 +9905,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Foo(...rest) -> Html {
-                  html(tag: "div", attrs: [...rest], children: concat(Foo(rest: [])))
+                  element(tag: "div", attrs: [...rest], children: concat(Foo(rest: [])))
                 }
             "#]],
         );
@@ -10157,7 +10083,7 @@ mod tests {
                 }
 
                 fn Button(class: String, children: Html, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "button",
                     attrs: [class: escape(class), ...rest],
                     children: concat(children),
@@ -10190,7 +10116,7 @@ mod tests {
                 }
 
                 fn Button(children: Html, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "button",
                     attrs: [class: escape("builtin"), ...rest],
                     children: concat(children),
@@ -10271,7 +10197,7 @@ mod tests {
                 }
 
                 fn Svg(...rest) -> Html {
-                  html(tag: "svg", attrs: [...rest], children: concat())
+                  element(tag: "svg", attrs: [...rest], children: concat())
                 }
             "#]],
         );
@@ -10303,7 +10229,7 @@ mod tests {
                 }
 
                 fn Card(title: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(title)))
+                  element(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
                 fn Wrapper(title: String, ...rest) -> Html {
@@ -10339,7 +10265,7 @@ mod tests {
                 }
 
                 fn Card(title: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(title)))
+                  element(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
                 fn Wrapper(...rest) -> Html {
@@ -10463,7 +10389,7 @@ mod tests {
                 }
 
                 fn Tree(x: Int) -> Html {
-                  html(tag: "div", attrs: [], children: concat(Tree(x: x)))
+                  element(tag: "div", attrs: [], children: concat(Tree(x: x)))
                 }
 
                 fn Wrapper(x: Int, ...rest) -> Html {
@@ -10494,7 +10420,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(user: User) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(user.name)))
+                  element(tag: "div", attrs: [], children: concat(escape(user.name)))
                 }
 
                 fn Page(user: User) -> Html {
@@ -10545,7 +10471,7 @@ mod tests {
                 }
 
                 fn Bar(name: String, title: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(escape(name), Card(title: title)),
@@ -10557,7 +10483,7 @@ mod tests {
                 }
 
                 fn Card(title: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(title)))
+                  element(tag: "div", attrs: [], children: concat(escape(title)))
                 }
             "#]],
         );
@@ -10653,7 +10579,7 @@ mod tests {
 
                 fn Card(count: Int) -> Html {
                   match (count > 0) {
-                    true => html(tag: "div", attrs: [], children: concat(text("positive"))),
+                    true => element(tag: "div", attrs: [], children: concat(text("positive"))),
                     false => concat(),
                   }
                 }
@@ -10696,7 +10622,7 @@ mod tests {
                 }
 
                 fn A(count: Int, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [...rest],
                     children: concat(
@@ -10833,7 +10759,7 @@ mod tests {
                 }
 
                 fn Foo(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
             "#]],
         );
@@ -10896,7 +10822,7 @@ mod tests {
                 }
 
                 fn Foo(children: Html, class: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [class: escape(class), ...rest],
                     children: concat(children),
@@ -11033,11 +10959,15 @@ mod tests {
                 }
 
                 fn Inner(class: String, ...rest) -> Html {
-                  html(tag: "span", attrs: [class: escape(class), ...rest], children: concat())
+                  element(
+                    tag: "span",
+                    attrs: [class: escape(class), ...rest],
+                    children: concat(),
+                  )
                 }
 
                 fn Outer(class: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [class: escape(class)],
                     children: concat(Inner(class: "x", rest: [...rest])),
@@ -11081,7 +11011,7 @@ mod tests {
                 }
 
                 fn Foo(children: Html, class: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [class: escape(class), ...rest],
                     children: concat(children),
@@ -11117,7 +11047,11 @@ mod tests {
                 }
 
                 fn Inner(class: String, ...rest) -> Html {
-                  html(tag: "span", attrs: [class: escape(class), ...rest], children: concat())
+                  element(
+                    tag: "span",
+                    attrs: [class: escape(class), ...rest],
+                    children: concat(),
+                  )
                 }
 
                 fn Wrapper(class: String, ...rest) -> Html {
@@ -11153,7 +11087,11 @@ mod tests {
                 }
 
                 fn A(class: String, ...rest) -> Html {
-                  html(tag: "div", attrs: [class: escape(class), ...rest], children: concat())
+                  element(
+                    tag: "div",
+                    attrs: [class: escape(class), ...rest],
+                    children: concat(),
+                  )
                 }
 
                 fn B(class: String, ...rest) -> Html {
@@ -11189,7 +11127,11 @@ mod tests {
                 }
 
                 fn A(class: String, ...rest) -> Html {
-                  html(tag: "div", attrs: [class: escape(class), ...rest], children: concat())
+                  element(
+                    tag: "div",
+                    attrs: [class: escape(class), ...rest],
+                    children: concat(),
+                  )
                 }
 
                 fn B(class: String, ...rest) -> Html {
@@ -11225,7 +11167,7 @@ mod tests {
                 }
 
                 fn A(label: String, ...rest) -> Html {
-                  html(tag: "span", attrs: [...rest], children: concat(escape(label)))
+                  element(tag: "span", attrs: [...rest], children: concat(escape(label)))
                 }
 
                 fn B(label: String, ...rest) -> Html {
@@ -11264,7 +11206,7 @@ mod tests {
                 }
 
                 fn Leaf(label: String, ...rest) -> Html {
-                  html(tag: "span", attrs: [...rest], children: concat(escape(label)))
+                  element(tag: "span", attrs: [...rest], children: concat(escape(label)))
                 }
 
                 fn Mid(label: String, ...rest) -> Html {
@@ -11400,7 +11342,7 @@ mod tests {
                 }
 
                 fn Inner(...rest) -> Html {
-                  html(tag: "span", attrs: [...rest], children: concat())
+                  element(tag: "span", attrs: [...rest], children: concat())
                 }
 
                 fn Wrapper(...rest) -> Html {
@@ -11503,7 +11445,7 @@ mod tests {
                 }
 
                 fn A(tabindex: Int, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [...rest],
                     children: concat(
@@ -11604,7 +11546,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Later() -> Html {
-                  html(tag: "div", attrs: [], children: concat())
+                  element(tag: "div", attrs: [], children: concat())
                 }
 
                 fn Main() -> Html {
@@ -11638,7 +11580,7 @@ mod tests {
                 }
 
                 fn Later() -> Html {
-                  html(tag: "div", attrs: [], children: concat())
+                  element(tag: "div", attrs: [], children: concat())
                 }
             "#]],
         );
@@ -11709,7 +11651,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Foo(...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [...rest],
                     children: concat(Foo(rest: [id: escape("x")])),
@@ -11758,7 +11700,7 @@ mod tests {
                 }
 
                 fn Leaf(title: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(title)))
+                  element(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
                 fn Second(title: String, ...rest) -> Html {
@@ -12280,7 +12222,7 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: concat(escape(label(prefix: "n", count: 2))),
@@ -12400,6 +12342,221 @@ mod tests {
     }
 
     #[test]
+    fn rejects_children_used_twice() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Repeat(children: Html) -> Html {
+                  <>
+                    <div class="first">
+                      {children}
+                    </div>
+                    <div class="second">
+                      {children}
+                    </div>
+                  </>
+                }
+                page Test() {
+                  fn body() -> Html {
+                    <Repeat>
+                      <span>
+                        hi
+                      </span>
+                    </Repeat>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html value children is used more than once
+                  --> main.hop (line 7, col 8)
+                 6 |     <div class="second">
+                 7 |       {children}
+                   |        ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_used_in_a_loop_it_is_bound_outside_of() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let star = <b>*</b>;
+                    for _ in 1..=3 {
+                      star
+                    }
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html value star is bound outside the loop it is used in
+                  --> main.hop (line 5, col 7)
+                4 |     for _ in 1..=3 {
+                5 |       star
+                  |       ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_from_a_call_used_twice() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Countdown(n: Int) -> Html {
+                  match n > 0 {
+                    true => {
+                      <>
+                        <b>
+                          {n.to_string()}
+                        </b>
+                        <Countdown n={n - 1}/>
+                      </>
+                    },
+                    false => <>go</>,
+                  }
+                }
+                page Test() {
+                  fn body() -> Html {
+                    let count = <Countdown n={2}/>;
+                    <p>
+                      {count}
+                      {count}
+                    </p>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html value count is used more than once
+                  --> main.hop (line 19, col 8)
+                18 |       {count}
+                19 |       {count}
+                   |        ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_from_a_loop_used_twice() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let stars = for _ in 1..=2 {
+                      <b>*</b>
+                    };
+                    <p>
+                      {stars}
+                      {stars}
+                    </p>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html value stars is used more than once
+                  --> main.hop (line 8, col 8)
+                 7 |       {stars}
+                 8 |       {stars}
+                   |        ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_from_a_match_used_twice() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    for flag in [true, false] {
+                      let mark = match flag {
+                        true => <b>yes</b>,
+                        false => <i>no</i>,
+                      };
+                      <p>
+                        {mark}
+                        {mark}
+                      </p>
+                    }
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html value mark is used more than once
+                  --> main.hop (line 10, col 10)
+                 9 |         {mark}
+                10 |         {mark}
+                   |          ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_used_after_a_match_that_uses_it_in_one_arm() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Pick(flag: Bool, children: Html) -> Html {
+                  <>
+                    {match flag {
+                      true => children,
+                      false => <></>,
+                    }}
+                    {children}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: Html value children is used more than once
+                  --> main.hop (line 7, col 6)
+                6 |     }}
+                7 |     {children}
+                  |      ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_html_used_once_in_each_arm_and_built_in_a_loop() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Pick(flag: Bool, children: Html) -> Html {
+                  match flag {
+                    true => <b>{children}</b>,
+                    false => <i>{children}</i>,
+                  }
+                }
+                fn Stars(count: Int) -> Html {
+                  for _ in 1..=count {
+                    let star = <b>*</b>;
+                    star
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Pick(flag: Bool, children: Html) -> Html {
+                  match flag {
+                    true => element(tag: "b", attrs: [], children: concat(children)),
+                    false => element(tag: "i", attrs: [], children: concat(children)),
+                  }
+                }
+
+                fn Stars(count: Int) -> Html {
+                  for _ in 1..=count {
+                    let star = element(tag: "b", attrs: [], children: concat(text("*"))) in star
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_attribute_written_twice_on_element() {
         reject(
             indoc! {r#"
@@ -12486,7 +12643,7 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: concat(escape(label(prefix: "n", count: 1))),
@@ -12520,7 +12677,7 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: concat(escape(label(prefix: "n", count: 7))),
@@ -12554,7 +12711,7 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: concat(escape(label(prefix: "n", count: 1))),
@@ -12588,7 +12745,7 @@ mod tests {
                 -- main.hop --
                 page Test() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: concat(escape(label(prefix: "n", count: 1))),
@@ -12732,7 +12889,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Foo() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: concat(
@@ -12769,7 +12926,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   fn body() -> Html {
-                    html(tag: "div", attrs: [], children: concat(escape(shout(name: "hi"))))
+                    element(tag: "div", attrs: [], children: concat(escape(shout(name: "hi"))))
                   }
                 }
 
@@ -12887,7 +13044,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn NavBar() -> Html {
-                  html(tag: "div", attrs: [], children: concat())
+                  element(tag: "div", attrs: [], children: concat())
                 }
 
                 fn nav_bar(x: Int) -> Int {
@@ -12942,7 +13099,7 @@ mod tests {
                 }
 
                 fn card(label: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(label)))
+                  element(tag: "div", attrs: [], children: concat(escape(label)))
                 }
             "#]],
         );
@@ -12998,14 +13155,18 @@ mod tests {
                   fn body() -> Html {
                     concat(
                       wrap(
-                        children: html(tag: "span", attrs: [], children: concat(text("hello"))),
+                        children: element(
+                          tag: "span",
+                          attrs: [],
+                          children: concat(text("hello")),
+                        ),
                       ),
                     )
                   }
                 }
 
                 fn wrap(children: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(children))
+                  element(tag: "div", attrs: [], children: concat(children))
                 }
             "#]],
         );
@@ -13048,11 +13209,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Inner(a: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(a)))
+                  element(tag: "div", attrs: [], children: concat(escape(a)))
                 }
 
                 fn Outer(a: String, ...rest) -> Html {
-                  html(tag: "div", attrs: [], children: concat(Inner(a: a)))
+                  element(tag: "div", attrs: [], children: concat(Inner(a: a)))
                 }
             "#]],
         );
@@ -13078,7 +13239,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Inner(a: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(a)))
+                  element(tag: "div", attrs: [], children: concat(escape(a)))
                 }
 
                 fn Outer(a: String, ...rest) -> Html {
@@ -13086,7 +13247,7 @@ mod tests {
                 }
 
                 fn Slot(slot: Html) -> Html {
-                  html(tag: "div", attrs: [], children: concat(slot))
+                  element(tag: "div", attrs: [], children: concat(slot))
                 }
             "#]],
         );
@@ -13137,11 +13298,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Inner(a: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(a)))
+                  element(tag: "div", attrs: [], children: concat(escape(a)))
                 }
 
                 fn Outer() -> Html {
-                  html(tag: "div", attrs: [], children: concat(Inner(a: "x")))
+                  element(tag: "div", attrs: [], children: concat(Inner(a: "x")))
                 }
             "#]],
         );
@@ -13163,8 +13324,8 @@ mod tests {
                 -- main.hop --
                 fn Outer(flag: Bool, ...rest) -> Html {
                   match flag {
-                    true => html(tag: "div", attrs: [...rest], children: concat()),
-                    false => html(tag: "span", attrs: [], children: concat()),
+                    true => element(tag: "div", attrs: [...rest], children: concat()),
+                    false => element(tag: "span", attrs: [], children: concat()),
                   }
                 }
             "#]],
@@ -13191,7 +13352,7 @@ mod tests {
                 }
 
                 fn card(label: String) -> Html {
-                  html(tag: "div", attrs: [], children: concat(escape(label)))
+                  element(tag: "div", attrs: [], children: concat(escape(label)))
                 }
             "#]],
         );

@@ -13,6 +13,8 @@ pretty = "0.12"
 rand = { version = "0.10", default-features = false, features = ["std"] }
 rand_regex = "0.19"
 regex-syntax = "0.8"
+rpds = "1.2"
+indexmap = "2"
 
 [dev-dependencies]
 txtar = { path = "../txtar" }

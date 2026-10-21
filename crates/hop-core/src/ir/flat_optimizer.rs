@@ -11,7 +11,7 @@ pub fn optimize_flat(module: FlatModule) -> FlatModule {
         .into_iter()
         .map(|function| FlatFunctionDeclaration {
             function: function.function,
-            entry: function.entry,
+            entrypoint: function.entrypoint,
             parameters: function.parameters,
             return_type: function.return_type,
             body: flat_transform::eliminate_dead_bindings(
@@ -22,19 +22,16 @@ pub fn optimize_flat(module: FlatModule) -> FlatModule {
     FlatModule {
         functions,
         value_ids,
-        binder_ids: module.binder_ids,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::pure_module::PureModule;
-    use crate::ir::pure_module_builder::PureModuleBuilder;
-    use crate::ir::pure_module_generator::{random_entry_args, random_module};
-    use crate::ir::pure_to_flat::pure_to_flat;
+    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
+    use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
     use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::flat_evaluator::evaluate_entry;
+    use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
@@ -44,14 +41,15 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entry_args = random_entry_args(&module, &mut rng, &registry);
-            let module = pure_to_flat(module);
+            let entrypoint_args = random_entrypoint_args(&module, &mut rng, &registry);
 
             let before_module = module.to_string();
-            let before: Vec<Option<String>> = entry_args
+            let before: Vec<Option<String>> = entrypoint_args
                 .iter()
                 .map(|(function, args)| {
-                    match evaluate_entry(&module, function, args.clone()).map(Value::into_markup) {
+                    match evaluate_entrypoint(&module, function, args.clone())
+                        .map(Value::into_markup)
+                    {
                         Ok(output) => Some(output),
                         Err(EvalError::RecursionLimit { .. }) => None,
                         Err(error) => panic!("{error}"),
@@ -61,75 +59,67 @@ mod tests {
 
             let module = optimize_flat(module);
 
-            for ((function, args), before) in entry_args.iter().zip(&before) {
-                // An entry that hit the call depth limit has no output to
+            for ((function, args), before) in entrypoint_args.iter().zip(&before) {
+                // An entrypoint that hit the call depth limit has no output to
                 // preserve, and the passes may drop the diverging call.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_entry(&module, function, args.clone())
+                let after = evaluate_entrypoint(&module, function, args.clone())
                     .unwrap()
                     .into_markup();
                 assert_eq!(
                     before, &after,
-                    "entry {function}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    "entrypoint {function}\n-- before --\n{before_module}\n-- after --\n{module}"
                 );
             }
             Ok(())
         });
     }
 
-    fn check(module: PureModule, expected: Expect) {
-        let module = pure_to_flat(module);
+    fn check(module: FlatModule, expected: Expect) {
         let before = module.to_string();
         let after = optimize_flat(module).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
     }
 
     #[test]
-    fn should_leave_only_the_computations_an_entry_renders() {
+    fn should_leave_only_the_computations_an_entrypoint_renders() {
         check(
-            PureModuleBuilder::new()
-                .entry("Items", [("items", "Array[String]")], "Html", |t| {
-                    t.let_expr("unused", t.str("value"), |t| {
-                        t.element(
-                            "ul",
-                            vec![],
-                            vec![t.html_for(Some("item"), t.var("items"), |t| {
-                                t.element("li", vec![], vec![t.escape(t.var("item"))])
-                            })],
-                        )
-                    })
+            FlatModuleBuilder::new()
+                .entrypoint("Items", [("items", "Array[String]")], "Html", |t| {
+                    let _unused = t.str("value");
+                    t.element(
+                        "ul",
+                        [],
+                        t.html_for(Some("item"), t.var("items"), |t| {
+                            t.element("li", vec![], t.escape(t.var("item")))
+                        }),
+                    )
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Items@f0(items@b0: Array[String]) -> Html {
-                  let v0: String = "value"
-                  let v1: Array[String] = b0
-                  let v6: Html = for b2: String in v1 {
-                    let v2: String = b2
+                entrypoint fn Items@f0(items@v0: Array[String]) -> Html {
+                  let v1: String = "value"
+                  let v5: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
-                    let v4: Html = concat(v3)
-                    let v5: Html = html("li", {}, v4)
-                    v5
+                    let v4: Html = element("li", {}, v3)
+                    v4
                   }
-                  let v7: Html = concat(v6)
-                  let v8: Html = html("ul", {}, v7)
-                  v8
+                  let v6: Html = element("ul", {}, v5)
+                  v6
                 }
 
                 -- after --
-                entry fn Items@f0(items@b0: Array[String]) -> Html {
-                  let v1: Array[String] = b0
-                  let v6: Html = for b2: String in v1 {
-                    let v2: String = b2
+                entrypoint fn Items@f0(items@v0: Array[String]) -> Html {
+                  let v5: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
-                    let v5: Html = html("li", {}, v3)
-                    v5
+                    let v4: Html = element("li", {}, v3)
+                    v4
                   }
-                  let v8: Html = html("ul", {}, v6)
-                  v8
+                  let v6: Html = element("ul", {}, v5)
+                  v6
                 }
             "#]],
         );
@@ -138,20 +128,18 @@ mod tests {
     #[test]
     fn should_select_an_arm_and_drop_what_the_match_read() {
         check(
-            PureModuleBuilder::new()
-                .entry("Test", [], "Html", |t| {
-                    t.let_expr("flag", t.bool(true), |t| {
-                        t.concat(vec![t.bool_match_expr(
-                            t.var("flag"),
-                            t.concat(vec![t.text("yes")]),
-                            t.concat(vec![]),
-                        )])
-                    })
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    let flag = t.bool(true);
+                    t.html_concat([t.match_expr(flag, |m| {
+                        m.arm(Pat::True, |t| t.html_concat(vec![t.text("yes")]));
+                        m.arm(Pat::False, |t| t.html_concat(vec![]));
+                    })])
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: Bool = true
                   let v4: Html = match v0 {
                     true => {
@@ -169,7 +157,7 @@ mod tests {
                 }
 
                 -- after --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v1: Html = text("yes")
                   v1
                 }
@@ -180,35 +168,33 @@ mod tests {
     #[test]
     fn should_inline_a_call_and_fold_what_its_argument_makes_constant() {
         check(
-            PureModuleBuilder::new()
+            FlatModuleBuilder::new()
                 .function("double", [("x", "Int")], "Int", |t| {
                     t.add(t.var("x"), t.var("x"))
                 })
-                .entry("Test", [], "Html", |t| {
-                    t.escape(t.int_to_string(t.call("double", vec![("x", t.int(21))])))
+                .entrypoint("Test", [], "Html", |t| {
+                    t.escape(t.int_to_string(t.call("double", [t.int(21)])))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                fn double@f0(x@b0: Int) -> Int {
-                  let v0: Int = b0
-                  let v1: Int = b0
-                  let v2: Int = v0 + v1
-                  v2
+                fn double@f0(x@v0: Int) -> Int {
+                  let v1: Int = v0 + v0
+                  v1
                 }
-                entry fn Test@f1() -> Html {
-                  let v3: Int = 21
-                  let v4: Int = call double@f0(v3)
-                  let v5: String = v4.to_string()
-                  let v6: Html = escape(v5)
-                  v6
+                entrypoint fn Test@f1() -> Html {
+                  let v2: Int = 21
+                  let v3: Int = double@f0(v2)
+                  let v4: String = v3.to_string()
+                  let v5: Html = escape(v4)
+                  v5
                 }
 
                 -- after --
-                entry fn Test@f1() -> Html {
-                  let v5: String = "42"
-                  let v6: Html = escape(v5)
-                  v6
+                entrypoint fn Test@f1() -> Html {
+                  let v4: String = "42"
+                  let v5: Html = escape(v4)
+                  v5
                 }
             "#]],
         );

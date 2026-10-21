@@ -4,13 +4,11 @@ use crate::document::DocumentCursor;
 use crate::document_annotator::DocumentAnnotator;
 use crate::hop::parsing::parse_type;
 use crate::hop::typing::resolve_type::resolve_type;
-use crate::hop::typing::r#type::Type;
+use crate::hop::typing::r#type::{DataType, Type};
 use crate::hop::typing::type_env::{
     FunctionSignature, Name, NameKind, ParamEntry, Row, Tail, TypeEnv,
 };
-use crate::hop::typing::type_registry::{
-    EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
-};
+use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -143,7 +141,7 @@ impl TypeRegistryBuilder {
                 Decl::Function { .. } => continue,
             };
             let type_name = type_name(name);
-            let typ = Type::Named {
+            let typ = DataType::Named {
                 module: module.clone(),
                 name: type_name.clone(),
             };
@@ -164,10 +162,15 @@ impl TypeRegistryBuilder {
                 Decl::Record { name, fields } => {
                     let fields = fields
                         .iter()
-                        .map(|(f, t)| RecordField {
-                            name: field_name(f),
-                            typ: types.resolve(t),
-                            examples: None,
+                        .map(|(f, t)| {
+                            let Type::Data(typ) = types.resolve(t) else {
+                                panic!("field `{f}` cannot have type Html")
+                            };
+                            RecordField {
+                                name: field_name(f),
+                                typ,
+                                examples: None,
+                            }
                         })
                         .collect();
                     types.registry.insert(
@@ -197,10 +200,15 @@ impl TypeRegistryBuilder {
                             name: type_name(v),
                             fields: fields
                                 .iter()
-                                .map(|(f, t)| RecordField {
-                                    name: field_name(f),
-                                    typ: types.resolve(t),
-                                    examples: None,
+                                .map(|(f, t)| {
+                                    let Type::Data(typ) = types.resolve(t) else {
+                                        panic!("field `{f}` cannot have type Html")
+                                    };
+                                    RecordField {
+                                        name: field_name(f),
+                                        typ,
+                                        examples: None,
+                                    }
                                 })
                                 .collect(),
                         })
@@ -245,13 +253,13 @@ impl TypeRegistryBuilder {
 }
 
 /// An immutable bundle of a TypeRegistry and handles to the types
-/// registered in it. Every Type::Named handed out by this value has a
+/// registered in it. Every DataType::Named handed out by this value has a
 /// matching TypeDef in the registry.
 #[derive(Clone)]
 pub struct TestTypes {
     module: RootContainedFilePath,
     registry: TypeRegistry,
-    named: BTreeMap<TypeName, Type>,
+    named: BTreeMap<TypeName, DataType>,
     functions: HashMap<VarName, FunctionSignature>,
 }
 
@@ -268,6 +276,7 @@ impl TestTypes {
         self.named
             .get(&type_name(name))
             .cloned()
+            .map(Type::Data)
             .unwrap_or_else(|| {
                 panic!(
                     "type `{name}` is not declared, declared types: {:?}",
@@ -308,22 +317,6 @@ impl TestTypes {
                 .render();
             panic!("failed to resolve type `{type_str}`:\n{rendered}")
         })
-    }
-
-    pub fn record_fields(&self, name: &str) -> &[RecordField] {
-        let typ = self.named.get(&type_name(name));
-        match typ.map(|typ| self.registry.resolve(typ)) {
-            Some(Some(ResolvedType::Record { fields, .. })) => fields,
-            _ => panic!("no record `{name}` is declared"),
-        }
-    }
-
-    pub fn enum_variants(&self, name: &str) -> &[EnumVariant] {
-        let typ = self.named.get(&type_name(name));
-        match typ.map(|typ| self.registry.resolve(typ)) {
-            Some(Some(ResolvedType::Enum { variants, .. })) => variants,
-            _ => panic!("no enum `{name}` is declared"),
-        }
     }
 
     pub fn type_env(&self) -> TypeEnv {

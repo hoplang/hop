@@ -329,7 +329,7 @@ impl ParsedMarkup {
                             .append(bracketed_doc(children.iter().map(|c| c.to_doc()).collect())),
                     );
                 }
-                call_doc("html", args)
+                call_doc("element", args)
             }
             ParsedMarkup::Call {
                 function_name,

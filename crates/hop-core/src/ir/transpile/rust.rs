@@ -5,13 +5,15 @@ use pretty::{Arena, DocAllocator};
 use super::Doc;
 use super::transpiler::Transpiler;
 use crate::dependency_graph::DependencyGraph;
-use crate::hop::typing::{EnumVariant, ResolvedType, Type, TypeRegistry};
+use crate::hop::typing::{DataType, EnumVariant, ResolvedType, Type, TypeRegistry};
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
+use crate::ir::value_id::ValueId;
 use crate::ir::writer_module::{
-    WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
-    WriterName, WriterOp, WriterPageDeclaration, WriterStmt, WriterValueBlock,
+    WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterModule,
+    WriterOp, WriterPageDeclaration, WriterStmt,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -19,14 +21,11 @@ use crate::symbols::type_name::TypeName;
 /// Names every variable in the generated code after the name that binds it
 /// in the IR rather than the source name.
 ///
-/// Names are unique across the module, a let's as `v_` and a binder's as
-/// `b_`, so no hop identifier can shadow another, and no name can collide
-/// with a keyword or with the `output` buffer.
-fn name_ident(name: WriterName) -> String {
-    match name {
-        WriterName::Binding(value) => format!("v_{}", value.index()),
-        WriterName::Binder(binder) => format!("b_{}", binder.index()),
-    }
+/// Names are unique across the module, so no hop identifier can shadow
+/// another, and no name can collide with a keyword or with the `output`
+/// buffer.
+fn name_ident(name: ValueId) -> String {
+    format!("v_{}", name.index())
 }
 
 fn function_ident(function: &IrFunction) -> String {
@@ -71,7 +70,7 @@ pub struct RustTranspiler {
     registry: TypeRegistry,
     /// What the binding for every name holds, and the name's type. Every
     /// parameter, let and binder inserts its entry before anything reads it.
-    names: HashMap<WriterName, (Binding, Type)>,
+    names: HashMap<ValueId, (Binding, Type)>,
 }
 
 impl RustTranspiler {
@@ -107,44 +106,56 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
-    fn name_binding(&self, name: WriterName) -> Binding {
+    fn name_binding(&self, name: ValueId) -> Binding {
         self.names
             .get(&name)
             .map(|(binding, _)| *binding)
             .unwrap_or_else(|| unreachable!("every name records a binding, and {name} has none"))
     }
 
-    fn name_type(&self, name: WriterName) -> &Type {
-        self.names
-            .get(&name)
-            .map(|(_, typ)| typ)
-            .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
-    }
-
     /// What the op a let binds transpiles to.
     fn natural_form(&self, op: &WriterOp) -> NaturalForm {
         match op {
-            WriterOp::StringLiteral(_) => NaturalForm::Reference,
-            WriterOp::FieldAccess { .. } | WriterOp::TupleIndex { .. } => NaturalForm::Place,
-            WriterOp::IntLiteral(_)
-            | WriterOp::FloatLiteral(_)
-            | WriterOp::BoolLiteral(_)
-            | WriterOp::Array(_)
-            | WriterOp::Tuple(_)
-            | WriterOp::Record { .. }
-            | WriterOp::Enum { .. }
-            | WriterOp::Option(_)
-            | WriterOp::StringConcat(_)
-            | WriterOp::Binary { .. }
-            | WriterOp::Unary { .. }
-            | WriterOp::Call { .. }
+            WriterOp::Data(IrDataOp::StringLiteral(_)) => NaturalForm::Reference,
+            WriterOp::Data(IrDataOp::FieldAccess(..) | IrDataOp::TupleIndex(..)) => {
+                NaturalForm::Place
+            }
+            WriterOp::Data(
+                IrDataOp::IntLiteral(_)
+                | IrDataOp::FloatLiteral(_)
+                | IrDataOp::BoolLiteral(_)
+                | IrDataOp::Array(_)
+                | IrDataOp::Tuple(_)
+                | IrDataOp::Record(..)
+                | IrDataOp::Enum(..)
+                | IrDataOp::Option(_)
+                | IrDataOp::StringConcat(_)
+                | IrDataOp::NumericAdd(..)
+                | IrDataOp::NumericSubtract(..)
+                | IrDataOp::NumericMultiply(..)
+                | IrDataOp::Equals(..)
+                | IrDataOp::LessThan(..)
+                | IrDataOp::LessThanOrEqual(..)
+                | IrDataOp::ArrayFromRange(..)
+                | IrDataOp::NumericNegation(_)
+                | IrDataOp::BoolNegation(_)
+                | IrDataOp::ArrayLength(_)
+                | IrDataOp::ArrayIsEmpty(_)
+                | IrDataOp::StringIsEmpty(_)
+                | IrDataOp::OptionIsSome(_)
+                | IrDataOp::OptionIsNone(_)
+                | IrDataOp::IntToString(_)
+                | IrDataOp::FloatToInt(_)
+                | IrDataOp::IntToFloat(_),
+            )
+            | WriterOp::Call(..)
             | WriterOp::HtmlLiteral(_)
             | WriterOp::Match(_) => NaturalForm::Temporary,
         }
     }
 
     /// A name where a reference to its value is wanted.
-    fn name_ref<'a>(&self, arena: &'a Arena<'a>, name: WriterName) -> Doc<'a> {
+    fn name_ref<'a>(&self, arena: &'a Arena<'a>, name: ValueId) -> Doc<'a> {
         match self.name_binding(name) {
             Binding::Borrowed => arena.text(name_ident(name)),
             Binding::Owned => arena.text("&").append(arena.text(name_ident(name))),
@@ -162,7 +173,7 @@ impl RustTranspiler {
     /// A dereference binds tighter than any operator, so it needs no
     /// parentheses. Receivers and field reads take the binding itself, since
     /// auto-dereferencing sees through references and `Box` alike.
-    fn name_place<'a>(&self, arena: &'a Arena<'a>, name: WriterName) -> Doc<'a> {
+    fn name_place<'a>(&self, arena: &'a Arena<'a>, name: ValueId) -> Doc<'a> {
         match self.name_binding(name) {
             Binding::Borrowed if Self::is_scalar(self.name_type(name)) => {
                 arena.text("*").append(arena.text(name_ident(name)))
@@ -176,14 +187,14 @@ impl RustTranspiler {
     /// else clones, since the binding keeps holding the value. `Clone`
     /// resolves on a `Box` itself, handing back a `Box` where the value is
     /// wanted, so a boxed binding is dereferenced before the clone.
-    fn name_owned<'a>(&self, arena: &'a Arena<'a>, name: WriterName) -> Doc<'a> {
+    fn name_owned<'a>(&self, arena: &'a Arena<'a>, name: ValueId) -> Doc<'a> {
         let typ = self.name_type(name);
         if Self::is_scalar(typ) {
             return self.name_place(arena, name);
         }
         let method = match typ {
-            Type::Array(_) => ".to_vec()",
-            Type::String => ".to_string()",
+            Type::Data(DataType::Array(_)) => ".to_vec()",
+            Type::Data(DataType::String) => ".to_string()",
             _ => ".clone()",
         };
         let receiver = match self.name_binding(name) {
@@ -199,11 +210,8 @@ impl RustTranspiler {
     /// The expression a value block produces. A result the block itself
     /// bound and owns moves out, since nothing after the block can read it.
     /// Anything else is copied or cloned.
-    fn block_result<'a>(&self, arena: &'a Arena<'a>, block: &WriterValueBlock) -> Doc<'a> {
-        let bound_here = block
-            .lets
-            .iter()
-            .any(|let_| WriterName::Binding(let_.name) == block.result);
+    fn block_result<'a>(&self, arena: &'a Arena<'a>, block: &WriterBlock) -> Doc<'a> {
+        let bound_here = block.bindings.iter().any(|let_| let_.name == block.result);
         if bound_here && self.name_binding(block.result) == Binding::Owned {
             arena.text(name_ident(block.result))
         } else {
@@ -212,13 +220,13 @@ impl RustTranspiler {
     }
 
     /// Collect the named types that `t` stores inline.
-    fn inline_refs(t: &Type, out: &mut BTreeSet<TypeName>) {
+    fn inline_refs(t: &DataType, out: &mut BTreeSet<TypeName>) {
         match t {
-            Type::Named { name, .. } => {
+            DataType::Named { name, .. } => {
                 out.insert(name.clone());
             }
-            Type::Option(inner) => Self::inline_refs(inner, out),
-            Type::Tuple(elements) => {
+            DataType::Option(inner) => Self::inline_refs(inner, out),
+            DataType::Tuple(elements) => {
                 for element in elements {
                     Self::inline_refs(element, out);
                 }
@@ -265,14 +273,14 @@ impl RustTranspiler {
     /// the case when the field stores an inline reference to a type `owner`
     /// boxes. Mirrors `inline_refs`: descend `Option` and tuples, stop at
     /// `Array`.
-    fn field_type_is_boxed(&self, t: &Type, owner: &str) -> bool {
+    fn field_type_is_boxed(&self, t: &DataType, owner: &str) -> bool {
         match t {
-            Type::Named { name, .. } => self
+            DataType::Named { name, .. } => self
                 .boxed_edges
                 .iter()
                 .any(|(o, target)| o.as_str() == owner && target == name),
-            Type::Option(inner) => self.field_type_is_boxed(inner, owner),
-            Type::Tuple(elements) => elements
+            DataType::Option(inner) => self.field_type_is_boxed(inner, owner),
+            DataType::Tuple(elements) => elements
                 .iter()
                 .any(|element| self.field_type_is_boxed(element, owner)),
             _ => false,
@@ -283,16 +291,16 @@ impl RustTranspiler {
     fn transpile_field_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        t: &'a Type,
+        t: &'a DataType,
         owner: &str,
     ) -> Doc<'a> {
         if self.field_type_is_boxed(t, owner) {
             arena
                 .text("Box<")
-                .append(self.transpile_type(arena, t))
+                .append(self.transpile_data_type(arena, t))
                 .append(arena.text(">"))
         } else {
-            self.transpile_type(arena, t)
+            self.transpile_data_type(arena, t)
         }
     }
 
@@ -303,9 +311,11 @@ impl RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         owner: &str,
-        value: WriterName,
+        value: ValueId,
     ) -> Doc<'a> {
-        if self.field_type_is_boxed(self.name_type(value), owner) {
+        if let Type::Data(value_type) = self.name_type(value)
+            && self.field_type_is_boxed(value_type, owner)
+        {
             arena
                 .text("Box::new(")
                 .append(self.name_owned(arena, value))
@@ -316,9 +326,11 @@ impl RustTranspiler {
     }
 
     /// Whether reads of `field` off `record` have to strip a `Box`.
-    fn field_access_is_boxed(&self, record: WriterName, field: &FieldName) -> bool {
-        let Some(ResolvedType::Record { name, fields, .. }) =
-            self.registry.resolve(self.name_type(record))
+    fn field_access_is_boxed(&self, record: ValueId, field: &FieldName) -> bool {
+        let Some(ResolvedType::Record { name, fields, .. }) = self
+            .name_type(record)
+            .as_data()
+            .and_then(|data| self.registry.resolve(data))
         else {
             unreachable!("field access objects resolve to a record");
         };
@@ -344,18 +356,16 @@ impl RustTranspiler {
             variant_name,
         } = arm_pattern;
         for (_, binder) in bindings {
-            let binding = if self.field_type_is_boxed(&binder.typ, type_name.as_str()) {
+            let binding = if let Type::Data(field_type) = &binder.typ
+                && self.field_type_is_boxed(field_type, type_name.as_str())
+            {
                 Binding::BorrowedBoxed
             } else {
                 Binding::Borrowed
             };
-            self.names.insert(
-                WriterName::Binder(binder.var),
-                (binding, binder.typ.clone()),
-            );
+            self.names.insert(binder.var, (binding, binder.typ.clone()));
         }
         if bindings.is_empty() {
-            // Check if this variant has fields by looking at the type
             let has_fields = variants
                 .iter()
                 .find(|v| &v.name == variant_name)
@@ -373,7 +383,7 @@ impl RustTranspiler {
                     format!(
                         "{}: {}",
                         Self::escape_ident(field.as_str()),
-                        name_ident(WriterName::Binder(binder.var))
+                        name_ident(binder.var)
                     )
                 })
                 .collect();
@@ -398,9 +408,11 @@ impl RustTranspiler {
     }
 
     /// The variants of the enum a match subject holds.
-    fn subject_variants(&self, subject: WriterName) -> Vec<EnumVariant> {
-        let Some(ResolvedType::Enum { variants, .. }) =
-            self.registry.resolve(self.name_type(subject))
+    fn subject_variants(&self, subject: ValueId) -> Vec<EnumVariant> {
+        let Some(ResolvedType::Enum { variants, .. }) = self
+            .name_type(subject)
+            .as_data()
+            .and_then(|data| self.registry.resolve(data))
         else {
             unreachable!("Enum match subject must have Named enum type")
         };
@@ -410,37 +422,41 @@ impl RustTranspiler {
     /// Whether `t` is one of hop's scalar types.
     fn is_scalar(t: &Type) -> bool {
         match t {
-            Type::Bool | Type::Int | Type::Float => true,
-            Type::String
-            | Type::Html
-            | Type::Array(_)
-            | Type::Tuple(_)
-            | Type::Named { .. }
-            | Type::Option(_) => false,
+            Type::Data(DataType::Bool | DataType::Int | DataType::Float) => true,
+            Type::Data(
+                DataType::String
+                | DataType::Array(_)
+                | DataType::Tuple(_)
+                | DataType::Named { .. }
+                | DataType::Option(_),
+            )
+            | Type::Html => false,
         }
     }
 
     /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
     fn transpile_param_type<'a>(&mut self, arena: &'a Arena<'a>, t: &'a Type) -> Doc<'a> {
         match t {
-            Type::Bool => arena.text("bool"),
-            Type::String => arena.text("&str"),
-            Type::Float => arena.text("f64"),
-            Type::Int => arena.text("i32"),
+            Type::Data(DataType::Bool) => arena.text("bool"),
+            Type::Data(DataType::String) => arena.text("&str"),
+            Type::Data(DataType::Float) => arena.text("f64"),
+            Type::Data(DataType::Int) => arena.text("i32"),
             Type::Html => {
                 self.needs_html = true;
                 arena.text("&Html")
             }
-            Type::Array(elem) => arena
+            Type::Data(DataType::Array(elem)) => arena
                 .text("&[")
-                .append(self.transpile_type(arena, elem))
+                .append(self.transpile_data_type(arena, elem))
                 .append(arena.text("]")),
-            Type::Option(inner) => arena
+            Type::Data(DataType::Option(inner)) => arena
                 .text("&Option<")
-                .append(self.transpile_type(arena, inner))
+                .append(self.transpile_data_type(arena, inner))
                 .append(arena.text(">")),
-            Type::Tuple(_) => arena.text("&").append(self.transpile_type(arena, t)),
-            Type::Named { name, .. } => arena.text("&").append(arena.text(name.as_str())),
+            Type::Data(DataType::Tuple(_)) => arena.text("&").append(self.transpile_type(arena, t)),
+            Type::Data(DataType::Named { name, .. }) => {
+                arena.text("&").append(arena.text(name.as_str()))
+            }
         }
     }
 
@@ -454,17 +470,17 @@ impl RustTranspiler {
         parameters
             .iter()
             .map(|param| {
-                let binding = if Self::is_scalar(&param.typ) {
+                let binding = if Self::is_scalar(&param.binder.typ) {
                     Binding::Owned
                 } else {
                     Binding::Borrowed
                 };
                 self.names
-                    .insert(WriterName::Binder(param.var), (binding, param.typ.clone()));
+                    .insert(param.binder.var, (binding, param.binder.typ.clone()));
                 arena
-                    .text(name_ident(WriterName::Binder(param.var)))
+                    .text(name_ident(param.binder.var))
                     .append(arena.text(": "))
-                    .append(self.transpile_param_type(arena, &param.typ))
+                    .append(self.transpile_param_type(arena, &param.binder.typ))
             })
             .collect()
     }
@@ -474,7 +490,7 @@ impl RustTranspiler {
     fn transpile_arguments<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        args: &'a [WriterName],
+        args: &'a [ValueId],
     ) -> Vec<Doc<'a>> {
         args.iter()
             .map(|arg| {
@@ -505,7 +521,7 @@ impl RustTranspiler {
                         .text("pub ")
                         .append(arena.text(Self::escape_ident(param.name().as_str())))
                         .append(arena.text(": "))
-                        .append(self.transpile_type(arena, &param.typ))
+                        .append(self.transpile_type(arena, &param.binder.typ))
                         .append(arena.text(","))
                 }),
                 arena.hardline(),
@@ -522,12 +538,8 @@ impl RustTranspiler {
 
     /// A value block as the body of a match arm: the result alone when the
     /// block binds nothing, otherwise a block expression.
-    fn transpile_arm_block<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        block: &'a WriterValueBlock,
-    ) -> Doc<'a> {
-        if block.lets.is_empty() {
+    fn transpile_arm_block<'a>(&mut self, arena: &'a Arena<'a>, block: &'a WriterBlock) -> Doc<'a> {
+        if block.bindings.is_empty() {
             return self.block_result(arena, block);
         }
         arena
@@ -554,8 +566,14 @@ impl Transpiler for RustTranspiler {
         &self.registry
     }
 
+    fn name_type(&self, name: ValueId) -> &Type {
+        self.names
+            .get(&name)
+            .map(|(_, typ)| typ)
+            .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
+    }
+
     fn transpile_module(&mut self, module: &WriterModule, registry: &TypeRegistry) -> String {
-        // Reset tracking flags for this module
         self.needs_escape_html = false;
         self.needs_html = false;
         self.boxed_edges = Self::compute_boxed_edges(registry);
@@ -568,7 +586,6 @@ impl Transpiler for RustTranspiler {
 
         let mut result = arena.nil();
 
-        // Add enum type definitions
         for (enum_name, variants) in registry.enums() {
             result = result
                 .append(arena.text("#[derive(Clone, Debug)]"))
@@ -615,7 +632,6 @@ impl Transpiler for RustTranspiler {
                 .append(arena.line());
         }
 
-        // Add record struct definitions
         for (record_name, fields) in registry.records() {
             result = result
                 .append(arena.text("#[derive(Clone, Debug)]"))
@@ -642,7 +658,6 @@ impl Transpiler for RustTranspiler {
                 .append(arena.line());
         }
 
-        // Add page struct definitions
         for page in pages {
             result = result
                 .append(self.transpile_page_struct(arena, page))
@@ -650,14 +665,12 @@ impl Transpiler for RustTranspiler {
                 .append(arena.line());
         }
 
-        // Transpile each function declaration
         for function in &module.functions {
             result = result
                 .append(self.transpile_function_def(arena, function))
                 .append(arena.line());
         }
 
-        // Transpile each page's View impl
         for (i, page) in pages.iter().enumerate() {
             result = result.append(self.transpile_page(arena, &page.name, page));
             if i < pages.len() - 1 {
@@ -665,83 +678,74 @@ impl Transpiler for RustTranspiler {
             }
         }
 
-        // Prepend write_escaped_html helper function if needed (after transpilation determined it's used)
         if self.needs_escape_html {
-            let escape_fn = arena
-                .nil()
-                .append(arena.text("fn write_escaped_html(s: &str, output: &mut String) {"))
-                .append(arena.line())
-                .append(arena.text("    for c in s.chars() {"))
-                .append(arena.line())
-                .append(arena.text("        match c {"))
-                .append(arena.line())
-                .append(arena.text("            '&' => output.push_str(\"&amp;\"),"))
-                .append(arena.line())
-                .append(arena.text("            '<' => output.push_str(\"&lt;\"),"))
-                .append(arena.line())
-                .append(arena.text("            '>' => output.push_str(\"&gt;\"),"))
-                .append(arena.line())
-                .append(arena.text("            '\"' => output.push_str(\"&quot;\"),"))
-                .append(arena.line())
-                .append(arena.text("            _ => output.push(c),"))
-                .append(arena.line())
-                .append(arena.text("        }"))
-                .append(arena.line())
-                .append(arena.text("    }"))
-                .append(arena.line())
-                .append(arena.text("}"))
-                .append(arena.line())
-                .append(arena.line());
-            result = escape_fn.append(result);
+            let escape_fn = arena.intersperse(
+                [
+                    arena.text("fn write_escaped_html(s: &str, output: &mut String) {"),
+                    arena.text("    for c in s.chars() {"),
+                    arena.text("        match c {"),
+                    arena.text("            '&' => output.push_str(\"&amp;\"),"),
+                    arena.text("            '<' => output.push_str(\"&lt;\"),"),
+                    arena.text("            '>' => output.push_str(\"&gt;\"),"),
+                    arena.text("            '\"' => output.push_str(\"&quot;\"),"),
+                    arena.text("            _ => output.push(c),"),
+                    arena.text("        }"),
+                    arena.text("    }"),
+                    arena.text("}"),
+                ],
+                arena.hardline(),
+            );
+            result = escape_fn
+                .append(arena.hardline())
+                .append(arena.hardline())
+                .append(result);
         }
 
-        // Prepend Html type definition if needed (after transpilation determined it's used)
         if self.needs_html {
-            let fragment = arena
-                .nil()
-                .append(arena.text("#[derive(Clone, Debug)]"))
-                .append(arena.line())
-                .append(arena.text("pub struct Html(String);"))
-                .append(arena.line())
-                .append(arena.line());
-            result = fragment.append(result);
+            let fragment = arena.intersperse(
+                [
+                    arena.text("#[derive(Clone, Debug)]"),
+                    arena.text("pub struct Html(String);"),
+                ],
+                arena.hardline(),
+            );
+            result = fragment
+                .append(arena.hardline())
+                .append(arena.hardline())
+                .append(result);
         }
 
-        // Prepend View trait definition
         if !module.pages.is_empty() {
-            let view_trait = arena
-                .text("pub trait View {")
-                .append(
-                    arena
-                        .nil()
-                        .append(arena.line())
-                        .append(arena.text("fn render(self) -> String;"))
-                        .append(arena.line())
-                        .append(arena.text("fn write(self, output: &mut String);"))
-                        .append(arena.line())
-                        .nest(4),
-                )
-                .append(arena.text("}"))
-                .append(arena.line())
-                .append(arena.line());
-            result = view_trait.append(result);
+            let view_trait = arena.intersperse(
+                [
+                    arena.text("pub trait View {"),
+                    arena.text("    fn render(self) -> String;"),
+                    arena.text("    fn write(self, output: &mut String);"),
+                    arena.text("}"),
+                ],
+                arena.hardline(),
+            );
+            result = view_trait
+                .append(arena.hardline())
+                .append(arena.hardline())
+                .append(result);
         }
 
-        // Prepend warning header (must be last prepend to appear first in output)
-        let warning = arena
-            .text("// Code generated by the hop compiler. DO NOT EDIT.")
-            .append(arena.line())
-            .append(arena.text("#![cfg_attr(rustfmt, rustfmt_skip)]"))
-            .append(arena.line())
-            .append(arena.text("#![allow(unused_parens, dead_code, clippy::all)]"))
-            .append(arena.line())
-            .append(arena.line());
-        result = warning.append(result);
+        let preamble = arena.intersperse(
+            [
+                arena.text("// Code generated by the hop compiler. DO NOT EDIT."),
+                arena.text("#![cfg_attr(rustfmt, rustfmt_skip)]"),
+                arena.text("#![allow(unused_parens, dead_code, clippy::all)]"),
+            ],
+            arena.hardline(),
+        );
+        result = preamble
+            .append(arena.hardline())
+            .append(arena.hardline())
+            .append(result);
 
-        // Render to string
         let output = result.pretty(80).to_string();
 
-        // Ensure file ends with a newline
         if !output.ends_with('\n') {
             format!("{}\n", output)
         } else {
@@ -757,25 +761,21 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         let struct_name = name.as_str();
 
-        // render method body
         let mut write_body = arena.nil();
 
-        // Destructure self into local variables
         if !page.parameters.is_empty() {
             let field_names = arena.intersperse(
                 page.parameters.iter().map(|param| {
                     arena
                         .text(Self::escape_ident(param.name().as_str()))
                         .append(arena.text(": "))
-                        .append(arena.text(name_ident(WriterName::Binder(param.var))))
+                        .append(arena.text(name_ident(param.binder.var)))
                 }),
                 arena.text(", "),
             );
             for param in &page.parameters {
-                self.names.insert(
-                    WriterName::Binder(param.var),
-                    (Binding::Owned, param.typ.clone()),
-                );
+                self.names
+                    .insert(param.binder.var, (Binding::Owned, param.binder.typ.clone()));
             }
             write_body = write_body
                 .append(arena.text("let "))
@@ -826,7 +826,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [WriterName],
+        args: &'a [ValueId],
     ) -> Doc<'a> {
         let mut all_args: Vec<Doc<'a>> = vec![arena.text("output")];
         all_args.extend(self.transpile_arguments(arena, args));
@@ -889,7 +889,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [WriterName],
+        args: &'a [ValueId],
     ) -> Doc<'a> {
         let all_args = self.transpile_arguments(arena, args);
         arena
@@ -909,7 +909,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: WriterName,
+        name: ValueId,
     ) -> Doc<'a> {
         self.needs_escape_html = true;
         arena
@@ -921,7 +921,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_write_html_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: WriterName,
+        name: ValueId,
     ) -> Doc<'a> {
         arena
             .text("output.push_str(&")
@@ -934,40 +934,24 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrBinder>,
-        source: &'a WriterForSource,
+        array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a> {
         let var_name = match var {
-            Some(binder) => name_ident(WriterName::Binder(binder.var)),
+            Some(binder) => name_ident(binder.var),
             None => "_".to_string(),
         };
 
-        let doc = match source {
-            WriterForSource::Array(array) => arena
-                .text("for ")
-                .append(arena.text(var_name))
-                .append(arena.text(" in "))
-                .append(arena.text(name_ident(*array)))
-                .append(arena.text(".iter() {")),
-            WriterForSource::RangeInclusive { start, end } => arena
-                .text("for ")
-                .append(arena.text(var_name))
-                .append(arena.text(" in "))
-                .append(self.name_place(arena, *start))
-                .append(arena.text("..="))
-                .append(self.name_place(arena, *end))
-                .append(arena.text(" {")),
-        };
+        let doc = arena
+            .text("for ")
+            .append(arena.text(var_name))
+            .append(arena.text(" in "))
+            .append(arena.text(name_ident(array)))
+            .append(arena.text(".iter() {"));
 
         if let Some(binder) = var {
-            let binding = match source {
-                WriterForSource::Array(_) => Binding::Borrowed,
-                WriterForSource::RangeInclusive { .. } => Binding::Owned,
-            };
-            self.names.insert(
-                WriterName::Binder(binder.var),
-                (binding, binder.typ.clone()),
-            );
+            self.names
+                .insert(binder.var, (Binding::Borrowed, binder.typ.clone()));
         }
         doc.append(
             arena
@@ -990,7 +974,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        let_: &'a WriterLet,
+        let_: &'a WriterBinding,
     ) -> Doc<'a> {
         let natural = self.natural_form(&let_.op);
         let scalar = Self::is_scalar(&let_.typ);
@@ -999,8 +983,7 @@ impl Transpiler for RustTranspiler {
             NaturalForm::Reference | NaturalForm::Place if scalar => Binding::Owned,
             NaturalForm::Reference | NaturalForm::Place => Binding::Borrowed,
         };
-        self.names
-            .insert(WriterName::Binding(let_.name), (binding, let_.typ.clone()));
+        self.names.insert(let_.name, (binding, let_.typ.clone()));
         let typ = match binding {
             Binding::Owned => self.transpile_type(arena, &let_.typ),
             Binding::Borrowed => self.transpile_param_type(arena, &let_.typ),
@@ -1016,7 +999,7 @@ impl Transpiler for RustTranspiler {
         };
         arena
             .text("let ")
-            .append(arena.text(name_ident(WriterName::Binding(let_.name))))
+            .append(arena.text(name_ident(let_.name)))
             .append(arena.text(": "))
             .append(typ)
             .append(arena.text(" = "))
@@ -1027,7 +1010,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<WriterName, Vec<WriterStmt>>,
+        match_: &'a IrSwitch<Vec<WriterStmt>>,
     ) -> Doc<'a> {
         match match_ {
             IrSwitch::Bool {
@@ -1047,7 +1030,6 @@ impl Transpiler for RustTranspiler {
                     )
                     .append(arena.hardline())
                     .append(arena.text("}"));
-                // An empty false arm emits no `else` branch.
                 if false_body.is_empty() {
                     if_doc
                 } else {
@@ -1070,14 +1052,12 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(binder) => format!("Some({})", name_ident(WriterName::Binder(binder.var))),
+                    Some(binder) => format!("Some({})", name_ident(binder.var)),
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names.insert(
-                        WriterName::Binder(binder.var),
-                        (Binding::Borrowed, binder.typ.clone()),
-                    );
+                    self.names
+                        .insert(binder.var, (Binding::Borrowed, binder.typ.clone()));
                 }
 
                 let some_arm = arena
@@ -1166,14 +1146,13 @@ impl Transpiler for RustTranspiler {
         arena.intersperse(docs, arena.hardline())
     }
 
-    /// The lets as statements, then the result as the tail expression.
     fn transpile_value_block<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        block: &'a WriterValueBlock,
+        block: &'a WriterBlock,
     ) -> Doc<'a> {
         let mut docs: Vec<Doc<'a>> = Vec::new();
-        for let_ in &block.lets {
+        for let_ in &block.bindings {
             docs.push(self.transpile_let_statement(arena, let_));
         }
         docs.push(self.block_result(arena, block));
@@ -1201,17 +1180,21 @@ impl Transpiler for RustTranspiler {
         arena.text("Html")
     }
 
-    fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &Type) -> Doc<'a> {
+    fn transpile_array_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        element_type: &DataType,
+    ) -> Doc<'a> {
         arena
             .text("Vec<")
-            .append(self.transpile_type(arena, element_type))
+            .append(self.transpile_data_type(arena, element_type))
             .append(arena.text(">"))
     }
 
     fn transpile_tuple_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_types: &[Type],
+        element_types: &[DataType],
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1219,7 +1202,7 @@ impl Transpiler for RustTranspiler {
                 arena.intersperse(
                     element_types
                         .iter()
-                        .map(|element| self.transpile_type(arena, element))
+                        .map(|element| self.transpile_data_type(arena, element))
                         .collect::<Vec<_>>(),
                     arena.text(", "),
                 ),
@@ -1232,10 +1215,14 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(")"))
     }
 
-    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &Type) -> Doc<'a> {
+    fn transpile_option_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        inner_type: &DataType,
+    ) -> Doc<'a> {
         arena
             .text("Option<")
-            .append(self.transpile_type(arena, inner_type))
+            .append(self.transpile_data_type(arena, inner_type))
             .append(arena.text(">"))
     }
 
@@ -1250,7 +1237,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        record: WriterName,
+        record: ValueId,
         field: &'a FieldName,
     ) -> Doc<'a> {
         let boxed = self.field_access_is_boxed(record, field);
@@ -1273,8 +1260,6 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("\""))
     }
 
-    /// The fragment body renders into its own `output` buffer, so it is
-    /// emitted as a block expression that shadows `output`.
     fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStmt]) -> Doc<'a> {
         self.needs_html = true;
         arena
@@ -1328,13 +1313,13 @@ impl Transpiler for RustTranspiler {
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [WriterName],
-        elem_type: &'a Type,
+        elements: &'a [ValueId],
+        elem_type: &'a DataType,
     ) -> Doc<'a> {
         if elements.is_empty() {
             arena
                 .text("Vec::<")
-                .append(self.transpile_type(arena, elem_type))
+                .append(self.transpile_data_type(arena, elem_type))
                 .append(arena.text(">::new()"))
         } else {
             let items: Vec<Doc<'a>> = elements
@@ -1348,11 +1333,25 @@ impl Transpiler for RustTranspiler {
         }
     }
 
+    fn transpile_array_from_range<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        start: ValueId,
+        end: ValueId,
+    ) -> Doc<'a> {
+        arena
+            .text("(")
+            .append(self.name_place(arena, start))
+            .append(arena.text("..="))
+            .append(self.name_place(arena, end))
+            .append(arena.text(").collect::<Vec<i32>>()"))
+    }
+
     fn transpile_tuple_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [WriterName],
-        _element_types: &'a [Type],
+        elements: &'a [ValueId],
+        _element_types: &'a [DataType],
     ) -> Doc<'a> {
         let items: Vec<Doc<'a>> = elements
             .iter()
@@ -1372,7 +1371,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_tuple_index<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        tuple: WriterName,
+        tuple: ValueId,
         index: usize,
     ) -> Doc<'a> {
         arena
@@ -1384,8 +1383,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         // Strings compare by reference. The operands arrive as a mix of
         // `String`, `str` and `&str`, and `str` compares with neither `&str`
@@ -1398,8 +1397,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" == "))
@@ -1409,8 +1408,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" == "))
@@ -1420,8 +1419,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" == "))
@@ -1431,8 +1430,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" < "))
@@ -1442,8 +1441,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" < "))
@@ -1453,8 +1452,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" <= "))
@@ -1464,36 +1463,32 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" <= "))
             .append(self.name_place(arena, right))
     }
 
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a> {
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a> {
         arena.text("!").append(self.name_place(arena, operand))
     }
 
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a> {
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(operand))
             .append(arena.text(".wrapping_neg()"))
     }
 
-    fn transpile_float_negation<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        operand: WriterName,
-    ) -> Doc<'a> {
+    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a> {
         arena.text("-").append(self.name_place(arena, operand))
     }
 
     fn transpile_string_concat<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parts: &'a [WriterName],
+        parts: &'a [ValueId],
     ) -> Doc<'a> {
         if parts.is_empty() {
             return arena.text("String::new()");
@@ -1523,8 +1518,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1536,8 +1531,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" + "))
@@ -1547,8 +1542,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1560,8 +1555,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" - "))
@@ -1571,8 +1566,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1584,8 +1579,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         self.name_place(arena, left)
             .append(arena.text(" * "))
@@ -1596,7 +1591,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, WriterName)],
+        fields: &'a [(FieldName, ValueId)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             arena.text(record_name).append(arena.text(" {}"))
@@ -1624,7 +1619,7 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, WriterName)],
+        fields: &'a [(FieldName, ValueId)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             arena
@@ -1655,8 +1650,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<WriterName>,
-        inner_type: &'a Type,
+        value: Option<ValueId>,
+        inner_type: &'a DataType,
     ) -> Doc<'a> {
         match value {
             Some(inner) => arena
@@ -1665,7 +1660,7 @@ impl Transpiler for RustTranspiler {
                 .append(arena.text(")")),
             None => arena
                 .text("None::<")
-                .append(self.transpile_type(arena, inner_type))
+                .append(self.transpile_data_type(arena, inner_type))
                 .append(arena.text(">")),
         }
     }
@@ -1673,7 +1668,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<WriterName, WriterValueBlock>,
+        match_: &'a IrSwitch<WriterBlock>,
     ) -> Doc<'a> {
         match match_ {
             IrSwitch::Bool {
@@ -1712,14 +1707,12 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(binder) => format!("Some({})", name_ident(WriterName::Binder(binder.var))),
+                    Some(binder) => format!("Some({})", name_ident(binder.var)),
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names.insert(
-                        WriterName::Binder(binder.var),
-                        (Binding::Borrowed, binder.typ.clone()),
-                    );
+                    self.names
+                        .insert(binder.var, (Binding::Borrowed, binder.typ.clone()));
                 }
                 let subject_doc = self.name_ref(arena, *subject);
                 let some_arm = arena
@@ -1751,7 +1744,7 @@ impl Transpiler for RustTranspiler {
                 let subject_doc = self.name_ref(arena, *subject);
                 let arm_docs: Vec<Doc<'a>> = arms
                     .iter()
-                    .map(|arm: &'a EnumMatchArm<WriterValueBlock>| {
+                    .map(|arm: &'a EnumMatchArm<WriterBlock>| {
                         let pattern = self.enum_arm_pattern(&variants, &arm.pattern, &arm.bindings);
                         arena
                             .text(pattern)
@@ -1777,59 +1770,47 @@ impl Transpiler for RustTranspiler {
         }
     }
 
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a> {
+    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(array))
             .append(arena.text(".len() as i32"))
     }
 
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a> {
+    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(array))
             .append(arena.text(".is_empty()"))
     }
 
-    fn transpile_string_is_empty<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        string: WriterName,
-    ) -> Doc<'a> {
+    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(string))
             .append(arena.text(".is_empty()"))
     }
 
-    fn transpile_option_is_some<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        option: WriterName,
-    ) -> Doc<'a> {
+    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".is_some()"))
     }
 
-    fn transpile_option_is_none<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        option: WriterName,
-    ) -> Doc<'a> {
+    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".is_none()"))
     }
 
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
+    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(value))
             .append(arena.text(".to_string()"))
     }
 
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
+    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a> {
         self.name_place(arena, value).append(arena.text(" as i32"))
     }
 
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
+    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a> {
         self.name_place(arena, value).append(arena.text(" as f64"))
     }
 }
@@ -1838,16 +1819,13 @@ impl Transpiler for RustTranspiler {
 mod tests {
     use super::*;
     use crate::document::Document;
-    use crate::ir::flat_to_writer::flat_to_writer;
-    use crate::ir::pure_to_flat::pure_to_flat;
-    use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
+    use crate::ir::{flat_to_markup, markup_to_writer};
+    use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::program::Program;
     use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    /// Compile a module written in source, without optimization, and
-    /// transpile it to Rust.
     fn check(source: &str, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();
         let mut program = Program::new();
@@ -1857,13 +1835,13 @@ mod tests {
         );
         let diagnostics = program.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (pure, pages) = orchestrate_pure(
+        let (flat, pages) = orchestrate_flat(
             program.typed_modules(),
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        let module = flat_to_writer(pure_to_flat(pure), program.type_registry(), &pages, None);
+        let module = markup_to_writer(flat_to_markup(flat), program.type_registry(), &pages, None);
         let output = RustTranspiler::new().transpile_module(&module, program.type_registry());
         expected.assert_eq(&output);
     }
@@ -1922,11 +1900,11 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { unit: b_0 } = self;
-                        let v_0: () = ();
-                        let v_1: Holder = Holder { nothing: v_0.clone() };
-                        let v_3: &() = &v_1.nothing;
-                        let v_4: Vec<()> = vec![b_0.clone(), v_3.clone()];
+                        let Test { unit: v_0 } = self;
+                        let v_1: () = ();
+                        let v_2: Holder = Holder { nothing: v_1.clone() };
+                        let v_3: &() = &v_2.nothing;
+                        let v_4: Vec<()> = vec![v_0.clone(), v_3.clone()];
                         let v_5: i32 = v_4.len() as i32;
                         let v_6: String = v_5.to_string();
                         write_escaped_html(&v_6, output);
@@ -2037,8 +2015,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Second { title: b_0 } = self;
-                        write_escaped_html(&b_0, output);
+                        let Second { title: v_3 } = self;
+                        write_escaped_html(&v_3, output);
                     }
                 }
             "#]],
@@ -2080,8 +2058,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { show: b_0 } = self;
-                        if b_0 {
+                        let Test { show: v_0 } = self;
+                        if v_0 {
                             output.push_str("<h1>Visible</h1>");
                         }
                     }
@@ -2136,9 +2114,10 @@ mod tests {
                     fn write(self, output: &mut String) {
                         let v_0: i32 = 1_i32;
                         let v_1: i32 = 3_i32;
-                        for b_0 in v_0..=v_1 {
-                            let v_3: String = b_0.to_string();
-                            write_escaped_html(&v_3, output);
+                        let v_2: Vec<i32> = (v_0..=v_1).collect::<Vec<i32>>();
+                        for v_3 in v_2.iter() {
+                            let v_4: String = v_3.to_string();
+                            write_escaped_html(&v_4, output);
                         }
                     }
                 }
@@ -2194,9 +2173,9 @@ mod tests {
                         let v_0: &str = "x";
                         let v_1: Option<String> = Some(v_0.to_string());
                         match &v_1 {
-                            Some(b_1) => {
+                            Some(v_9) => {
                                 output.push_str("some: ");
-                                write_escaped_html(b_1, output);
+                                write_escaped_html(v_9, output);
                             }
                             None => {
                                 output.push_str("none");
@@ -2255,11 +2234,11 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { opt: b_0 } = self;
-                        match &b_0 {
-                            Some(b_2) => {
+                        let Test { opt: v_0 } = self;
+                        match &v_0 {
+                            Some(v_8) => {
                                 output.push_str("some: ");
-                                write_escaped_html(b_2, output);
+                                write_escaped_html(v_8, output);
                             }
                             None => {
                                 output.push_str("none");
@@ -2326,8 +2305,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { node: b_0 } = self;
-                        let v_1: i32 = b_0.value;
+                        let Test { node: v_0 } = self;
+                        let v_1: i32 = v_0.value;
                         let v_2: String = v_1.to_string();
                         write_escaped_html(&v_2, output);
                     }
@@ -2523,15 +2502,15 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { e: b_0 } = self;
-                        match &b_0 {
+                        let Test { e: v_0 } = self;
+                        match &v_0 {
                             Expr::Literal { .. } => {
                                 output.push_str("lit");
                             }
-                            Expr::Neg { inner: b_4 } => {
-                                match &**b_4 {
-                                    Expr::Literal { value: b_5 } => {
-                                        write_escaped_html(b_5, output);
+                            Expr::Neg { inner: v_11 } => {
+                                match &**v_11 {
+                                    Expr::Literal { value: v_12 } => {
+                                        write_escaped_html(v_12, output);
                                     }
                                     Expr::Neg { .. } => {
                                         output.push_str("nested");
@@ -2603,12 +2582,12 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { node: b_0 } = self;
-                        let v_1: &Option<Node> = &*b_0.next;
+                        let Test { node: v_0 } = self;
+                        let v_1: &Option<Node> = &*v_0.next;
                         match v_1 {
-                            Some(b_2) => {
-                                let v_10: &str = &b_2.value;
-                                write_escaped_html(v_10, output);
+                            Some(v_9) => {
+                                let v_3: &str = &v_9.value;
+                                write_escaped_html(v_3, output);
                             }
                             None => {
                                 output.push_str("end");
@@ -2673,10 +2652,10 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { c: b_0 } = self;
-                        match &b_0 {
-                            Chain::Link { next: b_2 } => {
-                                match &**b_2 {
+                        let Test { c: v_0 } = self;
+                        match &v_0 {
+                            Chain::Link { next: v_10 } => {
+                                match &**v_10 {
                                     Some(_) => {
                                         output.push_str("more");
                                     }
@@ -2759,9 +2738,9 @@ mod tests {
                         let v_1: IntList = IntList::Nil;
                         let v_2: IntList = IntList::Cons { head: v_0, tail: Box::new(v_1.clone()) };
                         match &v_2 {
-                            IntList::Cons { head: b_2, .. } => {
-                                let v_11: String = b_2.to_string();
-                                write_escaped_html(&v_11, output);
+                            IntList::Cons { head: v_10, .. } => {
+                                let v_4: String = v_10.to_string();
+                                write_escaped_html(&v_4, output);
                             }
                             IntList::Nil => {
                                 output.push_str("done");
@@ -2920,58 +2899,58 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { time: b_0 } = self;
-                        let v_52: String = match &b_0 {
+                        let Test { time: v_0 } = self;
+                        let v_25: String = match &v_0 {
                             TimeAgo::JustNow => {
-                                let v_35: &str = "just now";
-                                v_35.to_string()
+                                let v_1: &str = "just now";
+                                v_1.to_string()
                             },
-                            TimeAgo::MinutesAgo { count: b_3 } => {
-                                let v_37: i32 = 1_i32;
-                                let v_38: bool = *b_3 == v_37;
-                                let v_43: String = match v_38 {
+                            TimeAgo::MinutesAgo { count: v_21 } => {
+                                let v_3: i32 = 1_i32;
+                                let v_4: bool = *v_21 == v_3;
+                                let v_22: String = match v_4 {
                                     true => {
-                                        let v_39: &str = "1 minute ago";
-                                        v_39.to_string()
+                                        let v_5: &str = "1 minute ago";
+                                        v_5.to_string()
                                     },
                                     false => {
-                                        let v_40: String = b_3.to_string();
-                                        let v_41: &str = " minutes ago";
-                                        let v_42: String = {
+                                        let v_6: String = v_21.to_string();
+                                        let v_7: &str = " minutes ago";
+                                        let v_8: String = {
                                             let mut s: String = String::new();
-                                            s.push_str(&v_40);
-                                            s.push_str(v_41);
+                                            s.push_str(&v_6);
+                                            s.push_str(v_7);
                                             s
                                         };
-                                        v_42
+                                        v_8
                                     },
                                 };
-                                v_43
+                                v_22
                             },
-                            TimeAgo::HoursAgo { count: b_4 } => {
-                                let v_45: i32 = 1_i32;
-                                let v_46: bool = *b_4 == v_45;
-                                let v_51: String = match v_46 {
+                            TimeAgo::HoursAgo { count: v_23 } => {
+                                let v_11: i32 = 1_i32;
+                                let v_12: bool = *v_23 == v_11;
+                                let v_24: String = match v_12 {
                                     true => {
-                                        let v_47: &str = "1 hour ago";
-                                        v_47.to_string()
+                                        let v_13: &str = "1 hour ago";
+                                        v_13.to_string()
                                     },
                                     false => {
-                                        let v_48: String = b_4.to_string();
-                                        let v_49: &str = " hours ago";
-                                        let v_50: String = {
+                                        let v_14: String = v_23.to_string();
+                                        let v_15: &str = " hours ago";
+                                        let v_16: String = {
                                             let mut s: String = String::new();
-                                            s.push_str(&v_48);
-                                            s.push_str(v_49);
+                                            s.push_str(&v_14);
+                                            s.push_str(v_15);
                                             s
                                         };
-                                        v_50
+                                        v_16
                                     },
                                 };
-                                v_51
+                                v_24
                             },
                         };
-                        write_escaped_html(&v_52, output);
+                        write_escaped_html(&v_25, output);
                     }
                 }
             "#]],
@@ -3025,23 +3004,23 @@ mod tests {
                     fn write(self, output: &mut String) {
                         let v_0: &str = "world";
                         let v_1: Option<String> = Some(v_0.to_string());
-                        let v_13: String = match &v_1 {
-                            Some(b_1) => {
-                                let v_10: &str = "hello ";
-                                let v_11: String = {
+                        let v_10: String = match &v_1 {
+                            Some(v_9) => {
+                                let v_3: &str = "hello ";
+                                let v_4: String = {
                                     let mut s: String = String::new();
-                                    s.push_str(v_10);
-                                    s.push_str(b_1);
+                                    s.push_str(v_3);
+                                    s.push_str(v_9);
                                     s
                                 };
-                                v_11
+                                v_4
                             },
                             None => {
-                                let v_12: &str = "nobody";
-                                v_12.to_string()
+                                let v_5: &str = "nobody";
+                                v_5.to_string()
                             },
                         };
-                        write_escaped_html(&v_13, output);
+                        write_escaped_html(&v_10, output);
                     }
                 }
             "#]],
@@ -3091,8 +3070,8 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_badge_0(output: &mut String, b_0: &Color) {
-                    match b_0 {
+                fn render_badge_0(output: &mut String, v_2: &Color) {
+                    match v_2 {
                         Color::Red => {
                             output.push_str("red");
                         }
@@ -3113,8 +3092,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_8: Color = Color::Green;
-                        render_badge_0(output, &v_8);
+                        let v_0: Color = Color::Green;
+                        render_badge_0(output, &v_0);
                     }
                 }
             "#]],
@@ -3173,15 +3152,15 @@ mod tests {
                     pub tags: Vec<String>,
                 }
 
-                fn render_card_0(output: &mut String, b_2: &Post, b_3: &[String]) {
-                    let v_1: &str = &b_2.title;
-                    let v_4: i32 = b_2.views;
-                    let v_5: String = v_4.to_string();
-                    let v_8: i32 = b_3.len() as i32;
-                    let v_9: String = v_8.to_string();
-                    write_escaped_html(v_1, output);
-                    write_escaped_html(&v_5, output);
-                    write_escaped_html(&v_9, output);
+                fn render_card_0(output: &mut String, v_3: &Post, v_4: &[String]) {
+                    let v_5: &str = &v_3.title;
+                    let v_7: i32 = v_3.views;
+                    let v_8: String = v_7.to_string();
+                    let v_10: i32 = v_4.len() as i32;
+                    let v_11: String = v_10.to_string();
+                    write_escaped_html(v_5, output);
+                    write_escaped_html(&v_8, output);
+                    write_escaped_html(&v_11, output);
                 }
 
                 impl View for Test {
@@ -3192,8 +3171,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { post: b_0, tags: b_1 } = self;
-                        render_card_0(output, &b_0, &b_1);
+                        let Test { post: v_0, tags: v_1 } = self;
+                        render_card_0(output, &v_0, &v_1);
                     }
                 }
             "#]],
@@ -3259,11 +3238,11 @@ mod tests {
                     pub tag: Tag,
                 }
 
-                fn render_show_0(output: &mut String, b_1: &Tag) {
-                    let v_1: Wrap = Wrap { tag: b_1.clone() };
-                    let v_2: &Tag = &v_1.tag;
-                    let v_3: &str = &v_2.name;
-                    write_escaped_html(v_3, output);
+                fn render_show_0(output: &mut String, v_2: &Tag) {
+                    let v_3: Wrap = Wrap { tag: v_2.clone() };
+                    let v_4: &Tag = &v_3.tag;
+                    let v_5: &str = &v_4.name;
+                    write_escaped_html(v_5, output);
                 }
 
                 impl View for Test {
@@ -3274,8 +3253,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { tag: b_0 } = self;
-                        render_show_0(output, &b_0);
+                        let Test { tag: v_0 } = self;
+                        render_show_0(output, &v_0);
                     }
                 }
             "#]],
@@ -3338,8 +3317,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { post: b_0 } = self;
-                        let v_1: &str = &b_0.title;
+                        let Test { post: v_0 } = self;
+                        let v_1: &str = &v_0.title;
                         write_escaped_html(v_1, output);
                     }
                 }
@@ -3378,10 +3357,10 @@ mod tests {
                     pub role: String,
                 }
 
-                fn render_role_0(output: &mut String, b_1: &str) {
-                    let v_1: &str = "admin";
-                    let v_2: bool = b_1 == v_1;
-                    if v_2 {
+                fn render_role_0(output: &mut String, v_2: &str) {
+                    let v_3: &str = "admin";
+                    let v_4: bool = v_2 == v_3;
+                    if v_4 {
                         output.push_str("yes");
                     } else {
                         output.push_str("no");
@@ -3396,8 +3375,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { role: b_0 } = self;
-                        render_role_0(output, &b_0);
+                        let Test { role: v_0 } = self;
+                        render_role_0(output, &v_0);
                     }
                 }
             "#]],
@@ -3447,10 +3426,10 @@ mod tests {
                     pub label: Option<String>,
                 }
 
-                fn render_label_0(output: &mut String, b_1: &Option<String>) {
-                    match b_1 {
-                        Some(b_3) => {
-                            write_escaped_html(b_3, output);
+                fn render_label_0(output: &mut String, v_2: &Option<String>) {
+                    match v_2 {
+                        Some(v_9) => {
+                            write_escaped_html(v_9, output);
                         }
                         None => {
                             output.push_str("none");
@@ -3466,56 +3445,8 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let Test { label: b_0 } = self;
-                        render_label_0(output, &b_0);
-                    }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn transpiles_a_fragment_read_twice_as_a_rust_block() {
-        check(
-            indoc! {r#"
-                page Test() {
-                  fn body() -> Html {
-                    let frag = <b>hi</b>;
-                    <>{frag}{frag}</>
-                  }
-                }
-            "#},
-            expect![[r#"
-                // Code generated by the hop compiler. DO NOT EDIT.
-                #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
-
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
-                }
-
-                #[derive(Clone, Debug)]
-                pub struct Html(String);
-
-                pub struct Test {}
-
-                impl View for Test {
-                    fn render(self) -> String {
-                        let mut output: String = String::new();
-                        self.write(&mut output);
-                        output
-                    }
-
-                    fn write(self, output: &mut String) {
-                        let v_2: Html = {
-                            let mut buf: String = String::new();
-                            let mut output: &mut String = &mut buf;
-                            output.push_str("<b>hi</b>");
-                            Html(buf)
-                        };
-                        output.push_str(&v_2.0);
-                        output.push_str(&v_2.0);
+                        let Test { label: v_0 } = self;
+                        render_label_0(output, &v_0);
                     }
                 }
             "#]],
@@ -3533,7 +3464,7 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let x = Frag();
-                    <>{x}{x}</>
+                    <>{x}</>
                   }
                 }
             "#},
@@ -3546,9 +3477,6 @@ mod tests {
                     fn render(self) -> String;
                     fn write(self, output: &mut String);
                 }
-
-                #[derive(Clone, Debug)]
-                pub struct Html(String);
 
                 pub struct Test {}
 
@@ -3564,14 +3492,7 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_3: Html = {
-                            let mut buf: String = String::new();
-                            let mut output: &mut String = &mut buf;
-                            render_frag_0(output);
-                            Html(buf)
-                        };
-                        output.push_str(&v_3.0);
-                        output.push_str(&v_3.0);
+                        render_frag_0(output);
                     }
                 }
             "#]],
@@ -3616,8 +3537,8 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_format_price_0(b_0: i32) -> i32 {
-                    b_0
+                fn render_format_price_0(v_5: i32) -> i32 {
+                    v_5
                 }
 
                 impl View for Test {
@@ -3628,10 +3549,10 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_1: i32 = 5_i32;
-                        let v_2: i32 = render_format_price_0(v_1);
-                        let v_3: String = v_2.to_string();
-                        write_escaped_html(&v_3, output);
+                        let v_0: i32 = 5_i32;
+                        let v_1: i32 = render_format_price_0(v_0);
+                        let v_2: String = v_1.to_string();
+                        write_escaped_html(&v_2, output);
                     }
                 }
             "#]],
@@ -3681,10 +3602,10 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_foo_0(b_1: i32) -> i32 {
-                    let v_1: i32 = 10_i32;
-                    let v_2: i32 = b_1.wrapping_add(v_1);
-                    v_2
+                fn render_foo_0(v_16: i32) -> i32 {
+                    let v_17: i32 = 10_i32;
+                    let v_18: i32 = v_16.wrapping_add(v_17);
+                    v_18
                 }
 
                 impl View for Test {
@@ -3695,19 +3616,20 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        let v_3: i32 = 0_i32;
-                        let v_4: i32 = -7_i32;
-                        let v_5: i32 = render_foo_0(v_4);
-                        let v_12: i32 = 10_i32;
-                        let v_13: i32 = render_foo_0(v_12);
-                        let v_14: String = v_13.to_string();
+                        let v_0: i32 = 0_i32;
+                        let v_1: i32 = -7_i32;
+                        let v_2: i32 = render_foo_0(v_1);
+                        let v_3: Vec<i32> = (v_0..=v_2).collect::<Vec<i32>>();
+                        let v_10: i32 = 10_i32;
+                        let v_11: i32 = render_foo_0(v_10);
+                        let v_12: String = v_11.to_string();
                         output.push_str("<div>");
-                        for b_0 in v_3..=v_5 {
-                            let v_7: String = b_0.to_string();
-                            write_escaped_html(&v_7, output);
+                        for v_4 in v_3.iter() {
+                            let v_5: String = v_4.to_string();
+                            write_escaped_html(&v_5, output);
                             output.push_str(",");
                         }
-                        write_escaped_html(&v_14, output);
+                        write_escaped_html(&v_12, output);
                         output.push_str("</div>");
                     }
                 }

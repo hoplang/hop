@@ -1,38 +1,34 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
-use crate::hop::typing::{ComparableType, EquatableType, NumericType};
-use crate::ir::binder_id::BinderId;
+use rpds::HashTrieMap;
+
 use crate::ir::document_shell::DocumentShell;
-use crate::ir::flat_module::{
-    FlatAttribute, FlatBlock, FlatForSource, FlatFunctionDeclaration, FlatModule, FlatOp,
-};
-use crate::ir::ir_binary_op::IrBinaryOp;
+use crate::ir::flat_module::{FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
+use crate::ir::ir_data_op::IrDataOp;
+use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_page::IrPage;
-use crate::ir::ir_unary_op::IrUnaryOp;
+use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
+use crate::ir::runtime::html_node::{HtmlAttribute, HtmlNode, write_html};
+use crate::ir::runtime::value::{MAX_ARRAY_LENGTH, Value};
+use crate::ir::value_id::ValueId;
+use crate::symbols::attribute_name::AttributeName;
+use crate::symbols::type_name::TypeName;
+
 /// The most function frames that may be active at once. A call that would
 /// open one more fails with a recursion limit error, so a function that
 /// never stops calling itself reports an error instead of overflowing the
 /// stack.
 pub const MAX_CALL_DEPTH: usize = 12;
-use crate::ir::runtime::html_node::{HtmlAttribute, HtmlNode, write_html};
-use crate::ir::runtime::value::Value;
-use crate::ir::value_id::ValueId;
-use crate::symbols::attribute_name::AttributeName;
-use crate::symbols::type_name::TypeName;
 
-/// The values of the bindings made so far in one function frame. A block
-/// removes its bindings when it ends, so a loop body binds them afresh on
-/// every iteration.
-type Names = HashMap<ValueId, Value>;
+const ARRAY_LENGTH_LIMIT_ERROR: EvalError = EvalError::ArrayLengthLimit {
+    limit: MAX_ARRAY_LENGTH,
+};
 
-/// The values of the binders in scope in one function frame: its
-/// parameters, and the binders of the loops and arms being evaluated. An
-/// arm or a loop removes its binders when it ends.
-type Binders = HashMap<BinderId, Value>;
-
-/// Evaluate a page from the entry functions it points at, each called with
+/// Evaluate a page from the entrypoint functions it points at, each called with
 /// the arguments named by the page's parameters. With a shell, the page
 /// renders as a whole document, the shell around its head and its body.
 pub fn evaluate_page(
@@ -50,10 +46,10 @@ pub fn evaluate_page(
         })?;
 
     let head = match &page.head {
-        Some(head) => evaluate_entry(module, head, args.clone())?.unwrap_html(),
+        Some(head) => evaluate_entrypoint(module, head, args.clone())?.unwrap_html(),
         None => Vec::new(),
     };
-    let body = evaluate_entry(module, &page.body, args)?.unwrap_html();
+    let body = evaluate_entrypoint(module, &page.body, args)?.unwrap_html();
 
     let mut html = String::new();
     match shell {
@@ -74,7 +70,7 @@ pub fn evaluate_page(
 
 /// Evaluate a function called from outside the module, on the arguments
 /// named by its parameters.
-pub fn evaluate_entry(
+pub fn evaluate_entrypoint(
     module: &FlatModule,
     function: &IrFunction,
     mut args: HashMap<AttributeName, Value>,
@@ -83,9 +79,7 @@ pub fn evaluate_entry(
         .functions
         .iter()
         .find(|decl| decl.function.id == function.id)
-        .ok_or_else(|| EvalError::FunctionNotFound {
-            function: function.clone(),
-        })?;
+        .unwrap();
     let mut values = Vec::with_capacity(decl.parameters.len());
     for param in &decl.parameters {
         let value = args
@@ -117,215 +111,69 @@ pub fn evaluate_function(
     let decl = functions
         .iter()
         .find(|decl| decl.function.id == function.id)
-        .ok_or_else(|| EvalError::FunctionNotFound {
-            function: function.clone(),
-        })?;
-    if args.len() != decl.parameters.len() {
-        return Err(EvalError::ArgumentCount {
-            function: function.clone(),
-            expected: decl.parameters.len(),
-            found: args.len(),
-        });
-    }
-    // A recursive call binds the same names as the frame it was called
-    // from, so each frame has names of its own.
-    let mut names = Names::new();
-    let mut binders = Binders::new();
-    for (param, value) in decl.parameters.iter().zip(args) {
-        binders.insert(param.var, value);
-    }
-    evaluate_block(&decl.body, &mut names, &mut binders, functions, depth + 1)
+        .unwrap();
+    let env = decl
+        .parameters
+        .iter()
+        .map(|param| param.binder.var)
+        .zip(args)
+        .collect();
+    evaluate_block(&decl.body, &env, functions, depth + 1)
 }
 
-/// Evaluate the bindings in order and produce the result. The names bound
-/// by the block are gone again when it returns, and so is anything bound
-/// before an error.
+/// Evaluate the bindings in order and produce the result. The block extends
+/// a copy of `env` and leaves `env` as it is, so its bindings are out of
+/// scope again when it returns.
 fn evaluate_block(
     block: &FlatBlock,
-    names: &mut Names,
-    binders: &mut Binders,
+    env: &HashTrieMap<ValueId, Value>,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
 ) -> Result<Value, EvalError> {
+    let mut env = env.clone();
     for binding in &block.bindings {
-        let value = evaluate_op(&binding.op, names, binders, functions, depth)?;
-        names.insert(binding.name, value);
+        let value = evaluate_op(&binding.op, &env, functions, depth)?;
+        env.insert_mut(binding.binder.var, value);
     }
-    let result = names[&block.result].clone();
-    for binding in &block.bindings {
-        names.remove(&binding.name);
-    }
-    Ok(result)
+    Ok(env[&block.result].clone())
 }
 
 fn evaluate_op(
     op: &FlatOp,
-    names: &mut Names,
-    binders: &mut Binders,
+    env: &HashTrieMap<ValueId, Value>,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
 ) -> Result<Value, EvalError> {
     Ok(match op {
-        FlatOp::Read(binder) => binders[binder].clone(),
-
-        FlatOp::StringLiteral(value) => Value::String(value.to_string()),
-
-        FlatOp::IntLiteral(value) => Value::Int(*value),
-
-        FlatOp::FloatLiteral(value) => Value::Float(*value),
-
-        FlatOp::BoolLiteral(value) => Value::Bool(*value),
+        FlatOp::Data(op) => evaluate_data_op(op, env)?,
 
         FlatOp::HtmlText(content) => Value::Html(vec![HtmlNode::Text(content.to_string())]),
 
-        FlatOp::FieldAccess { record, field } => {
-            let record = names[record].clone().unwrap_record();
-            let (_, value) = record
-                .into_iter()
-                .find(|(name, _)| name == field)
-                .unwrap_or_else(|| panic!("Field '{}' not found in record", field));
-            value
+        FlatOp::HtmlEscape(string) => {
+            Value::Html(vec![HtmlNode::Escape(env[string].clone().unwrap_string())])
         }
 
-        FlatOp::TupleIndex { tuple, index } => names[tuple]
-            .clone()
-            .unwrap_tuple()
-            .into_iter()
-            .nth(*index)
-            .unwrap_or_else(|| panic!("Index {} is out of range for the tuple", index)),
-
-        FlatOp::Array(elements) => {
-            Value::Array(elements.iter().map(|e| names[e].clone()).collect())
-        }
-
-        FlatOp::Tuple(elements) => {
-            Value::Tuple(elements.iter().map(|e| names[e].clone()).collect())
-        }
-
-        FlatOp::Record { fields } => Value::Record(
-            fields
+        FlatOp::HtmlConcat(parts) => Value::Html(
+            parts
                 .iter()
-                .map(|(name, value)| (name.clone(), names[value].clone()))
+                .flat_map(|part| env[part].clone().unwrap_html())
                 .collect(),
         ),
 
-        FlatOp::Enum {
-            variant_name,
-            fields,
-        } => Value::Enum {
-            variant_name: variant_name.clone(),
-            fields: fields
-                .iter()
-                .map(|(name, value)| (name.clone(), names[value].clone()))
-                .collect(),
-        },
-
-        FlatOp::Option(value) => Value::Option(value.map(|inner| Box::new(names[&inner].clone()))),
-
-        FlatOp::StringConcat(parts) => {
-            let mut result = String::new();
-            for part in parts {
-                result.push_str(&names[part].clone().unwrap_string());
-            }
-            Value::String(result)
-        }
-
-        FlatOp::Binary { op, left, right } => {
-            let left = names[left].clone();
-            let right = names[right].clone();
-            match op {
-                IrBinaryOp::NumericAdd(NumericType::Int) => {
-                    Value::Int(left.unwrap_int().wrapping_add(right.unwrap_int()))
-                }
-                IrBinaryOp::NumericAdd(NumericType::Float) => {
-                    Value::Float(left.unwrap_float() + right.unwrap_float())
-                }
-                IrBinaryOp::NumericSubtract(NumericType::Int) => {
-                    Value::Int(left.unwrap_int().wrapping_sub(right.unwrap_int()))
-                }
-                IrBinaryOp::NumericSubtract(NumericType::Float) => {
-                    Value::Float(left.unwrap_float() - right.unwrap_float())
-                }
-                IrBinaryOp::NumericMultiply(NumericType::Int) => {
-                    Value::Int(left.unwrap_int().wrapping_mul(right.unwrap_int()))
-                }
-                IrBinaryOp::NumericMultiply(NumericType::Float) => {
-                    Value::Float(left.unwrap_float() * right.unwrap_float())
-                }
-                IrBinaryOp::Equals(EquatableType::Bool) => {
-                    Value::Bool(left.unwrap_bool() == right.unwrap_bool())
-                }
-                IrBinaryOp::Equals(EquatableType::String) => {
-                    Value::Bool(left.unwrap_string() == right.unwrap_string())
-                }
-                IrBinaryOp::Equals(EquatableType::Int) => {
-                    Value::Bool(left.unwrap_int() == right.unwrap_int())
-                }
-                IrBinaryOp::Equals(EquatableType::Float) => {
-                    Value::Bool(left.unwrap_float() == right.unwrap_float())
-                }
-                IrBinaryOp::LessThan(ComparableType::Int) => {
-                    Value::Bool(left.unwrap_int() < right.unwrap_int())
-                }
-                IrBinaryOp::LessThan(ComparableType::Float) => {
-                    Value::Bool(left.unwrap_float() < right.unwrap_float())
-                }
-                IrBinaryOp::LessThanOrEqual(ComparableType::Int) => {
-                    Value::Bool(left.unwrap_int() <= right.unwrap_int())
-                }
-                IrBinaryOp::LessThanOrEqual(ComparableType::Float) => {
-                    Value::Bool(left.unwrap_float() <= right.unwrap_float())
-                }
-            }
-        }
-
-        FlatOp::Unary { op, operand } => {
-            let operand = names[operand].clone();
-            match op {
-                IrUnaryOp::NumericNegation(NumericType::Int) => {
-                    Value::Int(operand.unwrap_int().wrapping_neg())
-                }
-                IrUnaryOp::NumericNegation(NumericType::Float) => {
-                    Value::Float(-operand.unwrap_float())
-                }
-                IrUnaryOp::BoolNegation => Value::Bool(!operand.unwrap_bool()),
-                IrUnaryOp::ArrayLength => Value::Int(operand.unwrap_array().len() as i32),
-                IrUnaryOp::ArrayIsEmpty => Value::Bool(operand.unwrap_array().is_empty()),
-                IrUnaryOp::StringIsEmpty => Value::Bool(operand.unwrap_string().is_empty()),
-                IrUnaryOp::OptionIsSome => Value::Bool(operand.unwrap_option().is_some()),
-                IrUnaryOp::OptionIsNone => Value::Bool(operand.unwrap_option().is_none()),
-                IrUnaryOp::IntToString => Value::String(operand.unwrap_int().to_string()),
-                IrUnaryOp::FloatToInt => Value::Int(operand.unwrap_float() as i32),
-                IrUnaryOp::IntToFloat => Value::Float(operand.unwrap_int() as f64),
-            }
-        }
-
-        FlatOp::HtmlEscape(string) => Value::Html(vec![HtmlNode::Escape(
-            names[string].clone().unwrap_string(),
-        )]),
-
-        FlatOp::HtmlConcat(parts) => {
-            let mut nodes = Vec::new();
-            for part in parts {
-                nodes.extend(names[part].clone().unwrap_html());
-            }
-            Value::Html(nodes)
-        }
-
-        FlatOp::HtmlElement {
+        FlatOp::HtmlElement(IrHtmlElement {
             element,
             attributes,
             children,
-        } => {
+        }) => {
             let mut rendered = Vec::new();
-            for attribute in attributes {
+            for (name, attribute) in attributes {
                 match attribute {
-                    FlatAttribute::Value { name, value } => rendered.push(HtmlAttribute {
+                    IrAttribute::Value(value) => rendered.push(HtmlAttribute {
                         name: name.clone(),
-                        value: Some(names[value].clone().unwrap_string()),
+                        value: Some(env[value].clone().unwrap_string()),
                     }),
-                    FlatAttribute::Presence { name, present } => {
-                        if names[present].clone().unwrap_bool() {
+                    IrAttribute::Presence(present) => {
+                        if env[present].clone().unwrap_bool() {
                             rendered.push(HtmlAttribute {
                                 name: name.clone(),
                                 value: None,
@@ -337,7 +185,7 @@ fn evaluate_op(
             let children = if element.is_void() {
                 Vec::new()
             } else {
-                names[children].clone().unwrap_html()
+                env[children].clone().unwrap_html()
             };
             Value::Html(vec![HtmlNode::Element {
                 element: element.clone(),
@@ -346,126 +194,192 @@ fn evaluate_op(
             }])
         }
 
-        FlatOp::Call { function, args } => {
-            let values = args.iter().map(|arg| names[arg].clone()).collect();
+        FlatOp::Call(function, args) => {
+            let values = args.iter().map(|arg| env[arg].clone()).collect();
             evaluate_function(functions, function, values, depth)?
         }
 
         FlatOp::Match(match_) => {
-            let subject = names[&match_.subject].clone();
-            let mut bound = Vec::new();
-            let arm = match_
+            let subject = env[&match_.subject].clone();
+            let (arm, bound) = match_
                 .arms
                 .iter()
-                .find(|arm| {
-                    bound.clear();
-                    subject.matches(&arm.pattern, &mut bound)
+                .find_map(|arm| {
+                    let mut bound = Vec::new();
+                    subject
+                        .matches(&arm.pattern, &mut bound)
+                        .then_some((arm, bound))
                 })
-                .unwrap_or_else(|| panic!("No arm matches {subject:?}"));
-            let arm_binders: Vec<_> = bound.iter().map(|(binder, _)| *binder).collect();
-            for (binder, value) in bound {
-                binders.insert(binder, value);
+                .unwrap();
+            let mut env = env.clone();
+            for (name, value) in bound {
+                env.insert_mut(name, value);
             }
-            let result = evaluate_block(&arm.body, names, binders, functions, depth);
-            for binder in &arm_binders {
-                binders.remove(binder);
-            }
-            result?
+            evaluate_block(&arm.body, &env, functions, depth)?
         }
 
-        FlatOp::HtmlFor { var, source, body } => {
-            let items = match source {
-                FlatForSource::Array(array) => names[array].clone().unwrap_array(),
-                FlatForSource::RangeInclusive { start, end } => {
-                    let start = names[start].clone().unwrap_int();
-                    let end = names[end].clone().unwrap_int();
-                    (start..=end).map(Value::Int).collect()
-                }
-            };
+        FlatOp::HtmlFor(IrFor { var, array, body }) => {
+            let items = env[array].clone().unwrap_array();
             let mut nodes = Vec::new();
-            for item in items {
+            for item in items.iter() {
+                let mut env = env.clone();
                 if let Some(binder) = var {
-                    binders.insert(binder.var, item);
+                    env.insert_mut(binder.var, item.clone());
                 }
-                let result = evaluate_block(body, names, binders, functions, depth);
-                if let Some(binder) = var {
-                    binders.remove(&binder.var);
-                }
-                nodes.extend(result?.unwrap_html());
+                let result = evaluate_block(body, &env, functions, depth)?;
+                nodes.extend(result.unwrap_html());
             }
             Value::Html(nodes)
         }
     })
 }
 
+fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<Value, EvalError> {
+    Ok(match op {
+        IrDataOp::StringLiteral(value) => Value::String(value.to_string()),
+        IrDataOp::IntLiteral(value) => Value::Int(*value),
+        IrDataOp::FloatLiteral(value) => Value::Float(*value),
+        IrDataOp::BoolLiteral(value) => Value::Bool(*value),
+        IrDataOp::FieldAccess(record, field) => {
+            let record = env[record].clone().unwrap_record();
+            let (_, value) = record.iter().find(|(name, _)| name == field).unwrap();
+            value.clone()
+        }
+        IrDataOp::TupleIndex(tuple, index) => env[tuple].clone().unwrap_tuple()[*index].clone(),
+        IrDataOp::Array(elements) => Value::Array(Rc::new(
+            BoundedVec::new(elements.iter().map(|e| env[e].clone()))
+                .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
+        )),
+        IrDataOp::Tuple(elements) => {
+            Value::Tuple(elements.iter().map(|e| env[e].clone()).collect())
+        }
+        IrDataOp::Record(fields) => Value::Record(
+            fields
+                .iter()
+                .map(|(name, value)| (name.clone(), env[value].clone()))
+                .collect(),
+        ),
+        IrDataOp::Enum(variant_name, fields) => Value::Enum(
+            variant_name.clone(),
+            fields
+                .iter()
+                .map(|(name, value)| (name.clone(), env[value].clone()))
+                .collect(),
+        ),
+        IrDataOp::Option(value) => Value::Option(value.map(|inner| Rc::new(env[&inner].clone()))),
+        IrDataOp::StringConcat(parts) => Value::String(
+            parts
+                .iter()
+                .map(|part| env[part].clone().unwrap_string())
+                .collect(),
+        ),
+        IrDataOp::NumericAdd(left, right) => match env[left].clone() {
+            Value::Int(left) => Value::Int(left.wrapping_add(env[right].clone().unwrap_int())),
+            left => Value::Float(left.unwrap_float() + env[right].clone().unwrap_float()),
+        },
+        IrDataOp::NumericSubtract(left, right) => match env[left].clone() {
+            Value::Int(left) => Value::Int(left.wrapping_sub(env[right].clone().unwrap_int())),
+            left => Value::Float(left.unwrap_float() - env[right].clone().unwrap_float()),
+        },
+        IrDataOp::NumericMultiply(left, right) => match env[left].clone() {
+            Value::Int(left) => Value::Int(left.wrapping_mul(env[right].clone().unwrap_int())),
+            left => Value::Float(left.unwrap_float() * env[right].clone().unwrap_float()),
+        },
+        IrDataOp::Equals(left, right) => {
+            let right = env[right].clone();
+            match env[left].clone() {
+                Value::Bool(left) => Value::Bool(left == right.unwrap_bool()),
+                Value::String(left) => Value::Bool(left == right.unwrap_string()),
+                Value::Int(left) => Value::Bool(left == right.unwrap_int()),
+                left => Value::Bool(left.unwrap_float() == right.unwrap_float()),
+            }
+        }
+        IrDataOp::LessThan(left, right) => match env[left].clone() {
+            Value::Int(left) => Value::Bool(left < env[right].clone().unwrap_int()),
+            left => Value::Bool(left.unwrap_float() < env[right].clone().unwrap_float()),
+        },
+        IrDataOp::LessThanOrEqual(left, right) => match env[left].clone() {
+            Value::Int(left) => Value::Bool(left <= env[right].clone().unwrap_int()),
+            left => Value::Bool(left.unwrap_float() <= env[right].clone().unwrap_float()),
+        },
+        IrDataOp::ArrayFromRange(left, right) => Value::Array(Rc::new(
+            BoundedVec::new(
+                (env[left].clone().unwrap_int()..=env[right].clone().unwrap_int()).map(Value::Int),
+            )
+            .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
+        )),
+        IrDataOp::NumericNegation(operand) => match env[operand].clone() {
+            Value::Int(value) => Value::Int(value.wrapping_neg()),
+            operand => Value::Float(-operand.unwrap_float()),
+        },
+        IrDataOp::BoolNegation(operand) => Value::Bool(!env[operand].clone().unwrap_bool()),
+        IrDataOp::ArrayLength(operand) => {
+            Value::Int(env[operand].clone().unwrap_array().len() as i32)
+        }
+        IrDataOp::ArrayIsEmpty(operand) => {
+            Value::Bool(env[operand].clone().unwrap_array().is_empty())
+        }
+        IrDataOp::StringIsEmpty(operand) => {
+            Value::Bool(env[operand].clone().unwrap_string().is_empty())
+        }
+        IrDataOp::OptionIsSome(operand) => {
+            Value::Bool(env[operand].clone().unwrap_option().is_some())
+        }
+        IrDataOp::OptionIsNone(operand) => {
+            Value::Bool(env[operand].clone().unwrap_option().is_none())
+        }
+        IrDataOp::IntToString(operand) => {
+            Value::String(env[operand].clone().unwrap_int().to_string())
+        }
+        IrDataOp::FloatToInt(operand) => Value::Int(env[operand].clone().unwrap_float() as i32),
+        IrDataOp::IntToFloat(operand) => Value::Float(env[operand].clone().unwrap_int() as f64),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::pure_module::PureModule;
-    use crate::ir::pure_module_builder::PureModuleBuilder;
-    use crate::ir::pure_module_generator::{random_entry_args, random_module};
-    use crate::ir::pure_to_flat::pure_to_flat;
-    use crate::ir::runtime::pure_evaluator;
-    use crate::symbols::field_name::FieldName;
+    use crate::hop::typing::{TypeRegistry, TypeRegistryBuilder};
+    use crate::ir::flat_module::FlatModule;
+    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
+    use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
+    use crate::ir::runtime::value_builder::ValueBuilder;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
-    fn fuzz_random_pure_modules_evaluate_identically_after_lowering() {
+    fn fuzz_random_modules_evaluate_without_panicking() {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-
-            let entry_args = random_entry_args(&module, &mut rng, &registry);
-
-            let before_module = module.to_string();
-            let before: Vec<Result<String, EvalError>> = entry_args
-                .iter()
-                .map(|(function, args)| {
-                    pure_evaluator::evaluate_entry(&module, function, args.clone())
-                        .map(Value::into_markup)
-                })
-                .collect();
-
-            let module = pure_to_flat(module);
-
-            // Lowering keeps the evaluation order and the call depth, so an
-            // entry that hits the depth limit in Pure hits it in the Flat IR too.
-            for ((function, args), before) in entry_args.iter().zip(before) {
-                let after = evaluate_entry(&module, function, args.clone()).map(Value::into_markup);
-                match (before, after) {
-                    (Ok(before), Ok(after)) => assert_eq!(
-                        before, after,
-                        "entry {function}\n-- pure --\n{before_module}\n-- flat --\n{module}"
-                    ),
-                    (
-                        Err(EvalError::RecursionLimit { .. }),
-                        Err(EvalError::RecursionLimit { .. }),
-                    ) => {}
-                    (before, after) => panic!(
-                        "entry {function}: pure {before:?}, flat {after:?}\n-- pure --\n{before_module}\n-- flat --\n{module}"
-                    ),
+            for (function, args) in random_entrypoint_args(&module, &mut rng, &registry) {
+                match evaluate_entrypoint(&module, &function, args) {
+                    Ok(_) | Err(EvalError::RecursionLimit { .. }) => {}
+                    Err(error) => panic!("{error}"),
                 }
             }
             Ok(())
         });
     }
 
-    fn check(module: PureModule, args: Vec<(&str, Value)>, expected: Expect) {
-        let module = pure_to_flat(module);
+    fn check(
+        (module, types): (FlatModule, TypeRegistry),
+        args: impl FnOnce(&ValueBuilder<'_>) -> Vec<(&'static str, Value)>,
+        expected: Expect,
+    ) {
         let before = module.to_string();
-        let args: HashMap<AttributeName, Value> = args
+        let args: HashMap<AttributeName, Value> = args(&ValueBuilder::new(&types))
             .into_iter()
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
-        let entry = module
+        let entrypoint = module
             .functions
             .iter()
-            .find(|decl| decl.entry)
-            .expect("the module has an entry function")
+            .find(|decl| decl.entrypoint)
+            .expect("the module has an entrypoint function")
             .function
             .clone();
-        let after = evaluate_entry(&module, &entry, args)
+        let after = evaluate_entrypoint(&module, &entrypoint, args)
             .expect("Evaluation should succeed")
             .into_markup();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}\n"));
@@ -474,38 +388,28 @@ mod tests {
     #[test]
     fn should_bind_loop_names_afresh_on_each_iteration() {
         check(
-            PureModuleBuilder::new()
-                .entry("Items", [("items", "Array[String]")], "Html", |t| {
+            FlatModuleBuilder::new()
+                .entrypoint("Items", [("items", "Array[String]")], "Html", |t| {
                     t.element(
                         "ul",
-                        vec![],
-                        vec![t.html_for(Some("item"), t.var("items"), |t| {
-                            t.element("li", vec![], vec![t.escape(t.var("item"))])
-                        })],
+                        [],
+                        t.html_for(Some("item"), t.var("items"), |t| {
+                            t.element("li", vec![], t.escape(t.var("item")))
+                        }),
                     )
                 })
-                .build(),
-            vec![(
-                "items",
-                Value::Array(vec![
-                    Value::String("a<b".to_string()),
-                    Value::String("c".to_string()),
-                ]),
-            )],
+                .build_with_registry(),
+            |v| vec![("items", v.array(vec![v.str("a<b"), v.str("c")]))],
             expect![[r#"
                 -- before --
-                entry fn Items@f0(items@b0: Array[String]) -> Html {
-                  let v0: Array[String] = b0
-                  let v5: Html = for b1: String in v0 {
-                    let v1: String = b1
+                entrypoint fn Items@f0(items@v0: Array[String]) -> Html {
+                  let v4: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
-                    let v3: Html = concat(v2)
-                    let v4: Html = html("li", {}, v3)
-                    v4
+                    let v3: Html = element("li", {}, v2)
+                    v3
                   }
-                  let v6: Html = concat(v5)
-                  let v7: Html = html("ul", {}, v6)
-                  v7
+                  let v5: Html = element("ul", {}, v4)
+                  v5
                 }
 
                 -- after --
@@ -517,46 +421,49 @@ mod tests {
     #[test]
     fn should_skip_the_right_operand_of_a_decided_and() {
         check(
-            PureModuleBuilder::new()
-                .function("diverge", [], "Bool", |t| t.call("diverge", vec![]))
-                .entry("Test", [("flag", "Bool")], "Html", |t| {
-                    t.escape(t.bool_match_expr(
-                        t.and(t.var("flag"), t.call("diverge", vec![])),
-                        t.str("yes"),
-                        t.str("no"),
-                    ))
+            FlatModuleBuilder::new()
+                .function("diverge", [], "Bool", |t| t.call("diverge", []))
+                .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
+                    let and = t.match_expr(t.var("flag"), |m| {
+                        m.arm(Pat::True, |t| t.call("diverge", []));
+                        m.arm(Pat::False, |t| t.bool(false));
+                    });
+                    t.escape(t.match_expr(and, |m| {
+                        m.arm(Pat::True, |t| t.str("yes"));
+                        m.arm(Pat::False, |t| t.str("no"));
+                    }))
                 })
-                .build(),
-            vec![("flag", Value::Bool(false))],
+                .build_with_registry(),
+            |v| vec![("flag", v.bool(false))],
             expect![[r#"
                 -- before --
                 fn diverge@f0() -> Bool {
-                  let v0: Bool = call diverge@f0()
+                  let v0: Bool = diverge@f0()
                   v0
                 }
-                entry fn Test@f1(flag@b0: Bool) -> Html {
-                  let v1: Bool = b0
-                  let v3: Bool = match v1 {
+                entrypoint fn Test@f1(flag@v1: Bool) -> Html {
+                  let v4: Bool = match v1 {
                     true => {
-                      let v2: Bool = call diverge@f0()
+                      let v2: Bool = diverge@f0()
                       v2
                     }
                     false => {
-                      v1
+                      let v3: Bool = false
+                      v3
                     }
                   }
-                  let v6: String = match v3 {
+                  let v7: String = match v4 {
                     true => {
-                      let v4: String = "yes"
-                      v4
-                    }
-                    false => {
-                      let v5: String = "no"
+                      let v5: String = "yes"
                       v5
                     }
+                    false => {
+                      let v6: String = "no"
+                      v6
+                    }
                   }
-                  let v7: Html = escape(v6)
-                  v7
+                  let v8: Html = escape(v7)
+                  v8
                 }
 
                 -- after --
@@ -567,39 +474,38 @@ mod tests {
 
     #[test]
     fn should_select_an_enum_arm_and_bind_its_fields() {
+        let types = TypeRegistryBuilder::new()
+            .enum_(
+                "Shape",
+                [("Dot", vec![]), ("Circle", vec![("radius", "Int")])],
+            )
+            .build();
         check(
-            PureModuleBuilder::new()
-                .enum_(
-                    "Shape",
-                    [("Dot", vec![]), ("Circle", vec![("radius", "Int")])],
-                )
-                .entry("Test", [("shape", "Shape")], "Html", |t| {
-                    t.escape(t.enum_match_expr(t.var("shape"), |arms| {
-                        arms.arm("Dot", |t| t.str("dot"));
-                        arms.arm_bound("Circle", [("radius", "r")], |t| {
+            FlatModuleBuilder::with_types(types)
+                .entrypoint("Test", [("shape", "Shape")], "Html", |t| {
+                    t.escape(t.match_expr(t.var("shape"), |m| {
+                        m.arm(Pat::variant("Dot", []), |t| t.str("dot"));
+                        m.arm(Pat::variant("Circle", [("radius", Pat::bind("r"))]), |t| {
                             t.int_to_string(t.var("r"))
                         });
                     }))
                 })
-                .build(),
-            vec![(
-                "shape",
-                Value::Enum {
-                    variant_name: TypeName::parse("Circle").unwrap(),
-                    fields: vec![(FieldName::parse("radius").unwrap(), Value::Int(7))],
-                },
-            )],
+                .build_with_registry(),
+            |v| {
+                vec![(
+                    "shape",
+                    v.enum_variant_with_fields("Shape", "Circle", vec![("radius", v.int(7))]),
+                )]
+            },
             expect![[r#"
                 -- before --
-                entry fn Test@f0(shape@b0: Shape) -> Html {
-                  let v0: Shape = b0
+                entrypoint fn Test@f0(shape@v0: Shape) -> Html {
                   let v4: String = match v0 {
                     Shape::Dot => {
                       let v1: String = "dot"
                       v1
                     }
-                    Shape::Circle {radius@b1: Int} => {
-                      let v2: Int = b1
+                    Shape::Circle {radius@v2: Int} => {
                       let v3: String = v2.to_string()
                       v3
                     }
@@ -612,5 +518,481 @@ mod tests {
                 7
             "#]],
         );
+    }
+
+    #[test]
+    fn should_hold_an_empty_tuple_in_a_record_field() {
+        let types = TypeRegistryBuilder::new()
+            .record("Holder", [("nothing", "()")])
+            .build();
+        check(
+            FlatModuleBuilder::with_types(types)
+                .entrypoint("Test", [], "Html", |t| {
+                    let held = t.record("Holder", [("nothing", t.tuple(vec![]))]);
+                    t.escape(
+                        t.int_to_string(t.array_length(t.array([t.field_access(held, "nothing")]))),
+                    )
+                })
+                .build_with_registry(),
+            |_| vec![],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: () = ()
+                  let v1: Holder = {nothing: v0}
+                  let v2: () = v1.nothing
+                  let v3: Array[()] = [v2]
+                  let v4: Int = v3.len()
+                  let v5: String = v4.to_string()
+                  let v6: Html = escape(v5)
+                  v6
+                }
+
+                -- after --
+                1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_read_an_element_back_out_of_a_tuple() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    let pair = t.tuple([t.int(1), t.str("two")]);
+                    t.escape(t.tuple_index(pair, 1))
+                })
+                .build_with_registry(),
+            |_| vec![],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: Int = 1
+                  let v1: String = "two"
+                  let v2: (Int, String) = (v0, v1)
+                  let v3: String = v2.1
+                  let v4: Html = escape(v3)
+                  v4
+                }
+
+                -- after --
+                two
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_read_an_element_back_out_of_a_one_tuple() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    let only = t.tuple([t.str("alone")]);
+                    t.escape(t.tuple_index(only, 0))
+                })
+                .build_with_registry(),
+            |_| vec![],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: String = "alone"
+                  let v1: (String,) = (v0,)
+                  let v2: String = v1.0
+                  let v3: Html = escape(v2)
+                  v3
+                }
+
+                -- after --
+                alone
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_index_a_nested_tuple() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    let inner = t.tuple([t.str("deep"), t.int(2)]);
+                    let outer = t.tuple([t.int(1), inner]);
+                    t.escape(t.tuple_index(t.tuple_index(outer, 1), 0))
+                })
+                .build_with_registry(),
+            |_| vec![],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: String = "deep"
+                  let v1: Int = 2
+                  let v2: (String, Int) = (v0, v1)
+                  let v3: Int = 1
+                  let v4: (Int, (String, Int)) = (v3, v2)
+                  let v5: (String, Int) = v4.1
+                  let v6: String = v5.0
+                  let v7: Html = escape(v6)
+                  v7
+                }
+
+                -- after --
+                deep
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_wrap_int_addition_at_i32_boundary() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    let sum = t.add(t.int(2147483647), t.int(1));
+                    t.escape(t.int_to_string(sum))
+                })
+                .build_with_registry(),
+            |_| vec![],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: Int = 2147483647
+                  let v1: Int = 1
+                  let v2: Int = v0 + v1
+                  let v3: String = v2.to_string()
+                  let v4: Html = escape(v3)
+                  v4
+                }
+
+                -- after --
+                -2147483648
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_an_element() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    t.element("div", [], t.text("Hello World"))
+                })
+                .build_with_registry(),
+            |_| vec![],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: Html = text("Hello World")
+                  let v1: Html = element("div", {}, v0)
+                  v1
+                }
+
+                -- after --
+                <div>Hello World</div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_escape_attribute_values_and_settle_boolean_attributes() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [("cls", "String"), ("flag", "Bool")], "Html", |t| {
+                    t.element(
+                        "input",
+                        [
+                            t.attr("class", t.var("cls")),
+                            t.presence("disabled", t.var("flag")),
+                            t.presence("checked", t.bool(false)),
+                        ],
+                        t.html_concat(vec![]),
+                    )
+                })
+                .build_with_registry(),
+            |v| vec![("cls", v.str("a\"b")), ("flag", v.bool(true))],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0(cls@v0: String, flag@v1: Bool) -> Html {
+                  let v2: Bool = false
+                  let v3: Html = concat()
+                  let v4: Html = element("input", {class: v0, disabled: v1, checked: v2}, v3)
+                  v4
+                }
+
+                -- after --
+                <input class="a&quot;b" disabled>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_escape_html_in_expressions() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [("content", "String")], "Html", |t| {
+                    t.escape(t.var("content"))
+                })
+                .build_with_registry(),
+            |v| vec![("content", v.str("<script>alert('xss')</script>"))],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0(content@v0: String) -> Html {
+                  let v1: Html = escape(v0)
+                  v1
+                }
+
+                -- after --
+                &lt;script&gt;alert('xss')&lt;/script&gt;
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_render_if_body_when_condition_is_true() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [("show", "Bool")], "Html", |t| {
+                    t.match_expr(t.var("show"), |m| {
+                        m.arm(Pat::True, |t| t.element("div", [], t.text("Visible")));
+                        m.arm(Pat::False, |t| t.html_concat([]));
+                    })
+                })
+                .build_with_registry(),
+            |v| vec![("show", v.bool(true))],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0(show@v0: Bool) -> Html {
+                  let v4: Html = match v0 {
+                    true => {
+                      let v1: Html = text("Visible")
+                      let v2: Html = element("div", {}, v1)
+                      v2
+                    }
+                    false => {
+                      let v3: Html = concat()
+                      v3
+                    }
+                  }
+                  v4
+                }
+
+                -- after --
+                <div>Visible</div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_skip_if_body_when_condition_is_false() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [("show", "Bool")], "Html", |t| {
+                    t.match_expr(t.var("show"), |m| {
+                        m.arm(Pat::True, |t| t.element("div", [], t.text("Hidden")));
+                        m.arm(Pat::False, |t| t.html_concat([]));
+                    })
+                })
+                .build_with_registry(),
+            |v| vec![("show", v.bool(false))],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0(show@v0: Bool) -> Html {
+                  let v4: Html = match v0 {
+                    true => {
+                      let v1: Html = text("Hidden")
+                      let v2: Html = element("div", {}, v1)
+                      v2
+                    }
+                    false => {
+                      let v3: Html = concat()
+                      v3
+                    }
+                  }
+                  v4
+                }
+
+                -- after --
+
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_iterate_over_array_in_for_loop() {
+        check(
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [("items", "Array[String]")], "Html", |t| {
+                    t.html_for(Some("item"), t.var("items"), |t| {
+                        t.html_concat([
+                            t.element("li", vec![], t.escape(t.var("item"))),
+                            t.text("\n"),
+                        ])
+                    })
+                })
+                .build_with_registry(),
+            |v| {
+                vec![(
+                    "items",
+                    v.array(vec![v.str("Apple"), v.str("Banana"), v.str("Cherry")]),
+                )]
+            },
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0(items@v0: Array[String]) -> Html {
+                  let v6: Html = for v1: String in v0 {
+                    let v2: Html = escape(v1)
+                    let v3: Html = element("li", {}, v2)
+                    let v4: Html = text("\n")
+                    let v5: Html = concat(v3, v4)
+                    v5
+                  }
+                  v6
+                }
+
+                -- after --
+                <li>Apple</li>
+                <li>Banana</li>
+                <li>Cherry</li>
+
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_a_function_on_its_own() {
+        let (module, types) = FlatModuleBuilder::new()
+            .function("Double", [("n", "Int")], "Int", |t| {
+                t.add(t.var("n"), t.var("n"))
+            })
+            .build_with_registry();
+        let v = ValueBuilder::new(&types);
+        let args = vec![v.int(21)];
+        let result = evaluate_function(&module.functions, &module.functions[0].function, args, 0);
+        assert_eq!(result.unwrap(), v.int(42));
+    }
+
+    #[test]
+    fn should_evaluate_a_recursive_function() {
+        check(
+            FlatModuleBuilder::new()
+                .function("Sum", [("n", "Int")], "Int", |t| {
+                    t.match_expr(t.lte(t.var("n"), t.int(0)), |m| {
+                        m.arm(Pat::True, |t| t.int(0));
+                        m.arm(Pat::False, |t| {
+                            t.add(t.var("n"), t.call("Sum", [t.sub(t.var("n"), t.int(1))]))
+                        });
+                    })
+                })
+                .entrypoint("Test", [], "Html", |t| {
+                    t.escape(t.int_to_string(t.call("Sum", [t.int(10)])))
+                })
+                .build_with_registry(),
+            |_| vec![],
+            expect![[r#"
+                -- before --
+                fn Sum@f0(n@v0: Int) -> Int {
+                  let v1: Int = 0
+                  let v2: Bool = v0 <= v1
+                  let v8: Int = match v2 {
+                    true => {
+                      let v3: Int = 0
+                      v3
+                    }
+                    false => {
+                      let v4: Int = 1
+                      let v5: Int = v0 - v4
+                      let v6: Int = Sum@f0(v5)
+                      let v7: Int = v0 + v6
+                      v7
+                    }
+                  }
+                  v8
+                }
+                entrypoint fn Test@f1() -> Html {
+                  let v9: Int = 10
+                  let v10: Int = Sum@f0(v9)
+                  let v11: String = v10.to_string()
+                  let v12: Html = escape(v11)
+                  v12
+                }
+
+                -- after --
+                55
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_error_when_a_function_never_stops_calling_itself() {
+        let module = FlatModuleBuilder::new()
+            .function("Loop", [("n", "Int")], "Int", |t| {
+                t.call("Loop", [t.add(t.var("n"), t.int(1))])
+            })
+            .entrypoint("Test", [], "Html", |t| {
+                t.escape(t.int_to_string(t.call("Loop", [t.int(0)])))
+            })
+            .build();
+        let result = evaluate_entrypoint(&module, &module.functions[1].function, HashMap::new());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Function 'Loop@f0' exceeded the call depth limit of 12"
+        );
+    }
+
+    #[test]
+    fn should_error_when_a_function_calls_itself_on_copies_of_its_argument() {
+        let types = TypeRegistryBuilder::new()
+            .enum_(
+                "Tree",
+                [
+                    ("Leaf", vec![]),
+                    ("Node", vec![("children", "Array[Tree]")]),
+                ],
+            )
+            .build();
+        // Each call holds eight of the tree it was called with, so the tree at
+        // the call depth limit has 8^11 leaves, too many to hold unless the
+        // copies are shared.
+        let module = FlatModuleBuilder::with_types(types)
+            .function("Grow", [("tree", "Tree")], "Int", |t| {
+                let tree = t.var("tree");
+                let children = t.array([tree; 8]);
+                let node = t.enum_variant_with_fields("Tree", "Node", [("children", children)]);
+                t.call("Grow", [node])
+            })
+            .entrypoint("Test", [], "Html", |t| {
+                let leaf = t.enum_variant_with_fields("Tree", "Leaf", []);
+                t.escape(t.int_to_string(t.call("Grow", [leaf])))
+            })
+            .build();
+        let result = evaluate_entrypoint(&module, &module.functions[1].function, HashMap::new());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Function 'Grow@f0' exceeded the call depth limit of 12"
+        );
+    }
+
+    #[test]
+    fn should_error_when_a_range_is_too_long() {
+        let module = FlatModuleBuilder::new()
+            .entrypoint("Test", [], "Html", |t| {
+                let all = t.array_from_range(t.int(i32::MIN), t.int(i32::MAX));
+                t.escape(t.int_to_string(t.array_length(all)))
+            })
+            .build();
+        let result = evaluate_entrypoint(&module, &module.functions[0].function, HashMap::new());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "An array exceeded the array length limit of 10000000"
+        );
+    }
+
+    #[test]
+    fn should_error_when_required_param_not_provided() {
+        let module = FlatModuleBuilder::new()
+            .entrypoint("Test", [("name", "String")], "Html", |t| {
+                t.escape(t.var("name"))
+            })
+            .build();
+        let result = evaluate_entrypoint(&module, &module.functions[0].function, HashMap::new());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Missing required parameter"));
+        assert!(err.to_string().contains("name"));
     }
 }

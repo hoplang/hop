@@ -1,27 +1,25 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
-use crate::ir::binder_id::BinderIdCounter;
 use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
+use crate::ir::ir_for::IrFor;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// A pass that replaces a call to a non-recursive function with the
 /// callee's body, and drops the function once no call to it is left. Only
-/// the functions in a call cycle and the entry functions remain.
+/// the functions in a call cycle and the entrypoint functions remain.
 ///
 /// A call's arguments are names, computed before the call, so a parameter
-/// is bound by dropping every Read of it and reading the argument's name in
-/// its place. The body is copied with fresh names and binders, its bindings
-/// join the block the call sits in, and every read of the call's name
-/// becomes a read of the body's result.
+/// is bound by reading the argument's name in its place. The body is copied
+/// with fresh names, its bindings join the block the call sits in, and
+/// every read of the call's name becomes a read of the body's result.
 pub fn inline_function_calls(module: FlatModule) -> FlatModule {
     let FlatModule {
         functions,
         mut value_ids,
-        mut binder_ids,
     } = module;
 
     let mut graph: DependencyGraph<FunctionId> = DependencyGraph::new();
@@ -56,37 +54,29 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
         let Some(mut decl) = decls.remove(&id) else {
             continue;
         };
-        decl.body = inline_block(
-            decl.body,
-            &decls,
-            &recursive,
-            &mut value_ids,
-            &mut binder_ids,
-            &mut renames,
-        );
+        decl.body = inline_block(decl.body, &decls, &recursive, &mut value_ids, &mut renames);
         decls.insert(id, decl);
     }
 
     // Every call to a function outside a cycle was replaced by its body, so
-    // nothing calls such a function any more. An entry function is called
+    // nothing calls such a function any more. An entrypoint function is called
     // from outside the module, so it stays.
     let functions = order
         .into_iter()
         .map(|id| decls.remove(&id).expect("each function is declared once"))
-        .filter(|decl| decl.entry || recursive.contains(&decl.function.id))
+        .filter(|decl| decl.entrypoint || recursive.contains(&decl.function.id))
         .collect();
 
     FlatModule {
         functions,
         value_ids,
-        binder_ids,
     }
 }
 
 fn collect_callees(block: &FlatBlock, out: &mut BTreeSet<FunctionId>) {
     for binding in &block.bindings {
         match &binding.op {
-            FlatOp::Call { function, .. } => {
+            FlatOp::Call(function, ..) => {
                 out.insert(function.id);
             }
             FlatOp::Match(match_) => {
@@ -94,7 +84,9 @@ fn collect_callees(block: &FlatBlock, out: &mut BTreeSet<FunctionId>) {
                     collect_callees(&arm.body, out);
                 }
             }
-            FlatOp::HtmlFor { body, .. } => collect_callees(body, out),
+            FlatOp::HtmlFor(IrFor { body, .. }) => {
+                collect_callees(body, out);
+            }
             _ => {}
         }
     }
@@ -107,19 +99,18 @@ fn inline_block(
     decls: &HashMap<FunctionId, FlatFunctionDeclaration>,
     recursive: &HashSet<FunctionId>,
     value_ids: &mut ValueIdCounter,
-    binder_ids: &mut BinderIdCounter,
     renames: &mut HashMap<ValueId, ValueId>,
 ) -> FlatBlock {
     let mut bindings = Vec::with_capacity(block.bindings.len());
     for binding in block.bindings {
-        let FlatBinding { name, typ, mut op } = binding;
+        let FlatBinding { binder, mut op } = binding;
         op.for_each_operand_mut(&mut |operand| {
             if let Some(renamed) = renames.get(operand) {
                 *operand = *renamed;
             }
         });
         let op = match op {
-            FlatOp::Call { function, args }
+            FlatOp::Call(function, args)
                 if decls.contains_key(&function.id) && !recursive.contains(&function.id) =>
             {
                 let decl = &decls[&function.id];
@@ -133,14 +124,13 @@ fn inline_block(
                     .parameters
                     .iter()
                     .zip(args)
-                    .map(|(param, arg)| (param.var, arg))
+                    .map(|(param, arg)| (param.binder.var, arg))
                     .collect();
-                let body =
-                    Freshener::new(value_ids, binder_ids, arguments).freshen_block(&decl.body);
+                let body = Freshener::new(value_ids, arguments).freshen_block(&decl.body);
                 bindings.extend(body.bindings);
                 // The result is a fresh name or an argument, and neither is
                 // ever renamed, so no read goes through two renames.
-                renames.insert(name, body.result);
+                renames.insert(binder.var, body.result);
                 continue;
             }
             FlatOp::Match(IrMatch { subject, arms }) => FlatOp::Match(IrMatch {
@@ -149,20 +139,18 @@ fn inline_block(
                     .into_iter()
                     .map(|arm| IrMatchArm {
                         pattern: arm.pattern,
-                        body: inline_block(
-                            arm.body, decls, recursive, value_ids, binder_ids, renames,
-                        ),
+                        body: inline_block(arm.body, decls, recursive, value_ids, renames),
                     })
                     .collect(),
             }),
-            FlatOp::HtmlFor { var, source, body } => FlatOp::HtmlFor {
+            FlatOp::HtmlFor(IrFor { var, array, body }) => FlatOp::HtmlFor(IrFor {
                 var,
-                source,
-                body: inline_block(body, decls, recursive, value_ids, binder_ids, renames),
-            },
+                array,
+                body: inline_block(body, decls, recursive, value_ids, renames),
+            }),
             op => op,
         };
-        bindings.push(FlatBinding { name, typ, op });
+        bindings.push(FlatBinding { binder, op });
     }
     FlatBlock {
         bindings,
@@ -174,12 +162,10 @@ fn inline_block(
 mod tests {
 
     use super::*;
-    use crate::ir::pure_module::PureModule;
-    use crate::ir::pure_module_builder::PureModuleBuilder;
-    use crate::ir::pure_module_generator::{random_entry_args, random_module};
-    use crate::ir::pure_to_flat::pure_to_flat;
+    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
+    use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
     use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::flat_evaluator::evaluate_entry;
+    use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
@@ -189,14 +175,15 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entry_args = random_entry_args(&module, &mut rng, &registry);
-            let module = pure_to_flat(module);
+            let entrypoint_args = random_entrypoint_args(&module, &mut rng, &registry);
 
             let before_module = module.to_string();
-            let before: Vec<Option<String>> = entry_args
+            let before: Vec<Option<String>> = entrypoint_args
                 .iter()
                 .map(|(function, args)| {
-                    match evaluate_entry(&module, function, args.clone()).map(Value::into_markup) {
+                    match evaluate_entrypoint(&module, function, args.clone())
+                        .map(Value::into_markup)
+                    {
                         Ok(output) => Some(output),
                         Err(EvalError::RecursionLimit { .. }) => None,
                         Err(error) => panic!("{error}"),
@@ -206,26 +193,25 @@ mod tests {
 
             let module = inline_function_calls(module);
 
-            for ((function, args), before) in entry_args.iter().zip(&before) {
-                // An entry that hit the call depth limit has no output to
+            for ((function, args), before) in entrypoint_args.iter().zip(&before) {
+                // An entrypoint that hit the call depth limit has no output to
                 // preserve, and inlining removes frames from the count.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_entry(&module, function, args.clone())
+                let after = evaluate_entrypoint(&module, function, args.clone())
                     .unwrap()
                     .into_markup();
                 assert_eq!(
                     before, &after,
-                    "entry {function}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    "entrypoint {function}\n-- before --\n{before_module}\n-- after --\n{module}"
                 );
             }
             Ok(())
         });
     }
 
-    fn check(module: PureModule, expected: Expect) {
-        let module = pure_to_flat(module);
+    fn check(module: FlatModule, expected: Expect) {
         let before = module.to_string();
         let after = inline_function_calls(module).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
@@ -234,37 +220,33 @@ mod tests {
     #[test]
     fn should_inline_a_call_and_read_the_argument_where_the_parameter_was_read() {
         check(
-            PureModuleBuilder::new()
+            FlatModuleBuilder::new()
                 .function("double", [("x", "Int")], "Int", |t| {
                     t.add(t.var("x"), t.var("x"))
                 })
-                .entry("Test", [("n", "Int")], "Html", |t| {
-                    t.escape(t.int_to_string(t.call("double", vec![("x", t.var("n"))])))
+                .entrypoint("Test", [("n", "Int")], "Html", |t| {
+                    t.escape(t.int_to_string(t.call("double", [t.var("n")])))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                fn double@f0(x@b0: Int) -> Int {
-                  let v0: Int = b0
-                  let v1: Int = b0
-                  let v2: Int = v0 + v1
-                  v2
+                fn double@f0(x@v0: Int) -> Int {
+                  let v1: Int = v0 + v0
+                  v1
                 }
-                entry fn Test@f1(n@b1: Int) -> Html {
-                  let v3: Int = b1
-                  let v4: Int = call double@f0(v3)
-                  let v5: String = v4.to_string()
-                  let v6: Html = escape(v5)
-                  v6
+                entrypoint fn Test@f1(n@v2: Int) -> Html {
+                  let v3: Int = double@f0(v2)
+                  let v4: String = v3.to_string()
+                  let v5: Html = escape(v4)
+                  v5
                 }
 
                 -- after --
-                entry fn Test@f1(n@b1: Int) -> Html {
-                  let v3: Int = b1
-                  let v7: Int = v3 + v3
-                  let v5: String = v7.to_string()
-                  let v6: Html = escape(v5)
-                  v6
+                entrypoint fn Test@f1(n@v2: Int) -> Html {
+                  let v6: Int = v2 + v2
+                  let v4: String = v6.to_string()
+                  let v5: Html = escape(v4)
+                  v5
                 }
             "#]],
         );
@@ -273,43 +255,39 @@ mod tests {
     #[test]
     fn should_inline_callees_before_their_callers() {
         check(
-            PureModuleBuilder::new()
+            FlatModuleBuilder::new()
                 .function("inner", [("x", "Int")], "Int", |t| {
                     t.add(t.var("x"), t.int(1))
                 })
                 .function("outer", [("y", "Int")], "Int", |t| {
-                    t.mul(t.call("inner", vec![("x", t.var("y"))]), t.int(2))
+                    t.mul(t.call("inner", [t.var("y")]), t.int(2))
                 })
-                .entry("Test", [("n", "Int")], "Html", |t| {
-                    t.escape(t.int_to_string(t.call("outer", vec![("y", t.var("n"))])))
+                .entrypoint("Test", [("n", "Int")], "Html", |t| {
+                    t.escape(t.int_to_string(t.call("outer", [t.var("n")])))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                fn inner@f0(x@b0: Int) -> Int {
-                  let v0: Int = b0
+                fn inner@f0(x@v0: Int) -> Int {
                   let v1: Int = 1
                   let v2: Int = v0 + v1
                   v2
                 }
-                fn outer@f1(y@b1: Int) -> Int {
-                  let v3: Int = b1
-                  let v4: Int = call inner@f0(v3)
+                fn outer@f1(y@v3: Int) -> Int {
+                  let v4: Int = inner@f0(v3)
                   let v5: Int = 2
                   let v6: Int = v4 * v5
                   v6
                 }
-                entry fn Test@f2(n@b2: Int) -> Html {
-                  let v7: Int = b2
-                  let v8: Int = call outer@f1(v7)
+                entrypoint fn Test@f2(n@v7: Int) -> Html {
+                  let v8: Int = outer@f1(v7)
                   let v9: String = v8.to_string()
                   let v10: Html = escape(v9)
                   v10
                 }
 
                 -- after --
-                entry fn Test@f2(n@b2: Int) -> Html {
-                  let v7: Int = b2
+                entrypoint fn Test@f2(n@v7: Int) -> Html {
                   let v13: Int = 1
                   let v14: Int = v7 + v13
                   let v15: Int = 2
@@ -323,68 +301,57 @@ mod tests {
     }
 
     #[test]
-    fn should_give_each_copy_of_a_loop_fresh_binders() {
+    fn should_give_each_copy_of_a_loop_fresh_names() {
         check(
-            PureModuleBuilder::new()
+            FlatModuleBuilder::new()
                 .function("list", [("items", "Array[String]")], "Html", |t| {
                     t.html_for(Some("item"), t.var("items"), |t| {
-                        t.element("li", vec![], vec![t.escape(t.var("item"))])
+                        t.element("li", [], t.escape(t.var("item")))
                     })
                 })
-                .entry(
+                .entrypoint(
                     "Test",
                     [("a", "Array[String]"), ("b", "Array[String]")],
                     "Html",
                     |t| {
-                        t.concat(vec![
-                            t.call("list", vec![("items", t.var("a"))]),
-                            t.call("list", vec![("items", t.var("b"))]),
+                        t.html_concat([
+                            t.call("list", vec![t.var("a")]),
+                            t.call("list", vec![t.var("b")]),
                         ])
                     },
                 )
                 .build(),
             expect![[r#"
                 -- before --
-                fn list@f0(items@b0: Array[String]) -> Html {
-                  let v0: Array[String] = b0
-                  let v5: Html = for b1: String in v0 {
-                    let v1: String = b1
+                fn list@f0(items@v0: Array[String]) -> Html {
+                  let v4: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
-                    let v3: Html = concat(v2)
-                    let v4: Html = html("li", {}, v3)
-                    v4
+                    let v3: Html = element("li", {}, v2)
+                    v3
                   }
-                  v5
+                  v4
                 }
-                entry fn Test@f1(a@b2: Array[String], b@b3: Array[String]) -> Html {
-                  let v6: Array[String] = b2
-                  let v7: Html = call list@f0(v6)
-                  let v8: Array[String] = b3
-                  let v9: Html = call list@f0(v8)
-                  let v10: Html = concat(v7, v9)
-                  v10
+                entrypoint fn Test@f1(a@v5: Array[String], b@v6: Array[String]) -> Html {
+                  let v7: Html = list@f0(v5)
+                  let v8: Html = list@f0(v6)
+                  let v9: Html = concat(v7, v8)
+                  v9
                 }
 
                 -- after --
-                entry fn Test@f1(a@b2: Array[String], b@b3: Array[String]) -> Html {
-                  let v6: Array[String] = b2
-                  let v15: Html = for b4: String in v6 {
-                    let v11: String = b4
-                    let v12: Html = escape(v11)
-                    let v13: Html = concat(v12)
-                    let v14: Html = html("li", {}, v13)
-                    v14
+                entrypoint fn Test@f1(a@v5: Array[String], b@v6: Array[String]) -> Html {
+                  let v13: Html = for v10: String in v5 {
+                    let v11: Html = escape(v10)
+                    let v12: Html = element("li", {}, v11)
+                    v12
                   }
-                  let v8: Array[String] = b3
-                  let v20: Html = for b5: String in v8 {
-                    let v16: String = b5
-                    let v17: Html = escape(v16)
-                    let v18: Html = concat(v17)
-                    let v19: Html = html("li", {}, v18)
-                    v19
+                  let v17: Html = for v14: String in v6 {
+                    let v15: Html = escape(v14)
+                    let v16: Html = element("li", {}, v15)
+                    v16
                   }
-                  let v10: Html = concat(v15, v20)
-                  v10
+                  let v9: Html = concat(v13, v17)
+                  v9
                 }
             "#]],
         );
@@ -393,69 +360,64 @@ mod tests {
     #[test]
     fn should_leave_a_self_recursive_function_alone() {
         check(
-            PureModuleBuilder::new()
+            FlatModuleBuilder::new()
                 .function("count", [("n", "Int")], "Html", |t| {
-                    t.bool_match_expr(
-                        t.lt(t.var("n"), t.int(1)),
-                        t.text("."),
-                        t.call("count", vec![("n", t.sub(t.var("n"), t.int(1)))]),
-                    )
+                    t.match_expr(t.lt(t.var("n"), t.int(1)), |m| {
+                        m.arm(Pat::True, |t| t.text("."));
+                        m.arm(Pat::False, |t| {
+                            t.call("count", [t.sub(t.var("n"), t.int(1))])
+                        });
+                    })
                 })
-                .entry("Test", [], "Html", |t| {
-                    t.call("count", vec![("n", t.int(3))])
-                })
+                .entrypoint("Test", [], "Html", |t| t.call("count", [t.int(3)]))
                 .build(),
             expect![[r#"
                 -- before --
-                fn count@f0(n@b0: Int) -> Html {
-                  let v0: Int = b0
+                fn count@f0(n@v0: Int) -> Html {
                   let v1: Int = 1
                   let v2: Bool = v0 < v1
-                  let v8: Html = match v2 {
+                  let v7: Html = match v2 {
                     true => {
                       let v3: Html = text(".")
                       v3
                     }
                     false => {
-                      let v4: Int = b0
-                      let v5: Int = 1
-                      let v6: Int = v4 - v5
-                      let v7: Html = call count@f0(v6)
-                      v7
+                      let v4: Int = 1
+                      let v5: Int = v0 - v4
+                      let v6: Html = count@f0(v5)
+                      v6
                     }
                   }
-                  v8
+                  v7
                 }
-                entry fn Test@f1() -> Html {
-                  let v9: Int = 3
-                  let v10: Html = call count@f0(v9)
-                  v10
+                entrypoint fn Test@f1() -> Html {
+                  let v8: Int = 3
+                  let v9: Html = count@f0(v8)
+                  v9
                 }
 
                 -- after --
-                fn count@f0(n@b0: Int) -> Html {
-                  let v0: Int = b0
+                fn count@f0(n@v0: Int) -> Html {
                   let v1: Int = 1
                   let v2: Bool = v0 < v1
-                  let v8: Html = match v2 {
+                  let v7: Html = match v2 {
                     true => {
                       let v3: Html = text(".")
                       v3
                     }
                     false => {
-                      let v4: Int = b0
-                      let v5: Int = 1
-                      let v6: Int = v4 - v5
-                      let v7: Html = call count@f0(v6)
-                      v7
+                      let v4: Int = 1
+                      let v5: Int = v0 - v4
+                      let v6: Html = count@f0(v5)
+                      v6
                     }
                   }
-                  v8
+                  v7
                 }
-                entry fn Test@f1() -> Html {
-                  let v9: Int = 3
-                  let v10: Html = call count@f0(v9)
-                  v10
+                entrypoint fn Test@f1() -> Html {
+                  let v8: Int = 3
+                  let v9: Html = count@f0(v8)
+                  v9
                 }
             "#]],
         );
@@ -464,82 +426,75 @@ mod tests {
     #[test]
     fn should_leave_mutually_recursive_functions_alone() {
         check(
-            PureModuleBuilder::new()
-                .function("ping", [("n", "Int")], "Html", |t| {
-                    t.bool_match_expr(
-                        t.lt(t.var("n"), t.int(1)),
-                        t.text("."),
-                        t.call("pong", vec![("n", t.sub(t.var("n"), t.int(1)))]),
-                    )
+            FlatModuleBuilder::new()
+                .declare("ping", [("n", "Int")], "Html")
+                .declare("pong", [("n", "Int")], "Html")
+                .define("ping", |t, _| {
+                    t.match_expr(t.lt(t.var("n"), t.int(1)), |m| {
+                        m.arm(Pat::True, |t| t.text("."));
+                        m.arm(Pat::False, |t| {
+                            t.call("pong", [t.sub(t.var("n"), t.int(1))])
+                        });
+                    })
                 })
-                .function("pong", [("n", "Int")], "Html", |t| {
-                    t.call("ping", vec![("n", t.var("n"))])
-                })
-                .entry("Test", [], "Html", |t| {
-                    t.call("ping", vec![("n", t.int(2))])
-                })
+                .define("pong", |t, _| t.call("ping", [t.var("n")]))
+                .entrypoint("Test", [], "Html", |t| t.call("ping", [t.int(2)]))
                 .build(),
             expect![[r#"
                 -- before --
-                fn ping@f0(n@b0: Int) -> Html {
-                  let v0: Int = b0
-                  let v1: Int = 1
-                  let v2: Bool = v0 < v1
-                  let v8: Html = match v2 {
+                fn ping@f0(n@v0: Int) -> Html {
+                  let v2: Int = 1
+                  let v3: Bool = v0 < v2
+                  let v8: Html = match v3 {
                     true => {
-                      let v3: Html = text(".")
-                      v3
+                      let v4: Html = text(".")
+                      v4
                     }
                     false => {
-                      let v4: Int = b0
                       let v5: Int = 1
-                      let v6: Int = v4 - v5
-                      let v7: Html = call pong@f1(v6)
+                      let v6: Int = v0 - v5
+                      let v7: Html = pong@f1(v6)
                       v7
                     }
                   }
                   v8
                 }
-                fn pong@f1(n@b1: Int) -> Html {
-                  let v9: Int = b1
-                  let v10: Html = call ping@f0(v9)
-                  v10
+                fn pong@f1(n@v1: Int) -> Html {
+                  let v9: Html = ping@f0(v1)
+                  v9
                 }
-                entry fn Test@f2() -> Html {
-                  let v11: Int = 2
-                  let v12: Html = call ping@f0(v11)
-                  v12
+                entrypoint fn Test@f2() -> Html {
+                  let v10: Int = 2
+                  let v11: Html = ping@f0(v10)
+                  v11
                 }
 
                 -- after --
-                fn ping@f0(n@b0: Int) -> Html {
-                  let v0: Int = b0
-                  let v1: Int = 1
-                  let v2: Bool = v0 < v1
-                  let v8: Html = match v2 {
+                fn ping@f0(n@v0: Int) -> Html {
+                  let v2: Int = 1
+                  let v3: Bool = v0 < v2
+                  let v8: Html = match v3 {
                     true => {
-                      let v3: Html = text(".")
-                      v3
+                      let v4: Html = text(".")
+                      v4
                     }
                     false => {
-                      let v4: Int = b0
                       let v5: Int = 1
-                      let v6: Int = v4 - v5
-                      let v7: Html = call pong@f1(v6)
+                      let v6: Int = v0 - v5
+                      let v7: Html = pong@f1(v6)
                       v7
                     }
                   }
                   v8
                 }
-                fn pong@f1(n@b1: Int) -> Html {
-                  let v9: Int = b1
-                  let v10: Html = call ping@f0(v9)
-                  v10
+                fn pong@f1(n@v1: Int) -> Html {
+                  let v9: Html = ping@f0(v1)
+                  v9
                 }
-                entry fn Test@f2() -> Html {
-                  let v11: Int = 2
-                  let v12: Html = call ping@f0(v11)
-                  v12
+                entrypoint fn Test@f2() -> Html {
+                  let v10: Int = 2
+                  let v11: Html = ping@f0(v10)
+                  v11
                 }
             "#]],
         );

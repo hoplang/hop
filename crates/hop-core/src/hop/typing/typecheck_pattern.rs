@@ -1,11 +1,11 @@
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedPattern;
-use crate::hop::typing::r#type::Type;
+use crate::hop::typing::r#type::{DataType, Type};
 use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind};
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::hop::typing::typed_pattern::{Constructor, TypedField, TypedPattern};
+use crate::hop::typing::typed_pattern::{Constructor, TypedBinder, TypedField, TypedPattern};
 use crate::symbols::var_name::VarName;
 
 /// Typecheck a pattern against the type of the value it matches. Every
@@ -13,7 +13,7 @@ use crate::symbols::var_name::VarName;
 /// range where it is bound. A pattern binds each name at most once.
 pub fn typecheck_pattern(
     parsed: &ParsedPattern,
-    subject_type: &Type,
+    subject_type: &DataType,
     type_env: &TypeEnv,
     registry: &TypeRegistry,
     bindings: &mut Vec<(VarName, Type, DocumentRange)>,
@@ -52,7 +52,7 @@ pub fn typecheck_pattern(
         if pattern_type != subject_type {
             errors.push(TypeError::new(
                 TypeErrorKind::PatternTypeMismatch {
-                    expected: subject_type.clone(),
+                    expected: Type::Data(subject_type.clone()),
                 },
                 parsed.range().clone(),
             ));
@@ -70,11 +70,15 @@ pub fn typecheck_pattern(
                 ));
                 return None;
             }
-            bindings.push((name.clone(), subject_type.clone(), range.clone()));
-            Some(TypedPattern::Binding {
-                name: name.clone(),
-                typ: subject_type.clone(),
-            })
+            bindings.push((
+                name.clone(),
+                Type::Data(subject_type.clone()),
+                range.clone(),
+            ));
+            Some(TypedPattern::Binding(TypedBinder {
+                var: name.clone(),
+                typ: Type::Data(subject_type.clone()),
+            }))
         }
 
         (ParsedPattern::BoolTrue { .. }, Some(ResolvedType::Bool)) => {
@@ -330,7 +334,7 @@ pub fn typecheck_pattern(
         _ => {
             errors.push(TypeError::new(
                 TypeErrorKind::PatternTypeMismatch {
-                    expected: subject_type.clone(),
+                    expected: Type::Data(subject_type.clone()),
                 },
                 parsed.range().clone(),
             ));
@@ -350,7 +354,9 @@ mod tests {
 
     fn reject(types: TypeRegistryBuilder, subject: &str, pattern_str: &str, expected: Expect) {
         let types = types.build();
-        let subject_type = types.resolve(subject);
+        let Type::Data(subject_type) = types.resolve(subject) else {
+            panic!("cannot match on Html")
+        };
         let mut iter = DocumentCursor::new(types.module().clone(), pattern_str.to_string());
         let mut comments = Vec::new();
         let mut errors = Vec::new();

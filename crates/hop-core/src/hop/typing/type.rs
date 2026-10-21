@@ -7,14 +7,19 @@ use crate::symbols::type_name::TypeName;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
+    Data(DataType),
+    Html,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DataType {
     String,
     Bool,
     Int,
     Float,
-    Html,
-    Array(Box<Type>),
-    Option(Box<Type>),
-    Tuple(Vec<Type>),
+    Array(Box<DataType>),
+    Option(Box<DataType>),
+    Tuple(Vec<DataType>),
     Named {
         module: RootContainedFilePath,
         name: TypeName,
@@ -48,37 +53,83 @@ pub enum NumericType {
 }
 
 impl Type {
+    pub const STRING: Type = Type::Data(DataType::String);
+    pub const BOOL: Type = Type::Data(DataType::Bool);
+    pub const INT: Type = Type::Data(DataType::Int);
+    pub const FLOAT: Type = Type::Data(DataType::Float);
+
+    pub fn array(element: DataType) -> Type {
+        Type::Data(DataType::Array(Box::new(element)))
+    }
+
+    pub fn option(element: DataType) -> Type {
+        Type::Data(DataType::Option(Box::new(element)))
+    }
+
+    /// The data type of this type, or None for Html.
+    pub fn as_data(&self) -> Option<&DataType> {
+        match self {
+            Type::Data(data) => Some(data),
+            Type::Html => None,
+        }
+    }
+
     pub fn as_equatable_type(&self) -> Option<EquatableType> {
         match self {
-            Type::Bool => Some(EquatableType::Bool),
-            Type::String => Some(EquatableType::String),
-            Type::Int => Some(EquatableType::Int),
-            Type::Float => Some(EquatableType::Float),
-            Type::Option(_) | Type::Html | Type::Array(_) | Type::Tuple(_) | Type::Named { .. } => {
-                None
-            }
+            Type::Data(DataType::Bool) => Some(EquatableType::Bool),
+            Type::Data(DataType::String) => Some(EquatableType::String),
+            Type::Data(DataType::Int) => Some(EquatableType::Int),
+            Type::Data(DataType::Float) => Some(EquatableType::Float),
+            Type::Data(
+                DataType::Option(_)
+                | DataType::Array(_)
+                | DataType::Tuple(_)
+                | DataType::Named { .. },
+            )
+            | Type::Html => None,
         }
     }
 
     pub fn as_comparable_type(&self) -> Option<ComparableType> {
         match self {
-            Type::Int => Some(ComparableType::Int),
-            Type::Float => Some(ComparableType::Float),
-            Type::Bool
-            | Type::String
-            | Type::Html
-            | Type::Array(_)
-            | Type::Option(_)
-            | Type::Tuple(_)
-            | Type::Named { .. } => None,
+            Type::Data(DataType::Int) => Some(ComparableType::Int),
+            Type::Data(DataType::Float) => Some(ComparableType::Float),
+            Type::Data(
+                DataType::Bool
+                | DataType::String
+                | DataType::Array(_)
+                | DataType::Option(_)
+                | DataType::Tuple(_)
+                | DataType::Named { .. },
+            )
+            | Type::Html => None,
+        }
+    }
+
+    pub fn as_numeric_type(&self) -> Option<NumericType> {
+        match self {
+            Type::Data(DataType::Int) => Some(NumericType::Int),
+            Type::Data(DataType::Float) => Some(NumericType::Float),
+            Type::Data(
+                DataType::Bool
+                | DataType::String
+                | DataType::Array(_)
+                | DataType::Option(_)
+                | DataType::Tuple(_)
+                | DataType::Named { .. },
+            )
+            | Type::Html => None,
         }
     }
 
     /// Whether values of this type can be destructured by a `match` expression.
     pub fn is_matchable(&self) -> bool {
         match self {
-            Type::Bool | Type::Option(_) | Type::Tuple(_) | Type::Named { .. } => true,
-            Type::String | Type::Int | Type::Float | Type::Html | Type::Array(_) => false,
+            Type::Data(
+                DataType::Bool | DataType::Option(_) | DataType::Tuple(_) | DataType::Named { .. },
+            ) => true,
+            Type::Data(DataType::String | DataType::Int | DataType::Float | DataType::Array(_))
+            | Type::Html => false,
         }
     }
 }
@@ -89,23 +140,37 @@ impl fmt::Display for Type {
     }
 }
 
+impl fmt::Display for DataType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_doc().pretty(60))
+    }
+}
+
 impl<'a> Type {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
-            Type::String => BoxDoc::text("String"),
-            Type::Float => BoxDoc::text("Float"),
-            Type::Int => BoxDoc::text("Int"),
-            Type::Bool => BoxDoc::text("Bool"),
+            Type::Data(data) => data.to_doc(),
             Type::Html => BoxDoc::text("Html"),
-            Type::Array(elem_type) => BoxDoc::nil()
+        }
+    }
+}
+
+impl<'a> DataType {
+    pub fn to_doc(&'a self) -> BoxDoc<'a> {
+        match self {
+            DataType::String => BoxDoc::text("String"),
+            DataType::Float => BoxDoc::text("Float"),
+            DataType::Int => BoxDoc::text("Int"),
+            DataType::Bool => BoxDoc::text("Bool"),
+            DataType::Array(elem_type) => BoxDoc::nil()
                 .append(BoxDoc::text("Array["))
                 .append(elem_type.to_doc())
                 .append(BoxDoc::text("]")),
-            Type::Option(elem_type) => BoxDoc::nil()
+            DataType::Option(elem_type) => BoxDoc::nil()
                 .append(BoxDoc::text("Option["))
                 .append(elem_type.to_doc())
                 .append(BoxDoc::text("]")),
-            Type::Tuple(elements) => BoxDoc::nil()
+            DataType::Tuple(elements) => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::intersperse(
                     elements.iter().map(|element| element.to_doc()),
@@ -117,7 +182,7 @@ impl<'a> Type {
                     BoxDoc::nil()
                 })
                 .append(BoxDoc::text(")")),
-            Type::Named { name, .. } => BoxDoc::text(name.as_str()),
+            DataType::Named { name, .. } => BoxDoc::text(name.as_str()),
         }
     }
 }

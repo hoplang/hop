@@ -116,9 +116,8 @@ mod tests {
     use crate::document::Document;
     use crate::hop::format;
     use crate::hop::parsing::parse;
-    use crate::ir::pure_to_flat;
     use crate::ir::runtime::flat_evaluator;
-    use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
+    use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::program::Program;
     use crate::root_contained_file_path::RootContainedFilePath;
     use crate::symbols::type_name::TypeName;
@@ -159,20 +158,14 @@ mod tests {
 
         let typed_modules = program.typed_modules().clone();
         let page_name = TypeName::parse("Test").unwrap();
-        let (module, pages) = orchestrate_pure(
+        let (module, pages) = orchestrate_flat(
             &typed_modules,
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        flat_evaluator::evaluate_page(
-            &pure_to_flat(module),
-            &pages,
-            &page_name,
-            HashMap::new(),
-            None,
-        )
-        .expect("evaluator failed")
+        flat_evaluator::evaluate_page(&module, &pages, &page_name, HashMap::new(), None)
+            .expect("evaluator failed")
     }
 
     #[test]

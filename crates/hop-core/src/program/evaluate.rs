@@ -6,8 +6,8 @@ use crate::document::CheapString;
 use crate::ir;
 use crate::ir::runtime::EvalError;
 use crate::ir::runtime::random::random_value;
-use crate::ir::{DocumentShell, TailwindInjection, optimize_flat, pure_to_flat};
-use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
+use crate::ir::{DocumentShell, TailwindInjection, optimize_flat};
+use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
@@ -42,14 +42,13 @@ impl Program {
 
         // The page filter compiles only the requested page and what it
         // reaches.
-        let (pure_module, pages) = orchestrate_pure(
+        let (flat_module, pages) = orchestrate_flat(
             self.typed_modules(),
             OrchestrateOptions {
                 page_filter: Some((document_id.clone(), page_name.clone())),
                 asset_path_rewriter,
             },
         );
-        let flat_module = pure_to_flat(pure_module);
         let flat_module = if skip_optimization {
             flat_module
         } else {
@@ -77,9 +76,7 @@ impl Program {
                 function: function.name.as_str().to_string(),
                 limit,
             },
-            EvalError::FunctionNotFound { .. } | EvalError::ArgumentCount { .. } => {
-                unreachable!("a call in a typechecked module matches its declaration")
-            }
+            EvalError::ArrayLengthLimit { limit } => EvaluatePageError::ArrayLengthLimit { limit },
         })
     }
 

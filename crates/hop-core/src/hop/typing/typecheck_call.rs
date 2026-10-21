@@ -15,6 +15,7 @@ use crate::html::HtmlElementKind;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
+use indexmap::IndexMap;
 
 /// What a call supplies its arguments to.
 pub enum Callee<'a> {
@@ -287,7 +288,7 @@ pub fn typecheck_call(
         failed = true;
     }
 
-    let mut attributes: Vec<TypedAttribute> = Vec::new();
+    let mut attributes: IndexMap<AttributeName, TypedAttribute> = IndexMap::new();
     for (receiver, argument) in supplied {
         // An attribute is a `Bool` when it is a boolean attribute of its
         // element and a `String` otherwise.
@@ -295,9 +296,9 @@ pub fn typecheck_call(
             Receiver::Parameter(param) => param.typ.clone(),
             Receiver::Attribute { name, element } => {
                 if element.is_boolean_attribute(name.as_str()) {
-                    Type::Bool
+                    Type::BOOL
                 } else {
-                    Type::String
+                    Type::STRING
                 }
             }
         };
@@ -393,14 +394,16 @@ pub fn typecheck_call(
         match receiver {
             Receiver::Parameter(param) => typed.push((param.name.clone(), value)),
             // The expected type was chosen from whether the attribute is
-            // boolean, and the value has that type.
-            Receiver::Attribute { name, .. } => attributes.push(match expected {
-                Type::Bool => TypedAttribute::Presence {
-                    name,
-                    present: value,
-                },
-                _ => TypedAttribute::Value { name, value },
-            }),
+            // boolean, and the value has that type. A name written twice was
+            // reported above, so every name is new.
+            Receiver::Attribute { name, .. } => {
+                let attribute = match expected {
+                    Type::BOOL => TypedAttribute::Presence(value),
+                    _ => TypedAttribute::Value(value),
+                };
+                let previous = attributes.insert(name, attribute);
+                assert!(previous.is_none(), "an attribute is written twice");
+            }
         }
     }
     if failed {
@@ -427,7 +430,7 @@ pub fn typecheck_call(
                 .collect();
 
             let rest = match signature.rest_param.clone() {
-                Some(rest_param) => Some((rest_param, attrs)),
+                Some(rest_param) => Some((rest_param, Box::new(attrs))),
                 None => {
                     // A spread into a callee that declares no rest is not a
                     // mistake: the spread passes on the arguments of the

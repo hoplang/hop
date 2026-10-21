@@ -1,11 +1,13 @@
+use super::bounded_vec::BoundedVec;
 use super::html_node::HtmlNode;
-use super::value::Value;
+use super::value::{MAX_ARRAY_LENGTH, Value};
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::hop::typing::{EnumVariant, ResolvedType, Type, TypeRegistry};
+use crate::hop::typing::{DataType, EnumVariant, ResolvedType, Type, TypeRegistry};
 use crate::html::HtmlElementKind;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
+use std::rc::Rc;
 
 /// Recursion depth at which generation stops making random choices and
 /// steers toward the shortest terminating value instead.
@@ -28,11 +30,11 @@ fn random_word(rng: &mut impl Rng) -> Value {
 /// Whether a value of the given type can be constructed without expanding
 /// any named type in `visiting`. Restores `visiting` before returning.
 pub(crate) fn can_construct(
-    ty: &Type,
+    ty: &DataType,
     registry: &TypeRegistry,
     visiting: &mut Vec<(RootContainedFilePath, TypeName)>,
 ) -> bool {
-    if let Type::Named { module, name } = ty {
+    if let DataType::Named { module, name } = ty {
         if visiting.iter().any(|(m, n)| m == module && n == name) {
             return false;
         }
@@ -43,7 +45,6 @@ pub(crate) fn can_construct(
         | ResolvedType::Bool
         | ResolvedType::Int
         | ResolvedType::Float
-        | ResolvedType::Html
         // Arrays and options can always terminate as empty and None
         | ResolvedType::Array(_)
         | ResolvedType::Option(_) => true,
@@ -59,7 +60,7 @@ pub(crate) fn can_construct(
                 .all(|field| can_construct(&field.typ, registry, visiting))
         }),
     };
-    if matches!(ty, Type::Named { .. }) {
+    if matches!(ty, DataType::Named { .. }) {
         visiting.pop();
     }
     ok
@@ -82,12 +83,21 @@ pub fn random_value(
     examples: Option<&ExamplesAnnotation>,
     registry: &TypeRegistry,
 ) -> Value {
-    random_value_at_depth(rng, ty, examples, registry, 0, &mut Vec::new())
+    match ty {
+        Type::Data(data) => {
+            random_value_at_depth(rng, data, examples, registry, 0, &mut Vec::new())
+        }
+        Type::Html => Value::Html(vec![HtmlNode::Element {
+            element: HtmlElementKind::Span,
+            attributes: Vec::new(),
+            children: vec![HtmlNode::Text("sample".to_string())],
+        }]),
+    }
 }
 
 fn random_value_at_depth(
     rng: &mut impl Rng,
-    ty: &Type,
+    ty: &DataType,
     examples: Option<&ExamplesAnnotation>,
     registry: &TypeRegistry,
     depth: usize,
@@ -97,12 +107,12 @@ fn random_value_at_depth(
         panic!("cannot generate a value for infinitely recursive type {ty}");
     }
     if depth >= MAX_DEPTH {
-        if let Type::Named { module, name } = ty {
+        if let DataType::Named { module, name } = ty {
             visiting.push((module.clone(), name.clone()));
         }
     }
     let value = generate(rng, ty, examples, registry, depth, visiting);
-    if depth >= MAX_DEPTH && matches!(ty, Type::Named { .. }) {
+    if depth >= MAX_DEPTH && matches!(ty, DataType::Named { .. }) {
         visiting.pop();
     }
     value
@@ -110,7 +120,7 @@ fn random_value_at_depth(
 
 fn generate(
     rng: &mut impl Rng,
-    ty: &Type,
+    ty: &DataType,
     examples: Option<&ExamplesAnnotation>,
     registry: &TypeRegistry,
     depth: usize,
@@ -133,28 +143,23 @@ fn generate(
             Value::Int(rng.random_range(min..=max))
         }
         ResolvedType::Float => Value::Float(rng.random_range(0.0..100.0)),
-        ResolvedType::Html => Value::Html(vec![HtmlNode::Element {
-            element: HtmlElementKind::Span,
-            attributes: Vec::new(),
-            children: vec![HtmlNode::Text("sample".to_string())],
-        }]),
         ResolvedType::Array(inner) => {
             let len = if depth >= MAX_DEPTH {
                 0
             } else {
                 let min = examples.and_then(|e| e.min_len).unwrap_or(0).max(0) as usize;
                 let max = examples.and_then(|e| e.max_len).unwrap_or(5).max(0) as usize;
-                rng.random_range(min..=max)
+                rng.random_range(min.min(MAX_ARRAY_LENGTH)..=max.min(MAX_ARRAY_LENGTH))
             };
-            Value::Array(
-                (0..len)
-                    .map(|_| random_value_at_depth(rng, inner, None, registry, depth + 1, visiting))
-                    .collect(),
-            )
+            let elements = (0..len)
+                .map(|_| random_value_at_depth(rng, inner, None, registry, depth + 1, visiting));
+            Value::Array(Rc::new(
+                BoundedVec::new(elements).expect("the length is within the limit"),
+            ))
         }
         ResolvedType::Option(inner) => {
             if depth < MAX_DEPTH && rng.random_bool(0.5) {
-                Value::Option(Some(Box::new(random_value_at_depth(
+                Value::Option(Some(Rc::new(random_value_at_depth(
                     rng,
                     inner,
                     None,
@@ -226,10 +231,7 @@ fn generate(
                     )
                 })
                 .collect();
-            Value::Enum {
-                variant_name: variant.name.clone(),
-                fields,
-            }
+            Value::Enum(variant.name.clone(), fields)
         }
     }
 }
@@ -312,7 +314,7 @@ mod tests {
 
     #[test]
     fn array_length_respects_min_len_and_max_len() {
-        let ty = Type::Array(Box::new(Type::Int));
+        let ty = Type::array(DataType::Int);
         let examples = ExamplesAnnotation {
             min_len: Some(3),
             max_len: Some(4),
@@ -336,7 +338,7 @@ mod tests {
 
     #[test]
     fn array_length_defaults_to_zero_through_five() {
-        let ty = Type::Array(Box::new(Type::Int));
+        let ty = Type::array(DataType::Int);
         let registry = TypeRegistry::default();
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);

@@ -4,14 +4,15 @@ use pretty::{Arena, DocAllocator};
 
 use super::Doc;
 use super::transpiler::Transpiler;
-use crate::hop::typing::{Type, TypeRegistry};
+use crate::hop::typing::{DataType, Type, TypeRegistry};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
+use crate::ir::value_id::ValueId;
 use crate::ir::writer_module::{
-    WriterForSource, WriterFunctionBody, WriterFunctionDeclaration, WriterLet, WriterModule,
-    WriterName, WriterPageDeclaration, WriterStmt, WriterValueBlock,
+    WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterModule,
+    WriterPageDeclaration, WriterStmt,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -19,14 +20,11 @@ use crate::symbols::type_name::TypeName;
 /// Names every variable in the generated code after the name that binds it
 /// in the IR rather than the source name.
 ///
-/// Names are unique across the module, a let's as `v_` and a binder's as
-/// `b_`, so no hop identifier can shadow another, and no name can collide
-/// with a TypeScript reserved word or with the `output` buffer.
-fn name_ident(name: WriterName) -> String {
-    match name {
-        WriterName::Binding(value) => format!("v_{}", value.index()),
-        WriterName::Binder(binder) => format!("b_{}", binder.index()),
-    }
+/// Names are unique across the module, so no hop identifier can shadow
+/// another, and no name can collide with a TypeScript reserved word or with
+/// the `output` buffer.
+fn name_ident(name: ValueId) -> String {
+    format!("v_{}", name.index())
 }
 
 /// Destructuring entry for a parameter: `name: v_0`. The property name stays
@@ -35,7 +33,7 @@ fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter) -> 
     arena
         .text(param.name().as_str())
         .append(arena.text(": "))
-        .append(arena.text(name_ident(WriterName::Binder(param.var))))
+        .append(arena.text(name_ident(param.binder.var)))
 }
 
 fn function_ident(function: &IrFunction) -> String {
@@ -56,7 +54,7 @@ pub struct TsTranspiler {
     /// The type of every name bound so far. A match binds its subject to
     /// a fresh constant of the subject's declared type, so a nested match
     /// on the same name is not narrowed by the arm it sits in.
-    name_types: HashMap<WriterName, Type>,
+    name_types: HashMap<ValueId, Type>,
     /// Numbers the subject constants.
     subjects: usize,
 }
@@ -76,7 +74,7 @@ impl TsTranspiler {
 
     /// Bind the subject of a match to a fresh constant of its declared
     /// type, and return the constant's name with the binding statement.
-    fn bind_subject<'a>(&mut self, arena: &'a Arena<'a>, subject: WriterName) -> (String, Doc<'a>) {
+    fn bind_subject<'a>(&mut self, arena: &'a Arena<'a>, subject: ValueId) -> (String, Doc<'a>) {
         let name = format!("s_{}", self.subjects);
         self.subjects += 1;
         let typ = self.name_types[&subject].clone();
@@ -100,7 +98,6 @@ impl TsTranspiler {
             .replace('\t', "\\t")
     }
 
-    // Helper method to wrap a string in double quotes
     fn quote_string(&mut self, s: &str) -> String {
         format!("\"{}\"", self.escape_string(s))
     }
@@ -115,7 +112,7 @@ impl TsTranspiler {
     ) -> Doc<'a> {
         for param in parameters {
             self.name_types
-                .insert(WriterName::Binder(param.var), param.typ.clone());
+                .insert(param.binder.var, param.binder.typ.clone());
         }
         if parameters.is_empty() {
             return arena.nil();
@@ -130,7 +127,7 @@ impl TsTranspiler {
                 arena
                     .text(param.name().as_str())
                     .append(arena.text(": "))
-                    .append(self.transpile_type(arena, &param.typ))
+                    .append(self.transpile_type(arena, &param.binder.typ))
             })
             .collect();
         let bindings = arena.intersperse(binding_docs, arena.text(",").append(arena.line()));
@@ -152,7 +149,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         base: Doc<'a>,
-        fields: &'a [(FieldName, WriterName)],
+        fields: &'a [(FieldName, ValueId)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             return base.append(arena.text(")"));
@@ -184,7 +181,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         base: Doc<'a>,
-        args: &'a [WriterName],
+        args: &'a [ValueId],
     ) -> Doc<'a> {
         let arg_docs: Vec<_> = args
             .iter()
@@ -213,7 +210,7 @@ impl TsTranspiler {
     fn transpile_enum_cases<'a, Body>(
         &mut self,
         arena: &'a Arena<'a>,
-        subject: WriterName,
+        subject: ValueId,
         arms: &'a [EnumMatchArm<Body>],
         mut body: impl FnMut(&mut Self, &'a Body) -> Doc<'a>,
         tail: &'static str,
@@ -224,50 +221,50 @@ impl TsTranspiler {
         } else {
             arena.hardline().append(arena.text(tail))
         };
-        let case_docs: Vec<_> =
-            arms.iter()
-                .map(|arm| {
-                    let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
-                    for (_, binder) in &arm.bindings {
-                        self.name_types
-                            .insert(WriterName::Binder(binder.var), binder.typ.clone());
-                    }
-                    let bindings_doc = if arm.bindings.is_empty() {
-                        arena.nil()
-                    } else {
-                        let destructure_docs: Vec<_> =
-                            arm.bindings
-                                .iter()
-                                .map(|(field, binder)| {
-                                    arena.text(field.as_str()).append(arena.text(": ")).append(
-                                        arena.text(name_ident(WriterName::Binder(binder.var))),
-                                    )
-                                })
-                                .collect();
-                        arena
-                            .text("const { ")
-                            .append(arena.intersperse(destructure_docs, arena.text(", ")))
-                            .append(arena.text(" } = "))
-                            .append(arena.text(subject_name.clone()))
-                            .append(arena.text(";"))
-                            .append(arena.hardline())
-                    };
-                    arena
-                        .text("case \"")
-                        .append(arena.text(variant_name.as_str()))
-                        .append(arena.text("\": {"))
-                        .append(
+        let case_docs: Vec<_> = arms
+            .iter()
+            .map(|arm| {
+                let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
+                for (_, binder) in &arm.bindings {
+                    self.name_types.insert(binder.var, binder.typ.clone());
+                }
+                let bindings_doc = if arm.bindings.is_empty() {
+                    arena.nil()
+                } else {
+                    let destructure_docs: Vec<_> = arm
+                        .bindings
+                        .iter()
+                        .map(|(field, binder)| {
                             arena
-                                .hardline()
-                                .append(bindings_doc)
-                                .append(body(self, &arm.body))
-                                .append(tail_doc.clone())
-                                .nest(4),
-                        )
+                                .text(field.as_str())
+                                .append(arena.text(": "))
+                                .append(arena.text(name_ident(binder.var)))
+                        })
+                        .collect();
+                    arena
+                        .text("const { ")
+                        .append(arena.intersperse(destructure_docs, arena.text(", ")))
+                        .append(arena.text(" } = "))
+                        .append(arena.text(subject_name.clone()))
+                        .append(arena.text(";"))
                         .append(arena.hardline())
-                        .append(arena.text("}"))
-                })
-                .collect();
+                };
+                arena
+                    .text("case \"")
+                    .append(arena.text(variant_name.as_str()))
+                    .append(arena.text("\": {"))
+                    .append(
+                        arena
+                            .hardline()
+                            .append(bindings_doc)
+                            .append(body(self, &arm.body))
+                            .append(tail_doc.clone())
+                            .nest(4),
+                    )
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
+            })
+            .collect();
         subject_binding
             .append(arena.text("switch ("))
             .append(arena.text(subject_name))
@@ -287,7 +284,7 @@ impl TsTranspiler {
     fn transpile_option_cases<'a, Body>(
         &mut self,
         arena: &'a Arena<'a>,
-        subject: WriterName,
+        subject: ValueId,
         some_arm_binding: Option<&'a IrBinder>,
         some_arm_body: &'a Body,
         none_arm_body: &'a Body,
@@ -303,11 +300,10 @@ impl TsTranspiler {
         };
         let binding_doc = match some_arm_binding {
             Some(binder) => {
-                self.name_types
-                    .insert(WriterName::Binder(binder.var), binder.typ.clone());
+                self.name_types.insert(binder.var, binder.typ.clone());
                 arena
                     .text("const ")
-                    .append(arena.text(name_ident(WriterName::Binder(binder.var))))
+                    .append(arena.text(name_ident(binder.var)))
                     .append(arena.text(" = "))
                     .append(arena.text(subject_name.clone()))
                     .append(arena.text(".value;"))
@@ -377,8 +373,13 @@ impl Transpiler for TsTranspiler {
         &self.registry
     }
 
+    fn name_type(&self, name: ValueId) -> &Type {
+        self.name_types
+            .get(&name)
+            .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
+    }
+
     fn transpile_module(&mut self, module: &WriterModule, registry: &TypeRegistry) -> String {
-        // Reset tracking flags for this module
         self.needs_option = false;
         self.needs_escape_html = false;
         self.needs_float_to_int = false;
@@ -388,15 +389,10 @@ impl Transpiler for TsTranspiler {
         self.subjects = 0;
 
         let arena = &Arena::new();
-
         let pages = &module.pages;
-
         let mut result = arena.nil();
 
-        // Add enum type definitions (namespace-based)
         for (enum_name, variants) in registry.enums() {
-            // Generate namespace with tagged union type and constructor functions
-
             result = result
                 .append(arena.text("export namespace "))
                 .append(arena.text(enum_name.as_str()))
@@ -426,7 +422,7 @@ impl Transpiler for TsTranspiler {
                                             .text(", readonly ")
                                             .append(arena.text(field.name.as_str()))
                                             .append(arena.text(": "))
-                                            .append(self.transpile_type(arena, &field.typ))
+                                            .append(self.transpile_data_type(arena, &field.typ))
                                     })
                                     .collect();
                                 base.append(arena.intersperse(field_docs, arena.nil()))
@@ -439,12 +435,10 @@ impl Transpiler for TsTranspiler {
                 .append(arena.text(";"))
                 .append(arena.line());
 
-            // Generate constructor function for each variant
             for variant in variants {
                 result = result.append(arena.line());
 
                 if variant.fields.is_empty() {
-                    // Unit variant: no parameters
                     result = result
                         .append(arena.text("    export function "))
                         .append(arena.text(variant.name.as_str()))
@@ -458,7 +452,6 @@ impl Transpiler for TsTranspiler {
                         .append(arena.line())
                         .append(arena.text("    }"));
                 } else {
-                    // Variant with fields: add parameters
                     let param_with_type_docs: Vec<_> = variant
                         .fields
                         .iter()
@@ -466,7 +459,7 @@ impl Transpiler for TsTranspiler {
                             arena
                                 .text(field.name.as_str())
                                 .append(arena.text(": "))
-                                .append(self.transpile_type(arena, &field.typ))
+                                .append(self.transpile_data_type(arena, &field.typ))
                         })
                         .collect();
                     let field_name_docs: Vec<_> = variant
@@ -506,7 +499,6 @@ impl Transpiler for TsTranspiler {
                 .append(arena.line());
         }
 
-        // Add record type definitions
         for (record_name, fields) in registry.records() {
             if fields.is_empty() {
                 result = result
@@ -523,7 +515,7 @@ impl Transpiler for TsTranspiler {
                             .text("public readonly ")
                             .append(arena.text(field.name.as_str()))
                             .append(arena.text(": "))
-                            .append(self.transpile_type(arena, &field.typ))
+                            .append(self.transpile_data_type(arena, &field.typ))
                             .append(arena.text(";"))
                     })
                     .collect();
@@ -533,7 +525,7 @@ impl Transpiler for TsTranspiler {
                         arena
                             .text(field.name.as_str())
                             .append(arena.text(": "))
-                            .append(self.transpile_type(arena, &field.typ))
+                            .append(self.transpile_data_type(arena, &field.typ))
                     })
                     .collect();
                 let assignment_docs: Vec<_> = fields
@@ -584,7 +576,6 @@ impl Transpiler for TsTranspiler {
             }
         }
 
-        // Add function definitions
         for function in &module.functions {
             result = result
                 .append(self.transpile_function_def(arena, function))
@@ -599,108 +590,83 @@ impl Transpiler for TsTranspiler {
         result =
             result.append(arena.intersperse(page_docs, arena.hardline().append(arena.hardline())));
 
-        // Prepend escapeHtml function if needed (after transpilation determined it's used)
         if self.needs_escape_html {
-            let escape_fn = arena
-                .nil()
-                .append(arena.text("function escapeHtml(str: string): string {"))
-                .append(
-                    arena
-                        .nil()
-                        .append(arena.line())
-                        .append(arena.text("return str"))
-                        .append(
-                            arena
-                                .nil()
-                                .append(arena.line())
-                                .append(arena.intersperse(
-                                    [
-                                        arena.text(".replace(/&/g, '&amp;')"),
-                                        arena.text(".replace(/</g, '&lt;')"),
-                                        arena.text(".replace(/>/g, '&gt;')"),
-                                        arena.text(".replace(/\"/g, '&quot;');"),
-                                    ],
-                                    arena.line(),
-                                ))
-                                .nest(4),
-                        )
-                        .append(arena.line())
-                        .nest(4),
-                )
-                .append(arena.text("}"))
-                .append(arena.line())
-                .append(arena.line());
-            result = escape_fn.append(result);
+            let escape_fn = arena.intersperse(
+                [
+                    arena.text("function escapeHtml(str: string): string {"),
+                    arena.text("    return str"),
+                    arena.text("        .replace(/&/g, '&amp;')"),
+                    arena.text("        .replace(/</g, '&lt;')"),
+                    arena.text("        .replace(/>/g, '&gt;')"),
+                    arena.text("        .replace(/\"/g, '&quot;');"),
+                    arena.text("}"),
+                ],
+                arena.hardline(),
+            );
+            result = escape_fn
+                .append(arena.hardline())
+                .append(arena.hardline())
+                .append(result);
         }
 
         if self.needs_float_to_int {
-            let float_to_int_fn = arena
-                .nil()
-                .append(arena.intersperse(
-                    [
-                        arena.text("function floatToInt(f: number): number {"),
-                        arena.text("    if (globalThis.Number.isNaN(f)) return 0;"),
-                        arena.text("    if (f >= 2147483647) return 2147483647;"),
-                        arena.text("    if (f <= -2147483648) return -2147483648;"),
-                        arena.text("    return globalThis.Math.trunc(f);"),
-                        arena.text("}"),
-                    ],
-                    arena.hardline(),
-                ))
-                .append(arena.line())
-                .append(arena.line());
-            result = float_to_int_fn.append(result);
+            let float_to_int_fn = arena.intersperse(
+                [
+                    arena.text("function floatToInt(f: number): number {"),
+                    arena.text("    if (globalThis.Number.isNaN(f)) return 0;"),
+                    arena.text("    if (f >= 2147483647) return 2147483647;"),
+                    arena.text("    if (f <= -2147483648) return -2147483648;"),
+                    arena.text("    return globalThis.Math.trunc(f);"),
+                    arena.text("}"),
+                ],
+                arena.hardline(),
+            );
+            result = float_to_int_fn
+                .append(arena.hardline())
+                .append(arena.hardline())
+                .append(result);
         }
 
-        // Prepend Option namespace if needed (after transpilation determined it's used)
         if self.needs_option {
-            let option_ns = arena
-                .nil()
-                .append(arena.text("export namespace Option {"))
-                .append(arena.line())
-                .append(arena.text(
-                    "    export type Option<T> = { readonly tag: \"None\" } | { readonly tag: \"Some\", value: T };",
-                ))
-                .append(arena.line())
-                .append(arena.line())
-                .append(arena.text("    export function some<T>(value: T): Option<T> {"))
-                .append(arena.line())
-                .append(arena.text("        return { tag: \"Some\", value };"))
-                .append(arena.line())
-                .append(arena.text("    }"))
-                .append(arena.line())
-                .append(arena.text("    export function none<T = never>(): Option<T> {"))
-                .append(arena.line())
-                .append(arena.text("        return { tag: \"None\" };"))
-                .append(arena.line())
-                .append(arena.text("    }"))
-                .append(arena.line())
-                .append(arena.text("}"))
-                .append(arena.line())
-                .append(arena.line());
-            result = option_ns.append(result);
+            let option_ns = arena.intersperse(
+                [
+                    arena.text("export namespace Option {"),
+                    arena.text(
+                        "    export type Option<T> = { readonly tag: \"None\" } | { readonly tag: \"Some\", value: T };",
+                    ),
+                    arena.text(""),
+                    arena.text("    export function some<T>(value: T): Option<T> {"),
+                    arena.text("        return { tag: \"Some\", value };"),
+                    arena.text("    }"),
+                    arena.text("    export function none<T = never>(): Option<T> {"),
+                    arena.text("        return { tag: \"None\" };"),
+                    arena.text("    }"),
+                    arena.text("}"),
+                ],
+                arena.hardline(),
+            );
+            result = option_ns
+                .append(arena.hardline())
+                .append(arena.hardline())
+                .append(result);
         }
 
-        // Prepend Html type if needed (after transpilation determined it's used)
         if self.needs_html {
-            let fragment = arena
-                .nil()
-                .append(arena.text("type Html = string & { readonly __brand: unique symbol };"))
-                .append(arena.line())
-                .append(arena.line());
-            result = fragment.append(result);
+            let fragment = arena.text("type Html = string & { readonly __brand: unique symbol };");
+            result = fragment
+                .append(arena.hardline())
+                .append(arena.hardline())
+                .append(result);
         }
 
-        // Prepend warning header (must be last prepend to appear first in output)
-        let warning = arena
+        let preamble = arena
             .text("// Code generated by the hop compiler. DO NOT EDIT.")
             .append(arena.line())
             .append(arena.line());
-        result = warning.append(result);
+        result = preamble.append(result);
 
         let output = result.pretty(80).to_string();
 
-        // Ensure file ends with a newline
         if !output.ends_with('\n') {
             format!("{}\n", output)
         } else {
@@ -740,7 +706,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [WriterName],
+        args: &'a [ValueId],
     ) -> Doc<'a> {
         let base = arena
             .nil()
@@ -756,18 +722,16 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         function: &'a WriterFunctionDeclaration,
     ) -> Doc<'a> {
-        // A function is internal to the module, so it takes its parameters
-        // in order, as a call passes them.
         let param_docs: Vec<_> = function
             .parameters
             .iter()
             .map(|param| {
                 self.name_types
-                    .insert(WriterName::Binder(param.var), param.typ.clone());
+                    .insert(param.binder.var, param.binder.typ.clone());
                 arena
-                    .text(name_ident(WriterName::Binder(param.var)))
+                    .text(name_ident(param.binder.var))
                     .append(arena.text(": "))
-                    .append(self.transpile_type(arena, &param.typ))
+                    .append(self.transpile_type(arena, &param.binder.typ))
             })
             .collect();
         let head = arena
@@ -815,7 +779,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [WriterName],
+        args: &'a [ValueId],
     ) -> Doc<'a> {
         let base = arena
             .nil()
@@ -835,7 +799,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: WriterName,
+        name: ValueId,
     ) -> Doc<'a> {
         self.needs_escape_html = true;
         arena
@@ -848,7 +812,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_write_html_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: WriterName,
+        name: ValueId,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -861,55 +825,37 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrBinder>,
-        source: &'a WriterForSource,
+        array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a> {
         let var_name = match var {
             Some(binder) => {
-                self.name_types
-                    .insert(WriterName::Binder(binder.var), binder.typ.clone());
-                name_ident(WriterName::Binder(binder.var))
+                self.name_types.insert(binder.var, binder.typ.clone());
+                name_ident(binder.var)
             }
             None => "_".to_string(),
         };
-        match source {
-            WriterForSource::Array(array) => arena
-                .text("for (const ")
-                .append(arena.text(var_name))
-                .append(arena.text(" of "))
-                .append(arena.text(name_ident(*array)))
-                .append(arena.text(") {"))
-                .append(self.transpile_block(arena, body))
-                .append(arena.text("}")),
-            WriterForSource::RangeInclusive { start, end } => arena
-                .text("for (let ")
-                .append(arena.text(var_name.clone()))
-                .append(arena.text(" = "))
-                .append(arena.text(name_ident(*start)))
-                .append(arena.text("; "))
-                .append(arena.text(var_name.clone()))
-                .append(arena.text(" <= "))
-                .append(arena.text(name_ident(*end)))
-                .append(arena.text("; "))
-                .append(arena.text(var_name))
-                .append(arena.text("++) {"))
-                .append(self.transpile_block(arena, body))
-                .append(arena.text("}")),
-        }
+        arena
+            .text("for (const ")
+            .append(arena.text(var_name))
+            .append(arena.text(" of "))
+            .append(arena.text(name_ident(array)))
+            .append(arena.text(") {"))
+            .append(self.transpile_block(arena, body))
+            .append(arena.text("}"))
     }
 
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        let_: &'a WriterLet,
+        let_: &'a WriterBinding,
     ) -> Doc<'a> {
-        self.name_types
-            .insert(WriterName::Binding(let_.name), let_.typ.clone());
+        self.name_types.insert(let_.name, let_.typ.clone());
         let binding_type = self.transpile_type(arena, &let_.typ);
         let value = self.transpile_op(arena, &let_.op, &let_.typ);
         arena
             .text("const ")
-            .append(arena.text(name_ident(WriterName::Binding(let_.name))))
+            .append(arena.text(name_ident(let_.name)))
             .append(arena.text(": "))
             .append(binding_type)
             .append(arena.text(" = "))
@@ -920,7 +866,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<WriterName, Vec<WriterStmt>>,
+        match_: &'a IrSwitch<Vec<WriterStmt>>,
     ) -> Doc<'a> {
         match match_ {
             IrSwitch::Bool {
@@ -934,7 +880,6 @@ impl Transpiler for TsTranspiler {
                     .append(arena.text(") {"))
                     .append(self.transpile_block(arena, true_body))
                     .append(arena.text("}"));
-                // An empty false arm emits no `else` branch.
                 if false_body.is_empty() {
                     if_doc
                 } else {
@@ -984,10 +929,10 @@ impl Transpiler for TsTranspiler {
     fn transpile_value_block<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        block: &'a WriterValueBlock,
+        block: &'a WriterBlock,
     ) -> Doc<'a> {
         let mut docs: Vec<Doc<'a>> = Vec::new();
-        for let_ in &block.lets {
+        for let_ in &block.bindings {
             docs.push(self.transpile_let_statement(arena, let_));
         }
         docs.push(
@@ -1002,7 +947,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        record: WriterName,
+        record: ValueId,
         field: &'a FieldName,
     ) -> Doc<'a> {
         arena
@@ -1016,8 +961,6 @@ impl Transpiler for TsTranspiler {
         arena.text(self.quote_string(value))
     }
 
-    /// The fragment body gets its own `output` buffer, so it is built by an
-    /// immediately invoked arrow function rather than inline.
     fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStmt]) -> Doc<'a> {
         self.needs_html = true;
         arena
@@ -1067,8 +1010,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [WriterName],
-        _elem_type: &'a Type,
+        elements: &'a [ValueId],
+        _elem_type: &'a DataType,
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
             .iter()
@@ -1081,11 +1024,26 @@ impl Transpiler for TsTranspiler {
             .append(arena.text("]"))
     }
 
+    /// A length below zero is taken as zero, so a range whose start is
+    /// greater than its end is empty.
+    fn transpile_array_from_range<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        start: ValueId,
+        end: ValueId,
+    ) -> Doc<'a> {
+        let start = name_ident(start);
+        let end = name_ident(end);
+        arena.text(format!(
+            "Array.from({{ length: {end} - {start} + 1 }}, (_, index) => {start} + index)"
+        ))
+    }
+
     fn transpile_tuple_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [WriterName],
-        _element_types: &'a [Type],
+        elements: &'a [ValueId],
+        _element_types: &'a [DataType],
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
             .iter()
@@ -1100,7 +1058,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_tuple_index<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        tuple: WriterName,
+        tuple: ValueId,
         index: usize,
     ) -> Doc<'a> {
         arena
@@ -1114,7 +1072,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, WriterName)],
+        fields: &'a [(FieldName, ValueId)],
     ) -> Doc<'a> {
         let base = arena
             .text("new ")
@@ -1128,9 +1086,8 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, WriterName)],
+        fields: &'a [(FieldName, ValueId)],
     ) -> Doc<'a> {
-        // Call the namespace constructor function: Color.Red() or Result.Ok(value)
         let base = arena
             .text(enum_name)
             .append(arena.text("."))
@@ -1142,8 +1099,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1154,8 +1111,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1166,8 +1123,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1178,8 +1135,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1190,8 +1147,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1202,8 +1159,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1214,8 +1171,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1226,8 +1183,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1235,29 +1192,25 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(name_ident(right)))
     }
 
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a> {
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a> {
         arena.text("!").append(arena.text(name_ident(operand)))
     }
 
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a> {
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a> {
         arena
             .text("-")
             .append(arena.text(name_ident(operand)))
             .append(arena.text(" | 0"))
     }
 
-    fn transpile_float_negation<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        operand: WriterName,
-    ) -> Doc<'a> {
+    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a> {
         arena.text("-").append(arena.text(name_ident(operand)))
     }
 
     fn transpile_string_concat<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parts: &'a [WriterName],
+        parts: &'a [ValueId],
     ) -> Doc<'a> {
         if parts.is_empty() {
             return arena.text("\"\"");
@@ -1271,8 +1224,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1286,8 +1239,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1298,8 +1251,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1313,8 +1266,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1325,8 +1278,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1340,8 +1293,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a> {
         arena
             .text(name_ident(left))
@@ -1352,20 +1305,20 @@ impl Transpiler for TsTranspiler {
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<WriterName>,
-        inner_type: &'a Type,
+        value: Option<ValueId>,
+        inner_type: &'a DataType,
     ) -> Doc<'a> {
         self.needs_option = true;
         match value {
             Some(inner) => arena
                 .text("Option.some<")
-                .append(self.transpile_type(arena, inner_type))
+                .append(self.transpile_data_type(arena, inner_type))
                 .append(arena.text(">("))
                 .append(arena.text(name_ident(inner)))
                 .append(arena.text(")")),
             None => arena
                 .text("Option.none<")
-                .append(self.transpile_type(arena, inner_type))
+                .append(self.transpile_data_type(arena, inner_type))
                 .append(arena.text(">()")),
         }
     }
@@ -1377,7 +1330,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<WriterName, WriterValueBlock>,
+        match_: &'a IrSwitch<WriterBlock>,
     ) -> Doc<'a> {
         match match_ {
             IrSwitch::Bool {
@@ -1385,7 +1338,7 @@ impl Transpiler for TsTranspiler {
                 true_body,
                 false_body,
             } => {
-                if true_body.lets.is_empty() && false_body.lets.is_empty() {
+                if true_body.bindings.is_empty() && false_body.bindings.is_empty() {
                     return arena
                         .text(name_ident(*subject))
                         .append(arena.text(" ? "))
@@ -1445,53 +1398,41 @@ impl Transpiler for TsTranspiler {
         }
     }
 
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a> {
+    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: ValueId) -> Doc<'a> {
         arena.text(name_ident(array)).append(arena.text(".length"))
     }
 
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a> {
+    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(array))
             .append(arena.text(".length === 0"))
     }
 
-    fn transpile_string_is_empty<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        string: WriterName,
-    ) -> Doc<'a> {
+    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(string))
             .append(arena.text(".length === 0"))
     }
 
-    fn transpile_option_is_some<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        option: WriterName,
-    ) -> Doc<'a> {
+    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".tag === \"Some\""))
     }
 
-    fn transpile_option_is_none<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        option: WriterName,
-    ) -> Doc<'a> {
+    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(option))
             .append(arena.text(".tag === \"None\""))
     }
 
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
+    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(value))
             .append(arena.text(".toString()"))
     }
 
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
+    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a> {
         self.needs_float_to_int = true;
         arena
             .text("floatToInt(")
@@ -1499,7 +1440,7 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(")"))
     }
 
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a> {
+    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a> {
         // In JavaScript, all numbers are floats, so no conversion needed
         arena.text(name_ident(value))
     }
@@ -1525,15 +1466,19 @@ impl Transpiler for TsTranspiler {
         arena.text("number")
     }
 
-    fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &Type) -> Doc<'a> {
-        self.transpile_type(arena, element_type)
+    fn transpile_array_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        element_type: &DataType,
+    ) -> Doc<'a> {
+        self.transpile_data_type(arena, element_type)
             .append(arena.text("[]"))
     }
 
     fn transpile_tuple_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_types: &[Type],
+        element_types: &[DataType],
     ) -> Doc<'a> {
         arena
             .text("[")
@@ -1541,7 +1486,7 @@ impl Transpiler for TsTranspiler {
                 arena.intersperse(
                     element_types
                         .iter()
-                        .map(|element| self.transpile_type(arena, element))
+                        .map(|element| self.transpile_data_type(arena, element))
                         .collect::<Vec<_>>(),
                     arena.text(", "),
                 ),
@@ -1549,11 +1494,15 @@ impl Transpiler for TsTranspiler {
             .append(arena.text("]"))
     }
 
-    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &Type) -> Doc<'a> {
+    fn transpile_option_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        inner_type: &DataType,
+    ) -> Doc<'a> {
         self.needs_option = true;
         arena
             .text("Option.Option<")
-            .append(self.transpile_type(arena, inner_type))
+            .append(self.transpile_data_type(arena, inner_type))
             .append(arena.text(">"))
     }
 
@@ -1573,15 +1522,13 @@ impl Transpiler for TsTranspiler {
 mod tests {
     use super::*;
     use crate::document::Document;
-    use crate::ir::flat_to_writer::flat_to_writer;
-    use crate::ir::pure_to_flat::pure_to_flat;
-    use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
+    use crate::ir::{flat_to_markup, markup_to_writer};
+    use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::program::Program;
     use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    /// Compile a module written in source, without optimization, and transpile it.
     fn check(source: &str, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();
         let mut program = Program::new();
@@ -1591,13 +1538,13 @@ mod tests {
         );
         let diagnostics = program.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (pure, pages) = orchestrate_pure(
+        let (flat, pages) = orchestrate_flat(
             program.typed_modules(),
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        let module = flat_to_writer(pure_to_flat(pure), program.type_registry(), &pages, None);
+        let module = markup_to_writer(flat_to_markup(flat), program.type_registry(), &pages, None);
         let output = TsTranspiler::new().transpile_module(&module, program.type_registry());
         expected.assert_eq(&output);
     }
@@ -1658,12 +1605,12 @@ mod tests {
                     }
                 }
 
-                export function Test({unit: b_0}: {unit: []}): string {
+                export function Test({unit: v_0}: {unit: []}): string {
                     let output: string = "";
-                    const v_0: [] = [];
-                    const v_1: Holder = new Holder({nothing: v_0});
-                    const v_3: [] = v_1.nothing;
-                    const v_4: [][] = [b_0, v_3];
+                    const v_1: [] = [];
+                    const v_2: Holder = new Holder({nothing: v_1});
+                    const v_3: [] = v_2.nothing;
+                    const v_4: [][] = [v_0, v_3];
                     const v_5: number = v_4.length;
                     const v_6: string = v_5.toString();
                     output += escapeHtml(v_6);
@@ -1698,17 +1645,17 @@ mod tests {
                 }
 
                 export function UserInfo({
-                    name: b_0,
-                    age: b_1
+                    name: v_0,
+                    age: v_1
                 }: {
                     name: string,
                     age: string
                 }): string {
                     let output: string = "";
                     output += "<div><h2>Name: ";
-                    output += escapeHtml(b_0);
+                    output += escapeHtml(v_0);
                     output += "</h2><p>Age: ";
-                    output += escapeHtml(b_1);
+                    output += escapeHtml(v_1);
                     output += "</p></div>";
                     return output;
                 }
@@ -1741,16 +1688,16 @@ mod tests {
                 }
 
                 export function ConditionalDisplay({
-                    title: b_0,
-                    show: b_1
+                    title: v_0,
+                    show: v_1
                 }: {
                     title: string,
                     show: boolean
                 }): string {
                     let output: string = "";
-                    if (b_1) {
+                    if (v_1) {
                         output += "<h1>";
-                        output += escapeHtml(b_0);
+                        output += escapeHtml(v_0);
                         output += "</h1>";
                     }
                     return output;
@@ -1784,12 +1731,12 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                export function ListItems({items: b_0}: {items: string[]}): string {
+                export function ListItems({items: v_0}: {items: string[]}): string {
                     let output: string = "";
                     output += "<ul>";
-                    for (const b_1 of b_0) {
+                    for (const v_1 of v_0) {
                         output += "<li>";
-                        output += escapeHtml(b_1);
+                        output += escapeHtml(v_1);
                         output += "</li>";
                     }
                     output += "</ul>";
@@ -1826,9 +1773,10 @@ mod tests {
                     let output: string = "";
                     const v_0: number = 1;
                     const v_1: number = 3;
-                    for (let b_0 = v_0; b_0 <= v_1; b_0++) {
-                        const v_3: string = b_0.toString();
-                        output += escapeHtml(v_3);
+                    const v_2: number[] = Array.from({ length: v_1 - v_0 + 1 }, (_, index) => v_0 + index);
+                    for (const v_3 of v_2) {
+                        const v_4: string = v_3.toString();
+                        output += escapeHtml(v_4);
                         output += ",";
                     }
                     return output;
@@ -1891,9 +1839,9 @@ mod tests {
                     }
                 }
 
-                export function UserProfile({user: b_0}: {user: User}): string {
+                export function UserProfile({user: v_0}: {user: User}): string {
                     let output: string = "";
-                    const v_1: string = b_0.name;
+                    const v_1: string = v_0.name;
                     output += "<div>";
                     output += escapeHtml(v_1);
                     output += "</div>";
@@ -2002,9 +1950,9 @@ mod tests {
                     }
                 }
 
-                export function Test({node: b_0}: {node: Node}): string {
+                export function Test({node: v_0}: {node: Node}): string {
                     let output: string = "";
-                    const v_1: number = b_0.value;
+                    const v_1: number = v_0.value;
                     const v_2: string = v_1.toString();
                     output += escapeHtml(v_2);
                     return output;
@@ -2193,26 +2141,26 @@ mod tests {
                     }
                 }
 
-                export function ColorName({color: b_0}: {color: Color.Color}): string {
+                export function ColorName({color: v_0}: {color: Color.Color}): string {
                     let output: string = "";
-                    const v_10: string = (() => {
-                        const s_0: Color.Color = b_0;
+                    const v_7: string = (() => {
+                        const s_0: Color.Color = v_0;
                         switch (s_0._tag) {
                             case "Red": {
-                                const v_7: string = "red";
-                                return v_7;
+                                const v_1: string = "red";
+                                return v_1;
                             }
                             case "Green": {
-                                const v_8: string = "green";
-                                return v_8;
+                                const v_2: string = "green";
+                                return v_2;
                             }
                             case "Blue": {
-                                const v_9: string = "blue";
-                                return v_9;
+                                const v_3: string = "blue";
+                                return v_3;
                             }
                         }
                     })();
-                    output += escapeHtml(v_10);
+                    output += escapeHtml(v_7);
                     return output;
                 }
             "#]],
@@ -2240,18 +2188,18 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                export function IsActive({active: b_0}: {active: boolean}): string {
+                export function IsActive({active: v_0}: {active: boolean}): string {
                     let output: string = "";
-                    const v_8: string = (() => {
-                        if (b_0) {
-                            const v_6: string = "yes";
-                            return v_6;
+                    const v_6: string = (() => {
+                        if (v_0) {
+                            const v_1: string = "yes";
+                            return v_1;
                         } else {
-                            const v_7: string = "no";
-                            return v_7;
+                            const v_2: string = "no";
+                            return v_2;
                         }
                     })();
-                    output += escapeHtml(v_8);
+                    output += escapeHtml(v_6);
                     return output;
                 }
             "#]],
@@ -2290,22 +2238,22 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                export function CheckOption({opt: b_0}: {opt: Option.Option<number>}): string {
+                export function CheckOption({opt: v_0}: {opt: Option.Option<number>}): string {
                     let output: string = "";
-                    const v_8: string = (() => {
-                        const s_0: Option.Option<number> = b_0;
+                    const v_6: string = (() => {
+                        const s_0: Option.Option<number> = v_0;
                         switch (s_0.tag) {
                             case "Some": {
-                                const v_6: string = "has value";
-                                return v_6;
+                                const v_1: string = "has value";
+                                return v_1;
                             }
                             case "None": {
-                                const v_7: string = "empty";
-                                return v_7;
+                                const v_2: string = "empty";
+                                return v_2;
                             }
                         }
                     })();
-                    output += escapeHtml(v_8);
+                    output += escapeHtml(v_6);
                     return output;
                 }
             "#]],
@@ -2350,47 +2298,47 @@ mod tests {
                 }
 
                 export function CheckNestedOption({
-                    opt: b_0
+                    opt: v_0
                 }: {
                     opt: Option.Option<Option.Option<boolean>>
                 }): string {
                     let output: string = "";
-                    const v_16: string = (() => {
-                        const s_0: Option.Option<Option.Option<boolean>> = b_0;
+                    const v_12: string = (() => {
+                        const s_0: Option.Option<Option.Option<boolean>> = v_0;
                         switch (s_0.tag) {
                             case "Some": {
-                                const b_1 = s_0.value;
-                                const v_14: string = (() => {
-                                    const s_1: Option.Option<boolean> = b_1;
+                                const v_8 = s_0.value;
+                                const v_11: string = (() => {
+                                    const s_1: Option.Option<boolean> = v_8;
                                     switch (s_1.tag) {
                                         case "Some": {
-                                            const b_2 = s_1.value;
-                                            const v_12: string = (() => {
-                                                if (b_2) {
-                                                    const v_10: string = "some-some-true";
-                                                    return v_10;
+                                            const v_9 = s_1.value;
+                                            const v_10: string = (() => {
+                                                if (v_9) {
+                                                    const v_1: string = "some-some-true";
+                                                    return v_1;
                                                 } else {
-                                                    const v_11: string = "some-some-false";
-                                                    return v_11;
+                                                    const v_2: string = "some-some-false";
+                                                    return v_2;
                                                 }
                                             })();
-                                            return v_12;
+                                            return v_10;
                                         }
                                         case "None": {
-                                            const v_13: string = "some-none";
-                                            return v_13;
+                                            const v_3: string = "some-none";
+                                            return v_3;
                                         }
                                     }
                                 })();
-                                return v_14;
+                                return v_11;
                             }
                             case "None": {
-                                const v_15: string = "none";
-                                return v_15;
+                                const v_4: string = "none";
+                                return v_4;
                             }
                         }
                     })();
-                    output += escapeHtml(v_16);
+                    output += escapeHtml(v_12);
                     return output;
                 }
             "#]],
@@ -2433,17 +2381,17 @@ mod tests {
                 }
 
                 export function DisplayOption({
-                    opt: b_0
+                    opt: v_0
                 }: {
                     opt: Option.Option<string>
                 }): string {
                     let output: string = "";
-                    const s_0: Option.Option<string> = b_0;
+                    const s_0: Option.Option<string> = v_0;
                     switch (s_0.tag) {
                         case "Some": {
-                            const b_2 = s_0.value;
+                            const v_10 = s_0.value;
                             output += "<span>Found: ";
-                            output += escapeHtml(b_2);
+                            output += escapeHtml(v_10);
                             output += "</span>";
                             break;
                         }
@@ -2500,34 +2448,34 @@ mod tests {
                     const v_0: string = "hello";
                     const v_1: Option.Option<string> = Option.some<string>(v_0);
                     const v_2: Option.Option<string> = Option.none<string>();
-                    const v_14: string = (() => {
+                    const v_12: string = (() => {
                         const s_0: Option.Option<string> = v_1;
                         switch (s_0.tag) {
                             case "Some": {
-                                const v_12: string = "has value";
-                                return v_12;
+                                const v_3: string = "has value";
+                                return v_3;
                             }
                             case "None": {
-                                const v_13: string = "empty";
-                                return v_13;
+                                const v_4: string = "empty";
+                                return v_4;
                             }
                         }
                     })();
-                    const v_17: string = (() => {
+                    const v_13: string = (() => {
                         const s_1: Option.Option<string> = v_2;
                         switch (s_1.tag) {
                             case "Some": {
-                                const v_15: string = "HAS";
-                                return v_15;
+                                const v_7: string = "HAS";
+                                return v_7;
                             }
                             case "None": {
-                                const v_16: string = "EMPTY";
-                                return v_16;
+                                const v_8: string = "EMPTY";
+                                return v_8;
                             }
                         }
                     })();
-                    output += escapeHtml(v_14);
-                    output += escapeHtml(v_17);
+                    output += escapeHtml(v_12);
+                    output += escapeHtml(v_13);
                     return output;
                 }
             "#]],
@@ -2577,9 +2525,9 @@ mod tests {
                     const s_0: Option.Option<string> = v_1;
                     switch (s_0.tag) {
                         case "Some": {
-                            const b_2 = s_0.value;
+                            const v_9 = s_0.value;
                             output += "Got:";
-                            output += escapeHtml(b_2);
+                            output += escapeHtml(v_9);
                             break;
                         }
                         case "None": {
@@ -2640,13 +2588,13 @@ mod tests {
                     const s_0: Option.Option<string> = v_1;
                     switch (s_0.tag) {
                         case "Some": {
-                            const b_3 = s_0.value;
-                            const v_20: Option.Option<string> = Option.some<string>(b_3);
-                            const s_1: Option.Option<string> = v_20;
+                            const v_13 = s_0.value;
+                            const v_3: Option.Option<string> = Option.some<string>(v_13);
+                            const s_1: Option.Option<string> = v_3;
                             switch (s_1.tag) {
                                 case "Some": {
-                                    const b_4 = s_1.value;
-                                    output += escapeHtml(b_4);
+                                    const v_14 = s_1.value;
+                                    output += escapeHtml(v_14);
                                     break;
                                 }
                                 case "None": {
@@ -2688,19 +2636,19 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                export function IsActive({active: b_0}: {active: boolean}): string {
+                export function IsActive({active: v_0}: {active: boolean}): string {
                     let output: string = "";
-                    const v_1: boolean = !b_0;
-                    const v_9: string = (() => {
+                    const v_1: boolean = !v_0;
+                    const v_7: string = (() => {
                         if (v_1) {
-                            const v_7: string = "yes";
-                            return v_7;
+                            const v_2: string = "yes";
+                            return v_2;
                         } else {
-                            const v_8: string = "no";
-                            return v_8;
+                            const v_3: string = "no";
+                            return v_3;
                         }
                     })();
-                    output += escapeHtml(v_9);
+                    output += escapeHtml(v_7);
                     return output;
                 }
             "#]],
@@ -2758,22 +2706,22 @@ mod tests {
                     let output: string = "";
                     const v_0: number = 42;
                     const v_1: Outcome.Outcome = Outcome.Success({value: v_0});
-                    const v_12: string = (() => {
+                    const v_11: string = (() => {
                         const s_0: Outcome.Outcome = v_1;
                         switch (s_0._tag) {
                             case "Success": {
-                                const { value: b_3 } = s_0;
-                                const v_10: string = b_3.toString();
-                                return v_10;
+                                const { value: v_9 } = s_0;
+                                const v_3: string = v_9.toString();
+                                return v_3;
                             }
                             case "Failure": {
-                                const { message: b_4 } = s_0;
-                                return b_4;
+                                const { message: v_10 } = s_0;
+                                return v_10;
                             }
                         }
                     })();
                     output += "<div>";
-                    output += escapeHtml(v_12);
+                    output += escapeHtml(v_11);
                     output += "</div>";
                     return output;
                 }
@@ -2825,54 +2773,23 @@ mod tests {
                     }
                 }
 
-                export function ShowOutcome({r: b_0}: {r: Outcome.Outcome}): string {
+                export function ShowOutcome({r: v_0}: {r: Outcome.Outcome}): string {
                     let output: string = "";
-                    const s_0: Outcome.Outcome = b_0;
+                    const s_0: Outcome.Outcome = v_0;
                     switch (s_0._tag) {
                         case "Success": {
-                            const { value: b_3 } = s_0;
+                            const { value: v_10 } = s_0;
                             output += "Value: ";
-                            output += escapeHtml(b_3);
+                            output += escapeHtml(v_10);
                             break;
                         }
                         case "Failure": {
-                            const { message: b_4 } = s_0;
+                            const { message: v_11 } = s_0;
                             output += "Error: ";
-                            output += escapeHtml(b_4);
+                            output += escapeHtml(v_11);
                             break;
                         }
                     }
-                    return output;
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn transpiles_a_fragment_read_twice_as_a_nested_buffer() {
-        check(
-            indoc! {r#"
-                page Test() {
-                  fn body() -> Html {
-                    let frag = <b>hi</b>;
-                    <>{frag}{frag}</>
-                  }
-                }
-            "#},
-            expect![[r#"
-                // Code generated by the hop compiler. DO NOT EDIT.
-
-                type Html = string & { readonly __brand: unique symbol };
-
-                export function Test(): string {
-                    let output: string = "";
-                    const v_2: Html = (() => {
-                        let output: string = "";
-                        output += "<b>hi</b>";
-                        return output as Html;
-                    })();
-                    output += v_2;
-                    output += v_2;
                     return output;
                 }
             "#]],
@@ -2890,14 +2807,12 @@ mod tests {
                 page Test() {
                   fn body() -> Html {
                     let x = Frag();
-                    <>{x}{x}</>
+                    <>{x}</>
                   }
                 }
             "#},
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
-
-                type Html = string & { readonly __brand: unique symbol };
 
                 function renderFrag_0(): string {
                     let output: string = "";
@@ -2907,13 +2822,7 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_3: Html = (() => {
-                        let output: string = "";
-                        output += renderFrag_0();
-                        return output as Html;
-                    })();
-                    output += v_3;
-                    output += v_3;
+                    output += renderFrag_0();
                     return output;
                 }
             "#]],
@@ -2945,16 +2854,16 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                function renderFormatPrice_0(b_0: number): number {
-                    return b_0;
+                function renderFormatPrice_0(v_5: number): number {
+                    return v_5;
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_1: number = 5;
-                    const v_2: number = renderFormatPrice_0(v_1);
-                    const v_3: string = v_2.toString();
-                    output += escapeHtml(v_3);
+                    const v_0: number = 5;
+                    const v_1: number = renderFormatPrice_0(v_0);
+                    const v_2: string = v_1.toString();
+                    output += escapeHtml(v_2);
                     return output;
                 }
             "#]],
@@ -2991,27 +2900,28 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                function renderFoo_0(b_1: number): number {
-                    const v_1: number = 10;
-                    const v_2: number = (b_1 + v_1) | 0;
-                    return v_2;
+                function renderFoo_0(v_16: number): number {
+                    const v_17: number = 10;
+                    const v_18: number = (v_16 + v_17) | 0;
+                    return v_18;
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_3: number = 0;
-                    const v_4: number = -7;
-                    const v_5: number = renderFoo_0(v_4);
-                    const v_12: number = 10;
-                    const v_13: number = renderFoo_0(v_12);
-                    const v_14: string = v_13.toString();
+                    const v_0: number = 0;
+                    const v_1: number = -7;
+                    const v_2: number = renderFoo_0(v_1);
+                    const v_3: number[] = Array.from({ length: v_2 - v_0 + 1 }, (_, index) => v_0 + index);
+                    const v_10: number = 10;
+                    const v_11: number = renderFoo_0(v_10);
+                    const v_12: string = v_11.toString();
                     output += "<div>";
-                    for (let b_0 = v_3; b_0 <= v_5; b_0++) {
-                        const v_7: string = b_0.toString();
-                        output += escapeHtml(v_7);
+                    for (const v_4 of v_3) {
+                        const v_5: string = v_4.toString();
+                        output += escapeHtml(v_5);
                         output += ",";
                     }
-                    output += escapeHtml(v_14);
+                    output += escapeHtml(v_12);
                     output += "</div>";
                     return output;
                 }
@@ -3044,18 +2954,18 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                function renderButton_0(b_0: string): string {
+                function renderButton_0(v_2: string): string {
                     let output: string = "";
                     output += "<button data-x=\"";
-                    output += escapeHtml(b_0);
+                    output += escapeHtml(v_2);
                     output += "\"></button>";
                     return output;
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_3: string = "1";
-                    output += renderButton_0(v_3);
+                    const v_0: string = "1";
+                    output += renderButton_0(v_0);
                     return output;
                 }
             "#]],

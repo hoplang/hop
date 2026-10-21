@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern, Type};
-use crate::ir::binder_id::BinderId;
 use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
-use crate::ir::ir_binary_op::IrBinaryOp;
+use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_data_op::IrDataOp;
+use crate::ir::ir_for::IrFor;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
@@ -18,7 +18,8 @@ use crate::symbols::field_name::FieldName;
 ///   operand, and a tuple index on a tuple constructor likewise.
 /// - A match runs an arm in place of the match when the constructors of
 ///   the subject show that the arm matches and no arm before it does, and
-///   a Read of a binder of its pattern is the constructor operand it binds.
+///   what reads a name its pattern binds reads the constructor operand the
+///   name binds.
 /// - A string concat takes the parts of a nested concat as its own, drops
 ///   empty constants and merges adjacent constants. An html concat takes
 ///   the parts of a nested concat as its own. A concat of one part is that
@@ -35,7 +36,6 @@ pub fn perform_partial_evaluation(block: FlatBlock, value_ids: &mut ValueIdCount
         value_ids,
         ops: HashMap::new(),
         renames: HashMap::new(),
-        binders: HashMap::new(),
     };
     evaluator.evaluate_block(block)
 }
@@ -54,11 +54,10 @@ struct Evaluator<'a> {
     /// for their readers to look at. Names are unique, so one map serves
     /// every nested block.
     ops: HashMap<ValueId, FlatOp>,
-    /// The bindings that turned out to be another name.
+    /// The names that turned out to be another name: the bindings that
+    /// folded to one, and the names the patterns of selected arms bind, each
+    /// with the constructor operand it stands for.
     renames: HashMap<ValueId, ValueId>,
-    /// The binders of selected arms, each with the constructor operand it
-    /// stands for. A Read of one is that operand.
-    binders: HashMap<BinderId, ValueId>,
 }
 
 impl Evaluator<'_> {
@@ -85,12 +84,12 @@ impl Evaluator<'_> {
         &self,
         pattern: &IrPattern,
         name: ValueId,
-        bound: &mut Vec<(BinderId, ValueId)>,
+        bound: &mut Vec<(ValueId, ValueId)>,
     ) -> Option<bool> {
         let (constructor, args, fields) = match pattern {
             Pattern::Wildcard => return Some(true),
-            Pattern::Binding { name: binder, .. } => {
-                bound.push((*binder, name));
+            Pattern::Binding(binder) => {
+                bound.push((binder.var, name));
                 return Some(true);
             }
             Pattern::Constructor {
@@ -112,27 +111,32 @@ impl Evaluator<'_> {
                 .collect::<Vec<_>>()
         };
         let parts = match (constructor, self.ops.get(&name)?) {
-            (Constructor::BoolTrue, FlatOp::BoolLiteral(value)) => return Some(*value),
-            (Constructor::BoolFalse, FlatOp::BoolLiteral(value)) => return Some(!*value),
-            (Constructor::OptionSome, FlatOp::Option(Some(inner))) => vec![(&args[0], *inner)],
-            (Constructor::OptionSome, FlatOp::Option(None)) => return Some(false),
-            (Constructor::OptionNone, FlatOp::Option(inner)) => return Some(inner.is_none()),
+            (Constructor::BoolTrue, FlatOp::Data(IrDataOp::BoolLiteral(value))) => {
+                return Some(*value);
+            }
+            (Constructor::BoolFalse, FlatOp::Data(IrDataOp::BoolLiteral(value))) => {
+                return Some(!*value);
+            }
+            (Constructor::OptionSome, FlatOp::Data(IrDataOp::Option(Some(inner)))) => {
+                vec![(&args[0], *inner)]
+            }
+            (Constructor::OptionSome, FlatOp::Data(IrDataOp::Option(None))) => return Some(false),
+            (Constructor::OptionNone, FlatOp::Data(IrDataOp::Option(inner))) => {
+                return Some(inner.is_none());
+            }
             (
                 Constructor::EnumVariant { variant_name, .. },
-                FlatOp::Enum {
-                    variant_name: op_variant,
-                    fields: operands,
-                },
+                FlatOp::Data(IrDataOp::Enum(op_variant, operands)),
             ) => {
                 if variant_name != op_variant {
                     return Some(false);
                 }
                 field_parts(operands)
             }
-            (Constructor::Record { .. }, FlatOp::Record { fields: operands }) => {
+            (Constructor::Record { .. }, FlatOp::Data(IrDataOp::Record(operands))) => {
                 field_parts(operands)
             }
-            (Constructor::Tuple, FlatOp::Tuple(elements)) => {
+            (Constructor::Tuple, FlatOp::Data(IrDataOp::Tuple(elements))) => {
                 args.iter().zip(elements.iter().copied()).collect()
             }
             _ => return None,
@@ -162,7 +166,8 @@ impl Evaluator<'_> {
     }
 
     fn evaluate_binding(&mut self, binding: FlatBinding, out: &mut Vec<FlatBinding>) {
-        let FlatBinding { name, typ, mut op } = binding;
+        let FlatBinding { binder, mut op } = binding;
+        let name = binder.var;
         op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
         let op = match op {
             FlatOp::Match(IrMatch { subject, arms }) => {
@@ -181,7 +186,7 @@ impl Evaluator<'_> {
                     }
                 }
                 if let Some((index, bound)) = selected {
-                    self.binders.extend(bound);
+                    self.renames.extend(bound);
                     let arm = arms
                         .into_iter()
                         .nth(index)
@@ -197,19 +202,17 @@ impl Evaluator<'_> {
                     })
                     .collect();
                 out.push(FlatBinding {
-                    name,
-                    typ,
+                    binder,
                     op: FlatOp::Match(IrMatch { subject, arms }),
                 });
                 return;
             }
 
-            FlatOp::HtmlFor { var, source, body } => {
+            FlatOp::HtmlFor(IrFor { var, array, body }) => {
                 let body = self.evaluate_block(body);
                 out.push(FlatBinding {
-                    name,
-                    typ,
-                    op: FlatOp::HtmlFor { var, source, body },
+                    binder,
+                    op: FlatOp::HtmlFor(IrFor { var, array, body }),
                 });
                 return;
             }
@@ -222,7 +225,7 @@ impl Evaluator<'_> {
             }
             Folded::Op(op) => {
                 self.ops.insert(name, op.clone());
-                out.push(FlatBinding { name, typ, op });
+                out.push(FlatBinding { binder, op });
             }
         }
     }
@@ -232,154 +235,30 @@ impl Evaluator<'_> {
     /// otherwise.
     fn fold(&mut self, op: FlatOp, out: &mut Vec<FlatBinding>) -> Folded {
         match op {
-            FlatOp::Read(binder) => match self.binders.get(&binder) {
-                Some(value) => Folded::Name(*value),
-                None => Folded::Op(FlatOp::Read(binder)),
-            },
-
-            FlatOp::FieldAccess { record, field } => match self.ops.get(&record) {
-                Some(FlatOp::Record { fields }) => Folded::Name(
+            FlatOp::Data(IrDataOp::FieldAccess(record, field)) => match self.ops.get(&record) {
+                Some(FlatOp::Data(IrDataOp::Record(fields))) => Folded::Name(
                     fields
                         .iter()
                         .find(|(name, _)| *name == field)
                         .map(|(_, value)| *value)
                         .unwrap_or_else(|| panic!("record has no field {}", field.as_str())),
                 ),
-                _ => Folded::Op(FlatOp::FieldAccess { record, field }),
+                _ => Folded::Op(FlatOp::Data(IrDataOp::FieldAccess(record, field))),
             },
-
-            FlatOp::TupleIndex { tuple, index } => match self.ops.get(&tuple) {
-                Some(FlatOp::Tuple(elements)) => {
+            FlatOp::Data(IrDataOp::TupleIndex(tuple, index)) => match self.ops.get(&tuple) {
+                Some(FlatOp::Data(IrDataOp::Tuple(elements))) => {
                     let len = elements.len();
                     Folded::Name(*elements.get(index).unwrap_or_else(|| {
                         panic!("index {index} is out of range for a tuple of {len}")
                     }))
                 }
-                _ => Folded::Op(FlatOp::TupleIndex { tuple, index }),
+                _ => Folded::Op(FlatOp::Data(IrDataOp::TupleIndex(tuple, index))),
             },
-
-            FlatOp::Binary { op, left, right } => {
-                let folded = match (&op, self.ops.get(&left), self.ops.get(&right)) {
-                    (
-                        IrBinaryOp::NumericAdd(_),
-                        Some(FlatOp::IntLiteral(l)),
-                        Some(FlatOp::IntLiteral(r)),
-                    ) => Some(FlatOp::IntLiteral(l.wrapping_add(*r))),
-                    (
-                        IrBinaryOp::NumericAdd(_),
-                        Some(FlatOp::FloatLiteral(l)),
-                        Some(FlatOp::FloatLiteral(r)),
-                    ) => Some(FlatOp::FloatLiteral(l + r)),
-                    (
-                        IrBinaryOp::NumericSubtract(_),
-                        Some(FlatOp::IntLiteral(l)),
-                        Some(FlatOp::IntLiteral(r)),
-                    ) => Some(FlatOp::IntLiteral(l.wrapping_sub(*r))),
-                    (
-                        IrBinaryOp::NumericSubtract(_),
-                        Some(FlatOp::FloatLiteral(l)),
-                        Some(FlatOp::FloatLiteral(r)),
-                    ) => Some(FlatOp::FloatLiteral(l - r)),
-                    (
-                        IrBinaryOp::NumericMultiply(_),
-                        Some(FlatOp::IntLiteral(l)),
-                        Some(FlatOp::IntLiteral(r)),
-                    ) => Some(FlatOp::IntLiteral(l.wrapping_mul(*r))),
-                    (
-                        IrBinaryOp::NumericMultiply(_),
-                        Some(FlatOp::FloatLiteral(l)),
-                        Some(FlatOp::FloatLiteral(r)),
-                    ) => Some(FlatOp::FloatLiteral(l * r)),
-                    (
-                        IrBinaryOp::Equals(_),
-                        Some(FlatOp::BoolLiteral(l)),
-                        Some(FlatOp::BoolLiteral(r)),
-                    ) => Some(FlatOp::BoolLiteral(l == r)),
-                    (
-                        IrBinaryOp::Equals(_),
-                        Some(FlatOp::StringLiteral(l)),
-                        Some(FlatOp::StringLiteral(r)),
-                    ) => Some(FlatOp::BoolLiteral(l.as_str() == r.as_str())),
-                    (
-                        IrBinaryOp::Equals(_),
-                        Some(FlatOp::IntLiteral(l)),
-                        Some(FlatOp::IntLiteral(r)),
-                    ) => Some(FlatOp::BoolLiteral(l == r)),
-                    (
-                        IrBinaryOp::Equals(_),
-                        Some(FlatOp::FloatLiteral(l)),
-                        Some(FlatOp::FloatLiteral(r)),
-                    ) => Some(FlatOp::BoolLiteral(l == r)),
-                    (
-                        IrBinaryOp::LessThan(_),
-                        Some(FlatOp::IntLiteral(l)),
-                        Some(FlatOp::IntLiteral(r)),
-                    ) => Some(FlatOp::BoolLiteral(l < r)),
-                    (
-                        IrBinaryOp::LessThan(_),
-                        Some(FlatOp::FloatLiteral(l)),
-                        Some(FlatOp::FloatLiteral(r)),
-                    ) => Some(FlatOp::BoolLiteral(l < r)),
-                    (
-                        IrBinaryOp::LessThanOrEqual(_),
-                        Some(FlatOp::IntLiteral(l)),
-                        Some(FlatOp::IntLiteral(r)),
-                    ) => Some(FlatOp::BoolLiteral(l <= r)),
-                    (
-                        IrBinaryOp::LessThanOrEqual(_),
-                        Some(FlatOp::FloatLiteral(l)),
-                        Some(FlatOp::FloatLiteral(r)),
-                    ) => Some(FlatOp::BoolLiteral(l <= r)),
-                    _ => None,
-                };
-                Folded::Op(folded.unwrap_or(FlatOp::Binary { op, left, right }))
-            }
-
-            FlatOp::Unary { op, operand } => {
-                let folded = match (&op, self.ops.get(&operand)) {
-                    (IrUnaryOp::NumericNegation(_), Some(FlatOp::IntLiteral(value))) => {
-                        Some(FlatOp::IntLiteral(value.wrapping_neg()))
-                    }
-                    (IrUnaryOp::NumericNegation(_), Some(FlatOp::FloatLiteral(value))) => {
-                        Some(FlatOp::FloatLiteral(-value))
-                    }
-                    (IrUnaryOp::BoolNegation, Some(FlatOp::BoolLiteral(value))) => {
-                        Some(FlatOp::BoolLiteral(!value))
-                    }
-                    (IrUnaryOp::IntToString, Some(FlatOp::IntLiteral(value))) => {
-                        Some(FlatOp::StringLiteral(CheapString::new(value.to_string())))
-                    }
-                    (IrUnaryOp::FloatToInt, Some(FlatOp::FloatLiteral(value))) => {
-                        Some(FlatOp::IntLiteral(*value as i32))
-                    }
-                    (IrUnaryOp::IntToFloat, Some(FlatOp::IntLiteral(value))) => {
-                        Some(FlatOp::FloatLiteral(*value as f64))
-                    }
-                    (IrUnaryOp::StringIsEmpty, Some(FlatOp::StringLiteral(value))) => {
-                        Some(FlatOp::BoolLiteral(value.as_str().is_empty()))
-                    }
-                    (IrUnaryOp::ArrayIsEmpty, Some(FlatOp::Array(elements))) => {
-                        Some(FlatOp::BoolLiteral(elements.is_empty()))
-                    }
-                    (IrUnaryOp::ArrayLength, Some(FlatOp::Array(elements))) => {
-                        Some(FlatOp::IntLiteral(elements.len() as i32))
-                    }
-                    (IrUnaryOp::OptionIsSome, Some(FlatOp::Option(value))) => {
-                        Some(FlatOp::BoolLiteral(value.is_some()))
-                    }
-                    (IrUnaryOp::OptionIsNone, Some(FlatOp::Option(value))) => {
-                        Some(FlatOp::BoolLiteral(value.is_none()))
-                    }
-                    _ => None,
-                };
-                Folded::Op(folded.unwrap_or(FlatOp::Unary { op, operand }))
-            }
-
-            FlatOp::StringConcat(parts) => {
+            FlatOp::Data(IrDataOp::StringConcat(parts)) => {
                 let mut flattened = Vec::with_capacity(parts.len());
                 for part in parts {
                     match self.ops.get(&part) {
-                        Some(FlatOp::StringConcat(subparts)) => {
+                        Some(FlatOp::Data(IrDataOp::StringConcat(subparts))) => {
                             flattened.extend(subparts.iter().copied());
                         }
                         _ => flattened.push(part),
@@ -388,7 +267,7 @@ impl Evaluator<'_> {
                 let mut merged: Vec<ValueId> = Vec::with_capacity(flattened.len());
                 for part in flattened {
                     let literal = match self.ops.get(&part) {
-                        Some(FlatOp::StringLiteral(value)) => Some(value.clone()),
+                        Some(FlatOp::Data(IrDataOp::StringLiteral(value))) => Some(value.clone()),
                         _ => None,
                     };
                     let Some(value) = literal else {
@@ -399,7 +278,7 @@ impl Evaluator<'_> {
                         continue;
                     }
                     let previous = merged.last().and_then(|last| match self.ops.get(last) {
-                        Some(FlatOp::StringLiteral(value)) => Some(value.clone()),
+                        Some(FlatOp::Data(IrDataOp::StringLiteral(value))) => Some(value.clone()),
                         _ => None,
                     });
                     match previous {
@@ -412,11 +291,14 @@ impl Evaluator<'_> {
                             combined.push_str(previous.as_str());
                             combined.push_str(value.as_str());
                             let name = self.value_ids.next();
-                            let op = FlatOp::StringLiteral(CheapString::new(combined));
+                            let op =
+                                FlatOp::Data(IrDataOp::StringLiteral(CheapString::new(combined)));
                             self.ops.insert(name, op.clone());
                             out.push(FlatBinding {
-                                name,
-                                typ: Type::String,
+                                binder: IrBinder {
+                                    var: name,
+                                    typ: Type::STRING,
+                                },
                                 op,
                             });
                             *merged.last_mut().expect("a previous part exists") = name;
@@ -425,12 +307,168 @@ impl Evaluator<'_> {
                     }
                 }
                 match merged.len() {
-                    0 => Folded::Op(FlatOp::StringLiteral(CheapString::new(String::new()))),
+                    0 => Folded::Op(FlatOp::Data(IrDataOp::StringLiteral(CheapString::new(
+                        String::new(),
+                    )))),
                     1 => Folded::Name(merged[0]),
-                    _ => Folded::Op(FlatOp::StringConcat(merged)),
+                    _ => Folded::Op(FlatOp::Data(IrDataOp::StringConcat(merged))),
                 }
             }
-
+            FlatOp::Data(data) => {
+                let folded = match &data {
+                    IrDataOp::NumericAdd(left, right) => {
+                        match (self.ops.get(left), self.ops.get(right)) {
+                            (
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
+                            ) => Some(IrDataOp::IntLiteral(l.wrapping_add(*r))),
+                            (
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
+                            ) => Some(IrDataOp::FloatLiteral(l + r)),
+                            _ => None,
+                        }
+                    }
+                    IrDataOp::NumericSubtract(left, right) => {
+                        match (self.ops.get(left), self.ops.get(right)) {
+                            (
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
+                            ) => Some(IrDataOp::IntLiteral(l.wrapping_sub(*r))),
+                            (
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
+                            ) => Some(IrDataOp::FloatLiteral(l - r)),
+                            _ => None,
+                        }
+                    }
+                    IrDataOp::NumericMultiply(left, right) => {
+                        match (self.ops.get(left), self.ops.get(right)) {
+                            (
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
+                            ) => Some(IrDataOp::IntLiteral(l.wrapping_mul(*r))),
+                            (
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
+                            ) => Some(IrDataOp::FloatLiteral(l * r)),
+                            _ => None,
+                        }
+                    }
+                    IrDataOp::Equals(left, right) => {
+                        match (self.ops.get(left), self.ops.get(right)) {
+                            (
+                                Some(FlatOp::Data(IrDataOp::BoolLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::BoolLiteral(r))),
+                            ) => Some(IrDataOp::BoolLiteral(l == r)),
+                            (
+                                Some(FlatOp::Data(IrDataOp::StringLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::StringLiteral(r))),
+                            ) => Some(IrDataOp::BoolLiteral(l.as_str() == r.as_str())),
+                            (
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
+                            ) => Some(IrDataOp::BoolLiteral(l == r)),
+                            (
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
+                            ) => Some(IrDataOp::BoolLiteral(l == r)),
+                            _ => None,
+                        }
+                    }
+                    IrDataOp::LessThan(left, right) => {
+                        match (self.ops.get(left), self.ops.get(right)) {
+                            (
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
+                            ) => Some(IrDataOp::BoolLiteral(l < r)),
+                            (
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
+                            ) => Some(IrDataOp::BoolLiteral(l < r)),
+                            _ => None,
+                        }
+                    }
+                    IrDataOp::LessThanOrEqual(left, right) => {
+                        match (self.ops.get(left), self.ops.get(right)) {
+                            (
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
+                            ) => Some(IrDataOp::BoolLiteral(l <= r)),
+                            (
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
+                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
+                            ) => Some(IrDataOp::BoolLiteral(l <= r)),
+                            _ => None,
+                        }
+                    }
+                    IrDataOp::NumericNegation(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::IntLiteral(value))) => {
+                            Some(IrDataOp::IntLiteral(value.wrapping_neg()))
+                        }
+                        Some(FlatOp::Data(IrDataOp::FloatLiteral(value))) => {
+                            Some(IrDataOp::FloatLiteral(-value))
+                        }
+                        _ => None,
+                    },
+                    IrDataOp::BoolNegation(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::BoolLiteral(value))) => {
+                            Some(IrDataOp::BoolLiteral(!value))
+                        }
+                        _ => None,
+                    },
+                    IrDataOp::IntToString(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::IntLiteral(value))) => {
+                            Some(IrDataOp::StringLiteral(CheapString::new(value.to_string())))
+                        }
+                        _ => None,
+                    },
+                    IrDataOp::FloatToInt(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::FloatLiteral(value))) => {
+                            Some(IrDataOp::IntLiteral(*value as i32))
+                        }
+                        _ => None,
+                    },
+                    IrDataOp::IntToFloat(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::IntLiteral(value))) => {
+                            Some(IrDataOp::FloatLiteral(*value as f64))
+                        }
+                        _ => None,
+                    },
+                    IrDataOp::StringIsEmpty(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::StringLiteral(value))) => {
+                            Some(IrDataOp::BoolLiteral(value.as_str().is_empty()))
+                        }
+                        _ => None,
+                    },
+                    IrDataOp::ArrayIsEmpty(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::Array(elements))) => {
+                            Some(IrDataOp::BoolLiteral(elements.is_empty()))
+                        }
+                        _ => None,
+                    },
+                    IrDataOp::ArrayLength(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::Array(elements))) => {
+                            Some(IrDataOp::IntLiteral(elements.len() as i32))
+                        }
+                        _ => None,
+                    },
+                    IrDataOp::OptionIsSome(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::Option(value))) => {
+                            Some(IrDataOp::BoolLiteral(value.is_some()))
+                        }
+                        _ => None,
+                    },
+                    IrDataOp::OptionIsNone(operand) => match self.ops.get(operand) {
+                        Some(FlatOp::Data(IrDataOp::Option(value))) => {
+                            Some(IrDataOp::BoolLiteral(value.is_none()))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                Folded::Op(FlatOp::Data(folded.unwrap_or(data)))
+            }
             FlatOp::HtmlConcat(parts) => {
                 let mut flattened = Vec::with_capacity(parts.len());
                 for part in parts {
@@ -458,15 +496,14 @@ mod tests {
 
     use super::*;
     use crate::document::Document;
+    use crate::hop::typing::TypeRegistryBuilder;
     use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
-    use crate::ir::pure_module::PureModule;
-    use crate::ir::pure_module_builder::PureModuleBuilder;
-    use crate::ir::pure_module_generator::{random_entry_args, random_module};
-    use crate::ir::pure_to_flat::pure_to_flat;
+    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
+    use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
     use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::flat_evaluator::evaluate_entry;
+    use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
-    use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
+    use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::program::Program;
     use crate::root_contained_file_path::RootContainedFilePath;
     use expect_test::{Expect, expect};
@@ -480,7 +517,7 @@ mod tests {
             .into_iter()
             .map(|function| FlatFunctionDeclaration {
                 function: function.function,
-                entry: function.entry,
+                entrypoint: function.entrypoint,
                 parameters: function.parameters,
                 return_type: function.return_type,
                 body: perform_partial_evaluation(function.body, &mut value_ids),
@@ -489,7 +526,6 @@ mod tests {
         FlatModule {
             functions,
             value_ids,
-            binder_ids: module.binder_ids,
         }
     }
 
@@ -498,14 +534,13 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entry_args = random_entry_args(&module, &mut rng, &registry);
-            let module = pure_to_flat(module);
+            let entrypoint_args = random_entrypoint_args(&module, &mut rng, &registry);
 
             let before_module = module.to_string();
-            let before: Vec<Result<String, EvalError>> = entry_args
+            let before: Vec<Result<String, EvalError>> = entrypoint_args
                 .iter()
                 .map(|(function, args)| {
-                    evaluate_entry(&module, function, args.clone()).map(Value::into_markup)
+                    evaluate_entrypoint(&module, function, args.clone()).map(Value::into_markup)
                 })
                 .collect();
 
@@ -514,19 +549,20 @@ mod tests {
             // The pass drops no computation but a selected arm's siblings,
             // which never ran, so the output and whether the call depth
             // limit is hit both stay the same.
-            for ((function, args), before) in entry_args.iter().zip(before) {
-                let after = evaluate_entry(&module, function, args.clone()).map(Value::into_markup);
+            for ((function, args), before) in entrypoint_args.iter().zip(before) {
+                let after =
+                    evaluate_entrypoint(&module, function, args.clone()).map(Value::into_markup);
                 match (before, after) {
                     (Ok(before), Ok(after)) => assert_eq!(
                         before, after,
-                        "entry {function}\n-- before --\n{before_module}\n-- after --\n{module}"
+                        "entrypoint {function}\n-- before --\n{before_module}\n-- after --\n{module}"
                     ),
                     (
                         Err(EvalError::RecursionLimit { .. }),
                         Err(EvalError::RecursionLimit { .. }),
                     ) => {}
                     (before, after) => panic!(
-                        "entry {function}: before {before:?}, after {after:?}\n-- before --\n{before_module}\n-- after --\n{module}"
+                        "entrypoint {function}: before {before:?}, after {after:?}\n-- before --\n{before_module}\n-- after --\n{module}"
                     ),
                 }
             }
@@ -534,14 +570,13 @@ mod tests {
         });
     }
 
-    fn check(module: PureModule, expected: Expect) {
-        let module = pure_to_flat(module);
+    fn check(module: FlatModule, expected: Expect) {
         let before = module.to_string();
         let after = run(module).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
     }
 
-    /// Like `check`, on the Pure IR the source compiles to.
+    /// Like `check`, on the Flat IR the source compiles to.
     fn check_source(source: &str, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();
         let mut program = Program::new();
@@ -551,8 +586,8 @@ mod tests {
         );
         let diagnostics = program.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (pure, _) = orchestrate_pure(program.typed_modules(), OrchestrateOptions::default());
-        check(pure, expected);
+        let (flat, _) = orchestrate_flat(program.typed_modules(), OrchestrateOptions::default());
+        check(flat, expected);
     }
 
     #[test]
@@ -570,22 +605,19 @@ mod tests {
             "#},
             expect![[r#"
                 -- before --
-                entry fn body@f0(nickname@b0: Option[String]) -> Html {
-                  let v0: Bool = true
-                  let v1: Option[String] = b0
-                  let v2: (Bool, Option[String]) = (v0, v1)
+                entrypoint fn body@f0(nickname@v0: Option[String]) -> Html {
+                  let v1: Bool = true
+                  let v2: (Bool, Option[String]) = (v1, v0)
                   let v13: Html = match v2 {
                     (false, _) => {
                       let v3: Html = text("guest")
                       let v4: Html = concat(v3)
-                      let v5: Html = html("p", {}, v4)
+                      let v5: Html = element("p", {}, v4)
                       v5
                     }
-                    (true, b1: Option[String]) => {
-                      let v6: Option[String] = b1
+                    (true, v6: Option[String]) => {
                       let v9: String = match v6 {
-                        Some(b2: String) => {
-                          let v7: String = b2
+                        Some(v7: String) => {
                           v7
                         }
                         None => {
@@ -595,7 +627,7 @@ mod tests {
                       }
                       let v10: Html = escape(v9)
                       let v11: Html = concat(v10)
-                      let v12: Html = html("p", {}, v11)
+                      let v12: Html = element("p", {}, v11)
                       v12
                     }
                   }
@@ -603,13 +635,11 @@ mod tests {
                 }
 
                 -- after --
-                entry fn body@f0(nickname@b0: Option[String]) -> Html {
-                  let v0: Bool = true
-                  let v1: Option[String] = b0
-                  let v2: (Bool, Option[String]) = (v0, v1)
-                  let v9: String = match v1 {
-                    Some(b2: String) => {
-                      let v7: String = b2
+                entrypoint fn body@f0(nickname@v0: Option[String]) -> Html {
+                  let v1: Bool = true
+                  let v2: (Bool, Option[String]) = (v1, v0)
+                  let v9: String = match v0 {
+                    Some(v7: String) => {
                       v7
                     }
                     None => {
@@ -618,7 +648,7 @@ mod tests {
                     }
                   }
                   let v10: Html = escape(v9)
-                  let v12: Html = html("p", {}, v10)
+                  let v12: Html = element("p", {}, v10)
                   v12
                 }
             "#]],
@@ -640,22 +670,20 @@ mod tests {
             "#},
             expect![[r#"
                 -- before --
-                entry fn body@f0(nickname@b0: Option[String]) -> Html {
-                  let v0: Bool = true
-                  let v1: Option[String] = b0
-                  let v2: (Bool, Option[String]) = (v0, v1)
+                entrypoint fn body@f0(nickname@v0: Option[String]) -> Html {
+                  let v1: Bool = true
+                  let v2: (Bool, Option[String]) = (v1, v0)
                   let v10: Html = match v2 {
-                    (true, Some(b1: String)) => {
-                      let v3: String = b1
+                    (true, Some(v3: String)) => {
                       let v4: Html = escape(v3)
                       let v5: Html = concat(v4)
-                      let v6: Html = html("p", {}, v5)
+                      let v6: Html = element("p", {}, v5)
                       v6
                     }
                     (_, _) => {
                       let v7: Html = text("member")
                       let v8: Html = concat(v7)
-                      let v9: Html = html("p", {}, v8)
+                      let v9: Html = element("p", {}, v8)
                       v9
                     }
                   }
@@ -663,20 +691,18 @@ mod tests {
                 }
 
                 -- after --
-                entry fn body@f0(nickname@b0: Option[String]) -> Html {
-                  let v0: Bool = true
-                  let v1: Option[String] = b0
-                  let v2: (Bool, Option[String]) = (v0, v1)
+                entrypoint fn body@f0(nickname@v0: Option[String]) -> Html {
+                  let v1: Bool = true
+                  let v2: (Bool, Option[String]) = (v1, v0)
                   let v10: Html = match v2 {
-                    (true, Some(b1: String)) => {
-                      let v3: String = b1
+                    (true, Some(v3: String)) => {
                       let v4: Html = escape(v3)
-                      let v6: Html = html("p", {}, v4)
+                      let v6: Html = element("p", {}, v4)
                       v6
                     }
                     (_, _) => {
                       let v7: Html = text("member")
-                      let v9: Html = html("p", {}, v7)
+                      let v9: Html = element("p", {}, v7)
                       v9
                     }
                   }
@@ -689,7 +715,7 @@ mod tests {
     #[test]
     fn should_fold_arithmetic_with_wrapping() {
         check(
-            PureModuleBuilder::new()
+            FlatModuleBuilder::new()
                 .function("wrap", [], "Int", |t| t.add(t.int(i32::MAX), t.int(1)))
                 .build(),
             expect![[r#"
@@ -715,14 +741,17 @@ mod tests {
     #[test]
     fn should_select_the_arm_of_a_match_on_a_negated_constant() {
         check(
-            PureModuleBuilder::new()
-                .entry("Test", [], "Html", |t| {
-                    t.bool_match_expr(t.not(t.bool(true)), t.text("yes"), t.text("no"))
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    t.match_expr(t.not(t.bool(true)), |m| {
+                        m.arm(Pat::True, |t| t.text("yes"));
+                        m.arm(Pat::False, |t| t.text("no"));
+                    })
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: Bool = true
                   let v1: Bool = !v0
                   let v4: Html = match v1 {
@@ -739,7 +768,7 @@ mod tests {
                 }
 
                 -- after --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: Bool = true
                   let v1: Bool = false
                   let v3: Html = text("no")
@@ -752,15 +781,17 @@ mod tests {
     #[test]
     fn should_keep_a_match_on_a_dynamic_subject() {
         check(
-            PureModuleBuilder::new()
-                .entry("Test", [("flag", "Bool")], "Html", |t| {
-                    t.bool_match_expr(t.var("flag"), t.text("yes"), t.text("no"))
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
+                    t.match_expr(t.var("flag"), |m| {
+                        m.arm(Pat::True, |t| t.text("yes"));
+                        m.arm(Pat::False, |t| t.text("no"));
+                    })
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0(flag@b0: Bool) -> Html {
-                  let v0: Bool = b0
+                entrypoint fn Test@f0(flag@v0: Bool) -> Html {
                   let v3: Html = match v0 {
                     true => {
                       let v1: Html = text("yes")
@@ -775,8 +806,7 @@ mod tests {
                 }
 
                 -- after --
-                entry fn Test@f0(flag@b0: Bool) -> Html {
-                  let v0: Bool = b0
+                entrypoint fn Test@f0(flag@v0: Bool) -> Html {
                   let v3: Html = match v0 {
                     true => {
                       let v1: Html = text("yes")
@@ -795,20 +825,21 @@ mod tests {
 
     #[test]
     fn should_read_a_field_of_a_record_constructor() {
+        let types = TypeRegistryBuilder::new()
+            .record("Point", [("x", "Int"), ("y", "Int")])
+            .build();
         check(
-            PureModuleBuilder::new()
-                .record("Point", [("x", "Int"), ("y", "Int")])
-                .entry("Test", [("n", "Int")], "Html", |t| {
+            FlatModuleBuilder::with_types(types)
+                .entrypoint("Test", [("n", "Int")], "Html", |t| {
                     t.escape(t.int_to_string(t.field_access(
-                        t.record("Point", vec![("x", t.var("n")), ("y", t.int(2))]),
+                        t.record("Point", [("x", t.var("n")), ("y", t.int(2))]),
                         "x",
                     )))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0(n@b0: Int) -> Html {
-                  let v0: Int = b0
+                entrypoint fn Test@f0(n@v0: Int) -> Html {
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
                   let v3: Int = v2.x
@@ -818,8 +849,7 @@ mod tests {
                 }
 
                 -- after --
-                entry fn Test@f0(n@b0: Int) -> Html {
-                  let v0: Int = b0
+                entrypoint fn Test@f0(n@v0: Int) -> Html {
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
                   let v4: String = v0.to_string()
@@ -833,9 +863,9 @@ mod tests {
     #[test]
     fn should_read_an_element_of_a_tuple_constructor() {
         check(
-            PureModuleBuilder::new()
+            FlatModuleBuilder::new()
                 .function("second", [], "String", |t| {
-                    t.tuple_index(t.tuple(vec![t.int(1), t.str("two")]), 1)
+                    t.tuple_index(t.tuple([t.int(1), t.str("two")]), 1)
                 })
                 .build(),
             expect![[r#"
@@ -862,9 +892,9 @@ mod tests {
     #[test]
     fn should_flatten_a_concat_and_merge_its_adjacent_constants() {
         check(
-            PureModuleBuilder::new()
-                .entry("Test", [("dyn", "String")], "Html", |t| {
-                    t.escape(t.string_concat(vec![
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [("dyn", "String")], "Html", |t| {
+                    t.escape(t.string_concat([
                         t.string_concat(vec![t.var("dyn"), t.str("a")]),
                         t.string_concat(vec![t.str("b"), t.var("dyn")]),
                     ]))
@@ -872,30 +902,26 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0(dyn@b0: String) -> Html {
-                  let v0: String = b0
+                entrypoint fn Test@f0(dyn@v0: String) -> Html {
                   let v1: String = "a"
                   let v2: String = concat(v0, v1)
                   let v3: String = "b"
-                  let v4: String = b0
-                  let v5: String = concat(v3, v4)
-                  let v6: String = concat(v2, v5)
-                  let v7: Html = escape(v6)
-                  v7
+                  let v4: String = concat(v3, v0)
+                  let v5: String = concat(v2, v4)
+                  let v6: Html = escape(v5)
+                  v6
                 }
 
                 -- after --
-                entry fn Test@f0(dyn@b0: String) -> Html {
-                  let v0: String = b0
+                entrypoint fn Test@f0(dyn@v0: String) -> Html {
                   let v1: String = "a"
                   let v2: String = concat(v0, v1)
                   let v3: String = "b"
-                  let v4: String = b0
-                  let v5: String = concat(v3, v4)
-                  let v8: String = "ab"
-                  let v6: String = concat(v0, v8, v4)
-                  let v7: Html = escape(v6)
-                  v7
+                  let v4: String = concat(v3, v0)
+                  let v7: String = "ab"
+                  let v5: String = concat(v0, v7, v0)
+                  let v6: Html = escape(v5)
+                  v6
                 }
             "#]],
         );
@@ -904,28 +930,26 @@ mod tests {
     #[test]
     fn should_drop_empty_strings_and_read_the_one_part_left() {
         check(
-            PureModuleBuilder::new()
-                .entry("Test", [("dyn", "String")], "Html", |t| {
-                    t.escape(t.string_concat(vec![t.str(""), t.var("dyn"), t.str("")]))
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [("dyn", "String")], "Html", |t| {
+                    t.escape(t.string_concat([t.str(""), t.var("dyn"), t.str("")]))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0(dyn@b0: String) -> Html {
-                  let v0: String = ""
-                  let v1: String = b0
+                entrypoint fn Test@f0(dyn@v0: String) -> Html {
+                  let v1: String = ""
                   let v2: String = ""
-                  let v3: String = concat(v0, v1, v2)
+                  let v3: String = concat(v1, v0, v2)
                   let v4: Html = escape(v3)
                   v4
                 }
 
                 -- after --
-                entry fn Test@f0(dyn@b0: String) -> Html {
-                  let v0: String = ""
-                  let v1: String = b0
+                entrypoint fn Test@f0(dyn@v0: String) -> Html {
+                  let v1: String = ""
                   let v2: String = ""
-                  let v4: Html = escape(v1)
+                  let v4: Html = escape(v0)
                   v4
                 }
             "#]],
@@ -935,14 +959,14 @@ mod tests {
     #[test]
     fn should_fold_a_concat_of_constants_to_one_constant() {
         check(
-            PureModuleBuilder::new()
-                .entry("Test", [], "Html", |t| {
-                    t.escape(t.string_concat(vec![t.str("Hello, "), t.str("World")]))
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    t.escape(t.string_concat([t.str("Hello, "), t.str("World")]))
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: String = "Hello, "
                   let v1: String = "World"
                   let v2: String = concat(v0, v1)
@@ -951,7 +975,7 @@ mod tests {
                 }
 
                 -- after --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: String = "Hello, "
                   let v1: String = "World"
                   let v4: String = "Hello, World"
@@ -965,18 +989,18 @@ mod tests {
     #[test]
     fn should_flatten_a_nested_html_concat() {
         check(
-            PureModuleBuilder::new()
-                .entry("Test", [], "Html", |t| {
-                    t.concat(vec![
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    t.html_concat([
                         t.text("a"),
-                        t.concat(vec![t.text("b"), t.text("c")]),
-                        t.concat(vec![t.text("d")]),
+                        t.html_concat(vec![t.text("b"), t.text("c")]),
+                        t.html_concat(vec![t.text("d")]),
                     ])
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: Html = text("a")
                   let v1: Html = text("b")
                   let v2: Html = text("c")
@@ -988,7 +1012,7 @@ mod tests {
                 }
 
                 -- after --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: Html = text("a")
                   let v1: Html = text("b")
                   let v2: Html = text("c")
@@ -1003,18 +1027,20 @@ mod tests {
 
     #[test]
     fn should_select_an_enum_arm_and_bind_its_fields_to_the_constructor_operands() {
+        let types = TypeRegistryBuilder::new()
+            .enum_(
+                "Shape",
+                [("Dot", vec![]), ("Circle", vec![("radius", "Int")])],
+            )
+            .build();
         check(
-            PureModuleBuilder::new()
-                .enum_(
-                    "Shape",
-                    [("Dot", vec![]), ("Circle", vec![("radius", "Int")])],
-                )
+            FlatModuleBuilder::with_types(types)
                 .function("area", [("n", "Int")], "Int", |t| {
-                    t.enum_match_expr(
-                        t.enum_variant_with_fields("Shape", "Circle", vec![("radius", t.var("n"))]),
-                        |arms| {
-                            arms.arm("Dot", |t| t.int(0));
-                            arms.arm_bound("Circle", [("radius", "r")], |t| {
+                    t.match_expr(
+                        t.enum_variant_with_fields("Shape", "Circle", [("radius", t.var("n"))]),
+                        |m| {
+                            m.arm(Pat::variant("Dot", []), |t| t.int(0));
+                            m.arm(Pat::variant("Circle", [("radius", Pat::bind("r"))]), |t| {
                                 t.mul(t.var("r"), t.var("r"))
                             });
                         },
@@ -1023,30 +1049,26 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn area@f0(n@b0: Int) -> Int {
-                  let v0: Int = b0
+                fn area@f0(n@v0: Int) -> Int {
                   let v1: Shape = Circle {radius: v0}
-                  let v6: Int = match v1 {
+                  let v5: Int = match v1 {
                     Shape::Dot => {
                       let v2: Int = 0
                       v2
                     }
-                    Shape::Circle {radius@b1: Int} => {
-                      let v3: Int = b1
-                      let v4: Int = b1
-                      let v5: Int = v3 * v4
-                      v5
+                    Shape::Circle {radius@v3: Int} => {
+                      let v4: Int = v3 * v3
+                      v4
                     }
                   }
-                  v6
+                  v5
                 }
 
                 -- after --
-                fn area@f0(n@b0: Int) -> Int {
-                  let v0: Int = b0
+                fn area@f0(n@v0: Int) -> Int {
                   let v1: Shape = Circle {radius: v0}
-                  let v5: Int = v0 * v0
-                  v5
+                  let v4: Int = v0 * v0
+                  v4
                 }
             "#]],
         );
@@ -1055,24 +1077,21 @@ mod tests {
     #[test]
     fn should_select_the_some_arm_and_bind_its_value() {
         check(
-            PureModuleBuilder::new()
-                .entry("Test", [], "Html", |t| {
-                    t.option_match_expr_with_binding(
-                        t.some(t.str("x")),
-                        "v",
-                        |t| t.escape(t.var("v")),
-                        t.text("none"),
-                    )
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    t.match_expr(t.some(t.str("x")), |m| {
+                        m.arm(Pat::some(Pat::bind("v")), |t| t.escape(t.var("v")));
+                        m.arm(Pat::None, |t| t.text("none"));
+                    })
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: String = "x"
                   let v1: Option[String] = Some(v0)
                   let v5: Html = match v1 {
-                    Some(b0: String) => {
-                      let v2: String = b0
+                    Some(v2: String) => {
                       let v3: Html = escape(v2)
                       v3
                     }
@@ -1085,7 +1104,7 @@ mod tests {
                 }
 
                 -- after --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: String = "x"
                   let v1: Option[String] = Some(v0)
                   let v3: Html = escape(v0)
@@ -1098,7 +1117,7 @@ mod tests {
     #[test]
     fn should_saturate_a_float_to_int_conversion() {
         check(
-            PureModuleBuilder::new()
+            FlatModuleBuilder::new()
                 .function("big", [], "Int", |t| t.float_to_int(t.float(1e10)))
                 .build(),
             expect![[r#"
@@ -1122,18 +1141,17 @@ mod tests {
     #[test]
     fn should_select_an_arm_through_a_folded_equality() {
         check(
-            PureModuleBuilder::new()
-                .entry("Test", [], "Html", |t| {
-                    t.bool_match_expr(
-                        t.eq(t.str("a"), t.str("a")),
-                        t.text("same"),
-                        t.text("other"),
-                    )
+            FlatModuleBuilder::new()
+                .entrypoint("Test", [], "Html", |t| {
+                    t.match_expr(t.eq(t.str("a"), t.str("a")), |m| {
+                        m.arm(Pat::True, |t| t.text("same"));
+                        m.arm(Pat::False, |t| t.text("other"));
+                    })
                 })
                 .build(),
             expect![[r#"
                 -- before --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
                   let v2: Bool = v0 == v1
@@ -1151,7 +1169,7 @@ mod tests {
                 }
 
                 -- after --
-                entry fn Test@f0() -> Html {
+                entrypoint fn Test@f0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
                   let v2: Bool = true

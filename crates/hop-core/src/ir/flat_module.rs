@@ -4,265 +4,99 @@ use pretty::BoxDoc;
 
 use crate::document::CheapString;
 use crate::hop::typing::Type;
-use crate::html::HtmlElementKind;
-use crate::ir::binder_id::{BinderId, BinderIdCounter};
-use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_data_op::IrDataOp;
+use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_html_element::IrHtmlElement;
 use crate::ir::ir_match::IrMatch;
-use crate::ir::ir_unary_op::IrUnaryOp;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
-use crate::symbols::attribute_name::AttributeName;
-use crate::symbols::field_name::FieldName;
-use crate::symbols::type_name::TypeName;
 
 use super::ir_parameter::IrParameter;
 
 /// A Flat module.
-///
-/// A Pure module with its expressions flattened. Every operand is the name
-/// of a binding, and every computation is a binding that names its result.
-/// The bindings of a block are in evaluation order, so a binding refers only
-/// to names bound before it in its own block or in an enclosing block.
-///
-/// A binding is named by a ValueId. A parameter, a loop or a match arm
-/// binds a BinderId instead, and a Read op reads a binder into a binding,
-/// so a binder is never an operand. Each ValueId and each BinderId is
-/// bound once in the module, and each is bound with its type.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FlatModule {
     pub functions: Vec<FlatFunctionDeclaration>,
     pub value_ids: ValueIdCounter,
-    pub binder_ids: BinderIdCounter,
 }
 
 /// A function declaration in the Flat IR.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FlatFunctionDeclaration {
     pub function: IrFunction,
-    /// Whether the function is called from outside the module, so it is
-    /// kept even when nothing in the module calls it.
-    pub entry: bool,
+    /// Whether the function is called from outside the module, so it is kept
+    /// even when nothing in the module calls it.
+    pub entrypoint: bool,
     pub parameters: Vec<IrParameter>,
     pub return_type: Type,
-    /// Must produce a value of type `return_type`.
     pub body: FlatBlock,
 }
 
-/// A scope. Bindings are in evaluation order, and the result is a name
-/// bound here or in an enclosing block.
+/// A block. A binding is in scope for every later binding of the block, for the
+/// blocks nested in them, and for the result.
 #[derive(Debug, Clone)]
 pub struct FlatBlock {
     pub bindings: Vec<FlatBinding>,
     pub result: ValueId,
 }
 
-/// One binding of a block. The name is in scope for every later binding
-/// of the block, for the blocks nested in them, and for the result.
 #[derive(Debug, Clone)]
 pub struct FlatBinding {
-    pub name: ValueId,
-    pub typ: Type,
+    pub binder: IrBinder,
     pub op: FlatOp,
 }
 
-/// The source of iteration in a HtmlFor.
-#[derive(Debug, Clone)]
-pub enum FlatForSource {
-    Array(ValueId),
-    RangeInclusive { start: ValueId, end: ValueId },
-}
-
-/// An attribute of a HtmlElement.
-#[derive(Debug, Clone)]
-pub enum FlatAttribute {
-    /// Must name a String.
-    Value { name: AttributeName, value: ValueId },
-    /// Must name a Bool.
-    Presence {
-        name: AttributeName,
-        present: ValueId,
-    },
-}
-
-/// The computation of a binding. Operands are names of bindings, so an op
-/// never contains another op. Only Match and HtmlFor contain blocks.
-///
-/// The type of a binding is on the binding, so ops that carried a `typ`
-/// in Pure carry none here.
 #[derive(Debug, Clone)]
 pub enum FlatOp {
-    /// The value of a binder in scope: a parameter, a loop variable or a
-    /// match arm's variable.
-    Read(BinderId),
-
-    StringLiteral(CheapString),
-    IntLiteral(i32),
-    FloatLiteral(f64),
-    BoolLiteral(bool),
-
-    /// Text that renders as written, without escaping.
-    HtmlText(CheapString),
-
-    /// Must name a record with the field.
-    FieldAccess {
-        record: ValueId,
-        field: FieldName,
-    },
-
-    /// Must name a tuple with the index.
-    TupleIndex {
-        tuple: ValueId,
-        index: usize,
-    },
-
-    Array(Vec<ValueId>),
-
-    Tuple(Vec<ValueId>),
-
-    /// The record type is the type of the binding.
-    Record {
-        fields: Vec<(FieldName, ValueId)>,
-    },
-
-    /// The enum type is the type of the binding. Fields are empty for a
-    /// unit variant.
-    Enum {
-        variant_name: TypeName,
-        fields: Vec<(FieldName, ValueId)>,
-    },
-
-    Option(Option<ValueId>),
-
-    /// N-ary mappend over String names.
-    StringConcat(Vec<ValueId>),
-
-    /// Must name two values of the op's operand type. Produces the op's
-    /// result type.
-    Binary {
-        op: IrBinaryOp,
-        left: ValueId,
-        right: ValueId,
-    },
-
-    /// Must name a value of the op's operand type. Produces the op's
-    /// result type.
-    Unary {
-        op: IrUnaryOp,
-        operand: ValueId,
-    },
-
-    /// Must name a String. Produces its HTML escaped form as Html.
-    HtmlEscape(ValueId),
-
-    /// N-ary mappend over Html names. Part order is output order.
-    HtmlConcat(Vec<ValueId>),
-
-    /// An element with its attributes, in the order they render, and its
-    /// content. Attribute names are unique within an element.
-    ///
-    /// The children must name Html. A void element renders without its
-    /// children and without an end tag.
-    HtmlElement {
-        element: HtmlElementKind,
-        attributes: Vec<FlatAttribute>,
-        children: ValueId,
-    },
-
+    Data(IrDataOp),
     /// Invokes a function and produces its result. The arguments follow
     /// the function's parameters, one for each.
-    Call {
-        function: IrFunction,
-        args: Vec<ValueId>,
-    },
-
+    Call(IrFunction, Vec<ValueId>),
     /// A match with the arms of the source. Each arm is a block that
-    /// produces the match's value, and a Read of a binder of its pattern
-    /// reads the part of the subject the binder binds.
+    /// produces the match's value, and a name its pattern binds is the part
+    /// of the subject it binds.
     ///
     /// Matching is exhaustive, a value must match at least one arm.
-    Match(IrMatch<ValueId, FlatBlock>),
-
-    /// A foldMap over the source, concatenating the body's Html once per
-    /// element in iteration order.
-    ///
-    /// When var is None, the loop binds no variable, but still iterates.
-    HtmlFor {
-        var: Option<IrBinder>,
-        source: FlatForSource,
-        body: FlatBlock,
-    },
+    Match(IrMatch<FlatBlock>),
+    /// Text that renders as written, without escaping.
+    HtmlText(CheapString),
+    /// Must name a String. Produces its HTML escaped form as Html.
+    HtmlEscape(ValueId),
+    /// N-ary mappend over Html names. Part order is output order.
+    HtmlConcat(Vec<ValueId>),
+    /// An element whose children are the Html a name holds.
+    HtmlElement(IrHtmlElement<ValueId>),
+    /// A foldMap over the array, concatenating the body's Html once per
+    /// element in order.
+    HtmlFor(IrFor<FlatBlock>),
 }
 
 impl FlatOp {
     /// Apply `f` to each name this op reads directly. The names read inside
-    /// the blocks of a Match or HtmlFor are not visited, only the subject
-    /// or the source.
+    /// the blocks of a Match or a loop are not visited, only the subject or
+    /// the array.
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
-            FlatOp::Read(_)
-            | FlatOp::StringLiteral(_)
-            | FlatOp::IntLiteral(_)
-            | FlatOp::FloatLiteral(_)
-            | FlatOp::BoolLiteral(_)
-            | FlatOp::HtmlText(_)
-            | FlatOp::Option(None) => {}
-
-            FlatOp::FieldAccess { record: name, .. }
-            | FlatOp::TupleIndex { tuple: name, .. }
-            | FlatOp::Option(Some(name))
-            | FlatOp::Unary { operand: name, .. }
-            | FlatOp::HtmlEscape(name) => f(*name),
-
-            FlatOp::Array(names)
-            | FlatOp::Tuple(names)
-            | FlatOp::StringConcat(names)
-            | FlatOp::HtmlConcat(names) => {
+            FlatOp::Data(op) => op.for_each_operand(f),
+            FlatOp::HtmlText(_) => {}
+            FlatOp::HtmlEscape(name) => f(*name),
+            FlatOp::HtmlConcat(names) => {
                 for name in names {
                     f(*name);
                 }
             }
-
-            FlatOp::Record { fields } | FlatOp::Enum { fields, .. } => {
-                for (_, name) in fields {
-                    f(*name);
-                }
+            FlatOp::HtmlElement(element) => {
+                element.for_each_attribute_operand(f);
+                f(element.children);
             }
-
-            FlatOp::Binary { left, right, .. } => {
-                f(*left);
-                f(*right);
-            }
-
-            FlatOp::HtmlElement {
-                attributes,
-                children,
-                ..
-            } => {
-                for attribute in attributes {
-                    match attribute {
-                        FlatAttribute::Value { value: name, .. }
-                        | FlatAttribute::Presence { present: name, .. } => f(*name),
-                    }
-                }
-                f(*children);
-            }
-
-            FlatOp::Call { args, .. } => {
+            FlatOp::Call(_, args) => {
                 for arg in args {
                     f(*arg);
                 }
             }
-
             FlatOp::Match(match_) => f(match_.subject),
-
-            FlatOp::HtmlFor { source, .. } => match source {
-                FlatForSource::Array(array) => f(*array),
-                FlatForSource::RangeInclusive { start, end } => {
-                    f(*start);
-                    f(*end);
-                }
-            },
+            FlatOp::HtmlFor(for_) => f(for_.array),
         }
     }
 
@@ -270,82 +104,36 @@ impl FlatOp {
     /// the same names as `for_each_operand`.
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
-            FlatOp::Read(_)
-            | FlatOp::StringLiteral(_)
-            | FlatOp::IntLiteral(_)
-            | FlatOp::FloatLiteral(_)
-            | FlatOp::BoolLiteral(_)
-            | FlatOp::HtmlText(_)
-            | FlatOp::Option(None) => {}
-
-            FlatOp::FieldAccess { record: name, .. }
-            | FlatOp::TupleIndex { tuple: name, .. }
-            | FlatOp::Option(Some(name))
-            | FlatOp::Unary { operand: name, .. }
-            | FlatOp::HtmlEscape(name) => f(name),
-
-            FlatOp::Array(names)
-            | FlatOp::Tuple(names)
-            | FlatOp::StringConcat(names)
-            | FlatOp::HtmlConcat(names) => {
+            FlatOp::Data(op) => op.for_each_operand_mut(f),
+            FlatOp::HtmlText(_) => {}
+            FlatOp::HtmlEscape(name) => f(name),
+            FlatOp::HtmlConcat(names) => {
                 for name in names {
                     f(name);
                 }
             }
-
-            FlatOp::Record { fields } | FlatOp::Enum { fields, .. } => {
-                for (_, name) in fields {
-                    f(name);
-                }
+            FlatOp::HtmlElement(element) => {
+                element.for_each_attribute_operand_mut(f);
+                f(&mut element.children);
             }
-
-            FlatOp::Binary { left, right, .. } => {
-                f(left);
-                f(right);
-            }
-
-            FlatOp::HtmlElement {
-                attributes,
-                children,
-                ..
-            } => {
-                for attribute in attributes {
-                    match attribute {
-                        FlatAttribute::Value { value: name, .. }
-                        | FlatAttribute::Presence { present: name, .. } => f(name),
-                    }
-                }
-                f(children);
-            }
-
-            FlatOp::Call { args, .. } => {
+            FlatOp::Call(_, args) => {
                 for arg in args {
                     f(arg);
                 }
             }
-
             FlatOp::Match(match_) => f(&mut match_.subject),
-
-            FlatOp::HtmlFor { source, .. } => match source {
-                FlatForSource::Array(array) => f(array),
-                FlatForSource::RangeInclusive { start, end } => {
-                    f(start);
-                    f(end);
-                }
-            },
+            FlatOp::HtmlFor(for_) => f(&mut for_.array),
         }
     }
 }
 
 impl FlatBlock {
-    /// One line per binding and one for the result.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::intersperse(
             self.bindings
                 .iter()
                 .map(|binding| {
-                    BoxDoc::text(format!("let {}: {} = ", binding.name, binding.typ))
-                        .append(binding.op.to_doc())
+                    BoxDoc::text(format!("let {} = ", binding.binder)).append(binding.op.to_doc())
                 })
                 .chain(std::iter::once(BoxDoc::text(self.result.to_string()))),
             BoxDoc::line(),
@@ -354,65 +142,11 @@ impl FlatBlock {
 }
 
 impl FlatOp {
-    /// A Match or HtmlFor spans lines, every other op is one line.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            FlatOp::Read(binder) => BoxDoc::text(binder.to_string()),
-            FlatOp::StringLiteral(value) => BoxDoc::text(format!("{:?}", value.as_str())),
-            FlatOp::IntLiteral(value) => BoxDoc::text(value.to_string()),
-            FlatOp::FloatLiteral(value) => BoxDoc::text(value.to_string()),
-            FlatOp::BoolLiteral(value) => BoxDoc::text(value.to_string()),
+            FlatOp::Data(op) => op.to_doc(),
             FlatOp::HtmlText(content) => BoxDoc::text(format!("text({:?})", content.as_str())),
-            FlatOp::FieldAccess { record, field } => {
-                BoxDoc::text(format!("{record}.{}", field.as_str()))
-            }
-            FlatOp::TupleIndex { tuple, index } => BoxDoc::text(format!("{tuple}.{index}")),
-            FlatOp::Array(elements) => {
-                let elements = elements
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!("[{elements}]"))
-            }
-            FlatOp::Tuple(elements) => {
-                let joined = elements
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                if elements.len() == 1 {
-                    BoxDoc::text(format!("({joined},)"))
-                } else {
-                    BoxDoc::text(format!("({joined})"))
-                }
-            }
-            FlatOp::Record { fields } => {
-                let fields = fields
-                    .iter()
-                    .map(|(name, value)| format!("{}: {value}", name.as_str()))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!("{{{fields}}}"))
-            }
-            FlatOp::Enum {
-                variant_name,
-                fields,
-            } => {
-                if fields.is_empty() {
-                    BoxDoc::text(variant_name.as_str())
-                } else {
-                    let fields = fields
-                        .iter()
-                        .map(|(name, value)| format!("{}: {value}", name.as_str()))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    BoxDoc::text(format!("{} {{{fields}}}", variant_name.as_str()))
-                }
-            }
-            FlatOp::Option(Some(value)) => BoxDoc::text(format!("Some({value})")),
-            FlatOp::Option(None) => BoxDoc::text("None"),
-            FlatOp::StringConcat(parts) | FlatOp::HtmlConcat(parts) => {
+            FlatOp::HtmlConcat(parts) => {
                 let parts = parts
                     .iter()
                     .map(ToString::to_string)
@@ -420,75 +154,22 @@ impl FlatOp {
                     .join(", ");
                 BoxDoc::text(format!("concat({parts})"))
             }
-            FlatOp::Binary { op, left, right } => BoxDoc::text(match op {
-                IrBinaryOp::NumericAdd(_) => format!("{left} + {right}"),
-                IrBinaryOp::NumericSubtract(_) => format!("{left} - {right}"),
-                IrBinaryOp::NumericMultiply(_) => format!("{left} * {right}"),
-                IrBinaryOp::Equals(_) => format!("{left} == {right}"),
-                IrBinaryOp::LessThan(_) => format!("{left} < {right}"),
-                IrBinaryOp::LessThanOrEqual(_) => format!("{left} <= {right}"),
-            }),
-            FlatOp::Unary { op, operand } => BoxDoc::text(match op {
-                IrUnaryOp::NumericNegation(_) => format!("-{operand}"),
-                IrUnaryOp::BoolNegation => format!("!{operand}"),
-                IrUnaryOp::ArrayLength => format!("{operand}.len()"),
-                IrUnaryOp::ArrayIsEmpty => format!("{operand}.is_empty()"),
-                IrUnaryOp::StringIsEmpty => format!("{operand}.is_empty()"),
-                IrUnaryOp::OptionIsSome => format!("{operand}.is_some()"),
-                IrUnaryOp::OptionIsNone => format!("{operand}.is_none()"),
-                IrUnaryOp::IntToString => format!("{operand}.to_string()"),
-                IrUnaryOp::FloatToInt => format!("{operand}.to_int()"),
-                IrUnaryOp::IntToFloat => format!("{operand}.to_float()"),
-            }),
             FlatOp::HtmlEscape(string) => BoxDoc::text(format!("escape({string})")),
-            FlatOp::HtmlElement {
-                element,
-                attributes,
-                children,
-            } => {
-                let attributes = attributes
-                    .iter()
-                    .map(|attribute| match attribute {
-                        FlatAttribute::Value { name, value } => {
-                            format!("{}: {value}", name.as_str())
-                        }
-                        FlatAttribute::Presence { name, present } => {
-                            format!("{}: {present}", name.as_str())
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!(
-                    "html({:?}, {{{attributes}}}, {children})",
-                    element.as_str()
-                ))
+            FlatOp::HtmlElement(element) => {
+                BoxDoc::text(format!("element({:?}, ", element.element.as_str()))
+                    .append(element.attributes_to_doc())
+                    .append(BoxDoc::text(format!(", {})", element.children)))
             }
-            FlatOp::Call { function, args } => {
+            FlatOp::Call(function, args) => {
                 let args = args
                     .iter()
                     .map(|arg| arg.to_string())
                     .collect::<Vec<_>>()
                     .join(", ");
-                BoxDoc::text(format!("call {function}({args})"))
+                BoxDoc::text(format!("{function}({args})"))
             }
-            FlatOp::Match(match_) => match_.to_doc(
-                |subject| BoxDoc::text(subject.to_string()),
-                |body| BoxDoc::line().append(body.to_doc()),
-            ),
-            FlatOp::HtmlFor { var, source, body } => {
-                let var = match var {
-                    Some(binder) => format!("{}: {}", binder.var, binder.typ),
-                    None => "_".to_string(),
-                };
-                let source = match source {
-                    FlatForSource::Array(array) => array.to_string(),
-                    FlatForSource::RangeInclusive { start, end } => format!("{start}..={end}"),
-                };
-                BoxDoc::text(format!("for {var} in {source} {{"))
-                    .append(BoxDoc::line().append(body.to_doc()).nest(2))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("}"))
-            }
+            FlatOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
+            FlatOp::HtmlFor(for_) => for_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
         }
     }
 }
@@ -498,10 +179,14 @@ impl FlatFunctionDeclaration {
         let parameters = self
             .parameters
             .iter()
-            .map(|param| format!("{}@{}: {}", param.name.as_str(), param.var, param.typ))
+            .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ");
-        let keyword = if self.entry { "entry fn" } else { "fn" };
+        let keyword = if self.entrypoint {
+            "entrypoint fn"
+        } else {
+            "fn"
+        };
         BoxDoc::text(format!(
             "{keyword} {}({parameters}) -> {} {{",
             self.function, self.return_type

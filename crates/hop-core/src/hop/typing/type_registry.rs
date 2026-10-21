@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 
 use pretty::BoxDoc;
 
-use super::r#type::Type;
+use super::r#type::DataType;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
@@ -12,7 +12,7 @@ use crate::symbols::type_name::TypeName;
 #[derive(Debug, Clone)]
 pub struct RecordField {
     pub name: FieldName,
-    pub typ: Type,
+    pub typ: DataType,
     pub examples: Option<ExamplesAnnotation>,
 }
 
@@ -28,7 +28,7 @@ pub enum TypeDef {
     Enum { variants: Vec<EnumVariant> },
 }
 
-/// A `Type` with named types resolved to their registry definition.
+/// A `DataType` with named types resolved to their registry definition.
 /// Resolution is exactly one level deep, fields and variants carry
 /// unresolved types.
 #[derive(Debug, Clone, Copy)]
@@ -37,10 +37,9 @@ pub enum ResolvedType<'a> {
     Bool,
     Int,
     Float,
-    Html,
-    Array(&'a Type),
-    Option(&'a Type),
-    Tuple(&'a [Type]),
+    Array(&'a DataType),
+    Option(&'a DataType),
+    Tuple(&'a [DataType]),
     Record {
         name: &'a TypeName,
         fields: &'a [RecordField],
@@ -103,17 +102,16 @@ impl TypeRegistry {
         enums.into_iter()
     }
 
-    pub fn resolve<'a>(&'a self, typ: &'a Type) -> Option<ResolvedType<'a>> {
+    pub fn resolve<'a>(&'a self, typ: &'a DataType) -> Option<ResolvedType<'a>> {
         match typ {
-            Type::String => Some(ResolvedType::String),
-            Type::Bool => Some(ResolvedType::Bool),
-            Type::Int => Some(ResolvedType::Int),
-            Type::Float => Some(ResolvedType::Float),
-            Type::Html => Some(ResolvedType::Html),
-            Type::Array(inner) => Some(ResolvedType::Array(inner)),
-            Type::Option(inner) => Some(ResolvedType::Option(inner)),
-            Type::Tuple(elements) => Some(ResolvedType::Tuple(elements)),
-            Type::Named { module, name } => match self.defs.get(module)?.get(name)? {
+            DataType::String => Some(ResolvedType::String),
+            DataType::Bool => Some(ResolvedType::Bool),
+            DataType::Int => Some(ResolvedType::Int),
+            DataType::Float => Some(ResolvedType::Float),
+            DataType::Array(inner) => Some(ResolvedType::Array(inner)),
+            DataType::Option(inner) => Some(ResolvedType::Option(inner)),
+            DataType::Tuple(elements) => Some(ResolvedType::Tuple(elements)),
+            DataType::Named { module, name } => match self.defs.get(module)?.get(name)? {
                 TypeDef::Record { fields } => Some(ResolvedType::Record { name, fields }),
                 TypeDef::Enum { variants } => Some(ResolvedType::Enum { name, variants }),
             },

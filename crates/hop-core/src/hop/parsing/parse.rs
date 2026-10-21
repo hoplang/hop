@@ -1051,7 +1051,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Card(children: Html) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [interpolate(children)],
@@ -1074,7 +1074,7 @@ mod tests {
                 fn Greeting(first: String, last: String) -> Html {
                   {
                     let name = first + " " + last;
-                    html(
+                    element(
                       tag: "h1",
                       attrs: [],
                       children: [interpolate(name)],
@@ -1095,7 +1095,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(a: Int) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [
                       class: {
@@ -1182,7 +1182,7 @@ mod tests {
             "},
             expect![[r#"
                 pub fn Button(label: String) -> Html {
-                  html(
+                  element(
                     tag: "button",
                     attrs: [],
                     children: [interpolate(label)],
@@ -1205,7 +1205,7 @@ mod tests {
             expect![[r#"
                 pub page Home() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("hi")],
@@ -1324,7 +1324,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Foo() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [text("hello")],
@@ -1344,7 +1344,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Foo(name: String, count: Int) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [interpolate(name)],
@@ -1451,15 +1451,15 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "form",
                     attrs: [id: "form"],
                     children: [
-                      html(
+                      element(
                         tag: "input",
                         attrs: [type: "text", required],
                       ),
-                      html(
+                      element(
                         tag: "button",
                         attrs: [type: "submit"],
                         children: [text("Send")],
@@ -1482,12 +1482,12 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    html(
+                    element(
                       tag: "p",
                       attrs: [],
                       children: [text("one")],
                     ),
-                    html(
+                    element(
                       tag: "p",
                       attrs: [],
                       children: [text("two")],
@@ -1543,7 +1543,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [fragment(text("one"))],
@@ -1585,7 +1585,7 @@ mod tests {
                   |             ^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "script",
                     attrs: [],
                     children: [text("<>")],
@@ -1605,7 +1605,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "script",
                     attrs: [src: "/app.js"],
                     children: [],
@@ -1626,7 +1626,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "script",
                     attrs: [src: "/app.js"],
                     children: [],
@@ -1652,7 +1652,7 @@ mod tests {
                   |             ^^^^^^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "script",
                     attrs: [],
                     children: [text("alert(1)")],
@@ -1678,7 +1678,7 @@ mod tests {
                   |      ^^^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "style",
                     attrs: [],
                     children: [
@@ -1742,7 +1742,7 @@ mod tests {
                   |      ^^^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "style",
                     attrs: [],
                     children: [],
@@ -1768,7 +1768,7 @@ mod tests {
                   |      ^^^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "style",
                     attrs: [],
                     children: [],
@@ -1800,11 +1800,11 @@ mod tests {
                   |      ^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [
-                      html(
+                      element(
                         tag: "p",
                         attrs: [],
                         children: [],
@@ -1856,7 +1856,7 @@ mod tests {
                 }
 
                 fn Card(title: String) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [interpolate(title)],
@@ -1891,7 +1891,7 @@ mod tests {
                   |            ^
                 -- ast --
                 fn First() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -1944,11 +1944,11 @@ mod tests {
                   |           ^^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [
-                      html(
+                      element(
                         tag: "span",
                         attrs: [],
                         children: [],
@@ -1986,16 +1986,16 @@ mod tests {
                   |                   ^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [
-                      html(
+                      element(
                         tag: "span",
                         attrs: [],
                         children: [
                           fragment(
-                            html(
+                            element(
                               tag: "b",
                               attrs: [],
                               children: [],
@@ -2031,7 +2031,7 @@ mod tests {
                   |              ^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -2228,7 +2228,7 @@ mod tests {
                   |          ^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -2255,7 +2255,7 @@ mod tests {
                 -- ast --
                 fn Main() -> Html {
                   fragment(
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [],
@@ -2300,9 +2300,9 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    html(tag: "hr", attrs: []),
-                    html(tag: "br", attrs: []),
-                    html(tag: "input", attrs: []),
+                    element(tag: "hr", attrs: []),
+                    element(tag: "br", attrs: []),
+                    element(tag: "input", attrs: []),
                   )
                 }
             "#]],
@@ -2325,12 +2325,12 @@ mod tests {
                   |            ^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "p",
                     attrs: [],
                     children: [
                       text("one"),
-                      html(
+                      element(
                         tag: "br",
                         attrs: [],
                         children: [text("two")],
@@ -2363,9 +2363,9 @@ mod tests {
 
                 fn Main() -> Html {
                   fragment(
-                    html(tag: "hr", attrs: []),
-                    html(tag: "br", attrs: []),
-                    html(tag: "input", attrs: []),
+                    element(tag: "hr", attrs: []),
+                    element(tag: "br", attrs: []),
+                    element(tag: "input", attrs: []),
                   )
                 }
 
@@ -2387,7 +2387,7 @@ mod tests {
                   |                         ^^^^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [foo],
                     children: [],
@@ -2408,7 +2408,7 @@ mod tests {
                   |                                ^^^^^^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(tag: "input", attrs: [])
+                  element(tag: "input", attrs: [])
                 }
             "#]],
         );
@@ -2424,7 +2424,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [
                       title: "say \\\"hi\\\"",
@@ -2510,11 +2510,11 @@ mod tests {
                   |                          ^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [
-                      html(
+                      element(
                         tag: "div",
                         attrs: [],
                         children: [],
@@ -2541,7 +2541,7 @@ mod tests {
                   |                           ^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -2562,7 +2562,7 @@ mod tests {
                   |                         ^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [text("text")],
@@ -2625,7 +2625,7 @@ mod tests {
                   |                     ^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [interpolate(data)],
@@ -2654,7 +2654,7 @@ mod tests {
                 }
 
                 fn Main(user: User) -> Html {
-                  html(
+                  element(
                     tag: "a",
                     attrs: [
                       href: user.url,
@@ -2706,7 +2706,7 @@ mod tests {
                   |                       ^
                 -- ast --
                 fn Main(style1: String, style2: String, style3: String) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [text("Content")],
@@ -2806,7 +2806,7 @@ mod tests {
             expect![[r#"
                 fn Main(item: Array[String]) -> Html {
                   for item in items {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Item content")],
@@ -2828,7 +2828,7 @@ mod tests {
             expect![[r#"
                 fn Main(foo: Array[String]) -> Html {
                   for v in foo {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [interpolate(v)],
@@ -2960,7 +2960,7 @@ mod tests {
             expect![[r#"
                 fn Dots(n: Int) -> Html {
                   for _ in 1..=n {
-                    html(
+                    element(
                       tag: "span",
                       attrs: [],
                       children: [text(".")],
@@ -2986,14 +2986,14 @@ mod tests {
             "},
             expect![[r#"
                 fn ItemList(items: Array[Item]) -> Html {
-                  html(
+                  element(
                     tag: "ul",
                     attrs: [],
                     children: [
                       interpolate(
                         for item in items {
                           let name = item.name;
-                          html(
+                          element(
                             tag: "li",
                             attrs: [],
                             children: [
@@ -3022,7 +3022,7 @@ mod tests {
                   Table(
                     attrs: [
                       rows: for item in items {
-                        html(
+                        element(
                           tag: "tr",
                           attrs: [],
                           children: [
@@ -3109,7 +3109,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "my-widget",
                     attrs: [],
                     children: [text("hi")],
@@ -3140,11 +3140,11 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [class: "navbar"],
                     children: [
-                      html(
+                      element(
                         tag: "svg",
                         attrs: [
                           xmlns: "http://www.w3.org/2000/svg",
@@ -3155,27 +3155,27 @@ mod tests {
                           class: "size-12",
                         ],
                         children: [
-                          html(
+                          element(
                             tag: "g",
                             attrs: [
                               style: "fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;",
                             ],
                             children: [
-                              html(
+                              element(
                                 tag: "path",
                                 attrs: [
                                   d: "M20.04 38 64 22l43.96 16L64 54Z",
                                 ],
                                 children: [],
                               ),
-                              html(
+                              element(
                                 tag: "path",
                                 attrs: [
                                   d: "M17.54 47.09v48l35.099 12.775",
                                 ],
                                 children: [],
                               ),
-                              html(
+                              element(
                                 tag: "path",
                                 attrs: [
                                   d: "M64 112V64l46.46-16.91v48L77.988 106.91",
@@ -3186,15 +3186,15 @@ mod tests {
                           ),
                         ],
                       ),
-                      html(
+                      element(
                         tag: "ul",
                         attrs: [],
                         children: [
-                          html(
+                          element(
                             tag: "li",
                             attrs: [],
                             children: [
-                              html(
+                              element(
                                 tag: "a",
                                 attrs: [href: "/"],
                                 children: [
@@ -3222,7 +3222,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(data: String) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [interpolate(data)],
@@ -3254,12 +3254,12 @@ mod tests {
 
                 fn Main(data: Data) -> Html {
                   fragment(
-                    html(
+                    element(
                       tag: "h1",
                       attrs: [],
                       children: [text("Hello World")],
                     ),
-                    html(
+                    element(
                       tag: "p",
                       attrs: [],
                       children: [
@@ -3283,7 +3283,7 @@ mod tests {
             expect![[r#"
                 fn Main(items: Array[String]) -> Html {
                   for item in items {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [interpolate(item)],
@@ -3304,7 +3304,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(pair: (Int, String)) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -3324,7 +3324,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(rows: Array[(Int, (String, Bool))]) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -3344,7 +3344,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(only: (Int,), rows: Array[(String,)]) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -3364,7 +3364,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(plain: Int, nested: (Int, String)) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -3384,7 +3384,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(nothing: (), rows: Array[()]) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -3423,7 +3423,7 @@ mod tests {
                 fn Main(data: Array[Section]) -> Html {
                   for section in data {
                     fragment(
-                      html(
+                      element(
                         tag: "h1",
                         attrs: [],
                         children: [
@@ -3432,7 +3432,7 @@ mod tests {
                       ),
                       interpolate(
                         for item in section.items {
-                          html(
+                          element(
                             tag: "div",
                             attrs: [],
                             children: [
@@ -3454,7 +3454,7 @@ mod tests {
             "fn Main() -> Html {<h1>Hello {name}!</h1>}",
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "h1",
                     attrs: [],
                     children: [
@@ -3474,7 +3474,7 @@ mod tests {
             "fn Main() -> Html {<p>User {user.name} has {user.count} items</p>}",
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "p",
                     attrs: [],
                     children: [
@@ -3496,7 +3496,7 @@ mod tests {
             "fn Main() -> Html {<span>{greeting} world!</span>}",
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "span",
                     attrs: [],
                     children: [
@@ -3515,7 +3515,7 @@ mod tests {
             "fn Main() -> Html {<div>Price: {price}</div>}",
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [
@@ -3534,7 +3534,7 @@ mod tests {
             "fn Main() -> Html {<h2>{title}</h2>}",
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "h2",
                     attrs: [],
                     children: [interpolate(title)],
@@ -3555,7 +3555,7 @@ mod tests {
                   |                                 ^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [text("Empty:")],
@@ -3571,7 +3571,7 @@ mod tests {
             r#"fn Main() -> Html {<p>Status: {user.profile.status == "active"}</p>}"#,
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "p",
                     attrs: [],
                     children: [
@@ -3592,7 +3592,7 @@ mod tests {
             "fn Main() -> Html {<span>{first}{second}</span>}",
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "span",
                     attrs: [],
                     children: [
@@ -3611,7 +3611,7 @@ mod tests {
             r#"fn Main() -> Html {<div>{"<div></div>"}</div>}"#,
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [
@@ -3932,7 +3932,7 @@ mod tests {
                 }
 
                 fn Main(color: Color) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [
                       class: match color {
@@ -3995,7 +3995,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main(name?: String = "World") -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [interpolate(name)],
@@ -4015,7 +4015,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(count?: Int = 42) -> Html {
-                  html(
+                  element(
                     tag: "span",
                     attrs: [],
                     children: [interpolate(count)],
@@ -4035,7 +4035,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(enabled?: Bool = true) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -4055,7 +4055,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main(name: String, role?: String = "user", active?: Bool = true) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [interpolate(name)],
@@ -4105,7 +4105,7 @@ mod tests {
                   debug: false,
                   timeout: 30,
                 }) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -4132,7 +4132,7 @@ mod tests {
                 }
 
                 fn Main(status?: Status = Status::Active) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -4152,7 +4152,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(name: Option[String]) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -4172,7 +4172,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(name?: Option[String] = None) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -4192,7 +4192,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main(name?: Option[String] = Some("default")) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -4215,7 +4215,7 @@ mod tests {
                   1,
                   2,
                 ]) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -4235,7 +4235,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(children?: Html = fragment()) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -4260,7 +4260,7 @@ mod tests {
                   |                   ^
                 -- ast --
                 fn Main(y: Int) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -4376,7 +4376,7 @@ mod tests {
                   {
                     let a: Int = 1;
                     let b: Int = 2;
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
@@ -4406,7 +4406,7 @@ mod tests {
                   {
                     let first: String = "Hello";
                     let second: String = "World";
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
@@ -4476,7 +4476,7 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("First")],
@@ -4484,7 +4484,7 @@ mod tests {
                     interpolate(
                       {
                         let name: String = "World";
-                        html(
+                        element(
                           tag: "div",
                           attrs: [],
                           children: [
@@ -4520,7 +4520,7 @@ mod tests {
                     interpolate(
                       {
                         let name: String = "World";
-                        html(
+                        element(
                           tag: "div",
                           attrs: [],
                           children: [
@@ -4530,7 +4530,7 @@ mod tests {
                         )
                       },
                     ),
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Last")],
@@ -4568,7 +4568,7 @@ mod tests {
             expect![[r#"
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Hello")],
@@ -4592,7 +4592,7 @@ mod tests {
             expect![[r#"
                 page Index(name: String, count: Int) {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
@@ -4623,7 +4623,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Header(title: String) -> Html {
-                  html(
+                  element(
                     tag: "h1",
                     attrs: [],
                     children: [interpolate(title)],
@@ -4658,7 +4658,7 @@ mod tests {
             expect![[r#"
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Index")],
@@ -4668,7 +4668,7 @@ mod tests {
 
                 page About() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("About")],
@@ -4796,7 +4796,7 @@ mod tests {
                 -- ast --
                 page Index(name?: String = "World") {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
@@ -4826,14 +4826,14 @@ mod tests {
             expect![[r#"
                 page Index(name: String) {
                   fn head() -> Html {
-                    html(
+                    element(
                       tag: "title",
                       attrs: [],
                       children: [text("My page")],
                     )
                   }
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
@@ -4860,7 +4860,7 @@ mod tests {
             expect![[r#"
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Hello")],
@@ -4914,7 +4914,7 @@ mod tests {
                 -- ast --
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Hello")],
@@ -4947,7 +4947,7 @@ mod tests {
                 -- ast --
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Hello")],
@@ -4977,7 +4977,7 @@ mod tests {
                 -- ast --
                 page Index() {
                   fn body(name: String) -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [interpolate(name)],
@@ -5007,7 +5007,7 @@ mod tests {
                 -- ast --
                 page Index() {
                   fn body(...rest) -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Hello")],
@@ -5037,7 +5037,7 @@ mod tests {
                 -- ast --
                 page Index() {
                   fn body() -> String {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Hello")],
@@ -5067,7 +5067,7 @@ mod tests {
                 -- ast --
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Hello")],
@@ -5138,7 +5138,7 @@ mod tests {
                 -- ast --
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Hello")],
@@ -5203,14 +5203,14 @@ mod tests {
             expect![[r#"
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Hello")],
                     )
                   }
                   fn head() -> Html {
-                    html(
+                    element(
                       tag: "title",
                       attrs: [],
                       children: [text("My page")],
@@ -5258,7 +5258,7 @@ mod tests {
                 page Index(show: Bool) {
                   fn body() -> Html {
                     match show {
-                      true => html(
+                      true => element(
                         tag: "div",
                         attrs: [],
                         children: [text("Visible")],
@@ -5285,7 +5285,7 @@ mod tests {
                 page Index(items: Array[String]) {
                   fn body() -> Html {
                     for item in items {
-                      html(
+                      element(
                         tag: "div",
                         attrs: [],
                         children: [interpolate(item)],
@@ -5313,7 +5313,7 @@ mod tests {
                   fn body() -> Html {
                     {
                       let name: String = "World";
-                      html(
+                      element(
                         tag: "div",
                         attrs: [],
                         children: [
@@ -5345,16 +5345,16 @@ mod tests {
             expect![[r#"
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
-                        html(tag: "br", attrs: []),
-                        html(
+                        element(tag: "br", attrs: []),
+                        element(
                           tag: "input",
                           attrs: [type: "text"],
                         ),
-                        html(tag: "hr", attrs: []),
+                        element(tag: "hr", attrs: []),
                       ],
                     )
                   }
@@ -5376,7 +5376,7 @@ mod tests {
             expect![[r#"
                 page Index(name: String) {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [interpolate(name)],
@@ -5404,12 +5404,12 @@ mod tests {
                 page Index(value: Option[String]) {
                   fn body() -> Html {
                     match value {
-                      Some(s) => html(
+                      Some(s) => element(
                         tag: "div",
                         attrs: [],
                         children: [interpolate(s)],
                       ),
-                      None => html(
+                      None => element(
                         tag: "div",
                         attrs: [],
                         children: [text("No value")],
@@ -5445,7 +5445,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Header(title: String) -> Html {
-                  html(
+                  element(
                     tag: "h1",
                     attrs: [],
                     children: [interpolate(title)],
@@ -5453,7 +5453,7 @@ mod tests {
                 }
 
                 fn Footer() -> Html {
-                  html(
+                  element(
                     tag: "p",
                     attrs: [],
                     children: [text("Copyright 2024")],
@@ -5462,12 +5462,12 @@ mod tests {
 
                 page Index(title: String) {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
                         Header(attrs: [title: title]),
-                        html(
+                        element(
                           tag: "main",
                           attrs: [],
                           children: [text("Content")],
@@ -5501,7 +5501,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Header() -> Html {
-                  html(
+                  element(
                     tag: "h1",
                     attrs: [],
                     children: [text("Header")],
@@ -5510,7 +5510,7 @@ mod tests {
 
                 page Index() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("Index")],
@@ -5519,7 +5519,7 @@ mod tests {
                 }
 
                 fn Footer() -> Html {
-                  html(
+                  element(
                     tag: "p",
                     attrs: [],
                     children: [text("Footer")],
@@ -5547,7 +5547,7 @@ mod tests {
                 -- ast --
                 page Index(name: String) {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
@@ -5579,7 +5579,7 @@ mod tests {
                 -- ast --
                 page Index(name?: String = "World") {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
@@ -5611,7 +5611,7 @@ mod tests {
                 -- ast --
                 page Index(required: String, optional?: Int = 42) {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
@@ -5696,7 +5696,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Foo(class: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [...rest],
                     children: [],
@@ -5721,7 +5721,7 @@ mod tests {
                   |        ^^^^^^^
                 -- ast --
                 fn Foo(a: String, b: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [...rest],
                     children: [],
@@ -5750,7 +5750,7 @@ mod tests {
                   |              ^^^^
                 -- ast --
                 fn Foo(...a) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [...a],
                     children: [],
@@ -5770,7 +5770,7 @@ mod tests {
             "#},
             expect![[r#"
                 fn Foo(...rest) -> Html {
-                  html(
+                  element(
                     tag: "button",
                     attrs: [...rest],
                     children: [],
@@ -5812,7 +5812,7 @@ mod tests {
                   |              ^^^
                 -- ast --
                 fn Foo() -> Html {
-                  html(
+                  element(
                     tag: "button",
                     attrs: [],
                     children: [],
@@ -5838,7 +5838,7 @@ mod tests {
                   |              ^^
                 -- ast --
                 fn Foo() -> Html {
-                  html(
+                  element(
                     tag: "button",
                     attrs: [],
                     children: [],
@@ -5871,7 +5871,7 @@ mod tests {
                 }
 
                 fn Foo() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [
@@ -6112,7 +6112,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Foo(class: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [class: class, ...rest],
                     children: [],
@@ -6140,7 +6140,7 @@ mod tests {
                 -- ast --
                 page Foo() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [],
@@ -6187,7 +6187,7 @@ mod tests {
                   |        ^^^^^^^
                 -- ast --
                 fn Foo(class: String, ...rest) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [...rest],
                     children: [],
@@ -6207,7 +6207,7 @@ mod tests {
             "},
             expect![[r#"
                 fn card() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [text("hello")],
@@ -6246,12 +6246,12 @@ mod tests {
             expect![[r#"
                 page Test() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
                         interpolate(
-                          html(
+                          element(
                             tag: "span",
                             attrs: [],
                             children: [text("hello")],
@@ -6278,17 +6278,17 @@ mod tests {
             expect![[r#"
                 page Test() {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [
                         interpolate(
-                          html(
+                          element(
                             tag: "span",
                             attrs: [],
                             children: [
                               interpolate(
-                                html(
+                                element(
                                   tag: "b",
                                   attrs: [],
                                   children: [
@@ -6321,7 +6321,7 @@ mod tests {
             "},
             expect![[r#"
                 fn wrap(children: Html) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [interpolate(children)],
@@ -6330,7 +6330,7 @@ mod tests {
 
                 fn card() -> Html {
                   wrap(
-                    html(
+                    element(
                       tag: "span",
                       attrs: [],
                       children: [text("hello")],
@@ -6352,12 +6352,12 @@ mod tests {
             expect![[r#"
                 fn cards() -> Array[Html] {
                   [
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("a")],
                     ),
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [text("b")],
@@ -6382,12 +6382,12 @@ mod tests {
             expect![[r#"
                 fn badge(on: Bool) -> Html {
                   match on {
-                    true => html(
+                    true => element(
                       tag: "b",
                       attrs: [],
                       children: [text("yes")],
                     ),
-                    false => html(
+                    false => element(
                       tag: "i",
                       attrs: [],
                       children: [text("no")],
@@ -6414,7 +6414,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Card(slot: Html) -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [interpolate(slot)],
@@ -6425,7 +6425,7 @@ mod tests {
                   fn body() -> Html {
                     Card(
                       attrs: [
-                        slot: html(
+                        slot: element(
                           tag: "span",
                           attrs: [],
                           children: [text("hello")],
@@ -6449,7 +6449,7 @@ mod tests {
             "},
             expect![[r#"
                 fn card() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [text("hello")],
@@ -6584,7 +6584,7 @@ mod tests {
                   |    ^^^
                 -- ast --
                 fn card() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [],
@@ -6607,7 +6607,7 @@ mod tests {
             "},
             expect![[r#"
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "p",
                     attrs: [],
                     children: [
@@ -6646,7 +6646,7 @@ mod tests {
 
                 page Main(#[examples(min = 1)] count: Int) {
                   fn body() -> Html {
-                    html(
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [interpolate(count)],
@@ -6909,7 +6909,7 @@ mod tests {
                   |                  ^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [class: "a", id: "b"],
                     children: [text("hi")],
@@ -6935,7 +6935,7 @@ mod tests {
                   |        ^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [class: "a"],
                     children: [text("hi")],
@@ -6966,11 +6966,11 @@ mod tests {
                   |    ^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [class: "a"],
                     children: [
-                      html(
+                      element(
                         tag: "span",
                         attrs: [],
                         children: [text("hi")],
@@ -7051,7 +7051,7 @@ mod tests {
                   |        ^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [text("hi")],
@@ -7104,7 +7104,7 @@ mod tests {
                   |            ^^^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [text("hi")],
@@ -7135,7 +7135,7 @@ mod tests {
                   |            ^
                 -- ast --
                 fn Main() -> Html {
-                  html(
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [text("hi")],

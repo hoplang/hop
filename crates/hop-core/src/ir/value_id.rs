@@ -1,10 +1,9 @@
 use std::fmt;
 
-/// Identity of a binding in the Flat IR, and of a let in the Writer: the
-/// name of a value an op computes. A binder has a BinderId instead.
+/// Identity of a name in the IR: a binding, which names the value its op
+/// computes, or a parameter, a loop variable or a binding of a pattern.
 ///
-/// Every binding has its own unique ValueId. Equal ValueIds mean the same
-/// binding.
+/// Every name is bound once. Equal ValueIds mean the same name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ValueId(usize);
 

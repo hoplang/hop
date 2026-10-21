@@ -106,6 +106,17 @@ Option[T]     None, Some(v)
 (T1, T2, …)   (v1, v2, …)
 ```
 
+The types other than `Html` are data types. Only a data type can be the
+element type of an array or an option, an element type of a tuple, or the type
+of a field of a [record](#record-declarations) or an
+[enum](#enum-declarations). `Html` in one of these places is a compile error,
+and so is an expression whose type would have `Html` in one of them:
+
+```hop
+let badge = Some(<b>new</b>); // error: Html is not allowed inside another type
+let rows: Array[Html] = [];   // error: Html is not allowed inside another type
+```
+
 <a id="expressions"></a>
 
 ## Expressions
@@ -346,6 +357,37 @@ A binding that reuses a name already in scope is a compile error:
 fn double(x: Int) -> Int {
   let x = x * 2; // error: Variable x is already defined
   x
+}
+```
+
+A variable bound to an `Html` value is used at most once on every path through
+its scope. Using it a second time is a compile error:
+
+```hop
+let star = <b>*</b>;
+<p>{star}{star}</p> // error: Html value star is used more than once
+```
+
+Each arm of a [match expression](#match-expressions) is a path of its own, so
+every arm can use the variable once:
+
+```hop
+let flag = true;
+let star = <b>*</b>;
+match flag {
+  true => <p>{star}</p>,
+  false => <i>{star}</i>,
+}
+```
+
+The body of a [for expression](#for-expressions) evaluates once for each
+element, so a use in the body of a variable bound outside the `for` expression
+is a compile error:
+
+```hop
+let star = <b>*</b>;
+for _ in 1..=3 {
+  star // error: Html value star is bound outside the loop it is used in
 }
 ```
 
@@ -1514,8 +1556,7 @@ page Home {
 }
 ```
 
-A page parameter whose type is `Html`, or contains `Html` as an element, a
-field or a variant field, is a compile error, for
+A page parameter of type `Html` is a compile error, for
 [XSS safety](#xss-safety).
 
 <a id="rendering"></a>
@@ -1587,20 +1628,13 @@ declaration.
 The rules below are compile errors that keep the arguments of a page out of
 places where escaping is not enough.
 
-An `Html` value is built only by markup expressions, so a page parameter whose
-type is `Html`, or contains `Html` as an element, a field or a variant field,
-is a compile error:
+An `Html` value is built only by markup expressions, so a page parameter of type `Html` is a compile error.
 
 ```hop
-record Post {
-  title: String,
-  content: Html,
-}
-
 // error: Html is not allowed in page parameters
-page Show(post: Post) {
+page Show(content: Html) {
   fn body() -> Html {
-    post.content
+    content
   }
 }
 ```

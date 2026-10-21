@@ -20,4 +20,7 @@ pub enum EvaluatePageError {
 
     #[error("Function '{function}' exceeded the call depth limit of {limit}")]
     RecursionLimit { function: String, limit: usize },
+
+    #[error("An array exceeded the array length limit of {limit}")]
+    ArrayLengthLimit { limit: usize },
 }

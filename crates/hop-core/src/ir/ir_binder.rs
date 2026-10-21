@@ -1,10 +1,18 @@
-use crate::hop::typing::Type;
-use crate::ir::binder_id::BinderId;
+use std::fmt;
 
-/// A variable a let, a loop or a match arm binds, with the type of the values
-/// it takes.
-#[derive(Debug, Clone, PartialEq)]
+use crate::hop::typing::Type;
+use crate::ir::value_id::ValueId;
+
+/// A name with the type of the values it takes, as a binding, a parameter,
+/// a loop or a pattern binds it.
+#[derive(Debug, Clone)]
 pub struct IrBinder {
-    pub var: BinderId,
+    pub var: ValueId,
     pub typ: Type,
+}
+
+impl fmt::Display for IrBinder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.var, self.typ)
+    }
 }

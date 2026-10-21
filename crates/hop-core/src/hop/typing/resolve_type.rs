@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::r#type::Type;
+use super::r#type::{DataType, Type};
 use super::type_env::{Name, NameKind};
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
@@ -14,26 +14,26 @@ pub fn resolve_type(
     definition_links: &mut Vec<DefinitionLink>,
     errors: &mut Vec<TypeError>,
 ) -> Option<Type> {
-    let (typ, _) = match parsed_type {
-        ParsedType::String { range } => (Type::String, range),
-        ParsedType::Bool { range } => (Type::Bool, range),
-        ParsedType::Int { range } => (Type::Int, range),
-        ParsedType::Float { range } => (Type::Float, range),
-        ParsedType::Html { range } => (Type::Html, range),
-        ParsedType::Option { element, range } => {
-            let elem_type = resolve_type(element, names, definition_links, errors)?;
-            (Type::Option(Box::new(elem_type)), range)
+    let typ = match parsed_type {
+        ParsedType::String { .. } => DataType::String,
+        ParsedType::Bool { .. } => DataType::Bool,
+        ParsedType::Int { .. } => DataType::Int,
+        ParsedType::Float { .. } => DataType::Float,
+        ParsedType::Html { .. } => return Some(Type::Html),
+        ParsedType::Option { element, .. } => {
+            let elem_type = resolve_data_type(element, names, definition_links, errors)?;
+            DataType::Option(Box::new(elem_type))
         }
-        ParsedType::Array { element, range } => {
-            let elem_type = resolve_type(element, names, definition_links, errors)?;
-            (Type::Array(Box::new(elem_type)), range)
+        ParsedType::Array { element, .. } => {
+            let elem_type = resolve_data_type(element, names, definition_links, errors)?;
+            DataType::Array(Box::new(elem_type))
         }
-        ParsedType::Tuple { elements, range } => {
+        ParsedType::Tuple { elements, .. } => {
             let element_types = elements
                 .iter()
-                .map(|element| resolve_type(element, names, definition_links, errors))
+                .map(|element| resolve_data_type(element, names, definition_links, errors))
                 .collect::<Option<Vec<_>>>()?;
-            (Type::Tuple(element_types), range)
+            DataType::Tuple(element_types)
         }
         ParsedType::Named { name, range } => match names.get(name.as_str()) {
             Some(Name {
@@ -45,7 +45,7 @@ pub fn resolve_type(
                     use_range: range.clone(),
                     definition_range: definition_range.clone(),
                 });
-                (typ.clone(), range)
+                typ.clone()
             }
             Some(Name {
                 kind: NameKind::Function,
@@ -78,5 +78,23 @@ pub fn resolve_type(
             }
         },
     };
-    Some(typ)
+    Some(Type::Data(typ))
+}
+
+pub fn resolve_data_type(
+    parsed_type: &ParsedType,
+    names: &HashMap<CheapString, Name>,
+    definition_links: &mut Vec<DefinitionLink>,
+    errors: &mut Vec<TypeError>,
+) -> Option<DataType> {
+    match resolve_type(parsed_type, names, definition_links, errors)? {
+        Type::Data(data) => Some(data),
+        Type::Html => {
+            errors.push(TypeError::new(
+                TypeErrorKind::HtmlInData,
+                parsed_type.range().clone(),
+            ));
+            None
+        }
+    }
 }

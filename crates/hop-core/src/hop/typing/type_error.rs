@@ -1,7 +1,7 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::typing::{Type, TypedPattern};
+use crate::hop::typing::{DataType, Type, TypedPattern};
 use crate::html::HtmlElementKind;
 use crate::root_relative_path::RootRelativePathError;
 use crate::symbols::attribute_name::AttributeName;
@@ -123,6 +123,9 @@ pub enum TypeErrorKind {
     #[error("Html is not allowed in page parameters")]
     HtmlInPageParameter,
 
+    #[error("Html is not allowed inside another type")]
+    HtmlInData,
+
     // Named types print without their module, so two different types can
     // print the same.
     #[error(
@@ -157,8 +160,8 @@ pub enum TypeErrorKind {
     #[error(
         "Attribute '{attr}' needs a value{}",
         match expected {
-            Type::Bool => format!(", such as {attr}={{true}}"),
-            Type::String => format!(", such as {attr}=\"\""),
+            Type::Data(DataType::Bool) => format!(", such as {attr}={{true}}"),
+            Type::Data(DataType::String) => format!(", such as {attr}=\"\""),
             _ => String::new(),
         }
     )]
@@ -268,6 +271,12 @@ pub enum TypeErrorKind {
 
     #[error("Variable {name} is already defined")]
     VariableAlreadyDefined { name: VarName },
+
+    #[error("Html value {name} is used more than once")]
+    HtmlUsedAgain { name: VarName },
+
+    #[error("Html value {name} is bound outside the loop it is used in")]
+    HtmlUsedInLoop { name: VarName },
 
     #[error("Variable {name} is bound more than once in the pattern")]
     DuplicatePatternBinding { name: VarName },

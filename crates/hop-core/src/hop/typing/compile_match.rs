@@ -12,14 +12,13 @@
 //! introducing new match subjects.
 use std::collections::{HashMap, HashSet};
 
-use crate::hop::typing::r#type::Type;
+use crate::hop::typing::r#type::DataType;
 use crate::hop::typing::type_error::TypeErrorKind;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::hop::typing::typed_pattern::Constructor;
-use crate::hop::typing::typed_pattern::{Pattern, PatternField, TypedPattern};
+use crate::hop::typing::typed_pattern::{Pattern, PatternField, TypedBinder, TypedPattern};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 
 /// A variable the decision tree introduces, numbered from 0 within one match.
 /// Case variable 0 is the subject.
@@ -32,11 +31,11 @@ impl std::fmt::Display for CaseVar {
     }
 }
 
-/// A binding introduced by a pattern match (i.e. `name = source`).
+/// A binding introduced by a pattern match (i.e. `binder = source`).
 #[derive(Clone, Debug)]
 pub struct Binding<N> {
-    /// The name of the variable to bind.
-    pub name: N,
+    /// What the pattern binds.
+    pub binder: N,
     /// The case variable to bind from.
     pub source: CaseVar,
 }
@@ -54,7 +53,7 @@ pub struct Body<N> {
 #[derive(Clone, Debug)]
 pub struct Variable {
     pub id: CaseVar,
-    pub typ: Type,
+    pub typ: DataType,
 }
 
 /// A single case (or row) in a match expression/table.
@@ -244,7 +243,7 @@ struct VarInfo {
 fn is_free_from_bindings<N>(pattern: &Pattern<N>) -> bool {
     match pattern {
         Pattern::Wildcard => true,
-        Pattern::Binding { .. } => false,
+        Pattern::Binding(_) => false,
         Pattern::Constructor {
             constructor,
             args,
@@ -303,8 +302,8 @@ pub enum MatchErrorSite {
 pub fn compile_match(
     registry: &TypeRegistry,
     patterns: &[TypedPattern],
-    subject_type: Type,
-) -> Result<Decision<VarName>, MatchError> {
+    subject_type: DataType,
+) -> Result<Decision<TypedBinder>, MatchError> {
     if patterns.is_empty() {
         return Err(MatchError {
             kind: Box::new(TypeErrorKind::MatchNoArms {}),
@@ -355,7 +354,7 @@ pub fn compile_match(
 pub fn compile_decision_tree<N: Clone>(
     registry: &TypeRegistry,
     patterns: &[Pattern<N>],
-    subject_type: Type,
+    subject_type: DataType,
 ) -> Decision<N> {
     let (tree, _, _) = compile_arms(registry, patterns, subject_type);
     tree.expect("an accepted match has a pattern for every value")
@@ -364,10 +363,10 @@ pub fn compile_decision_tree<N: Clone>(
 /// Compile the patterns into a decision tree, which is None when some value
 /// matches none of them. Also returns the indices of the patterns some value
 /// reaches, and a pattern for each value that matches none.
-fn compile_arms<N: Clone>(
+pub fn compile_arms<N: Clone>(
     registry: &TypeRegistry,
     patterns: &[Pattern<N>],
-    subject_type: Type,
+    subject_type: DataType,
 ) -> (Option<Decision<N>>, Vec<usize>, Vec<Pattern<N>>) {
     let subject_var = Variable {
         id: CaseVar(0),
@@ -422,9 +421,9 @@ fn compile_rows<N: Clone>(
         // Remove wildcards and move binding patterns into the body
         row.columns.retain(|col| match &col.pattern {
             Pattern::Wildcard => false,
-            Pattern::Binding { name, .. } => {
+            Pattern::Binding(binder) => {
                 row.body.bindings.push(Binding {
-                    name: name.clone(),
+                    binder: binder.clone(),
                     source: col.variable.id,
                 });
                 false
@@ -517,11 +516,7 @@ fn compile_rows<N: Clone>(
                 .collect();
             vec![(Constructor::Tuple, element_vars, Vec::new())]
         }
-        ResolvedType::String
-        | ResolvedType::Int
-        | ResolvedType::Float
-        | ResolvedType::Html
-        | ResolvedType::Array(_) => {
+        ResolvedType::String | ResolvedType::Int | ResolvedType::Float | ResolvedType::Array(_) => {
             panic!("pattern matching not supported for this type")
         }
     };
@@ -728,7 +723,7 @@ fn find_branch_variable<N>(rows: &[Row<N>]) -> Variable {
 }
 
 /// Returns a new case variable to use in the decision tree.
-fn fresh_var(next_case: &mut usize, typ: Type) -> Variable {
+fn fresh_var(next_case: &mut usize, typ: DataType) -> Variable {
     let id = CaseVar(*next_case);
     *next_case += 1;
     Variable { id, typ }
@@ -770,9 +765,9 @@ mod tests {
     use crate::document_annotator::DocumentAnnotator;
     use crate::hop::parsing::ParsedExpr;
     use crate::hop::parsing::parse_expr;
-    use crate::hop::typing::TypeError;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use crate::hop::typing::typecheck_pattern::typecheck_pattern;
+    use crate::hop::typing::{Type, TypeError};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -806,6 +801,9 @@ mod tests {
             subject_type.is_matchable(),
             "match is not implemented for subject type {subject_type:?}"
         );
+        let Type::Data(subject_type) = subject_type else {
+            unreachable!("Html is not matchable")
+        };
         // Pattern typechecking is covered by the `typecheck_pattern` tests. Any error
         // here means the test uses a pattern that does not typecheck, so panic
         // rather than exercise the compiler with invalid input.
@@ -863,7 +861,7 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    fn format_decision(decision: &Decision<VarName>, indent: usize) -> String {
+    fn format_decision(decision: &Decision<TypedBinder>, indent: usize) -> String {
         let pad = "  ".repeat(indent);
         match decision {
             Decision::Success(body) => {
@@ -871,7 +869,7 @@ mod tests {
                 for binding in &body.bindings {
                     out.push_str(&format!(
                         "{}let {} = {}\n",
-                        pad, binding.name, binding.source
+                        pad, binding.binder.var, binding.source
                     ));
                 }
                 out.push_str(&format!("{}branch {}\n", pad, body.value));

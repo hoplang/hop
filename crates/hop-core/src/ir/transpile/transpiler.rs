@@ -1,14 +1,15 @@
 use crate::hop::typing::{
-    ComparableType, EquatableType, NumericType, ResolvedType, Type, TypeRegistry,
+    ComparableType, DataType, EquatableType, NumericType, ResolvedType, Type, TypeRegistry,
 };
-use crate::ir::ir_binary_op::IrBinaryOp;
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_data_op::IrDataOp;
+use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_switch::IrSwitch;
-use crate::ir::ir_unary_op::IrUnaryOp;
+use crate::ir::value_id::ValueId;
 use crate::ir::writer_module::{
-    WriterForSource, WriterFunctionDeclaration, WriterLet, WriterModule, WriterName, WriterOp,
-    WriterPageDeclaration, WriterStmt, WriterValueBlock,
+    WriterBinding, WriterBlock, WriterFunctionDeclaration, WriterModule, WriterOp,
+    WriterPageDeclaration, WriterStmt,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -27,6 +28,10 @@ pub trait Transpiler {
     /// The registry of the module currently being transpiled. Used to
     /// resolve named types during type transpilation.
     fn registry(&self) -> &TypeRegistry;
+    /// The type of a name in scope, as the parameter, binder or let that
+    /// binds it declares it. Used to pick the form of an op by the types
+    /// of its operands.
+    fn name_type(&self, name: ValueId) -> &Type;
     fn transpile_page<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -44,32 +49,35 @@ pub trait Transpiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: WriterName,
+        name: ValueId,
     ) -> Doc<'a>;
     fn transpile_write_html_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: WriterName,
+        name: ValueId,
     ) -> Doc<'a>;
     fn transpile_write_function_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [WriterName],
+        args: &'a [ValueId],
     ) -> Doc<'a>;
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrBinder>,
-        source: &'a WriterForSource,
+        array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a>;
-    fn transpile_let_statement<'a>(&mut self, arena: &'a Arena<'a>, let_: &'a WriterLet)
-    -> Doc<'a>;
+    fn transpile_let_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        let_: &'a WriterBinding,
+    ) -> Doc<'a>;
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<WriterName, Vec<WriterStmt>>,
+        match_: &'a IrSwitch<Vec<WriterStmt>>,
     ) -> Doc<'a>;
     fn transpile_statement<'a>(
         &mut self,
@@ -81,11 +89,11 @@ pub trait Transpiler {
             WriterStmt::Write(content) => self.transpile_write_statement(arena, content),
             WriterStmt::WriteString(name) => self.transpile_write_string_statement(arena, *name),
             WriterStmt::WriteHtml(name) => self.transpile_write_html_statement(arena, *name),
-            WriterStmt::WriteFunction { function, args } => {
+            WriterStmt::WriteFunction(function, args) => {
                 self.transpile_write_function_statement(arena, function, args)
             }
-            WriterStmt::For { var, source, body } => {
-                self.transpile_for_statement(arena, var.as_ref(), source, body)
+            WriterStmt::HtmlFor(IrFor { var, array, body }) => {
+                self.transpile_for_statement(arena, var.as_ref(), *array, body)
             }
             WriterStmt::Match(match_) => self.transpile_match_statement(arena, match_),
         }
@@ -101,7 +109,7 @@ pub trait Transpiler {
     fn transpile_value_block<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        block: &'a WriterValueBlock,
+        block: &'a WriterBlock,
     ) -> Doc<'a>;
 
     // Types
@@ -110,23 +118,36 @@ pub trait Transpiler {
     fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_int_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_html_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
-    fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &Type) -> Doc<'a>;
-    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &Type) -> Doc<'a>;
-    fn transpile_tuple_type<'a>(&mut self, arena: &'a Arena<'a>, element_types: &[Type])
+    fn transpile_array_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        element_type: &DataType,
+    ) -> Doc<'a>;
+    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &DataType)
     -> Doc<'a>;
+    fn transpile_tuple_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        element_types: &[DataType],
+    ) -> Doc<'a>;
     fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
     fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
     fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &Type) -> Doc<'a> {
         match t {
-            Type::Bool => self.transpile_bool_type(arena),
-            Type::String => self.transpile_string_type(arena),
-            Type::Float => self.transpile_float_type(arena),
-            Type::Int => self.transpile_int_type(arena),
+            Type::Data(data) => self.transpile_data_type(arena, data),
             Type::Html => self.transpile_html_type(arena),
-            Type::Array(elem) => self.transpile_array_type(arena, elem),
-            Type::Option(inner) => self.transpile_option_type(arena, inner),
-            Type::Tuple(elements) => self.transpile_tuple_type(arena, elements),
-            Type::Named { name, .. } => {
+        }
+    }
+    fn transpile_data_type<'a>(&mut self, arena: &'a Arena<'a>, t: &DataType) -> Doc<'a> {
+        match t {
+            DataType::Bool => self.transpile_bool_type(arena),
+            DataType::String => self.transpile_string_type(arena),
+            DataType::Float => self.transpile_float_type(arena),
+            DataType::Int => self.transpile_int_type(arena),
+            DataType::Array(elem) => self.transpile_array_type(arena, elem),
+            DataType::Option(inner) => self.transpile_option_type(arena, inner),
+            DataType::Tuple(elements) => self.transpile_tuple_type(arena, elements),
+            DataType::Named { name, .. } => {
                 let is_record = matches!(
                     self.registry()
                         .resolve(t)
@@ -146,7 +167,7 @@ pub trait Transpiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        record: WriterName,
+        record: ValueId,
         field: &'a FieldName,
     ) -> Doc<'a>;
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a>;
@@ -157,161 +178,158 @@ pub trait Transpiler {
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [WriterName],
-        elem_type: &'a Type,
+        elements: &'a [ValueId],
+        elem_type: &'a DataType,
+    ) -> Doc<'a>;
+    /// The array of the Ints from start to end inclusive.
+    fn transpile_array_from_range<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        start: ValueId,
+        end: ValueId,
     ) -> Doc<'a>;
     fn transpile_tuple_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [WriterName],
-        element_types: &'a [Type],
+        elements: &'a [ValueId],
+        element_types: &'a [DataType],
     ) -> Doc<'a>;
     fn transpile_tuple_index<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        tuple: WriterName,
+        tuple: ValueId,
         index: usize,
     ) -> Doc<'a>;
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a>;
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: WriterName) -> Doc<'a>;
-    fn transpile_float_negation<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        operand: WriterName,
-    ) -> Doc<'a>;
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a>;
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a>;
+    fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a>;
     fn transpile_string_concat<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parts: &'a [WriterName],
+        parts: &'a [ValueId],
     ) -> Doc<'a>;
     fn transpile_int_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: WriterName,
-        right: WriterName,
+        left: ValueId,
+        right: ValueId,
     ) -> Doc<'a>;
     fn transpile_record_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, WriterName)],
+        fields: &'a [(FieldName, ValueId)],
     ) -> Doc<'a>;
     fn transpile_enum_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, WriterName)],
+        fields: &'a [(FieldName, ValueId)],
     ) -> Doc<'a>;
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<WriterName>,
-        inner_type: &'a Type,
+        value: Option<ValueId>,
+        inner_type: &'a DataType,
     ) -> Doc<'a>;
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<WriterName, WriterValueBlock>,
+        match_: &'a IrSwitch<WriterBlock>,
     ) -> Doc<'a>;
     fn transpile_function_call_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         function: &'a IrFunction,
-        args: &'a [WriterName],
+        args: &'a [ValueId],
     ) -> Doc<'a>;
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a>;
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: WriterName) -> Doc<'a>;
-    fn transpile_string_is_empty<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        string: WriterName,
-    ) -> Doc<'a>;
-    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: WriterName)
-    -> Doc<'a>;
-    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: WriterName)
-    -> Doc<'a>;
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a>;
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a>;
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: WriterName) -> Doc<'a>;
+    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: ValueId) -> Doc<'a>;
+    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: ValueId) -> Doc<'a>;
+    fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a>;
+    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a>;
+    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a>;
+    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a>;
+    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a>;
+    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a>;
     /// The expression for an op, given the type of the let that holds it.
     fn transpile_op<'a>(
         &mut self,
@@ -320,110 +338,143 @@ pub trait Transpiler {
         typ: &'a Type,
     ) -> Doc<'a> {
         match op {
-            WriterOp::StringLiteral(value) => self.transpile_string_literal(arena, value.as_str()),
-            WriterOp::IntLiteral(value) => self.transpile_int_literal(arena, *value),
-            WriterOp::FloatLiteral(value) => self.transpile_float_literal(arena, *value),
-            WriterOp::BoolLiteral(value) => self.transpile_bool_literal(arena, *value),
-            WriterOp::FieldAccess { record, field } => {
+            WriterOp::Data(IrDataOp::StringLiteral(value)) => {
+                self.transpile_string_literal(arena, value.as_str())
+            }
+            WriterOp::Data(IrDataOp::IntLiteral(value)) => {
+                self.transpile_int_literal(arena, *value)
+            }
+            WriterOp::Data(IrDataOp::FloatLiteral(value)) => {
+                self.transpile_float_literal(arena, *value)
+            }
+            WriterOp::Data(IrDataOp::BoolLiteral(value)) => {
+                self.transpile_bool_literal(arena, *value)
+            }
+            WriterOp::Data(IrDataOp::FieldAccess(record, field)) => {
                 self.transpile_field_access(arena, *record, field)
             }
-            WriterOp::TupleIndex { tuple, index } => {
+            WriterOp::Data(IrDataOp::TupleIndex(tuple, index)) => {
                 self.transpile_tuple_index(arena, *tuple, *index)
             }
-            WriterOp::Array(elements) => match typ {
-                Type::Array(elem_type) => self.transpile_array_literal(arena, elements, elem_type),
+            WriterOp::Data(IrDataOp::Array(elements)) => match typ {
+                Type::Data(DataType::Array(elem_type)) => {
+                    self.transpile_array_literal(arena, elements, elem_type)
+                }
                 _ => unreachable!("Array value must have Array type"),
             },
-            WriterOp::Tuple(elements) => match typ {
-                Type::Tuple(element_types) => {
+            WriterOp::Data(IrDataOp::Tuple(elements)) => match typ {
+                Type::Data(DataType::Tuple(element_types)) => {
                     self.transpile_tuple_literal(arena, elements, element_types)
                 }
                 _ => unreachable!("Tuple value must have Tuple type"),
             },
-            WriterOp::Record { fields } => match typ {
-                Type::Named { name, .. } => {
+            WriterOp::Data(IrDataOp::Record(fields)) => match typ {
+                Type::Data(DataType::Named { name, .. }) => {
                     self.transpile_record_literal(arena, name.as_str(), fields)
                 }
                 _ => unreachable!("Record value must have a named type"),
             },
-            WriterOp::Enum {
-                variant_name,
-                fields,
-            } => match typ {
-                Type::Named { name, .. } => {
+            WriterOp::Data(IrDataOp::Enum(variant_name, fields)) => match typ {
+                Type::Data(DataType::Named { name, .. }) => {
                     self.transpile_enum_literal(arena, name.as_str(), variant_name.as_str(), fields)
                 }
                 _ => unreachable!("Enum value must have a named type"),
             },
-            WriterOp::Option(value) => match typ {
-                Type::Option(inner_type) => {
+            WriterOp::Data(IrDataOp::Option(value)) => match typ {
+                Type::Data(DataType::Option(inner_type)) => {
                     self.transpile_option_literal(arena, *value, inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),
             },
-            WriterOp::StringConcat(parts) => self.transpile_string_concat(arena, parts),
-            WriterOp::Binary { op, left, right } => match op {
-                IrBinaryOp::NumericAdd(NumericType::Int) => {
-                    self.transpile_int_add(arena, *left, *right)
+            WriterOp::Data(IrDataOp::StringConcat(parts)) => {
+                self.transpile_string_concat(arena, parts)
+            }
+            WriterOp::Data(IrDataOp::NumericAdd(left, right)) => {
+                match self.name_type(*left).as_numeric_type() {
+                    Some(NumericType::Int) => self.transpile_int_add(arena, *left, *right),
+                    Some(NumericType::Float) => self.transpile_float_add(arena, *left, *right),
+                    None => unreachable!("NumericAdd must read Ints or Floats"),
                 }
-                IrBinaryOp::NumericAdd(NumericType::Float) => {
-                    self.transpile_float_add(arena, *left, *right)
+            }
+            WriterOp::Data(IrDataOp::NumericSubtract(left, right)) => {
+                match self.name_type(*left).as_numeric_type() {
+                    Some(NumericType::Int) => self.transpile_int_subtract(arena, *left, *right),
+                    Some(NumericType::Float) => self.transpile_float_subtract(arena, *left, *right),
+                    None => unreachable!("NumericSubtract must read Ints or Floats"),
                 }
-                IrBinaryOp::NumericSubtract(NumericType::Int) => {
-                    self.transpile_int_subtract(arena, *left, *right)
+            }
+            WriterOp::Data(IrDataOp::NumericMultiply(left, right)) => {
+                match self.name_type(*left).as_numeric_type() {
+                    Some(NumericType::Int) => self.transpile_int_multiply(arena, *left, *right),
+                    Some(NumericType::Float) => self.transpile_float_multiply(arena, *left, *right),
+                    None => unreachable!("NumericMultiply must read Ints or Floats"),
                 }
-                IrBinaryOp::NumericSubtract(NumericType::Float) => {
-                    self.transpile_float_subtract(arena, *left, *right)
-                }
-                IrBinaryOp::NumericMultiply(NumericType::Int) => {
-                    self.transpile_int_multiply(arena, *left, *right)
-                }
-                IrBinaryOp::NumericMultiply(NumericType::Float) => {
-                    self.transpile_float_multiply(arena, *left, *right)
-                }
-                IrBinaryOp::Equals(EquatableType::String) => {
-                    self.transpile_string_equals(arena, *left, *right)
-                }
-                IrBinaryOp::Equals(EquatableType::Bool) => {
-                    self.transpile_bool_equals(arena, *left, *right)
-                }
-                IrBinaryOp::Equals(EquatableType::Int) => {
-                    self.transpile_int_equals(arena, *left, *right)
-                }
-                IrBinaryOp::Equals(EquatableType::Float) => {
-                    self.transpile_float_equals(arena, *left, *right)
-                }
-                IrBinaryOp::LessThan(ComparableType::Int) => {
-                    self.transpile_int_less_than(arena, *left, *right)
-                }
-                IrBinaryOp::LessThan(ComparableType::Float) => {
-                    self.transpile_float_less_than(arena, *left, *right)
-                }
-                IrBinaryOp::LessThanOrEqual(ComparableType::Int) => {
-                    self.transpile_int_less_than_or_equal(arena, *left, *right)
-                }
-                IrBinaryOp::LessThanOrEqual(ComparableType::Float) => {
-                    self.transpile_float_less_than_or_equal(arena, *left, *right)
-                }
+            }
+            WriterOp::Data(IrDataOp::Equals(left, right)) => match self
+                .name_type(*left)
+                .as_equatable_type()
+            {
+                Some(EquatableType::String) => self.transpile_string_equals(arena, *left, *right),
+                Some(EquatableType::Bool) => self.transpile_bool_equals(arena, *left, *right),
+                Some(EquatableType::Int) => self.transpile_int_equals(arena, *left, *right),
+                Some(EquatableType::Float) => self.transpile_float_equals(arena, *left, *right),
+                None => unreachable!("Equals must read Strings, Bools, Ints or Floats"),
             },
-            WriterOp::Unary { op, operand } => match op {
-                IrUnaryOp::NumericNegation(NumericType::Int) => {
-                    self.transpile_int_negation(arena, *operand)
-                }
-                IrUnaryOp::NumericNegation(NumericType::Float) => {
-                    self.transpile_float_negation(arena, *operand)
-                }
-                IrUnaryOp::BoolNegation => self.transpile_not(arena, *operand),
-                IrUnaryOp::ArrayLength => self.transpile_array_length(arena, *operand),
-                IrUnaryOp::ArrayIsEmpty => self.transpile_array_is_empty(arena, *operand),
-                IrUnaryOp::StringIsEmpty => self.transpile_string_is_empty(arena, *operand),
-                IrUnaryOp::OptionIsSome => self.transpile_option_is_some(arena, *operand),
-                IrUnaryOp::OptionIsNone => self.transpile_option_is_none(arena, *operand),
-                IrUnaryOp::IntToString => self.transpile_int_to_string(arena, *operand),
-                IrUnaryOp::FloatToInt => self.transpile_float_to_int(arena, *operand),
-                IrUnaryOp::IntToFloat => self.transpile_int_to_float(arena, *operand),
+            WriterOp::Data(IrDataOp::LessThan(left, right)) => match self
+                .name_type(*left)
+                .as_comparable_type()
+            {
+                Some(ComparableType::Int) => self.transpile_int_less_than(arena, *left, *right),
+                Some(ComparableType::Float) => self.transpile_float_less_than(arena, *left, *right),
+                None => unreachable!("LessThan must read Ints or Floats"),
             },
-            WriterOp::Call { function, args } => {
+            WriterOp::Data(IrDataOp::LessThanOrEqual(left, right)) => {
+                match self.name_type(*left).as_comparable_type() {
+                    Some(ComparableType::Int) => {
+                        self.transpile_int_less_than_or_equal(arena, *left, *right)
+                    }
+                    Some(ComparableType::Float) => {
+                        self.transpile_float_less_than_or_equal(arena, *left, *right)
+                    }
+                    None => unreachable!("LessThanOrEqual must read Ints or Floats"),
+                }
+            }
+            WriterOp::Data(IrDataOp::ArrayFromRange(left, right)) => {
+                self.transpile_array_from_range(arena, *left, *right)
+            }
+            WriterOp::Data(IrDataOp::NumericNegation(operand)) => {
+                match self.name_type(*operand).as_numeric_type() {
+                    Some(NumericType::Int) => self.transpile_int_negation(arena, *operand),
+                    Some(NumericType::Float) => self.transpile_float_negation(arena, *operand),
+                    None => unreachable!("NumericNegation must read an Int or a Float"),
+                }
+            }
+            WriterOp::Data(IrDataOp::BoolNegation(operand)) => self.transpile_not(arena, *operand),
+            WriterOp::Data(IrDataOp::ArrayLength(operand)) => {
+                self.transpile_array_length(arena, *operand)
+            }
+            WriterOp::Data(IrDataOp::ArrayIsEmpty(operand)) => {
+                self.transpile_array_is_empty(arena, *operand)
+            }
+            WriterOp::Data(IrDataOp::StringIsEmpty(operand)) => {
+                self.transpile_string_is_empty(arena, *operand)
+            }
+            WriterOp::Data(IrDataOp::OptionIsSome(operand)) => {
+                self.transpile_option_is_some(arena, *operand)
+            }
+            WriterOp::Data(IrDataOp::OptionIsNone(operand)) => {
+                self.transpile_option_is_none(arena, *operand)
+            }
+            WriterOp::Data(IrDataOp::IntToString(operand)) => {
+                self.transpile_int_to_string(arena, *operand)
+            }
+            WriterOp::Data(IrDataOp::FloatToInt(operand)) => {
+                self.transpile_float_to_int(arena, *operand)
+            }
+            WriterOp::Data(IrDataOp::IntToFloat(operand)) => {
+                self.transpile_int_to_float(arena, *operand)
+            }
+            WriterOp::Call(function, args) => {
                 self.transpile_function_call_value(arena, function, args)
             }
             WriterOp::HtmlLiteral(body) => self.transpile_html(arena, body),

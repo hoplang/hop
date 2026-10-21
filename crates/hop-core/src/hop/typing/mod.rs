@@ -21,7 +21,7 @@ mod variable_scope;
 pub use compile_match::CaseVar;
 pub use compile_match::{Decision, compile_decision_tree};
 pub use export::Export;
-pub use r#type::{ComparableType, EquatableType, NumericType, Type};
+pub use r#type::{ComparableType, DataType, EquatableType, NumericType, Type};
 pub use type_error::TypeError;
 pub use type_registry::{EnumVariant, ResolvedType, TypeRegistry};
 pub use typecheck::typecheck;
@@ -36,5 +36,7 @@ pub use typed_pattern::{Constructor, Pattern, PatternField, TypedPattern};
 #[cfg(test)]
 mod type_registry_builder;
 
+#[cfg(test)]
+pub use type_registry::RecordField;
 #[cfg(test)]
 pub use type_registry_builder::{TestTypes, TypeRegistryBuilder};

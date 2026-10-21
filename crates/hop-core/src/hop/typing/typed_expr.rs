@@ -10,9 +10,10 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
+use indexmap::IndexMap;
 use pretty::BoxDoc;
 
-use super::r#type::{ComparableType, EquatableType, NumericType, Type};
+use super::r#type::{NumericType, Type};
 
 #[derive(Debug, Clone)]
 pub enum TypedExpr {
@@ -132,46 +133,22 @@ pub enum TypedExpr {
     BoolLogicalOr { left: Box<Self>, right: Box<Self> },
 
     /// Equals expression
-    Equals {
-        left: Box<Self>,
-        right: Box<Self>,
-        operand_types: EquatableType,
-    },
+    Equals { left: Box<Self>, right: Box<Self> },
 
     /// Not equals expression
-    NotEquals {
-        left: Box<Self>,
-        right: Box<Self>,
-        operand_types: EquatableType,
-    },
+    NotEquals { left: Box<Self>, right: Box<Self> },
 
     /// Less than expression
-    LessThan {
-        left: Box<Self>,
-        right: Box<Self>,
-        operand_types: ComparableType,
-    },
+    LessThan { left: Box<Self>, right: Box<Self> },
 
     /// Greater than expression
-    GreaterThan {
-        left: Box<Self>,
-        right: Box<Self>,
-        operand_types: ComparableType,
-    },
+    GreaterThan { left: Box<Self>, right: Box<Self> },
 
     /// Less than or equal expression
-    LessThanOrEqual {
-        left: Box<Self>,
-        right: Box<Self>,
-        operand_types: ComparableType,
-    },
+    LessThanOrEqual { left: Box<Self>, right: Box<Self> },
 
     /// Greater than or equal expression
-    GreaterThanOrEqual {
-        left: Box<Self>,
-        right: Box<Self>,
-        operand_types: ComparableType,
-    },
+    GreaterThanOrEqual { left: Box<Self>, right: Box<Self> },
 
     /// A let binding expression
     Let {
@@ -249,7 +226,7 @@ pub enum TypedExpr {
         module: RootContainedFilePath,
         args: Vec<(VarName, Self)>,
         /// The callee's rest parameter and the attributes it receives.
-        rest: Option<(VarName, TypedAttrs)>,
+        rest: Option<(VarName, Box<TypedAttrs>)>,
         typ: Type,
     },
 }
@@ -268,42 +245,38 @@ pub enum TypedLoopSource {
     RangeInclusive { start: TypedExpr, end: TypedExpr },
 }
 
-/// An attribute written on an element, or received by a rest parameter.
+/// The value of an attribute written on an element, or received by a rest
+/// parameter.
 #[derive(Debug, Clone)]
 pub enum TypedAttribute {
     /// An attribute with a value, as in `id={e}`. The value is a `String`,
     /// escaped when rendered.
-    Value {
-        name: AttributeName,
-        value: TypedExpr,
-    },
+    Value(TypedExpr),
     /// A boolean attribute, as in `disabled={e}`. The element has the
-    /// attribute, without a value, when `present` is true, and does not have
-    /// it otherwise. `present` is a `Bool`.
-    Presence {
-        name: AttributeName,
-        present: TypedExpr,
-    },
+    /// attribute, without a value, when the condition is true, and does not
+    /// have it otherwise. The condition is a `Bool`.
+    Presence(TypedExpr),
 }
 
 /// The attributes an element or a rest parameter receives: those written at
-/// the site, followed by those forwarded through a `...rest` spread.
+/// the site, by name in the order they are written, followed by those
+/// forwarded through a `...rest` spread.
 #[derive(Debug, Clone)]
 pub struct TypedAttrs {
-    pub attributes: Vec<TypedAttribute>,
+    pub attributes: IndexMap<AttributeName, TypedAttribute>,
     pub spread: Option<VarName>,
 }
 
 impl TypedAttribute {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+    pub fn to_doc<'a>(&'a self, name: &'a AttributeName) -> BoxDoc<'a> {
         match self {
-            TypedAttribute::Value { name, value } => BoxDoc::text(name.as_str())
+            TypedAttribute::Value(value) => BoxDoc::text(name.as_str())
                 .append(BoxDoc::text(": escape("))
                 .append(value.to_doc())
                 .append(BoxDoc::text(")")),
             // The condition decides whether the attribute is present, and is
             // not rendered as text.
-            TypedAttribute::Presence { name, present } => BoxDoc::text(name.as_str())
+            TypedAttribute::Presence(present) => BoxDoc::text(name.as_str())
                 .append(BoxDoc::text(": "))
                 .append(present.to_doc()),
         }
@@ -312,7 +285,11 @@ impl TypedAttribute {
 
 impl TypedAttrs {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let mut items: Vec<BoxDoc<'_>> = self.attributes.iter().map(|attr| attr.to_doc()).collect();
+        let mut items: Vec<BoxDoc<'_>> = self
+            .attributes
+            .iter()
+            .map(|(name, attr)| attr.to_doc(name))
+            .collect();
         if let Some(spread) = &self.spread {
             items.push(BoxDoc::text(format!("...{}", spread.as_str())));
         }
@@ -354,13 +331,13 @@ impl TypedExpr {
             | TypedExpr::OptionUnwrapOr { typ, .. }
             | TypedExpr::Call { typ, .. } => typ.clone(),
 
-            TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::Float,
-            TypedExpr::IntLiteral { .. } => Type::Int,
+            TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::FLOAT,
+            TypedExpr::IntLiteral { .. } => Type::INT,
 
             TypedExpr::StringConcat { .. }
             | TypedExpr::StringLiteral { .. }
             | TypedExpr::IntToString { .. }
-            | TypedExpr::Asset { .. } => Type::String,
+            | TypedExpr::Asset { .. } => Type::STRING,
 
             TypedExpr::NumericAdd { operand_types, .. }
             | TypedExpr::NumericSubtract { operand_types, .. }
@@ -369,8 +346,8 @@ impl TypedExpr {
                 operand_type: operand_types,
                 ..
             } => match operand_types {
-                NumericType::Int => Type::Int,
-                NumericType::Float => Type::Float,
+                NumericType::Int => Type::INT,
+                NumericType::Float => Type::FLOAT,
             },
 
             TypedExpr::BoolLiteral { .. }
@@ -386,9 +363,9 @@ impl TypedExpr {
             | TypedExpr::ArrayIsEmpty { .. }
             | TypedExpr::StringIsEmpty { .. }
             | TypedExpr::OptionIsSome { .. }
-            | TypedExpr::OptionIsNone { .. } => Type::Bool,
+            | TypedExpr::OptionIsNone { .. } => Type::BOOL,
 
-            TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Type::Int,
+            TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Type::INT,
 
             TypedExpr::HtmlConcat { .. }
             | TypedExpr::HtmlText { .. }
@@ -550,37 +527,37 @@ impl TypedExpr {
                 .append(BoxDoc::text("-"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::Equals { left, right, .. } => BoxDoc::nil()
+            TypedExpr::Equals { left, right } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" == "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::NotEquals { left, right, .. } => BoxDoc::nil()
+            TypedExpr::NotEquals { left, right } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" != "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::LessThan { left, right, .. } => BoxDoc::nil()
+            TypedExpr::LessThan { left, right } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" < "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::GreaterThan { left, right, .. } => BoxDoc::nil()
+            TypedExpr::GreaterThan { left, right } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" > "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::LessThanOrEqual { left, right, .. } => BoxDoc::nil()
+            TypedExpr::LessThanOrEqual { left, right } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" <= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::GreaterThanOrEqual { left, right, .. } => BoxDoc::nil()
+            TypedExpr::GreaterThanOrEqual { left, right } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" >= "))
@@ -722,7 +699,7 @@ impl TypedExpr {
                 if !element.is_void() {
                     sections.push(BoxDoc::text("children: ").append(children.to_doc()));
                 }
-                BoxDoc::text("html(")
+                BoxDoc::text("element(")
                     .append(
                         BoxDoc::line_()
                             .append(BoxDoc::intersperse(

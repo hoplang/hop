@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::r#type::Type;
+use super::r#type::{DataType, Type};
 use super::typed_expr::TypedExpr;
 use crate::document::{CheapString, DocumentRange};
 use crate::html::HtmlElementKind;
@@ -52,8 +52,8 @@ pub enum Tail {
 /// What a declared or imported name refers to.
 #[derive(Debug, Clone)]
 pub enum NameKind {
-    /// A local record or enum, or an imported type. Always a `Type::Named`.
-    Type(Type),
+    /// A local record or enum, or an imported type. Always a `DataType::Named`.
+    Type(DataType),
     Function,
     Page,
 }

@@ -3,31 +3,31 @@ use std::fmt;
 use crate::ir::ir_function::IrFunction;
 use crate::symbols::type_name::TypeName;
 
-/// A page, which Pure and Flat know nothing of. A page compiles to entry
+/// A page, which Flat knows nothing of. A page compiles to entrypoint
 /// functions, one for its head, if it has one, and one for its body, each
 /// declaring the page's parameters in order. The Writer assembles the page
 /// from them again.
 #[derive(Debug, Clone)]
 pub struct IrPage {
     pub name: TypeName,
-    /// The entry function that renders the page head, if the page has one.
+    /// The entrypoint function that renders the page head, if the page has one.
     pub head: Option<IrFunction>,
-    /// The entry function that renders the page body.
+    /// The entrypoint function that renders the page body.
     pub body: IrFunction,
 }
 
 impl IrPage {
-    /// A page for each entry function of a test module, rendered by that
+    /// A page for each entrypoint function of a test module, rendered by that
     /// function alone and named after it.
     #[cfg(test)]
-    pub fn for_entries(module: &crate::ir::pure_module::PureModule) -> Vec<IrPage> {
+    pub fn for_entrypoints(module: &crate::ir::flat_module::FlatModule) -> Vec<IrPage> {
         module
             .functions
             .iter()
-            .filter(|decl| decl.entry)
+            .filter(|decl| decl.entrypoint)
             .map(|decl| IrPage {
                 name: TypeName::parse(decl.function.name.as_str())
-                    .expect("a test entry function is named like a page"),
+                    .expect("a test entrypoint function is named like a page"),
                 head: None,
                 body: decl.function.clone(),
             })

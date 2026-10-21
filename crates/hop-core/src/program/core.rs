@@ -13,9 +13,9 @@ use crate::hop::typing::{Export, TypeError, TypeRegistry, TypedModule, typecheck
 use crate::hover_annotation::HoverAnnotation;
 use crate::ir;
 use crate::ir::{
-    DocumentShell, TailwindInjection, Transpiler, flat_to_writer, optimize_flat, pure_to_flat,
+    DocumentShell, TailwindInjection, Transpiler, flat_to_markup, markup_to_writer, optimize_flat,
 };
-use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
+use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
 use crate::root_contained_file_path::RootContainedFilePath;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -241,14 +241,18 @@ impl Program {
             ..Default::default()
         };
 
-        let (pure, pages) = orchestrate_pure(self.typed_modules(), options);
-        let flat = pure_to_flat(pure);
+        let (flat, pages) = orchestrate_flat(self.typed_modules(), options);
         let flat = if skip_optimization {
             flat
         } else {
             optimize_flat(flat)
         };
-        let module = flat_to_writer(flat, &self.type_registry, &pages, Some(&shell));
+        let module = markup_to_writer(
+            flat_to_markup(flat),
+            &self.type_registry,
+            &pages,
+            Some(&shell),
+        );
 
         match target {
             TargetLanguage::Typescript => {

@@ -31,7 +31,7 @@
             pkgs.tailwindcss_4
             pkgs.esbuild
             pkgs.bun
-            pkgs.typescript-go
+            pkgs.typescript
             pkgs.tree-sitter
             pkgs.nodejs
           ];

@@ -5,34 +5,39 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
-/// A pattern of a match arm. `N` names what a binding binds, a variable
-/// name in the typed AST and a binder in the IR.
+/// A pattern of a match arm. `B` is what a binding binds, a TypedBinder in
+/// the typed AST and an IrBinder in the IR.
 #[derive(Debug, Clone)]
-pub enum Pattern<N> {
+pub enum Pattern<B> {
     Wildcard,
-    /// Binds the value it matches, of type `typ`.
-    Binding {
-        name: N,
-        typ: Type,
-    },
+    /// Binds the value it matches.
+    Binding(B),
     Constructor {
         constructor: Constructor,
-        args: Vec<Pattern<N>>,
-        fields: Vec<PatternField<N>>,
+        args: Vec<Pattern<B>>,
+        fields: Vec<PatternField<B>>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub struct PatternField<N> {
+pub struct PatternField<B> {
     pub name: FieldName,
     /// The position of the field in its record or variant declaration.
     pub index: usize,
-    pub pattern: Pattern<N>,
+    pub pattern: Pattern<B>,
 }
 
-pub type TypedPattern = Pattern<VarName>;
+/// A variable a pattern of the typed AST binds, with the type of the values
+/// it takes.
+#[derive(Debug, Clone)]
+pub struct TypedBinder {
+    pub var: VarName,
+    pub typ: Type,
+}
 
-pub type TypedField = PatternField<VarName>;
+pub type TypedPattern = Pattern<TypedBinder>;
+
+pub type TypedField = PatternField<TypedBinder>;
 
 /// A constructor pattern (non-wildcard pattern that matches a specific value)
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -101,8 +106,8 @@ impl TypedPattern {
                     // Record pattern: User {name: x, age: y}
                     let fields_doc = BoxDoc::intersperse(
                         fields.iter().map(|field| {
-                            if let TypedPattern::Binding { name: var_name, .. } = &field.pattern {
-                                if var_name.as_str() == field.name.as_str() {
+                            if let TypedPattern::Binding(binder) = &field.pattern {
+                                if binder.var.as_str() == field.name.as_str() {
                                     return BoxDoc::text(field.name.as_str());
                                 }
                             }
@@ -127,7 +132,7 @@ impl TypedPattern {
                 }
             }
             TypedPattern::Wildcard => BoxDoc::text("_"),
-            TypedPattern::Binding { name, .. } => BoxDoc::text(name.as_str()),
+            TypedPattern::Binding(binder) => BoxDoc::text(binder.var.as_str()),
         }
     }
 }

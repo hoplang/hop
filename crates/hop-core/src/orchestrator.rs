@@ -1,8 +1,8 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::hop::typing::TypedModule;
+use crate::ir::flat_module::FlatModule;
 use crate::ir::ir_page::IrPage;
-use crate::ir::pure_module::PureModule;
-use crate::ir::typed_to_pure;
+use crate::ir::typed_to_flat;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
@@ -16,10 +16,10 @@ pub struct OrchestrateOptions {
     pub asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
-pub fn orchestrate_pure(
+pub fn orchestrate_flat(
     typed_modules: &HashMap<RootContainedFilePath, TypedModule>,
     options: OrchestrateOptions,
-) -> (PureModule, Vec<IrPage>) {
+) -> (FlatModule, Vec<IrPage>) {
     // Take pages from all modules (sorted by module ID for deterministic order)
     let mut document_ids: Vec<_> = typed_modules.keys().cloned().collect();
     document_ids.sort();
@@ -49,5 +49,5 @@ pub fn orchestrate_pure(
 
     // Only the functions the selected pages reach are compiled, so a
     // page_filter build holds what that page actually needs.
-    typed_to_pure(pages, &functions, options.asset_path_rewriter)
+    typed_to_flat(pages, &functions, options.asset_path_rewriter)
 }

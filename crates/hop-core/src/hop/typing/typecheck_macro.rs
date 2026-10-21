@@ -24,7 +24,7 @@ pub fn typecheck_join(
     asset_references: &mut Vec<AssetReference>,
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
-    let string_type = Type::String;
+    let string_type = Type::STRING;
 
     let mut typed_args = Vec::with_capacity(args.len());
     for arg in args {
@@ -42,11 +42,11 @@ pub fn typecheck_join(
         ) else {
             continue;
         };
-        if typed.typ() != Type::String {
+        if typed.typ() != Type::STRING {
             errors.push(TypeError::new(
                 TypeErrorKind::TypeMismatch {
                     context: TypeMismatchContext::MacroArgument,
-                    expected: Type::String,
+                    expected: Type::STRING,
                     found: typed.typ(),
                 },
                 arg.range().clone(),
@@ -152,8 +152,8 @@ pub fn typecheck_format(
             continue;
         };
         match typed.typ() {
-            Type::String => typed_args.push(typed),
-            Type::Int => typed_args.push(TypedExpr::IntToString {
+            Type::STRING => typed_args.push(typed),
+            Type::INT => typed_args.push(TypedExpr::IntToString {
                 value: Box::new(typed),
             }),
             found => errors.push(TypeError::new(
