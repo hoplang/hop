@@ -112,13 +112,11 @@ struct FlatGenerator<'a, 'b> {
     records: Vec<Type>,
     /// The enums of the module, in the order of `enum_names`.
     enums: Vec<Type>,
-    /// The Html values the path being generated uses. An Html value is used
-    /// at most once on every path, as the typechecker requires of the
-    /// source.
+    /// The Html values the path being generated may not read: those the
+    /// path already uses, since an Html value is used at most once on every
+    /// path, and those bound outside the loop body being generated, since
+    /// it runs once per element.
     used: HashSet<ValueId>,
-    /// The Html values bound outside the loop body being generated, which
-    /// it may not use, since it runs once per element.
-    outside: HashSet<ValueId>,
     /// How many more ops the expression being generated may nest.
     expression_depth: usize,
 }
@@ -149,7 +147,6 @@ fn random_module_inner(
         records: Vec::new(),
         enums: Vec::new(),
         used: HashSet::new(),
-        outside: HashSet::new(),
         expression_depth: MAX_EXPRESSION_DEPTH,
     };
 
@@ -247,11 +244,8 @@ fn random_module_inner(
             .collect()
     };
 
-    // Each body uses only its own Html values.
     for name in &function_names {
         builder = builder.define(name, |b, declared| {
-            g.used.clear();
-            g.outside.clear();
             g.block(b, &declared.return_type, MAX_BLOCK_DEPTH)
         });
     }
@@ -260,11 +254,7 @@ fn random_module_inner(
             name,
             params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
             "Html",
-            |b| {
-                g.used.clear();
-                g.outside.clear();
-                g.block(b, &Type::Html, MAX_BLOCK_DEPTH)
-            },
+            |b| g.block(b, &Type::Html, MAX_BLOCK_DEPTH),
         );
     }
     builder.build_with_registry()
@@ -456,14 +446,11 @@ impl FlatGenerator<'_, '_> {
     }
 
     /// The names in scope of type `target` that an op may read: not
-    /// an Html value that the path already uses or that is bound outside
-    /// the loop body being generated.
+    /// an Html value that the path may not read.
     fn readable(&self, b: &FlatBlockBuilder<'_>, target: &Type) -> Vec<ValueId> {
         b.values_where(|ty| *ty == *target)
             .into_iter()
-            .filter(|name| {
-                *target != Type::Html || !(self.used.contains(name) || self.outside.contains(name))
-            })
+            .filter(|name| !self.used.contains(name))
             .collect()
     }
 
@@ -483,13 +470,14 @@ impl FlatGenerator<'_, '_> {
         body
     }
 
-    /// The body of a loop, which may not use the Html values bound outside
-    /// it.
+    /// The body of a loop, which may not read the Html values bound outside
+    /// it. The values it binds are out of scope after it, so the loop uses
+    /// no Html value of its own.
     fn loop_body(&mut self, b: &FlatBlockBuilder<'_>, depth: usize) -> ValueId {
-        let outside = self.outside.clone();
-        self.outside.extend(b.values_where(|ty| *ty == Type::Html));
+        let used = self.used.clone();
+        self.used.extend(b.values_where(|ty| *ty == Type::Html));
         let body = self.block(b, &Type::Html, depth);
-        self.outside = outside;
+        self.used = used;
         body
     }
 
