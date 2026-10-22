@@ -128,7 +128,8 @@ impl RustTranspiler {
                 | IrDataOp::Tuple(_)
                 | IrDataOp::Record(..)
                 | IrDataOp::Enum(..)
-                | IrDataOp::Option(_)
+                | IrDataOp::OptionSome(_)
+                | IrDataOp::OptionNone
                 | IrDataOp::StringConcat(_)
                 | IrDataOp::NumericAdd(..)
                 | IrDataOp::NumericSubtract(..)

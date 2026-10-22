@@ -266,7 +266,8 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
                 .map(|(name, value)| (name.clone(), env[value].clone()))
                 .collect(),
         ),
-        IrDataOp::Option(value) => Value::Option(value.map(|inner| Rc::new(env[&inner].clone()))),
+        IrDataOp::OptionSome(inner) => Value::Option(Some(Rc::new(env[inner].clone()))),
+        IrDataOp::OptionNone => Value::Option(None),
         IrDataOp::StringConcat(parts) => Value::String(
             parts
                 .iter()

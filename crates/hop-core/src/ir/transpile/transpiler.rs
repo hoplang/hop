@@ -380,9 +380,15 @@ pub trait Transpiler {
                 }
                 _ => unreachable!("Enum value must have a named type"),
             },
-            WriterOp::Data(IrDataOp::Option(value)) => match typ {
+            WriterOp::Data(IrDataOp::OptionSome(value)) => match typ {
                 Type::Data(DataType::Option(inner_type)) => {
-                    self.transpile_option_literal(arena, *value, inner_type)
+                    self.transpile_option_literal(arena, Some(*value), inner_type)
+                }
+                _ => unreachable!("Option value must have Option type"),
+            },
+            WriterOp::Data(IrDataOp::OptionNone) => match typ {
+                Type::Data(DataType::Option(inner_type)) => {
+                    self.transpile_option_literal(arena, None, inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),
             },

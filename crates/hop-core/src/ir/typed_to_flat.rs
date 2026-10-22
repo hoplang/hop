@@ -538,9 +538,10 @@ impl<'a> Compiler<'a> {
                     .collect();
                 FlatOp::Match(IrMatch { subject, arms })
             }
-            TypedExpr::Option { value, .. } => FlatOp::Data(IrDataOp::Option(
-                value.as_ref().map(|v| self.compile_expr(v)),
-            )),
+            TypedExpr::Option { value, .. } => FlatOp::Data(match value {
+                Some(value) => IrDataOp::OptionSome(self.compile_expr(value)),
+                None => IrDataOp::OptionNone,
+            }),
             TypedExpr::HtmlConcat { parts } => {
                 let mut compiled = Vec::with_capacity(parts.len());
                 for part in parts {

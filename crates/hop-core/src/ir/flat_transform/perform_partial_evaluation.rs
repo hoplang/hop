@@ -117,13 +117,12 @@ impl Evaluator<'_> {
             (Constructor::BoolFalse, FlatOp::Data(IrDataOp::BoolLiteral(value))) => {
                 return Some(!*value);
             }
-            (Constructor::OptionSome, FlatOp::Data(IrDataOp::Option(Some(inner)))) => {
+            (Constructor::OptionSome, FlatOp::Data(IrDataOp::OptionSome(inner))) => {
                 vec![(&args[0], *inner)]
             }
-            (Constructor::OptionSome, FlatOp::Data(IrDataOp::Option(None))) => return Some(false),
-            (Constructor::OptionNone, FlatOp::Data(IrDataOp::Option(inner))) => {
-                return Some(inner.is_none());
-            }
+            (Constructor::OptionSome, FlatOp::Data(IrDataOp::OptionNone)) => return Some(false),
+            (Constructor::OptionNone, FlatOp::Data(IrDataOp::OptionSome(_))) => return Some(false),
+            (Constructor::OptionNone, FlatOp::Data(IrDataOp::OptionNone)) => return Some(true),
             (
                 Constructor::EnumVariant { variant_name, .. },
                 FlatOp::Data(IrDataOp::Enum(op_variant, operands)),
@@ -454,14 +453,20 @@ impl Evaluator<'_> {
                         _ => None,
                     },
                     IrDataOp::OptionIsSome(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::Option(value))) => {
-                            Some(IrDataOp::BoolLiteral(value.is_some()))
+                        Some(FlatOp::Data(IrDataOp::OptionSome(_))) => {
+                            Some(IrDataOp::BoolLiteral(true))
+                        }
+                        Some(FlatOp::Data(IrDataOp::OptionNone)) => {
+                            Some(IrDataOp::BoolLiteral(false))
                         }
                         _ => None,
                     },
                     IrDataOp::OptionIsNone(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::Option(value))) => {
-                            Some(IrDataOp::BoolLiteral(value.is_none()))
+                        Some(FlatOp::Data(IrDataOp::OptionSome(_))) => {
+                            Some(IrDataOp::BoolLiteral(false))
+                        }
+                        Some(FlatOp::Data(IrDataOp::OptionNone)) => {
+                            Some(IrDataOp::BoolLiteral(true))
                         }
                         _ => None,
                     },

@@ -490,7 +490,7 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         self.push(
             Type::option(inner_type),
-            FlatOp::Data(IrDataOp::Option(Some(inner))),
+            FlatOp::Data(IrDataOp::OptionSome(inner)),
         )
     }
 
@@ -498,10 +498,7 @@ impl<'a> FlatBlockBuilder<'a> {
         let Type::Data(inner_type) = inner_type else {
             panic!();
         };
-        self.push(
-            Type::option(inner_type),
-            FlatOp::Data(IrDataOp::Option(None)),
-        )
+        self.push(Type::option(inner_type), FlatOp::Data(IrDataOp::OptionNone))
     }
 
     /// A match with the arms `arms_fn` adds, of the type of the first.

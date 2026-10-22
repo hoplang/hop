@@ -1244,7 +1244,12 @@ mod tests {
     ) {
         for binding in &block.bindings {
             let debug = format!("{:?}", binding.op);
-            let kind = debug.trim_start_matches("Data(").split('(').next().unwrap();
+            let kind = debug
+                .trim_start_matches("Data(")
+                .split('(')
+                .next()
+                .unwrap()
+                .trim_end_matches(')');
             let column = counts.entry(kind.to_string()).or_default();
             column[0] += 1;
             if live.contains(&binding.binder.var) {
@@ -1357,9 +1362,10 @@ mod tests {
             NumericMultiply            2.6     0.4     0.0
             NumericNegation            2.4     0.8     0.0
             NumericSubtract            2.3     1.3     0.0
-            Option                    24.9    14.1     0.4
             OptionIsNone               0.9     3.3     0.6
             OptionIsSome               0.9     1.7     0.0
+            OptionNone                17.2    12.1     0.0
+            OptionSome                 7.8    18.6     1.2
             Record                    23.4     6.2     0.4
             StringConcat               2.4     3.8     0.0
             StringIsEmpty              0.9     1.1     0.0

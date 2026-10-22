@@ -15,7 +15,8 @@ pub enum IrDataOp {
     Tuple(Vec<ValueId>),
     Record(Vec<(FieldName, ValueId)>),
     Enum(TypeName, Vec<(FieldName, ValueId)>),
-    Option(Option<ValueId>),
+    OptionSome(ValueId),
+    OptionNone,
     StringConcat(Vec<ValueId>),
     /// Takes two Ints or two Floats. Produces that type.
     NumericAdd(ValueId, ValueId),
@@ -67,11 +68,11 @@ impl IrDataOp {
             | IrDataOp::IntLiteral(_)
             | IrDataOp::FloatLiteral(_)
             | IrDataOp::BoolLiteral(_)
-            | IrDataOp::Option(None) => {}
+            | IrDataOp::OptionNone => {}
 
             IrDataOp::FieldAccess(name, _)
             | IrDataOp::TupleIndex(name, _)
-            | IrDataOp::Option(Some(name))
+            | IrDataOp::OptionSome(name)
             | IrDataOp::NumericNegation(name)
             | IrDataOp::BoolNegation(name)
             | IrDataOp::ArrayLength(name)
@@ -116,11 +117,11 @@ impl IrDataOp {
             | IrDataOp::IntLiteral(_)
             | IrDataOp::FloatLiteral(_)
             | IrDataOp::BoolLiteral(_)
-            | IrDataOp::Option(None) => {}
+            | IrDataOp::OptionNone => {}
 
             IrDataOp::FieldAccess(name, _)
             | IrDataOp::TupleIndex(name, _)
-            | IrDataOp::Option(Some(name))
+            | IrDataOp::OptionSome(name)
             | IrDataOp::NumericNegation(name)
             | IrDataOp::BoolNegation(name)
             | IrDataOp::ArrayLength(name)
@@ -207,8 +208,8 @@ impl IrDataOp {
                     BoxDoc::text(format!("{} {{{fields}}}", variant_name.as_str()))
                 }
             }
-            IrDataOp::Option(Some(value)) => BoxDoc::text(format!("Some({value})")),
-            IrDataOp::Option(None) => BoxDoc::text("None"),
+            IrDataOp::OptionSome(value) => BoxDoc::text(format!("Some({value})")),
+            IrDataOp::OptionNone => BoxDoc::text("None"),
             IrDataOp::StringConcat(parts) => {
                 let parts = parts
                     .iter()
