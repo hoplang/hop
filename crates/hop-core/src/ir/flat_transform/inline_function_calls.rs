@@ -222,10 +222,10 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .function("double", [("x", "Int")], "Int", |t| {
-                    t.add(t.var("x"), t.var("x"))
+                    t.add(t.param("x"), t.param("x"))
                 })
                 .entrypoint("Test", [("n", "Int")], "Html", |t| {
-                    t.escape(t.int_to_string(t.call("double", [t.var("n")])))
+                    t.escape(t.int_to_string(t.call("double", [t.param("n")])))
                 })
                 .build(),
             expect![[r#"
@@ -257,13 +257,13 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .function("inner", [("x", "Int")], "Int", |t| {
-                    t.add(t.var("x"), t.int(1))
+                    t.add(t.param("x"), t.int(1))
                 })
                 .function("outer", [("y", "Int")], "Int", |t| {
-                    t.mul(t.call("inner", [t.var("y")]), t.int(2))
+                    t.mul(t.call("inner", [t.param("y")]), t.int(2))
                 })
                 .entrypoint("Test", [("n", "Int")], "Html", |t| {
-                    t.escape(t.int_to_string(t.call("outer", [t.var("n")])))
+                    t.escape(t.int_to_string(t.call("outer", [t.param("n")])))
                 })
                 .build(),
             expect![[r#"
@@ -305,8 +305,8 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .function("list", [("items", "Array[String]")], "Html", |t| {
-                    t.html_for(Some("item"), t.var("items"), |t| {
-                        t.element("li", [], t.escape(t.var("item")))
+                    t.html_for(t.param("items"), |t, item| {
+                        t.element("li", [], t.escape(item))
                     })
                 })
                 .entrypoint(
@@ -315,8 +315,8 @@ mod tests {
                     "Html",
                     |t| {
                         t.html_concat([
-                            t.call("list", vec![t.var("a")]),
-                            t.call("list", vec![t.var("b")]),
+                            t.call("list", vec![t.param("a")]),
+                            t.call("list", vec![t.param("b")]),
                         ])
                     },
                 )
@@ -362,10 +362,10 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .function("count", [("n", "Int")], "Html", |t| {
-                    t.match_expr(t.lt(t.var("n"), t.int(1)), |m| {
-                        m.arm(Pat::True, |t| t.text("."));
-                        m.arm(Pat::False, |t| {
-                            t.call("count", [t.sub(t.var("n"), t.int(1))])
+                    t.match_expr(t.lt(t.param("n"), t.int(1)), |m| {
+                        m.arm(Pat::True, |t, _| t.text("."));
+                        m.arm(Pat::False, |t, _| {
+                            t.call("count", [t.sub(t.param("n"), t.int(1))])
                         });
                     })
                 })
@@ -430,14 +430,14 @@ mod tests {
                 .declare("ping", [("n", "Int")], "Html")
                 .declare("pong", [("n", "Int")], "Html")
                 .define("ping", |t, _| {
-                    t.match_expr(t.lt(t.var("n"), t.int(1)), |m| {
-                        m.arm(Pat::True, |t| t.text("."));
-                        m.arm(Pat::False, |t| {
-                            t.call("pong", [t.sub(t.var("n"), t.int(1))])
+                    t.match_expr(t.lt(t.param("n"), t.int(1)), |m| {
+                        m.arm(Pat::True, |t, _| t.text("."));
+                        m.arm(Pat::False, |t, _| {
+                            t.call("pong", [t.sub(t.param("n"), t.int(1))])
                         });
                     })
                 })
-                .define("pong", |t, _| t.call("ping", [t.var("n")]))
+                .define("pong", |t, _| t.call("ping", [t.param("n")]))
                 .entrypoint("Test", [], "Html", |t| t.call("ping", [t.int(2)]))
                 .build(),
             expect![[r#"

@@ -146,12 +146,9 @@ impl FlatModuleBuilder {
             .unwrap();
         let declared = &self.functions[index];
         assert!(declared.body.is_none());
-        let vars = declared
-            .parameters
-            .iter()
-            .map(|p| (p.name.as_str().to_string(), p.binder.var))
-            .collect();
-        let (body, _) = FlatBlockBuilder::new(&self).block(vars, |t| body_fn(t, declared));
+        let vars = declared.parameters.iter().map(|p| p.binder.var).collect();
+        let (body, _) =
+            FlatBlockBuilder::new(&self, declared).block(vars, |t| body_fn(t, declared));
         self.functions[index].body = Some(body);
         self
     }
@@ -200,13 +197,10 @@ pub struct DeclaredFunction {
     pub body: Option<FlatBlock>,
 }
 
-/// A variable in scope and the name it stands for.
-pub type ScopedVar = (String, ValueId);
-
 /// A block being built: the variables it brings into scope and the
 /// bindings made in it so far, in the order they are made.
 struct Scope {
-    vars: Vec<ScopedVar>,
+    vars: Vec<ValueId>,
     bindings: Vec<FlatBinding>,
 }
 
@@ -217,14 +211,17 @@ struct Scope {
 /// values it builds from, and the builder knows the type of each.
 pub struct FlatBlockBuilder<'a> {
     module: &'a FlatModuleBuilder,
+    /// The function whose body is being built.
+    function: &'a DeclaredFunction,
     /// The blocks being built, innermost last.
     scopes: RefCell<Vec<Scope>>,
 }
 
 impl<'a> FlatBlockBuilder<'a> {
-    fn new(module: &'a FlatModuleBuilder) -> Self {
+    fn new(module: &'a FlatModuleBuilder, function: &'a DeclaredFunction) -> Self {
         FlatBlockBuilder {
             module,
+            function,
             scopes: RefCell::new(Vec::new()),
         }
     }
@@ -233,7 +230,7 @@ impl<'a> FlatBlockBuilder<'a> {
     /// scope here, and the type of its result.
     fn block(
         &self,
-        vars: Vec<ScopedVar>,
+        vars: Vec<ValueId>,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> (FlatBlock, Type) {
         self.scopes.borrow_mut().push(Scope {
@@ -274,7 +271,7 @@ impl<'a> FlatBlockBuilder<'a> {
         scopes
             .iter()
             .flat_map(|scope| {
-                let vars = scope.vars.iter().map(|(_, value)| *value);
+                let vars = scope.vars.iter().copied();
                 vars.chain(scope.bindings.iter().map(|binding| binding.binder.var))
             })
             .filter(|value| fits(&types[value]))
@@ -315,17 +312,15 @@ impl<'a> FlatBlockBuilder<'a> {
         self.push(Type::FLOAT, FlatOp::Data(IrDataOp::FloatLiteral(f)))
     }
 
-    /// The variable `name`. A variable is the name it stands for, so it
-    /// binds nothing.
-    pub fn var(&self, name: &str) -> ValueId {
-        let scopes = self.scopes.borrow();
-        let (_, value) = scopes
+    /// The parameter `name` of the function whose body is being built.
+    pub fn param(&self, name: &str) -> ValueId {
+        self.function
+            .parameters
             .iter()
-            .rev()
-            .flat_map(|scope| scope.vars.iter().rev())
-            .find(|(var, _)| var == name)
-            .unwrap();
-        *value
+            .find(|param| param.name.as_str() == name)
+            .unwrap()
+            .binder
+            .var
     }
 
     pub fn eq(&self, left: ValueId, right: ValueId) -> ValueId {
@@ -519,9 +514,9 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     /// The pattern against a subject of `typ`, with a fresh name for each
-    /// variable it binds, which is pushed to `vars` as the variable it
-    /// brings into the arm's scope.
-    fn resolve_pat(&self, typ: &Type, pat: Pat, vars: &mut Vec<ScopedVar>) -> IrPattern {
+    /// variable it binds, which is pushed to `bindings` under the name the
+    /// pattern gives it.
+    fn resolve_pat(&self, typ: &Type, pat: Pat, bindings: &mut ArmBindings) -> IrPattern {
         let constructor = |constructor: Constructor, args: Vec<IrPattern>| Pattern::Constructor {
             constructor,
             args,
@@ -534,7 +529,7 @@ impl<'a> FlatBlockBuilder<'a> {
             (Pat::Wildcard, _) => Pattern::Wildcard,
             (Pat::Bind(name), _) => {
                 let var = self.module.binder(typ.clone());
-                vars.push((name, var));
+                bindings.bindings.push((name, var));
                 Pattern::Binding(IrBinder {
                     var,
                     typ: typ.clone(),
@@ -544,7 +539,7 @@ impl<'a> FlatBlockBuilder<'a> {
             (Pat::False, _) => constructor(Constructor::BoolFalse, Vec::new()),
             (Pat::None, _) => constructor(Constructor::OptionNone, Vec::new()),
             (Pat::Some(inner), Some(ResolvedType::Option(inner_type))) => {
-                let inner = self.resolve_pat(&Type::Data(inner_type.clone()), *inner, vars);
+                let inner = self.resolve_pat(&Type::Data(inner_type.clone()), *inner, bindings);
                 constructor(Constructor::OptionSome, vec![inner])
             }
             (Pat::Tuple(elements), Some(ResolvedType::Tuple(element_types)))
@@ -554,7 +549,7 @@ impl<'a> FlatBlockBuilder<'a> {
                     .into_iter()
                     .zip(element_types)
                     .map(|(element, element_type)| {
-                        self.resolve_pat(&Type::Data(element_type.clone()), element, vars)
+                        self.resolve_pat(&Type::Data(element_type.clone()), element, bindings)
                     })
                     .collect();
                 constructor(Constructor::Tuple, args)
@@ -565,7 +560,7 @@ impl<'a> FlatBlockBuilder<'a> {
                         type_name: name.clone(),
                     },
                     args: Vec::new(),
-                    fields: self.resolve_fields(fields, listed, vars),
+                    fields: self.resolve_fields(fields, listed, bindings),
                 }
             }
             (Pat::Variant(variant, listed), Some(ResolvedType::Enum { name, variants })) => {
@@ -579,7 +574,7 @@ impl<'a> FlatBlockBuilder<'a> {
                         variant_name: declared.name.clone(),
                     },
                     args: Vec::new(),
-                    fields: self.resolve_fields(&declared.fields, listed, vars),
+                    fields: self.resolve_fields(&declared.fields, listed, bindings),
                 }
             }
             _ => panic!(),
@@ -593,7 +588,7 @@ impl<'a> FlatBlockBuilder<'a> {
         &self,
         declared: &[RecordField],
         listed: Vec<(String, Pat)>,
-        vars: &mut Vec<ScopedVar>,
+        bindings: &mut ArmBindings,
     ) -> Vec<PatternField<IrBinder>> {
         let mut patterns: Vec<(String, IrPattern)> = Vec::new();
         for (field_name, field_pat) in listed {
@@ -602,7 +597,7 @@ impl<'a> FlatBlockBuilder<'a> {
                 .iter()
                 .find(|field| field.name.as_str() == field_name)
                 .unwrap();
-            let pattern = self.resolve_pat(&Type::Data(field.typ.clone()), field_pat, vars);
+            let pattern = self.resolve_pat(&Type::Data(field.typ.clone()), field_pat, bindings);
             patterns.push((field_name, pattern));
         }
         declared
@@ -727,32 +722,39 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     /// A loop over `array` with the loop variable, bound to a fresh name
-    /// when the loop has one, in scope as `var` for the body `body_fn`
-    /// builds.
-    pub fn html_for<F>(&self, var: Option<&str>, array: ValueId, body_fn: F) -> ValueId
+    /// that the body `body_fn` builds from.
+    pub fn html_for<F>(&self, array: ValueId, body_fn: F) -> ValueId
     where
-        F: FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
+        F: FnOnce(&FlatBlockBuilder<'_>, ValueId) -> ValueId,
     {
         let Type::Data(DataType::Array(element_type)) = self.typ(array) else {
             panic!();
         };
-        let binder = var.map(|_| {
-            let typ = Type::Data(*element_type);
-            IrBinder {
-                var: self.module.binder(typ.clone()),
-                typ,
-            }
-        });
-        let vars = var
-            .zip(binder.as_ref())
-            .map(|(name, binder)| (name.to_string(), binder.var))
-            .into_iter()
-            .collect();
-        let (body, _) = self.block(vars, body_fn);
+        let typ = Type::Data(*element_type);
+        let var = self.module.binder(typ.clone());
+        let (body, _) = self.block(vec![var], |t| body_fn(t, var));
         self.push(
             Type::Html,
             FlatOp::HtmlFor(IrFor {
-                var: binder,
+                var: Some(IrBinder { var, typ }),
+                array,
+                body,
+            }),
+        )
+    }
+
+    /// A loop over `array` without a loop variable, with the body `body_fn`
+    /// builds.
+    pub fn html_for_unbound<F>(&self, array: ValueId, body_fn: F) -> ValueId
+    where
+        F: FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
+    {
+        assert!(matches!(self.typ(array), Type::Data(DataType::Array(_))));
+        let (body, _) = self.block(Vec::new(), body_fn);
+        self.push(
+            Type::Html,
+            FlatOp::HtmlFor(IrFor {
+                var: None,
                 array,
                 body,
             }),
@@ -785,7 +787,7 @@ impl<'a> FlatBlockBuilder<'a> {
 
 /// A pattern as a test writes it: bindings by name, types taken from the
 /// subject. The fields a record or variant pattern leaves out are
-/// wildcards.
+/// wildcards. The arm looks its bindings up by name.
 #[derive(Debug, Clone)]
 pub enum Pat {
     Wildcard,
@@ -825,12 +827,39 @@ pub struct MatchExprArms<'a> {
     typ: Option<Type>,
 }
 
+/// The variables an arm's pattern binds, by the names the pattern gives
+/// them.
+pub struct ArmBindings {
+    bindings: Vec<(String, ValueId)>,
+}
+
+impl ArmBindings {
+    /// The variable the pattern binds as `name`.
+    pub fn binding(&self, name: &str) -> ValueId {
+        self.bindings
+            .iter()
+            .find(|(bound, _)| bound == name)
+            .unwrap()
+            .1
+    }
+}
+
 impl MatchExprArms<'_> {
-    /// Add an arm, its block built with the pattern's bindings in scope.
-    pub fn arm(&mut self, pat: Pat, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) {
-        let mut vars = Vec::new();
-        let pattern = self.builder.resolve_pat(&self.subject_type, pat, &mut vars);
-        let (body, typ) = self.builder.block(vars, body_fn);
+    /// Add an arm, its block built with the pattern's bindings in scope,
+    /// which `body_fn` looks up by name.
+    pub fn arm(
+        &mut self,
+        pat: Pat,
+        body_fn: impl FnOnce(&FlatBlockBuilder<'_>, &ArmBindings) -> ValueId,
+    ) {
+        let mut bindings = ArmBindings {
+            bindings: Vec::new(),
+        };
+        let pattern = self
+            .builder
+            .resolve_pat(&self.subject_type, pat, &mut bindings);
+        let vars = bindings.bindings.iter().map(|(_, var)| *var).collect();
+        let (body, typ) = self.builder.block(vars, |t| body_fn(t, &bindings));
         self.typ.get_or_insert(typ);
         self.arms.push(IrMatchArm { pattern, body });
     }

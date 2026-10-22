@@ -394,8 +394,8 @@ mod tests {
                     t.element(
                         "ul",
                         [],
-                        t.html_for(Some("item"), t.var("items"), |t| {
-                            t.element("li", vec![], t.escape(t.var("item")))
+                        t.html_for(t.param("items"), |t, item| {
+                            t.element("li", vec![], t.escape(item))
                         }),
                     )
                 })
@@ -425,13 +425,13 @@ mod tests {
             FlatModuleBuilder::new()
                 .function("diverge", [], "Bool", |t| t.call("diverge", []))
                 .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
-                    let and = t.match_expr(t.var("flag"), |m| {
-                        m.arm(Pat::True, |t| t.call("diverge", []));
-                        m.arm(Pat::False, |t| t.bool(false));
+                    let and = t.match_expr(t.param("flag"), |m| {
+                        m.arm(Pat::True, |t, _| t.call("diverge", []));
+                        m.arm(Pat::False, |t, _| t.bool(false));
                     });
                     t.escape(t.match_expr(and, |m| {
-                        m.arm(Pat::True, |t| t.str("yes"));
-                        m.arm(Pat::False, |t| t.str("no"));
+                        m.arm(Pat::True, |t, _| t.str("yes"));
+                        m.arm(Pat::False, |t, _| t.str("no"));
                     }))
                 })
                 .build_with_registry(),
@@ -484,11 +484,12 @@ mod tests {
         check(
             FlatModuleBuilder::with_types(types)
                 .entrypoint("Test", [("shape", "Shape")], "Html", |t| {
-                    t.escape(t.match_expr(t.var("shape"), |m| {
-                        m.arm(Pat::variant("Dot", []), |t| t.str("dot"));
-                        m.arm(Pat::variant("Circle", [("radius", Pat::bind("r"))]), |t| {
-                            t.int_to_string(t.var("r"))
-                        });
+                    t.escape(t.match_expr(t.param("shape"), |m| {
+                        m.arm(Pat::variant("Dot", []), |t, _| t.str("dot"));
+                        m.arm(
+                            Pat::variant("Circle", [("radius", Pat::bind("r"))]),
+                            |t, arm| t.int_to_string(arm.binding("r")),
+                        );
                     }))
                 })
                 .build_with_registry(),
@@ -697,8 +698,8 @@ mod tests {
                     t.element(
                         "input",
                         [
-                            t.attr("class", t.var("cls")),
-                            t.presence("disabled", t.var("flag")),
+                            t.attr("class", t.param("cls")),
+                            t.presence("disabled", t.param("flag")),
                             t.presence("checked", t.bool(false)),
                         ],
                         t.html_concat(vec![]),
@@ -726,7 +727,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("content", "String")], "Html", |t| {
-                    t.escape(t.var("content"))
+                    t.escape(t.param("content"))
                 })
                 .build_with_registry(),
             |v| vec![("content", v.str("<script>alert('xss')</script>"))],
@@ -748,9 +749,9 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("show", "Bool")], "Html", |t| {
-                    t.match_expr(t.var("show"), |m| {
-                        m.arm(Pat::True, |t| t.element("div", [], t.text("Visible")));
-                        m.arm(Pat::False, |t| t.html_concat([]));
+                    t.match_expr(t.param("show"), |m| {
+                        m.arm(Pat::True, |t, _| t.element("div", [], t.text("Visible")));
+                        m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
                 })
                 .build_with_registry(),
@@ -783,9 +784,9 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("show", "Bool")], "Html", |t| {
-                    t.match_expr(t.var("show"), |m| {
-                        m.arm(Pat::True, |t| t.element("div", [], t.text("Hidden")));
-                        m.arm(Pat::False, |t| t.html_concat([]));
+                    t.match_expr(t.param("show"), |m| {
+                        m.arm(Pat::True, |t, _| t.element("div", [], t.text("Hidden")));
+                        m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
                 })
                 .build_with_registry(),
@@ -818,11 +819,8 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("items", "Array[String]")], "Html", |t| {
-                    t.html_for(Some("item"), t.var("items"), |t| {
-                        t.html_concat([
-                            t.element("li", vec![], t.escape(t.var("item"))),
-                            t.text("\n"),
-                        ])
+                    t.html_for(t.param("items"), |t, item| {
+                        t.html_concat([t.element("li", vec![], t.escape(item)), t.text("\n")])
                     })
                 })
                 .build_with_registry(),
@@ -858,7 +856,7 @@ mod tests {
     fn should_evaluate_a_function_on_its_own() {
         let (module, types) = FlatModuleBuilder::new()
             .function("Double", [("n", "Int")], "Int", |t| {
-                t.add(t.var("n"), t.var("n"))
+                t.add(t.param("n"), t.param("n"))
             })
             .build_with_registry();
         let v = ValueBuilder::new(&types);
@@ -872,10 +870,10 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .function("Sum", [("n", "Int")], "Int", |t| {
-                    t.match_expr(t.lte(t.var("n"), t.int(0)), |m| {
-                        m.arm(Pat::True, |t| t.int(0));
-                        m.arm(Pat::False, |t| {
-                            t.add(t.var("n"), t.call("Sum", [t.sub(t.var("n"), t.int(1))]))
+                    t.match_expr(t.lte(t.param("n"), t.int(0)), |m| {
+                        m.arm(Pat::True, |t, _| t.int(0));
+                        m.arm(Pat::False, |t, _| {
+                            t.add(t.param("n"), t.call("Sum", [t.sub(t.param("n"), t.int(1))]))
                         });
                     })
                 })
@@ -922,7 +920,7 @@ mod tests {
     fn should_error_when_a_function_never_stops_calling_itself() {
         let module = FlatModuleBuilder::new()
             .function("Loop", [("n", "Int")], "Int", |t| {
-                t.call("Loop", [t.add(t.var("n"), t.int(1))])
+                t.call("Loop", [t.add(t.param("n"), t.int(1))])
             })
             .entrypoint("Test", [], "Html", |t| {
                 t.escape(t.int_to_string(t.call("Loop", [t.int(0)])))
@@ -951,7 +949,7 @@ mod tests {
         // copies are shared.
         let module = FlatModuleBuilder::with_types(types)
             .function("Grow", [("tree", "Tree")], "Int", |t| {
-                let tree = t.var("tree");
+                let tree = t.param("tree");
                 let children = t.array([tree; 8]);
                 let node = t.enum_variant_with_fields("Tree", "Node", [("children", children)]);
                 t.call("Grow", [node])
@@ -987,7 +985,7 @@ mod tests {
     fn should_error_when_required_param_not_provided() {
         let module = FlatModuleBuilder::new()
             .entrypoint("Test", [("name", "String")], "Html", |t| {
-                t.escape(t.var("name"))
+                t.escape(t.param("name"))
             })
             .build();
         let result = evaluate_entrypoint(&module, &module.functions[0].function, HashMap::new());

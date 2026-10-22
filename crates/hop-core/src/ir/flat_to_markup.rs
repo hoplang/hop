@@ -309,9 +309,9 @@ mod tests {
                             "div",
                             [
                                 t.attr("class", t.str("card")),
-                                t.presence("hidden", t.var("hidden")),
+                                t.presence("hidden", t.param("hidden")),
                             ],
-                            t.html_concat(vec![t.text("Title: "), t.escape(t.var("title"))]),
+                            t.html_concat(vec![t.text("Title: "), t.escape(t.param("title"))]),
                         )
                     },
                 )
@@ -346,11 +346,11 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Greeting", [("name", "Option[String]")], "Html", |t| {
-                    let greeting = t.match_expr(t.var("name"), |m| {
-                        m.arm(Pat::some(Pat::bind("n")), |t| {
-                            t.element("b", [], t.escape(t.var("n")))
+                    let greeting = t.match_expr(t.param("name"), |m| {
+                        m.arm(Pat::some(Pat::bind("n")), |t, arm| {
+                            t.element("b", [], t.escape(arm.binding("n")))
                         });
-                        m.arm(Pat::None, |t| t.text("anonymous"));
+                        m.arm(Pat::None, |t, _| t.text("anonymous"));
                     });
                     t.element("p", [], t.html_concat(vec![greeting, greeting]))
                 })
@@ -415,10 +415,10 @@ mod tests {
                         let _unused = t.text("never");
                         let row = t.element(
                             "li",
-                            [t.attr("data-x", t.int_to_string(t.add(t.var("n"), t.int(1))))],
+                            [t.attr("data-x", t.int_to_string(t.add(t.param("n"), t.int(1))))],
                             t.text("x"),
                         );
-                        t.element("ul", [], t.html_for(Some("item"), t.var("items"), |_| row))
+                        t.element("ul", [], t.html_for(t.param("items"), |_, _| row))
                     },
                 )
                 .build(),
@@ -462,16 +462,16 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .function("Badge", [("label", "String")], "Html", |t| {
-                    t.element("span", [], t.escape(t.var("label")))
+                    t.element("span", [], t.escape(t.param("label")))
                 })
                 .function("Wrap", [("content", "Html")], "Html", |t| {
-                    t.element("div", [], t.var("content"))
+                    t.element("div", [], t.param("content"))
                 })
                 .entrypoint("Test", [("label", "String")], "Html", |t| {
                     t.call(
                         "Wrap",
                         [t.html_concat(vec![
-                            t.call("Badge", vec![t.var("label")]),
+                            t.call("Badge", vec![t.param("label")]),
                             t.element("b", vec![], t.html_concat(vec![])),
                         ])],
                     )
@@ -513,25 +513,28 @@ mod tests {
                     [("depth", "Int"), ("children", "Html")],
                     "Html",
                     |t| {
-                        t.match_expr(t.lt(t.int(0), t.var("depth")), |m| {
-                            m.arm(Pat::True, |t| {
+                        t.match_expr(t.lt(t.int(0), t.param("depth")), |m| {
+                            m.arm(Pat::True, |t, _| {
                                 t.element(
                                     "div",
                                     [],
                                     t.call(
                                         "Nest",
-                                        vec![t.sub(t.var("depth"), t.int(1)), t.var("children")],
+                                        vec![
+                                            t.sub(t.param("depth"), t.int(1)),
+                                            t.param("children"),
+                                        ],
                                     ),
                                 )
                             });
-                            m.arm(Pat::False, |t| t.var("children"));
+                            m.arm(Pat::False, |t, _| t.param("children"));
                         })
                     },
                 )
                 .entrypoint("Test", [("name", "String")], "Html", |t| {
                     t.call(
                         "Nest",
-                        [t.int(2), t.element("b", vec![], t.escape(t.var("name")))],
+                        [t.int(2), t.element("b", vec![], t.escape(t.param("name")))],
                     )
                 })
                 .build(),

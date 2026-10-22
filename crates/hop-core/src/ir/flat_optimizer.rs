@@ -92,8 +92,8 @@ mod tests {
                     t.element(
                         "ul",
                         [],
-                        t.html_for(Some("item"), t.var("items"), |t| {
-                            t.element("li", vec![], t.escape(t.var("item")))
+                        t.html_for(t.param("items"), |t, item| {
+                            t.element("li", vec![], t.escape(item))
                         }),
                     )
                 })
@@ -132,8 +132,8 @@ mod tests {
                 .entrypoint("Test", [], "Html", |t| {
                     let flag = t.bool(true);
                     t.html_concat([t.match_expr(flag, |m| {
-                        m.arm(Pat::True, |t| t.html_concat(vec![t.text("yes")]));
-                        m.arm(Pat::False, |t| t.html_concat(vec![]));
+                        m.arm(Pat::True, |t, _| t.html_concat(vec![t.text("yes")]));
+                        m.arm(Pat::False, |t, _| t.html_concat(vec![]));
                     })])
                 })
                 .build(),
@@ -170,7 +170,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .function("double", [("x", "Int")], "Int", |t| {
-                    t.add(t.var("x"), t.var("x"))
+                    t.add(t.param("x"), t.param("x"))
                 })
                 .entrypoint("Test", [], "Html", |t| {
                     t.escape(t.int_to_string(t.call("double", [t.int(21)])))

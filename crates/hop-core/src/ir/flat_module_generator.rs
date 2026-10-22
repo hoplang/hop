@@ -108,7 +108,6 @@ struct FlatGenerator<'a, 'b> {
     records: Vec<Type>,
     /// The enums of the module, in the order of `enum_names`.
     enums: Vec<Type>,
-    next_var: usize,
     /// The Html values the path being generated uses. An Html value is used
     /// at most once on every path, as the typechecker requires of the
     /// source.
@@ -143,7 +142,6 @@ fn random_module_inner(
         enum_names: Vec::new(),
         records: Vec::new(),
         enums: Vec::new(),
-        next_var: 0,
         used: HashSet::new(),
         outside: HashSet::new(),
     };
@@ -216,7 +214,7 @@ fn random_module_inner(
     let function_names: Vec<String> = (0..g.count(0..=2)).map(|i| format!("C{i}")).collect();
     for name in &function_names {
         let params: Vec<(String, String)> = (0..g.count(0..=3))
-            .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
+            .map(|i| (format!("p{i}"), g.random_type_string(2)))
             .collect();
         let return_type = g.random_type_string(2);
         builder = builder.declare(
@@ -235,7 +233,7 @@ fn random_module_inner(
         (0..g.count(1..=3))
             .map(|i| {
                 let params = (0..g.count(0..=3))
-                    .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
+                    .map(|i| (format!("p{i}"), g.random_type_string(2)))
                     .collect();
                 (format!("V{i}"), params)
             })
@@ -362,12 +360,6 @@ impl FlatGenerator<'_, '_> {
             return None;
         }
         Some(*self.u.choose(&candidates).unwrap())
-    }
-
-    fn fresh_var_name(&mut self) -> String {
-        let n = self.next_var;
-        self.next_var += 1;
-        format!("v{n}")
     }
 
     /// A random source-syntax type string. E.g. `Array[String]`.
@@ -560,19 +552,15 @@ impl FlatGenerator<'_, '_> {
         value
     }
 
-    /// Plan the arms of an enum match.
-    fn enum_match_arms(
-        &mut self,
-        variants: &[EnumVariant],
-    ) -> Vec<(String, Vec<(String, String)>)> {
-        let mut remaining: Vec<&EnumVariant> = variants.iter().collect();
+    /// Plan the arms of an enum match: every variant in a random order,
+    /// each with the fields it binds.
+    fn enum_match_arms(&mut self, variants: &[EnumVariant]) -> Vec<(String, Vec<String>)> {
         let mut arms = Vec::new();
-        while !remaining.is_empty() {
-            let variant = remaining.swap_remove(self.index(remaining.len()));
+        for variant in self.shuffled(variants.iter().collect()) {
             let mut bindings = Vec::new();
             for field in &variant.fields {
                 if self.coin() {
-                    bindings.push((field.name.as_str().to_string(), self.fresh_var_name()));
+                    bindings.push(field.name.as_str().to_string());
                 }
             }
             arms.push((variant.name.as_str().to_string(), bindings));
@@ -632,7 +620,7 @@ impl FlatGenerator<'_, '_> {
         if self.coin() {
             return Pat::Wildcard;
         }
-        Pat::Bind(self.fresh_var_name())
+        Pat::bind("x")
     }
 
     /// Bind a random op of the target type in the block `b` builds, with
@@ -750,10 +738,10 @@ impl FlatGenerator<'_, '_> {
                 let before = self.used.clone();
                 let mut after = before.clone();
                 let result = b.match_expr(subject, |m| {
-                    m.arm(Pat::True, |b| {
+                    m.arm(Pat::True, |b, _| {
                         self.arm(b, target, depth - 1, &before, &mut after)
                     });
-                    m.arm(Pat::False, |b| {
+                    m.arm(Pat::False, |b, _| {
                         self.arm(b, target, depth - 1, &before, &mut after)
                     });
                 });
@@ -767,17 +755,18 @@ impl FlatGenerator<'_, '_> {
                         let option_ty = Type::option(self.random_data_type(b, 1));
                         self.operand(b, &option_ty)
                     });
-                let inner = match self.coin() {
-                    true => Pat::Bind(self.fresh_var_name()),
-                    false => Pat::Wildcard,
+                let inner = if self.coin() {
+                    Pat::bind("x")
+                } else {
+                    Pat::Wildcard
                 };
                 let before = self.used.clone();
                 let mut after = before.clone();
                 let result = b.match_expr(subject, |m| {
-                    m.arm(Pat::some(inner), |b| {
+                    m.arm(Pat::some(inner), |b, _| {
                         self.arm(b, target, depth - 1, &before, &mut after)
                     });
-                    m.arm(Pat::None, |b| {
+                    m.arm(Pat::None, |b, _| {
                         self.arm(b, target, depth - 1, &before, &mut after)
                     });
                 });
@@ -803,9 +792,9 @@ impl FlatGenerator<'_, '_> {
                     for (variant, bindings) in arm_plan {
                         let fields = bindings
                             .into_iter()
-                            .map(|(field, var)| (field, Pat::Bind(var)))
+                            .map(|field| (field, Pat::bind("x")))
                             .collect();
-                        m.arm(Pat::Variant(variant, fields), |b| {
+                        m.arm(Pat::Variant(variant, fields), |b, _| {
                             self.arm(b, target, depth - 1, &before, &mut after)
                         });
                     }
@@ -966,7 +955,9 @@ impl FlatGenerator<'_, '_> {
                 let mut after = before.clone();
                 let result = b.match_expr(subject, |m| {
                     for pat in pats {
-                        m.arm(pat, |b| self.arm(b, target, depth - 1, &before, &mut after));
+                        m.arm(pat, |b, _| {
+                            self.arm(b, target, depth - 1, &before, &mut after)
+                        });
                     }
                 });
                 self.used = after;
@@ -1034,16 +1025,18 @@ impl FlatGenerator<'_, '_> {
                         let array_ty = Type::array(self.random_data_type(b, 1));
                         self.operand(b, &array_ty)
                     });
-                let var = self.fresh_var_name();
-                b.html_for(Some(&var), array, |b| self.loop_body(b, depth - 1))
+                b.html_for(array, |b, _| self.loop_body(b, depth - 1))
             }
             P::HtmlForRange => {
                 // Literal bounds only, as for an array from a range.
                 let start = b.int(self.zigzag(3));
                 let end = b.int(self.zigzag(3));
                 let array = b.array_from_range(start, end);
-                let var = self.coin().then(|| self.fresh_var_name());
-                b.html_for(var.as_deref(), array, |b| self.loop_body(b, depth - 1))
+                if self.coin() {
+                    b.html_for(array, |b, _| self.loop_body(b, depth - 1))
+                } else {
+                    b.html_for_unbound(array, |b| self.loop_body(b, depth - 1))
+                }
             }
             P::Call => {
                 let callee = *self.u.choose(&Self::callees(b, target)).unwrap();
@@ -1329,49 +1322,49 @@ mod tests {
             ));
         }
         expect![[r#"
-            1019 of 65536 input bytes consumed per module on average, at most 4272
+            1051 of 65536 input bytes consumed per module on average, at most 5721
             0 of 200 modules exhaust the input
-            8 of 408 entrypoints hit the recursion limit
+            10 of 408 entrypoints hit the recursion limit
             0 of 408 entrypoints hit the array length limit
 
             op                  ops/module  % live   % dyn
-            Array                     25.3    12.7     0.4
+            Array                     26.9    12.3     0.5
             ArrayFromRange             0.9   100.0     0.0
-            ArrayIsEmpty               0.9     3.2     1.6
-            ArrayLength                1.2     1.6     0.4
-            BoolLiteral               12.3    18.7     0.0
-            BoolNegation               1.0     1.0     0.0
-            Call                       1.8    27.9     7.3
-            Enum                      28.7     8.5     0.3
+            ArrayIsEmpty               1.0     3.1     1.5
+            ArrayLength                1.2     0.8     0.4
+            BoolLiteral               12.8    17.9     0.0
+            BoolNegation               1.1     1.4     0.0
+            Call                       1.8    29.6     8.2
+            Enum                      29.9     8.2     0.3
             Equals                     1.0     0.5     0.0
-            FieldAccess                1.4     1.8     0.4
-            FloatLiteral              16.0     6.3     0.0
-            FloatToInt                 1.2     0.8     0.0
-            HtmlConcat                11.5    98.0     7.5
-            HtmlElement                5.3    96.3     5.9
-            HtmlEscape                 1.8    99.2     2.5
-            HtmlFor                    1.8    98.9    11.6
-            HtmlText                   5.3    96.4     0.0
-            IntLiteral                18.7    15.3     0.0
-            IntToFloat                 1.3     1.1     0.0
+            FieldAccess                1.5     2.0     0.3
+            FloatLiteral              17.0     5.7     0.0
+            FloatToInt                 1.3     0.4     0.0
+            HtmlConcat                11.8    98.3     7.9
+            HtmlElement                5.5    97.0     6.0
+            HtmlEscape                 1.7    99.4     2.9
+            HtmlFor                    1.9    99.0    12.8
+            HtmlText                   5.2    96.5     0.0
+            IntLiteral                19.3    15.1     0.0
+            IntToFloat                 1.3     1.9     0.0
             IntToString                2.4     3.6     0.2
-            LessThan                   1.1     2.3     0.0
-            LessThanOrEqual            0.9     2.2     0.0
-            Match                     20.9    22.9     6.1
-            NumericAdd                 2.5     1.2     0.2
-            NumericMultiply            2.6     0.4     0.0
-            NumericNegation            2.4     0.8     0.0
-            NumericSubtract            2.3     1.3     0.0
-            OptionIsNone               0.9     3.3     0.6
-            OptionIsSome               0.9     1.7     0.0
-            OptionNone                17.2    12.1     0.0
-            OptionSome                 7.8    18.6     1.2
-            Record                    23.4     6.2     0.4
-            StringConcat               2.4     3.8     0.0
+            LessThan                   1.1     2.7     0.0
+            LessThanOrEqual            1.0     2.1     0.0
+            Match                     21.4    22.4     6.2
+            NumericAdd                 2.6     1.2     0.0
+            NumericMultiply            2.7     0.6     0.0
+            NumericNegation            2.5     1.0     0.0
+            NumericSubtract            2.4     1.5     0.0
+            OptionIsNone               0.9     3.7     0.5
+            OptionIsSome               0.9     2.2     0.0
+            OptionNone                17.8    12.8     0.0
+            OptionSome                 7.6    16.7     1.1
+            Record                    24.2     6.0     0.3
+            StringConcat               2.4     4.4     0.2
             StringIsEmpty              0.9     1.1     0.0
-            StringLiteral             17.3    23.2     0.0
-            Tuple                     44.3     8.0     0.6
-            TupleIndex                22.9     3.0     0.3
+            StringLiteral             17.8    23.0     0.0
+            Tuple                     46.7     7.7     0.5
+            TupleIndex                23.7     2.6     0.3
         "#]]
         .assert_eq(&report);
     }
@@ -1412,7 +1405,7 @@ mod tests {
 
                 record R1 {}
 
-                entrypoint fn V0@f0(v0@v0: (Option[E0], (E1, Int, Bool)), v1@v1: E1) -> Html {
+                entrypoint fn V0@f0(p0@v0: (Option[E0], (E1, Int, Bool)), p1@v1: E1) -> Html {
                   let v2: E0 = W0
                   let v8: Html = match v2 {
                     E0::W0 => {
@@ -1426,7 +1419,7 @@ mod tests {
                   }
                   v8
                 }
-                entrypoint fn V1@f1(v2@v9: Array[E0], v3@v10: R1, v4@v11: Array[(Bool, E1)]) -> Html {
+                entrypoint fn V1@f1(p0@v9: Array[E0], p1@v10: R1, p2@v11: Array[(Bool, E1)]) -> Html {
                   let v12: Html = concat()
                   let v13: Html = element("span", {}, v12)
                   v13
@@ -1451,7 +1444,7 @@ mod tests {
                   W1,
                 }
 
-                entrypoint fn V0@f0(v0@v0: Bool, v1@v1: Int) -> Html {
+                entrypoint fn V0@f0(p0@v0: Bool, p1@v1: Int) -> Html {
                   let v10: String = match v0 {
                     false => {
                       let v2: E0 = W1 {f0: v0}

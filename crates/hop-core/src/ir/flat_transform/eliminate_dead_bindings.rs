@@ -177,9 +177,9 @@ mod tests {
             FlatModuleBuilder::new()
                 .function("f", [], "Int", |t| t.call("f", []))
                 .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
-                    let _unused = t.match_expr(t.var("flag"), |m| {
-                        m.arm(Pat::True, |t| t.call("f", []));
-                        m.arm(Pat::False, |t| t.int(0));
+                    let _unused = t.match_expr(t.param("flag"), |m| {
+                        m.arm(Pat::True, |t, _| t.call("f", []));
+                        m.arm(Pat::False, |t, _| t.int(0));
                     });
                     t.text("Hello")
                 })
@@ -223,7 +223,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("items", "Array[String]")], "Html", |t| {
-                    t.html_for(Some("item"), t.var("items"), |t| t.text("."))
+                    t.html_for(t.param("items"), |t, _| t.text("."))
                 })
                 .build(),
             expect![[r#"
@@ -253,9 +253,9 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("name", "Option[String]")], "Html", |t| {
-                    t.match_expr(t.var("name"), |m| {
-                        m.arm(Pat::some(Pat::bind("n")), |t| t.text("some"));
-                        m.arm(Pat::None, |t| t.text("none"));
+                    t.match_expr(t.param("name"), |m| {
+                        m.arm(Pat::some(Pat::bind("n")), |t, _| t.text("some"));
+                        m.arm(Pat::None, |t, _| t.text("none"));
                     })
                 })
                 .build(),
@@ -307,14 +307,14 @@ mod tests {
         check(
             FlatModuleBuilder::with_types(types)
                 .function("width", [("shape", "Shape")], "Int", |t| {
-                    t.match_expr(t.var("shape"), |m| {
-                        m.arm(Pat::variant("Dot", []), |t| t.int(0));
+                    t.match_expr(t.param("shape"), |m| {
+                        m.arm(Pat::variant("Dot", []), |t, _| t.int(0));
                         m.arm(
                             Pat::variant(
                                 "Rect",
                                 [("width", Pat::bind("w")), ("height", Pat::bind("h"))],
                             ),
-                            |t| t.var("w"),
+                            |_, arm| arm.binding("w"),
                         );
                     })
                 })

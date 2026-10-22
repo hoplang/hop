@@ -749,8 +749,8 @@ mod tests {
             FlatModuleBuilder::new()
                 .entrypoint("Test", [], "Html", |t| {
                     t.match_expr(t.not(t.bool(true)), |m| {
-                        m.arm(Pat::True, |t| t.text("yes"));
-                        m.arm(Pat::False, |t| t.text("no"));
+                        m.arm(Pat::True, |t, _| t.text("yes"));
+                        m.arm(Pat::False, |t, _| t.text("no"));
                     })
                 })
                 .build(),
@@ -788,9 +788,9 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
-                    t.match_expr(t.var("flag"), |m| {
-                        m.arm(Pat::True, |t| t.text("yes"));
-                        m.arm(Pat::False, |t| t.text("no"));
+                    t.match_expr(t.param("flag"), |m| {
+                        m.arm(Pat::True, |t, _| t.text("yes"));
+                        m.arm(Pat::False, |t, _| t.text("no"));
                     })
                 })
                 .build(),
@@ -837,7 +837,7 @@ mod tests {
             FlatModuleBuilder::with_types(types)
                 .entrypoint("Test", [("n", "Int")], "Html", |t| {
                     t.escape(t.int_to_string(t.field_access(
-                        t.record("Point", [("x", t.var("n")), ("y", t.int(2))]),
+                        t.record("Point", [("x", t.param("n")), ("y", t.int(2))]),
                         "x",
                     )))
                 })
@@ -900,8 +900,8 @@ mod tests {
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("dyn", "String")], "Html", |t| {
                     t.escape(t.string_concat([
-                        t.string_concat(vec![t.var("dyn"), t.str("a")]),
-                        t.string_concat(vec![t.str("b"), t.var("dyn")]),
+                        t.string_concat(vec![t.param("dyn"), t.str("a")]),
+                        t.string_concat(vec![t.str("b"), t.param("dyn")]),
                     ]))
                 })
                 .build(),
@@ -937,7 +937,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("dyn", "String")], "Html", |t| {
-                    t.escape(t.string_concat([t.str(""), t.var("dyn"), t.str("")]))
+                    t.escape(t.string_concat([t.str(""), t.param("dyn"), t.str("")]))
                 })
                 .build(),
             expect![[r#"
@@ -1042,12 +1042,13 @@ mod tests {
             FlatModuleBuilder::with_types(types)
                 .function("area", [("n", "Int")], "Int", |t| {
                     t.match_expr(
-                        t.enum_variant_with_fields("Shape", "Circle", [("radius", t.var("n"))]),
+                        t.enum_variant_with_fields("Shape", "Circle", [("radius", t.param("n"))]),
                         |m| {
-                            m.arm(Pat::variant("Dot", []), |t| t.int(0));
-                            m.arm(Pat::variant("Circle", [("radius", Pat::bind("r"))]), |t| {
-                                t.mul(t.var("r"), t.var("r"))
-                            });
+                            m.arm(Pat::variant("Dot", []), |t, _| t.int(0));
+                            m.arm(
+                                Pat::variant("Circle", [("radius", Pat::bind("r"))]),
+                                |t, arm| t.mul(arm.binding("r"), arm.binding("r")),
+                            );
                         },
                     )
                 })
@@ -1085,8 +1086,10 @@ mod tests {
             FlatModuleBuilder::new()
                 .entrypoint("Test", [], "Html", |t| {
                     t.match_expr(t.some(t.str("x")), |m| {
-                        m.arm(Pat::some(Pat::bind("v")), |t| t.escape(t.var("v")));
-                        m.arm(Pat::None, |t| t.text("none"));
+                        m.arm(Pat::some(Pat::bind("v")), |t, arm| {
+                            t.escape(arm.binding("v"))
+                        });
+                        m.arm(Pat::None, |t, _| t.text("none"));
                     })
                 })
                 .build(),
@@ -1149,8 +1152,8 @@ mod tests {
             FlatModuleBuilder::new()
                 .entrypoint("Test", [], "Html", |t| {
                     t.match_expr(t.eq(t.str("a"), t.str("a")), |m| {
-                        m.arm(Pat::True, |t| t.text("same"));
-                        m.arm(Pat::False, |t| t.text("other"));
+                        m.arm(Pat::True, |t, _| t.text("same"));
+                        m.arm(Pat::False, |t, _| t.text("other"));
                     })
                 })
                 .build(),
