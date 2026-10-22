@@ -8,3 +8,8 @@ members = [
     "crates/tailwind-runner",
 ]
 resolver = "2"
+
+# arbtest refills a 64 KiB input buffer before every fuzz run, which at
+# opt-level 0 takes most of the fuzz budget.
+[profile.dev.package.arbtest]
+opt-level = 3
