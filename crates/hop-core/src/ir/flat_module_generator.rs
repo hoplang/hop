@@ -17,11 +17,15 @@ use std::ops::RangeInclusive;
 /// bodies of loops.
 const MAX_BLOCK_DEPTH: usize = 3;
 
-/// The most bindings a block has before its result.
-const MAX_BINDINGS_PER_BLOCK: usize = 3;
+/// How deep the ops of an expression nest, an op reading the result of
+/// another op as an operand.
+const MAX_EXPRESSION_DEPTH: usize = 3;
 
 /// How deep the values of a literal nest.
 const MAX_LITERAL_DEPTH: usize = 2;
+
+/// One block in this many binds a value nothing asked for.
+const DEAD_BINDING_ODDS: usize = 64;
 
 const FLOATS: &[f64] = &[
     0.0,
@@ -115,6 +119,8 @@ struct FlatGenerator<'a, 'b> {
     /// The Html values bound outside the loop body being generated, which
     /// it may not use, since it runs once per element.
     outside: HashSet<ValueId>,
+    /// How many more ops the expression being generated may nest.
+    expression_depth: usize,
 }
 
 /// The definition of `typ`, when it is data.
@@ -144,6 +150,7 @@ fn random_module_inner(
         enums: Vec::new(),
         used: HashSet::new(),
         outside: HashSet::new(),
+        expression_depth: MAX_EXPRESSION_DEPTH,
     };
 
     // Name every type before generating any field types, so that a field
@@ -486,56 +493,45 @@ impl FlatGenerator<'_, '_> {
         body
     }
 
-    /// Generate the bindings of a block of the target type, each reading
-    /// what the bindings before it bind, and give the result of the block.
-    /// The blocks it nests nest at most `depth` deep. The caller uses the
-    /// result once, so an Html result counts as used.
+    /// Generate the result of a block of the target type, binding what it
+    /// reads before it. The blocks it nests nest at most `depth` deep. The
+    /// caller uses the result once, so an Html result counts as used.
     fn block(&mut self, b: &FlatBlockBuilder<'_>, target: &Type, depth: usize) -> ValueId {
-        let html = *target == Type::Html;
-        let mut bound = Vec::new();
-        for _ in 0..self.count(0..=MAX_BINDINGS_PER_BLOCK) {
-            // Half of what a block of Html binds is Html, as in a template,
-            // and a block of data binds none, since it could never reach
-            // the result.
-            let typ = if html && self.coin() {
-                Type::Html
-            } else {
-                b.resolve_type(&self.type_string(0, NamedTypes::Any, false))
-            };
-            let value = self.production(b, &typ, depth);
-            if typ == Type::Html {
-                bound.push(value);
-            }
+        // One block in DEAD_BINDING_ODDS binds a value nothing asked for,
+        // so that the transforms that eliminate dead bindings have some to
+        // eliminate. A later op may still read it. The last index is the
+        // one an exhausted input never gives, so a minimal module has no
+        // dead binding.
+        if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
+            let typ = b.resolve_type(&self.random_type_string(1));
+            self.production(b, &typ, depth);
         }
         let result = if self.coin() {
-            self.operand(b, target)
+            self.operand(b, target, depth)
         } else {
             self.production(b, target, depth)
         };
-        if !html {
-            return result;
+        if *target == Type::Html {
+            self.used.insert(result);
         }
-        self.used.insert(result);
-        // The Html the block binds and nothing reads is part of its
-        // result, as a template renders what it builds.
-        let mut parts: Vec<ValueId> = bound
-            .into_iter()
-            .filter(|value| !self.used.contains(value))
-            .collect();
-        if parts.is_empty() {
-            return result;
-        }
-        parts.push(result);
-        self.used.extend(parts.iter().copied());
-        let result = b.html_concat(parts);
-        self.used.insert(result);
         result
     }
 
-    /// A value of type `typ` for an op to read. An Html value counts as
-    /// used.
-    fn operand(&mut self, b: &FlatBlockBuilder<'_>, typ: &Type) -> ValueId {
-        self.value(b, typ, MAX_LITERAL_DEPTH)
+    /// A value of type `typ` for an op to read: two times in three an op of
+    /// its own while the expression may still nest, else a name in scope
+    /// or a literal. The blocks it nests nest at most `depth` deep. An
+    /// Html value counts as used.
+    fn operand(&mut self, b: &FlatBlockBuilder<'_>, typ: &Type, depth: usize) -> ValueId {
+        if self.expression_depth == 0 || self.index(3) == 0 {
+            return self.value(b, typ, MAX_LITERAL_DEPTH);
+        }
+        self.expression_depth -= 1;
+        let value = self.production(b, typ, depth);
+        self.expression_depth += 1;
+        if *typ == Type::Html {
+            self.used.insert(value);
+        }
+        value
     }
 
     /// A name in scope of type `typ` that may be read, or a literal that
@@ -730,11 +726,11 @@ impl FlatGenerator<'_, '_> {
                     return b.field_access(object, self.u.choose(&fields).unwrap());
                 }
                 let (record, field) = self.u.choose(&record_fields).unwrap().clone();
-                let object = self.operand(b, &record);
+                let object = self.operand(b, &record, depth);
                 b.field_access(object, &field)
             }
             P::MatchBool => {
-                let subject = self.operand(b, &Type::BOOL);
+                let subject = self.operand(b, &Type::BOOL, depth);
                 let before = self.used.clone();
                 let mut after = before.clone();
                 let result = b.match_expr(subject, |m| {
@@ -753,7 +749,7 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(b, |ty| matches!(ty, Type::Data(DataType::Option(_))))
                     .unwrap_or_else(|| {
                         let option_ty = Type::option(self.random_data_type(b, 1));
-                        self.operand(b, &option_ty)
+                        self.operand(b, &option_ty, depth)
                     });
                 let inner = if self.coin() {
                     Pat::bind("x")
@@ -780,7 +776,7 @@ impl FlatGenerator<'_, '_> {
                     Some(var) => b.typ(var),
                     None => self.u.choose(&enums).unwrap().clone(),
                 };
-                let subject = var.unwrap_or_else(|| self.operand(b, &subject_ty));
+                let subject = var.unwrap_or_else(|| self.operand(b, &subject_ty, depth));
                 let Some(ResolvedType::Enum { variants, .. }) = resolve(b.registry(), &subject_ty)
                 else {
                     unreachable!("an enum of the module resolves to its declaration")
@@ -809,42 +805,42 @@ impl FlatGenerator<'_, '_> {
                     2 => Type::BOOL,
                     _ => Type::FLOAT,
                 };
-                let left = self.operand(b, &ty);
-                let right = self.operand(b, &ty);
+                let left = self.operand(b, &ty, depth);
+                let right = self.operand(b, &ty, depth);
                 b.eq(left, right)
             }
             P::Lt => {
                 let ty = if self.coin() { Type::INT } else { Type::FLOAT };
-                let left = self.operand(b, &ty);
-                let right = self.operand(b, &ty);
+                let left = self.operand(b, &ty, depth);
+                let right = self.operand(b, &ty, depth);
                 b.lt(left, right)
             }
             P::Lte => {
                 let ty = if self.coin() { Type::INT } else { Type::FLOAT };
-                let left = self.operand(b, &ty);
-                let right = self.operand(b, &ty);
+                let left = self.operand(b, &ty, depth);
+                let right = self.operand(b, &ty, depth);
                 b.lte(left, right)
             }
             P::Not => {
-                let operand = self.operand(b, &Type::BOOL);
+                let operand = self.operand(b, &Type::BOOL, depth);
                 b.not(operand)
             }
             P::Concat => {
                 let parts: Vec<_> = (0..self.count(0..=4))
-                    .map(|_| self.operand(b, &Type::STRING))
+                    .map(|_| self.operand(b, &Type::STRING, depth))
                     .collect();
                 b.string_concat(parts)
             }
             P::IntToString => {
-                let operand = self.operand(b, &Type::INT);
+                let operand = self.operand(b, &Type::INT, depth);
                 b.int_to_string(operand)
             }
             P::FloatToInt => {
-                let operand = self.operand(b, &Type::FLOAT);
+                let operand = self.operand(b, &Type::FLOAT, depth);
                 b.float_to_int(operand)
             }
             P::IntToFloat => {
-                let operand = self.operand(b, &Type::INT);
+                let operand = self.operand(b, &Type::INT, depth);
                 b.int_to_float(operand)
             }
             P::OptionIsNone => {
@@ -852,7 +848,7 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(b, |ty| matches!(ty, Type::Data(DataType::Option(_))))
                     .unwrap_or_else(|| {
                         let option_ty = Type::option(self.random_data_type(b, 1));
-                        self.operand(b, &option_ty)
+                        self.operand(b, &option_ty, depth)
                     });
                 b.option_is_none(operand)
             }
@@ -861,12 +857,12 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(b, |ty| matches!(ty, Type::Data(DataType::Option(_))))
                     .unwrap_or_else(|| {
                         let option_ty = Type::option(self.random_data_type(b, 1));
-                        self.operand(b, &option_ty)
+                        self.operand(b, &option_ty, depth)
                     });
                 b.option_is_some(operand)
             }
             P::StringIsEmpty => {
-                let operand = self.operand(b, &Type::STRING);
+                let operand = self.operand(b, &Type::STRING, depth);
                 b.string_is_empty(operand)
             }
             P::ArrayIsEmpty => {
@@ -874,7 +870,7 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(b, |ty| matches!(ty, Type::Data(DataType::Array(_))))
                     .unwrap_or_else(|| {
                         let array_ty = Type::array(self.random_data_type(b, 1));
-                        self.operand(b, &array_ty)
+                        self.operand(b, &array_ty, depth)
                     });
                 b.array_is_empty(operand)
             }
@@ -883,7 +879,7 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(b, |ty| matches!(ty, Type::Data(DataType::Array(_))))
                     .unwrap_or_else(|| {
                         let array_ty = Type::array(self.random_data_type(b, 1));
-                        self.operand(b, &array_ty)
+                        self.operand(b, &array_ty, depth)
                     });
                 b.array_length(operand)
             }
@@ -922,7 +918,7 @@ impl FlatGenerator<'_, '_> {
                         }
                     })
                     .collect();
-                let tuple = self.operand(b, &Type::Data(DataType::Tuple(elements)));
+                let tuple = self.operand(b, &Type::Data(DataType::Tuple(elements)), depth);
                 b.tuple_index(tuple, index)
             }
             P::MatchPattern => {
@@ -942,7 +938,7 @@ impl FlatGenerator<'_, '_> {
                         let elements = (0..self.count(1..=3))
                             .map(|_| self.random_data_type(b, 1))
                             .collect();
-                        self.operand(b, &Type::Data(DataType::Tuple(elements)))
+                        self.operand(b, &Type::Data(DataType::Tuple(elements)), depth)
                     });
                 let subject_ty = b.typ(subject);
                 let mut pats: Vec<Pat> = (0..self.count(1..=3))
@@ -964,27 +960,27 @@ impl FlatGenerator<'_, '_> {
                 result
             }
             P::Neg => {
-                let operand = self.operand(b, target);
+                let operand = self.operand(b, target, depth);
                 b.neg(operand)
             }
             P::Add => {
-                let left = self.operand(b, target);
-                let right = self.operand(b, target);
+                let left = self.operand(b, target, depth);
+                let right = self.operand(b, target, depth);
                 b.add(left, right)
             }
             P::Sub => {
-                let left = self.operand(b, target);
-                let right = self.operand(b, target);
+                let left = self.operand(b, target, depth);
+                let right = self.operand(b, target, depth);
                 b.sub(left, right)
             }
             P::Mul => {
-                let left = self.operand(b, target);
-                let right = self.operand(b, target);
+                let left = self.operand(b, target, depth);
+                let right = self.operand(b, target, depth);
                 b.mul(left, right)
             }
             P::HtmlText => b.text(self.u.choose(TEXTS).unwrap()),
             P::HtmlEscape => {
-                let operand = self.operand(b, &Type::STRING);
+                let operand = self.operand(b, &Type::STRING, depth);
                 b.escape(operand)
             }
             P::HtmlElement => {
@@ -994,12 +990,12 @@ impl FlatGenerator<'_, '_> {
                 let mut attributes = Vec::new();
                 for name in ["class", "id", "data-x"] {
                     if self.coin() {
-                        let value = self.operand(b, &Type::STRING);
+                        let value = self.operand(b, &Type::STRING, depth);
                         attributes.push(b.attr(name, value));
                     }
                 }
                 if self.coin() {
-                    let present = self.operand(b, &Type::BOOL);
+                    let present = self.operand(b, &Type::BOOL, depth);
                     attributes.push(b.presence("disabled", present));
                 }
                 let children = if void {
@@ -1008,13 +1004,13 @@ impl FlatGenerator<'_, '_> {
                     self.used.insert(children);
                     children
                 } else {
-                    self.operand(b, &Type::Html)
+                    self.operand(b, &Type::Html, depth)
                 };
                 b.element(tag, attributes, children)
             }
             P::HtmlConcat => {
                 let parts: Vec<_> = (0..self.count(0..=4))
-                    .map(|_| self.operand(b, &Type::Html))
+                    .map(|_| self.operand(b, &Type::Html, depth))
                     .collect();
                 b.html_concat(parts)
             }
@@ -1023,7 +1019,7 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(b, |ty| matches!(ty, Type::Data(DataType::Array(_))))
                     .unwrap_or_else(|| {
                         let array_ty = Type::array(self.random_data_type(b, 1));
-                        self.operand(b, &array_ty)
+                        self.operand(b, &array_ty, depth)
                     });
                 b.html_for(array, |b, _| self.loop_body(b, depth - 1))
             }
@@ -1043,7 +1039,7 @@ impl FlatGenerator<'_, '_> {
                 let args: Vec<_> = callee
                     .parameters
                     .iter()
-                    .map(|parameter| self.operand(b, &parameter.binder.typ))
+                    .map(|parameter| self.operand(b, &parameter.binder.typ, depth))
                     .collect();
                 b.call(callee.function.name.as_str(), args)
             }
@@ -1322,49 +1318,49 @@ mod tests {
             ));
         }
         expect![[r#"
-            1051 of 65536 input bytes consumed per module on average, at most 5721
+            334 of 65536 input bytes consumed per module on average, at most 1393
             0 of 200 modules exhaust the input
-            10 of 408 entrypoints hit the recursion limit
+            2 of 408 entrypoints hit the recursion limit
             0 of 408 entrypoints hit the array length limit
 
             op                  ops/module  % live   % dyn
-            Array                     26.9    12.3     0.5
-            ArrayFromRange             0.9   100.0     0.0
-            ArrayIsEmpty               1.0     3.1     1.5
-            ArrayLength                1.2     0.8     0.4
-            BoolLiteral               12.8    17.9     0.0
-            BoolNegation               1.1     1.4     0.0
-            Call                       1.8    29.6     8.2
-            Enum                      29.9     8.2     0.3
-            Equals                     1.0     0.5     0.0
-            FieldAccess                1.5     2.0     0.3
-            FloatLiteral              17.0     5.7     0.0
-            FloatToInt                 1.3     0.4     0.0
-            HtmlConcat                11.8    98.3     7.9
-            HtmlElement                5.5    97.0     6.0
-            HtmlEscape                 1.7    99.4     2.9
-            HtmlFor                    1.9    99.0    12.8
-            HtmlText                   5.2    96.5     0.0
-            IntLiteral                19.3    15.1     0.0
-            IntToFloat                 1.3     1.9     0.0
-            IntToString                2.4     3.6     0.2
-            LessThan                   1.1     2.7     0.0
-            LessThanOrEqual            1.0     2.1     0.0
-            Match                     21.4    22.4     6.2
-            NumericAdd                 2.6     1.2     0.0
-            NumericMultiply            2.7     0.6     0.0
-            NumericNegation            2.5     1.0     0.0
-            NumericSubtract            2.4     1.5     0.0
-            OptionIsNone               0.9     3.7     0.5
-            OptionIsSome               0.9     2.2     0.0
-            OptionNone                17.8    12.8     0.0
-            OptionSome                 7.6    16.7     1.1
-            Record                    24.2     6.0     0.3
-            StringConcat               2.4     4.4     0.2
-            StringIsEmpty              0.9     1.1     0.0
-            StringLiteral             17.8    23.0     0.0
-            Tuple                     46.7     7.7     0.5
-            TupleIndex                23.7     2.6     0.3
+            Array                      9.3    94.5     3.1
+            ArrayFromRange             0.5    99.0     0.0
+            ArrayIsEmpty               0.2    97.4    36.8
+            ArrayLength                0.1    92.9    17.9
+            BoolLiteral                4.1    95.1     0.0
+            BoolNegation               0.2    97.6     9.5
+            Call                       0.8    97.6    42.4
+            Enum                       7.0    96.0     3.5
+            Equals                     0.2    94.6    13.5
+            FieldAccess                0.2    91.7    22.2
+            FloatLiteral               3.2    92.6     0.0
+            FloatToInt                 0.1    93.3     0.0
+            HtmlConcat                 3.1    98.0     4.4
+            HtmlElement                2.2    98.4    11.1
+            HtmlEscape                 1.0    99.0    11.9
+            HtmlFor                    1.0    98.5    15.6
+            HtmlText                   2.4    97.7     0.0
+            IntLiteral                 4.4    95.5     0.0
+            IntToFloat                 0.0   100.0     0.0
+            IntToString                0.6    98.4     6.3
+            LessThan                   0.2    97.3    16.2
+            LessThanOrEqual            0.3    88.2    15.7
+            Match                     10.4    95.7    34.7
+            NumericAdd                 0.2    93.5    12.9
+            NumericMultiply            0.1    96.6    10.3
+            NumericNegation            0.1    88.2    11.8
+            NumericSubtract            0.1    96.4    14.3
+            OptionIsNone               0.2   100.0    27.8
+            OptionIsSome               0.2    93.2    15.9
+            OptionNone                 7.0    95.6     0.0
+            OptionSome                 3.5    95.6     7.1
+            Record                     3.6    90.9     5.1
+            StringConcat               0.6    95.2    11.3
+            StringIsEmpty              0.2    93.9     3.0
+            StringLiteral              5.2    96.9     0.0
+            Tuple                     15.4    95.5    11.4
+            TupleIndex                 5.2    94.6    18.3
         "#]]
         .assert_eq(&report);
     }
@@ -1407,22 +1403,55 @@ mod tests {
 
                 entrypoint fn V0@f0(p0@v0: (Option[E0], (E1, Int, Bool)), p1@v1: E1) -> Html {
                   let v2: E0 = W0
-                  let v8: Html = match v2 {
+                  let v32: Html = match v2 {
                     E0::W0 => {
-                      let v3: String = ""
-                      let v4: Html = concat()
-                      let v5: Html = element("input", {id: v3, data-x: v3}, v4)
-                      let v6: Html = concat()
-                      let v7: Html = concat(v5, v6)
-                      v7
+                      let v3: E0 = W0
+                      let v27: Html = match v3 {
+                        E0::W0 => {
+                          let v4: Option[Array[E1]] = None
+                          let v5: String = "&amp;"
+                          let v6: Float = -0.5
+                          let v7: Int = -3
+                          let v8: Array[Array[Bool]] = []
+                          let v9: R1 = {}
+                          let v10: R0 = {f0: v8, f1: v9}
+                          let v11: (Float, Int, R0) = (v6, v7, v10)
+                          let v12: Array[E1] = []
+                          let v13: Bool = false
+                          let v14: Array[Int] = []
+                          let v15: (Array[E1], Bool, Array[Int]) = (v12, v13, v14)
+                          let v16: E1 = W0 {f1: v11, f0: v15}
+                          let v17: (Option[Array[E1]], String, E1) = (v4, v5, v16)
+                          let v18: Option[Array[E1]] = v17.0
+                          let v26: Html = match v18 {
+                            Some(v19: Array[E1]) => {
+                              let v20: String = "line\nbreak"
+                              let v21: String = v17.1
+                              let v22: Bool = true
+                              let v23: Html = concat()
+                              let v24: Html = element("input", {class: v20, id: v21, disabled: v22}, v23)
+                              v24
+                            }
+                            None => {
+                              let v25: Html = concat()
+                              v25
+                            }
+                          }
+                          v26
+                        }
+                      }
+                      let v28: Html = concat()
+                      let v29: Html = concat()
+                      let v30: Html = concat()
+                      let v31: Html = concat(v27, v28, v29, v30)
+                      v31
                     }
                   }
-                  v8
+                  v32
                 }
-                entrypoint fn V1@f1(p0@v9: Array[E0], p1@v10: R1, p2@v11: Array[(Bool, E1)]) -> Html {
-                  let v12: Html = concat()
-                  let v13: Html = element("span", {}, v12)
-                  v13
+                entrypoint fn V1@f1(p0@v33: Array[E0], p1@v34: R1, p2@v35: Array[(Bool, E1)]) -> Html {
+                  let v36: Html = concat()
+                  v36
                 }
             "#]],
         );
@@ -1445,29 +1474,12 @@ mod tests {
                 }
 
                 entrypoint fn V0@f0(p0@v0: Bool, p1@v1: Int) -> Html {
-                  let v10: String = match v0 {
-                    false => {
-                      let v2: E0 = W1 {f0: v0}
-                      let v3: (E0, Int) = (v2, v1)
-                      let v4: String = ""
-                      let v5: ((E0, Int), String) = (v3, v4)
-                      let v6: String = v5.1
-                      let v7: String = "<b>"
-                      v7
-                    }
-                    v8: Bool => {
-                      let v9: String = "cr\rtab\t"
-                      v9
-                    }
-                  }
-                  let v11: Html = text("a\"b'c")
-                  let v12: Html = escape(v10)
-                  let v13: Html = concat(v11, v12)
-                  v13
+                  let v2: Html = text("a\"b'c")
+                  v2
                 }
                 entrypoint fn V1@f1() -> Html {
-                  let v14: Html = text("back\\slash")
-                  v14
+                  let v3: Html = text("&amp;")
+                  v3
                 }
             "#]],
         );
