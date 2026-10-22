@@ -541,7 +541,7 @@ mod tests {
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
             let entrypoint_args = random_entrypoint_args(&module, &mut rng, &registry);
 
-            let before_module = module.to_string();
+            let before_module = module.clone();
             let before: Vec<Result<String, EvalError>> = entrypoint_args
                 .iter()
                 .map(|(function, args)| {
