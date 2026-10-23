@@ -20,6 +20,8 @@ mod value_id;
 pub mod writer_module;
 
 #[cfg(test)]
+pub mod flat_lint;
+#[cfg(test)]
 pub mod flat_module_builder;
 #[cfg(test)]
 pub mod flat_module_generator;
