@@ -36,6 +36,7 @@ impl ValueIdCounter {
     }
 
     /// How many ids have been handed out, one more than the largest index.
+    #[cfg(test)]
     pub fn count(&self) -> usize {
         self.0
     }

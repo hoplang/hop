@@ -18,14 +18,14 @@ use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
-use std::cell::RefCell;
-use std::collections::HashMap;
+use std::cell::{Ref, RefCell};
 
 pub struct FlatModuleBuilder {
     registry: TypeRegistry,
     function_ids: FunctionIdCounter,
     value_ids: RefCell<ValueIdCounter>,
-    value_types: RefCell<HashMap<ValueId, Type>>,
+    /// The type of every name bound so far, indexed by the name's number.
+    value_types: RefCell<Vec<Type>>,
     functions: Vec<DeclaredFunction>,
 }
 
@@ -45,7 +45,7 @@ impl FlatModuleBuilder {
             registry,
             function_ids: FunctionIdCounter::new(),
             value_ids: RefCell::new(ValueIdCounter::new()),
-            value_types: RefCell::new(HashMap::new()),
+            value_types: RefCell::new(Vec::new()),
             functions: Vec::new(),
         }
     }
@@ -136,7 +136,9 @@ impl FlatModuleBuilder {
 
     fn binder(&self, typ: Type) -> ValueId {
         let name = self.value_ids.borrow_mut().next();
-        self.value_types.borrow_mut().insert(name, typ);
+        let mut types = self.value_types.borrow_mut();
+        assert_eq!(types.len(), name.index());
+        types.push(typ);
         name
     }
 
@@ -204,7 +206,13 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     fn typ(&self, name: ValueId) -> Type {
-        self.module.value_types.borrow()[&name].clone()
+        self.module.value_types.borrow()[name.index()].clone()
+    }
+
+    /// The type of every name the module has bound so far, indexed by the
+    /// name's number. The borrow must end before another name is bound.
+    pub fn value_types(&self) -> Ref<'a, [Type]> {
+        Ref::map(self.module.value_types.borrow(), Vec::as_slice)
     }
 
     fn push(&self, typ: Type, op: FlatOp) -> ValueId {
