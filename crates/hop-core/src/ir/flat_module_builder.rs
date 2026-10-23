@@ -146,7 +146,7 @@ impl FlatModuleBuilder {
             .unwrap();
         let declared = &self.functions[index];
         assert!(declared.body.is_none());
-        let (body, _) = FlatBlockBuilder::new(&self, declared).block(|t| body_fn(t, declared));
+        let (body, _) = FlatBlockBuilder::build(&self, declared, |t| body_fn(t, declared));
         self.functions[index].body = Some(body);
         self
     }
@@ -195,37 +195,32 @@ pub struct DeclaredFunction {
     pub body: Option<FlatBlock>,
 }
 
-/// Builds the blocks of a function body. Each method binds the value it
-/// builds in the innermost block being built, in the order the methods are
-/// called, so the operands of a method are bound before the value it builds
-/// from them. A method returns the name it binds and takes the names of the
-/// values it builds from, and the builder knows the type of each.
 pub struct FlatBlockBuilder<'a> {
     module: &'a FlatModuleBuilder,
-    /// The function whose body is being built.
     function: &'a DeclaredFunction,
-    /// The blocks being built, innermost last, each as the bindings made
-    /// in it so far, in the order they are made.
-    scopes: RefCell<Vec<Vec<FlatBinding>>>,
+    bindings: RefCell<Vec<FlatBinding>>,
 }
 
 impl<'a> FlatBlockBuilder<'a> {
-    fn new(module: &'a FlatModuleBuilder, function: &'a DeclaredFunction) -> Self {
-        FlatBlockBuilder {
+    fn build(
+        module: &'a FlatModuleBuilder,
+        function: &'a DeclaredFunction,
+        body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
+    ) -> (FlatBlock, Type) {
+        let builder = FlatBlockBuilder {
             module,
             function,
-            scopes: RefCell::new(Vec::new()),
-        }
-    }
-
-    /// The block `body_fn` builds, and the type of its result.
-    fn block(&self, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> (FlatBlock, Type) {
-        self.scopes.borrow_mut().push(Vec::new());
-        let result = body_fn(self);
-        let typ = self.typ(result);
-        let bindings = self.scopes.borrow_mut().pop().unwrap();
+            bindings: RefCell::new(Vec::new()),
+        };
+        let result = body_fn(&builder);
+        let typ = builder.typ(result);
+        let bindings = builder.bindings.into_inner();
         let block = FlatBlock { bindings, result };
         (block, typ)
+    }
+
+    fn block(&self, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> (FlatBlock, Type) {
+        Self::build(self.module, self.function, body_fn)
     }
 
     /// The type of `name`.
@@ -233,17 +228,12 @@ impl<'a> FlatBlockBuilder<'a> {
         self.module.value_types.borrow()[&name].clone()
     }
 
-    /// Bind `op` in the innermost block, and return its name.
     fn push(&self, typ: Type, op: FlatOp) -> ValueId {
         let name = self.module.binder(typ.clone());
-        self.scopes
-            .borrow_mut()
-            .last_mut()
-            .unwrap()
-            .push(FlatBinding {
-                binder: IrBinder { var: name, typ },
-                op,
-            });
+        self.bindings.borrow_mut().push(FlatBinding {
+            binder: IrBinder { var: name, typ },
+            op,
+        });
         name
     }
 
