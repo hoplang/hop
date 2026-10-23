@@ -818,7 +818,7 @@ impl FlatGenerator<'_, '_> {
             P::MatchBool => {
                 let subject = self.operand(b, scope, &Type::BOOL, depth);
                 let mut after = scope.clone();
-                let result = b.match_expr(subject, |m| {
+                let result = b.match_(subject, |m| {
                     m.arm(Pat::True, |b, bindings| {
                         self.arm(b, scope, &mut after, bindings, &[], target, depth - 1)
                     });
@@ -849,7 +849,7 @@ impl FlatGenerator<'_, '_> {
                     Pat::Wildcard
                 };
                 let mut after = scope.clone();
-                let result = b.match_expr(subject, |m| {
+                let result = b.match_(subject, |m| {
                     m.arm(Pat::some(inner), |b, bindings| {
                         self.arm(b, scope, &mut after, bindings, &binds, target, depth - 1)
                     });
@@ -877,7 +877,7 @@ impl FlatGenerator<'_, '_> {
                 };
                 let arm_plan = self.enum_match_arms(variants);
                 let mut after = scope.clone();
-                let result = b.match_expr(subject, |m| {
+                let result = b.match_(subject, |m| {
                     for (variant, bound) in arm_plan {
                         let mut binds = Vec::new();
                         let fields = bound
@@ -1060,7 +1060,7 @@ impl FlatGenerator<'_, '_> {
                 let pat = self.pattern(b, &subject_ty, 0, &mut binds);
                 pats.push((pat, binds));
                 let mut after = scope.clone();
-                let result = b.match_expr(subject, |m| {
+                let result = b.match_(subject, |m| {
                     for (pat, binds) in pats {
                         m.arm(pat, |b, bindings| {
                             self.arm(b, scope, &mut after, bindings, &binds, target, depth - 1)
@@ -1102,12 +1102,12 @@ impl FlatGenerator<'_, '_> {
                 for name in ["class", "id", "data-x"] {
                     if self.coin() {
                         let value = self.operand(b, scope, &Type::STRING, depth);
-                        attributes.push(b.attr(name, value));
+                        attributes.push(b.attr_value(name, value));
                     }
                 }
                 if self.coin() {
                     let present = self.operand(b, scope, &Type::BOOL, depth);
-                    attributes.push(b.presence("disabled", present));
+                    attributes.push(b.attr_presence("disabled", present));
                 }
                 let children = if void {
                     // The element reads its children, so they never come

@@ -425,11 +425,11 @@ mod tests {
             FlatModuleBuilder::new()
                 .function("diverge", [], "Bool", |t| t.call("diverge", []))
                 .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
-                    let and = t.match_expr(t.param("flag"), |m| {
+                    let and = t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.call("diverge", []));
                         m.arm(Pat::False, |t, _| t.bool(false));
                     });
-                    t.escape(t.match_expr(and, |m| {
+                    t.escape(t.match_(and, |m| {
                         m.arm(Pat::True, |t, _| t.str("yes"));
                         m.arm(Pat::False, |t, _| t.str("no"));
                     }))
@@ -484,7 +484,7 @@ mod tests {
         check(
             FlatModuleBuilder::with_types(types)
                 .entrypoint("Test", [("shape", "Shape")], "Html", |t| {
-                    t.escape(t.match_expr(t.param("shape"), |m| {
+                    t.escape(t.match_(t.param("shape"), |m| {
                         m.arm(Pat::variant("Dot", []), |t, _| t.str("dot"));
                         m.arm(
                             Pat::variant("Circle", [("radius", Pat::bind("r"))]),
@@ -698,9 +698,9 @@ mod tests {
                     t.element(
                         "input",
                         [
-                            t.attr("class", t.param("cls")),
-                            t.presence("disabled", t.param("flag")),
-                            t.presence("checked", t.bool(false)),
+                            t.attr_value("class", t.param("cls")),
+                            t.attr_presence("disabled", t.param("flag")),
+                            t.attr_presence("checked", t.bool(false)),
                         ],
                         t.html_concat(vec![]),
                     )
@@ -749,7 +749,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("show", "Bool")], "Html", |t| {
-                    t.match_expr(t.param("show"), |m| {
+                    t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| t.element("div", [], t.text("Visible")));
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
@@ -784,7 +784,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("show", "Bool")], "Html", |t| {
-                    t.match_expr(t.param("show"), |m| {
+                    t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| t.element("div", [], t.text("Hidden")));
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
@@ -870,7 +870,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .function("Sum", [("n", "Int")], "Int", |t| {
-                    t.match_expr(t.lte(t.param("n"), t.int(0)), |m| {
+                    t.match_(t.lte(t.param("n"), t.int(0)), |m| {
                         m.arm(Pat::True, |t, _| t.int(0));
                         m.arm(Pat::False, |t, _| {
                             t.add(t.param("n"), t.call("Sum", [t.sub(t.param("n"), t.int(1))]))

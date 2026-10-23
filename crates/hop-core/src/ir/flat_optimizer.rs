@@ -28,6 +28,7 @@ pub fn optimize_flat(module: FlatModule) -> FlatModule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ir::flat_lint;
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
     use crate::ir::runtime::EvalError;
@@ -58,6 +59,7 @@ mod tests {
                 .collect();
 
             let module = optimize_flat(module);
+            flat_lint::assert_well_typed(&module, &registry);
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit the call depth limit has no output to
@@ -131,7 +133,7 @@ mod tests {
             FlatModuleBuilder::new()
                 .entrypoint("Test", [], "Html", |t| {
                     let flag = t.bool(true);
-                    t.html_concat([t.match_expr(flag, |m| {
+                    t.html_concat([t.match_(flag, |m| {
                         m.arm(Pat::True, |t, _| t.html_concat(vec![t.text("yes")]));
                         m.arm(Pat::False, |t, _| t.html_concat(vec![]));
                     })])

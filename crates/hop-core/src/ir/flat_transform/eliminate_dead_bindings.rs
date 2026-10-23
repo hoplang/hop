@@ -177,7 +177,7 @@ mod tests {
             FlatModuleBuilder::new()
                 .function("f", [], "Int", |t| t.call("f", []))
                 .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
-                    let _unused = t.match_expr(t.param("flag"), |m| {
+                    let _unused = t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.call("f", []));
                         m.arm(Pat::False, |t, _| t.int(0));
                     });
@@ -253,7 +253,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("name", "Option[String]")], "Html", |t| {
-                    t.match_expr(t.param("name"), |m| {
+                    t.match_(t.param("name"), |m| {
                         m.arm(Pat::some(Pat::bind("n")), |t, _| t.text("some"));
                         m.arm(Pat::None, |t, _| t.text("none"));
                     })
@@ -307,7 +307,7 @@ mod tests {
         check(
             FlatModuleBuilder::with_types(types)
                 .function("width", [("shape", "Shape")], "Int", |t| {
-                    t.match_expr(t.param("shape"), |m| {
+                    t.match_(t.param("shape"), |m| {
                         m.arm(Pat::variant("Dot", []), |t, _| t.int(0));
                         m.arm(
                             Pat::variant(

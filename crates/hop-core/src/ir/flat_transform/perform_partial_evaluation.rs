@@ -748,7 +748,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [], "Html", |t| {
-                    t.match_expr(t.not(t.bool(true)), |m| {
+                    t.match_(t.not(t.bool(true)), |m| {
                         m.arm(Pat::True, |t, _| t.text("yes"));
                         m.arm(Pat::False, |t, _| t.text("no"));
                     })
@@ -788,7 +788,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
-                    t.match_expr(t.param("flag"), |m| {
+                    t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.text("yes"));
                         m.arm(Pat::False, |t, _| t.text("no"));
                     })
@@ -1041,7 +1041,7 @@ mod tests {
         check(
             FlatModuleBuilder::with_types(types)
                 .function("area", [("n", "Int")], "Int", |t| {
-                    t.match_expr(
+                    t.match_(
                         t.enum_variant_with_fields("Shape", "Circle", [("radius", t.param("n"))]),
                         |m| {
                             m.arm(Pat::variant("Dot", []), |t, _| t.int(0));
@@ -1085,7 +1085,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [], "Html", |t| {
-                    t.match_expr(t.some(t.str("x")), |m| {
+                    t.match_(t.some(t.str("x")), |m| {
                         m.arm(Pat::some(Pat::bind("v")), |t, arm| {
                             t.escape(arm.binding("v"))
                         });
@@ -1151,7 +1151,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .entrypoint("Test", [], "Html", |t| {
-                    t.match_expr(t.eq(t.str("a"), t.str("a")), |m| {
+                    t.match_(t.eq(t.str("a"), t.str("a")), |m| {
                         m.arm(Pat::True, |t, _| t.text("same"));
                         m.arm(Pat::False, |t, _| t.text("other"));
                     })

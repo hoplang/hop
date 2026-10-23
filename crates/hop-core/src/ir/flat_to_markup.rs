@@ -308,8 +308,8 @@ mod tests {
                         t.element(
                             "div",
                             [
-                                t.attr("class", t.str("card")),
-                                t.presence("hidden", t.param("hidden")),
+                                t.attr_value("class", t.str("card")),
+                                t.attr_presence("hidden", t.param("hidden")),
                             ],
                             t.html_concat(vec![t.text("Title: "), t.escape(t.param("title"))]),
                         )
@@ -350,13 +350,13 @@ mod tests {
                     [("name", "Option[String]"), ("formal", "Bool")],
                     "Html",
                     |t| {
-                        let greeting = t.match_expr(t.param("name"), |m| {
+                        let greeting = t.match_(t.param("name"), |m| {
                             m.arm(Pat::some(Pat::bind("n")), |t, arm| {
                                 t.element("b", [], t.escape(arm.binding("n")))
                             });
                             m.arm(Pat::None, |t, _| t.text("anonymous"));
                         });
-                        t.match_expr(t.param("formal"), |m| {
+                        t.match_(t.param("formal"), |m| {
                             m.arm(Pat::True, |t, _| t.element("p", [], greeting));
                             m.arm(Pat::False, |t, _| t.element("i", [], greeting));
                         })
@@ -446,7 +446,7 @@ mod tests {
                             "ul",
                             [],
                             t.html_for(t.param("items"), |t, _| {
-                                t.element("li", [t.attr("data-x", data_x)], t.text("x"))
+                                t.element("li", [t.attr_value("data-x", data_x)], t.text("x"))
                             }),
                         )
                     },
@@ -543,7 +543,7 @@ mod tests {
                     [("depth", "Int"), ("children", "Html")],
                     "Html",
                     |t| {
-                        t.match_expr(t.lt(t.int(0), t.param("depth")), |m| {
+                        t.match_(t.lt(t.int(0), t.param("depth")), |m| {
                             m.arm(Pat::True, |t, _| {
                                 t.element(
                                     "div",

@@ -362,7 +362,7 @@ mod tests {
         check(
             FlatModuleBuilder::new()
                 .function("count", [("n", "Int")], "Html", |t| {
-                    t.match_expr(t.lt(t.param("n"), t.int(1)), |m| {
+                    t.match_(t.lt(t.param("n"), t.int(1)), |m| {
                         m.arm(Pat::True, |t, _| t.text("."));
                         m.arm(Pat::False, |t, _| {
                             t.call("count", [t.sub(t.param("n"), t.int(1))])
@@ -430,7 +430,7 @@ mod tests {
                 .declare("ping", [("n", "Int")], "Html")
                 .declare("pong", [("n", "Int")], "Html")
                 .define("ping", |t, _| {
-                    t.match_expr(t.lt(t.param("n"), t.int(1)), |m| {
+                    t.match_(t.lt(t.param("n"), t.int(1)), |m| {
                         m.arm(Pat::True, |t, _| t.text("."));
                         m.arm(Pat::False, |t, _| {
                             t.call("pong", [t.sub(t.param("n"), t.int(1))])
