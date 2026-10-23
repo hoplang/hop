@@ -19,7 +19,7 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Declares the functions of a module under construction, whose record and
 /// enum types are declared up front. A function's body is built when the
@@ -146,9 +146,7 @@ impl FlatModuleBuilder {
             .unwrap();
         let declared = &self.functions[index];
         assert!(declared.body.is_none());
-        let vars = declared.parameters.iter().map(|p| p.binder.var).collect();
-        let (body, _) =
-            FlatBlockBuilder::new(&self, declared).block(vars, |t| body_fn(t, declared));
+        let (body, _) = FlatBlockBuilder::new(&self, declared).block(|t| body_fn(t, declared));
         self.functions[index].body = Some(body);
         self
     }
@@ -165,7 +163,6 @@ impl FlatModuleBuilder {
         self.build_with_registry().0
     }
 
-    /// The module and its types.
     pub fn build_with_registry(self) -> (FlatModule, TypeRegistry) {
         let registry = self.types.registry().clone();
         let functions = self
@@ -183,6 +180,7 @@ impl FlatModuleBuilder {
             functions,
             value_ids: self.value_ids.into_inner(),
         };
+        assert_html_affine(&module);
         (module, registry)
     }
 }
@@ -197,13 +195,6 @@ pub struct DeclaredFunction {
     pub body: Option<FlatBlock>,
 }
 
-/// A block being built: the variables it brings into scope and the
-/// bindings made in it so far, in the order they are made.
-struct Scope {
-    vars: Vec<ValueId>,
-    bindings: Vec<FlatBinding>,
-}
-
 /// Builds the blocks of a function body. Each method binds the value it
 /// builds in the innermost block being built, in the order the methods are
 /// called, so the operands of a method are bound before the value it builds
@@ -213,8 +204,9 @@ pub struct FlatBlockBuilder<'a> {
     module: &'a FlatModuleBuilder,
     /// The function whose body is being built.
     function: &'a DeclaredFunction,
-    /// The blocks being built, innermost last.
-    scopes: RefCell<Vec<Scope>>,
+    /// The blocks being built, innermost last, each as the bindings made
+    /// in it so far, in the order they are made.
+    scopes: RefCell<Vec<Vec<FlatBinding>>>,
 }
 
 impl<'a> FlatBlockBuilder<'a> {
@@ -226,25 +218,18 @@ impl<'a> FlatBlockBuilder<'a> {
         }
     }
 
-    /// The block `body_fn` builds, with `vars` in scope beside those in
-    /// scope here, and the type of its result.
-    fn block(
-        &self,
-        vars: Vec<ValueId>,
-        body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
-    ) -> (FlatBlock, Type) {
-        self.scopes.borrow_mut().push(Scope {
-            vars,
-            bindings: Vec::new(),
-        });
+    /// The block `body_fn` builds, and the type of its result.
+    fn block(&self, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> (FlatBlock, Type) {
+        self.scopes.borrow_mut().push(Vec::new());
         let result = body_fn(self);
-        let Scope { bindings, .. } = self.scopes.borrow_mut().pop().unwrap();
+        let typ = self.typ(result);
+        let bindings = self.scopes.borrow_mut().pop().unwrap();
         let block = FlatBlock { bindings, result };
-        (block, self.typ(result))
+        (block, typ)
     }
 
     /// The type of `name`.
-    pub fn typ(&self, name: ValueId) -> Type {
+    fn typ(&self, name: ValueId) -> Type {
         self.module.value_types.borrow()[&name].clone()
     }
 
@@ -255,27 +240,11 @@ impl<'a> FlatBlockBuilder<'a> {
             .borrow_mut()
             .last_mut()
             .unwrap()
-            .bindings
             .push(FlatBinding {
                 binder: IrBinder { var: name, typ },
                 op,
             });
         name
-    }
-
-    /// The names visible here whose type fits: the variables in scope and
-    /// the values bound so far in the blocks being built.
-    pub fn values_where(&self, fits: impl Fn(&Type) -> bool) -> Vec<ValueId> {
-        let types = self.module.value_types.borrow();
-        let scopes = self.scopes.borrow();
-        scopes
-            .iter()
-            .flat_map(|scope| {
-                let vars = scope.vars.iter().copied();
-                vars.chain(scope.bindings.iter().map(|binding| binding.binder.var))
-            })
-            .filter(|value| fits(&types[value]))
-            .collect()
     }
 
     /// The records and enums of the module.
@@ -732,7 +701,7 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         let typ = Type::Data(*element_type);
         let var = self.module.binder(typ.clone());
-        let (body, _) = self.block(vec![var], |t| body_fn(t, var));
+        let (body, _) = self.block(|t| body_fn(t, var));
         self.push(
             Type::Html,
             FlatOp::HtmlFor(IrFor {
@@ -750,7 +719,7 @@ impl<'a> FlatBlockBuilder<'a> {
         F: FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     {
         assert!(matches!(self.typ(array), Type::Data(DataType::Array(_))));
-        let (body, _) = self.block(Vec::new(), body_fn);
+        let (body, _) = self.block(body_fn);
         self.push(
             Type::Html,
             FlatOp::HtmlFor(IrFor {
@@ -858,9 +827,94 @@ impl MatchExprArms<'_> {
         let pattern = self
             .builder
             .resolve_pat(&self.subject_type, pat, &mut bindings);
-        let vars = bindings.bindings.iter().map(|(_, var)| *var).collect();
-        let (body, typ) = self.builder.block(vars, |t| body_fn(t, &bindings));
+        let (body, typ) = self.builder.block(|t| body_fn(t, &bindings));
         self.typ.get_or_insert(typ);
         self.arms.push(IrMatchArm { pattern, body });
+    }
+}
+
+fn assert_html_affine(module: &FlatModule) {
+    let mut html = HashSet::new();
+    for function in &module.functions {
+        html.extend(
+            function
+                .parameters
+                .iter()
+                .filter(|param| param.binder.typ == Type::Html)
+                .map(|param| param.binder.var),
+        );
+        collect_html(&function.body, &mut html);
+    }
+    for function in &module.functions {
+        let scope = function
+            .parameters
+            .iter()
+            .map(|param| param.binder.var)
+            .filter(|name| html.contains(name))
+            .collect();
+        check_block(&function.body, scope, &html, &function.function);
+    }
+}
+
+fn collect_html(block: &FlatBlock, html: &mut HashSet<ValueId>) {
+    for binding in &block.bindings {
+        if binding.binder.typ == Type::Html {
+            html.insert(binding.binder.var);
+        }
+        match &binding.op {
+            FlatOp::Match(match_) => {
+                for arm in &match_.arms {
+                    collect_html(&arm.body, html);
+                }
+            }
+            FlatOp::HtmlFor(for_) => collect_html(&for_.body, html),
+            _ => {}
+        }
+    }
+}
+
+fn check_block(
+    block: &FlatBlock,
+    mut scope: HashSet<ValueId>,
+    html: &HashSet<ValueId>,
+    function: &IrFunction,
+) -> HashSet<ValueId> {
+    for binding in &block.bindings {
+        binding
+            .op
+            .for_each_operand(&mut |operand| read(operand, &mut scope, html, function));
+        match &binding.op {
+            FlatOp::Match(match_) => {
+                let mut after = scope.clone();
+                for arm in &match_.arms {
+                    let inner = check_block(&arm.body, scope.clone(), html, function);
+                    after.retain(|name| inner.contains(name));
+                }
+                scope = after;
+            }
+            FlatOp::HtmlFor(for_) => {
+                check_block(&for_.body, HashSet::new(), html, function);
+            }
+            _ => {}
+        }
+        if html.contains(&binding.binder.var) {
+            scope.insert(binding.binder.var);
+        }
+    }
+    read(block.result, &mut scope, html, function);
+    scope
+}
+
+fn read(
+    name: ValueId,
+    scope: &mut HashSet<ValueId>,
+    html: &HashSet<ValueId>,
+    function: &IrFunction,
+) {
+    if html.contains(&name) {
+        assert!(
+            scope.remove(&name),
+            "{function} reads the Html value {name} when the path has used it or in a loop body it is bound outside of"
+        );
     }
 }

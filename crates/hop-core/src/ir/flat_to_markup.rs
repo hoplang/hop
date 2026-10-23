@@ -342,62 +342,90 @@ mod tests {
     }
 
     #[test]
-    fn should_copy_html_used_twice_and_share_the_values_it_reads() {
+    fn should_copy_html_used_in_two_arms_and_share_the_values_it_reads() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Greeting", [("name", "Option[String]")], "Html", |t| {
-                    let greeting = t.match_expr(t.param("name"), |m| {
-                        m.arm(Pat::some(Pat::bind("n")), |t, arm| {
-                            t.element("b", [], t.escape(arm.binding("n")))
+                .entrypoint(
+                    "Greeting",
+                    [("name", "Option[String]"), ("formal", "Bool")],
+                    "Html",
+                    |t| {
+                        let greeting = t.match_expr(t.param("name"), |m| {
+                            m.arm(Pat::some(Pat::bind("n")), |t, arm| {
+                                t.element("b", [], t.escape(arm.binding("n")))
+                            });
+                            m.arm(Pat::None, |t, _| t.text("anonymous"));
                         });
-                        m.arm(Pat::None, |t, _| t.text("anonymous"));
-                    });
-                    t.element("p", [], t.html_concat(vec![greeting, greeting]))
-                })
+                        t.match_expr(t.param("formal"), |m| {
+                            m.arm(Pat::True, |t, _| t.element("p", [], greeting));
+                            m.arm(Pat::False, |t, _| t.element("i", [], greeting));
+                        })
+                    },
+                )
                 .build(),
             expect![[r#"
                 -- flat --
-                entrypoint fn Greeting@f0(name@v0: Option[String]) -> Html {
-                  let v5: Html = match v0 {
-                    Some(v1: String) => {
-                      let v2: Html = escape(v1)
-                      let v3: Html = element("b", {}, v2)
-                      v3
-                    }
-                    None => {
-                      let v4: Html = text("anonymous")
+                entrypoint fn Greeting@f0(name@v0: Option[String], formal@v1: Bool) -> Html {
+                  let v6: Html = match v0 {
+                    Some(v2: String) => {
+                      let v3: Html = escape(v2)
+                      let v4: Html = element("b", {}, v3)
                       v4
                     }
+                    None => {
+                      let v5: Html = text("anonymous")
+                      v5
+                    }
                   }
-                  let v6: Html = concat(v5, v5)
-                  let v7: Html = element("p", {}, v6)
-                  v7
+                  let v9: Html = match v1 {
+                    true => {
+                      let v7: Html = element("p", {}, v6)
+                      v7
+                    }
+                    false => {
+                      let v8: Html = element("i", {}, v6)
+                      v8
+                    }
+                  }
+                  v9
                 }
 
                 -- markup --
-                entrypoint fn Greeting@f0(name@v0: Option[String]) -> Html {
-                  element(
-                    "p",
-                    {},
-                    [
-                      match v0 {
-                        Some(v1: String) => {
-                          element("b", {}, [escape(v1)])
-                        }
-                        None => {
-                          text("anonymous")
-                        }
-                      },
-                      match v0 {
-                        Some(v8: String) => {
-                          element("b", {}, [escape(v8)])
-                        }
-                        None => {
-                          text("anonymous")
-                        }
-                      },
-                    ],
-                  )
+                entrypoint fn Greeting@f0(name@v0: Option[String], formal@v1: Bool) -> Html {
+                  match v1 {
+                    true => {
+                      element(
+                        "p",
+                        {},
+                        [
+                          match v0 {
+                            Some(v2: String) => {
+                              element("b", {}, [escape(v2)])
+                            }
+                            None => {
+                              text("anonymous")
+                            }
+                          },
+                        ],
+                      )
+                    }
+                    false => {
+                      element(
+                        "i",
+                        {},
+                        [
+                          match v0 {
+                            Some(v10: String) => {
+                              element("b", {}, [escape(v10)])
+                            }
+                            None => {
+                              text("anonymous")
+                            }
+                          },
+                        ],
+                      )
+                    }
+                  }
                 }
             "#]],
         );
@@ -413,12 +441,14 @@ mod tests {
                     "Html",
                     |t| {
                         let _unused = t.text("never");
-                        let row = t.element(
-                            "li",
-                            [t.attr("data-x", t.int_to_string(t.add(t.param("n"), t.int(1))))],
-                            t.text("x"),
-                        );
-                        t.element("ul", [], t.html_for(t.param("items"), |_, _| row))
+                        let data_x = t.int_to_string(t.add(t.param("n"), t.int(1)));
+                        t.element(
+                            "ul",
+                            [],
+                            t.html_for(t.param("items"), |t, _| {
+                                t.element("li", [t.attr("data-x", data_x)], t.text("x"))
+                            }),
+                        )
                     },
                 )
                 .build(),
@@ -428,10 +458,10 @@ mod tests {
                   let v3: Int = 1
                   let v4: Int = v1 + v3
                   let v5: String = v4.to_string()
-                  let v6: Html = text("x")
-                  let v7: Html = element("li", {data-x: v5}, v6)
                   let v9: Html = for _ in v0 {
-                    v7
+                    let v7: Html = text("x")
+                    let v8: Html = element("li", {data-x: v5}, v7)
+                    v8
                   }
                   let v10: Html = element("ul", {}, v9)
                   v10
