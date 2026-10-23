@@ -411,13 +411,14 @@ impl Checker<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::hop::typing::Ty;
     use crate::ir::flat_module_builder::FlatModuleBuilder;
 
     #[test]
     #[should_panic]
     fn should_reject_an_op_with_ill_typed_operands() {
         FlatModuleBuilder::new()
-            .entrypoint("Test", [], "Html", |t| {
+            .entrypoint("Test", [], Ty::Html, |t| {
                 let sum = t.add(t.int(1), t.str("one"));
                 t.escape(t.int_to_string(sum))
             })
@@ -428,7 +429,7 @@ mod tests {
     #[should_panic]
     fn should_reject_a_block_of_the_wrong_type() {
         FlatModuleBuilder::new()
-            .entrypoint("Test", [], "Html", |t| t.int(1))
+            .entrypoint("Test", [], Ty::Html, |t| t.int(1))
             .build();
     }
 
@@ -436,10 +437,10 @@ mod tests {
     #[should_panic]
     fn should_reject_a_call_with_the_wrong_arguments() {
         FlatModuleBuilder::new()
-            .function("show", [("n", "Int")], "Html", |t| {
+            .function("show", [("n", Ty::Int)], Ty::Html, |t| {
                 t.escape(t.int_to_string(t.param("n")))
             })
-            .entrypoint("Test", [], "Html", |t| t.call("show", [t.str("one")]))
+            .entrypoint("Test", [], Ty::Html, |t| t.call("show", [t.str("one")]))
             .build();
     }
 }

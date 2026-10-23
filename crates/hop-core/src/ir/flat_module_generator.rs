@@ -1,5 +1,5 @@
 use crate::hop::typing::{
-    DataType, EnumVariant, ResolvedType, Type, TypeRegistry, TypeRegistryBuilder,
+    DataType, EnumVariant, ResolvedType, Ty, Type, TypeRegistry, TypeRegistryBuilder,
 };
 use crate::ir::flat_module::FlatModule;
 use crate::ir::flat_module_builder::{
@@ -87,7 +87,7 @@ const FLOATS: &[f64] = &[
     f64::NAN,
 ];
 
-const SCALARS: &[&str] = &["Int", "String", "Bool", "Float"];
+const SCALARS: &[Ty] = &[Ty::Int, Ty::String, Ty::Bool, Ty::Float];
 
 /// Elements to generate, each with whether it is void.
 const ELEMENTS: &[(&str, bool)] = &[
@@ -204,17 +204,17 @@ fn random_module_inner(
             Decl::Record(i) => {
                 let name = format!("R{i}");
                 let fields = (0..g.count(0..=4))
-                    .map(|j| (format!("f{j}"), g.random_field_type_string(2)))
+                    .map(|j| (format!("f{j}"), g.random_field_type(2)))
                     .collect::<Vec<_>>();
-                types = types.record(&name, fields.iter().map(|(f, t)| (f.as_str(), t.as_str())));
+                types = types.record(&name, fields.iter().map(|(f, t)| (f.as_str(), t.clone())));
                 g.record_names.push(name);
             }
             Decl::Enum(i) => {
                 let name = format!("E{i}");
-                let variants: Vec<(String, Vec<(String, String)>)> = (0..g.count(1..=3))
+                let variants: Vec<(String, Vec<(String, Ty)>)> = (0..g.count(1..=3))
                     .map(|j| {
                         let fields = (0..g.count(0..=2))
-                            .map(|k| (format!("f{k}"), g.random_field_type_string(2)))
+                            .map(|k| (format!("f{k}"), g.random_field_type(2)))
                             .collect();
                         (format!("W{j}"), fields)
                     })
@@ -224,7 +224,7 @@ fn random_module_inner(
                     variants.iter().map(|(v, fs)| {
                         (
                             v.as_str(),
-                            fs.iter().map(|(f, t)| (f.as_str(), t.as_str())).collect(),
+                            fs.iter().map(|(f, t)| (f.as_str(), t.clone())).collect(),
                         )
                     }),
                 );
@@ -233,40 +233,43 @@ fn random_module_inner(
         }
     }
 
-    let types = types.build();
     g.records = g
         .record_names
         .iter()
-        .map(|name| types.named(name))
+        .map(|name| Ty::named(name).into())
         .collect();
-    g.enums = g.enum_names.iter().map(|name| types.named(name)).collect();
-    let mut builder = FlatModuleBuilder::with_types(types);
+    g.enums = g
+        .enum_names
+        .iter()
+        .map(|name| Ty::named(name).into())
+        .collect();
+    let mut builder = FlatModuleBuilder::with_registry(types.build());
 
     // Declare every function before defining any, so that a body can call
     // a function declared after it.
     let function_names: Vec<String> = (0..g.count(0..=2)).map(|i| format!("C{i}")).collect();
     for name in &function_names {
-        let params: Vec<(String, String)> = (0..g.count(0..=3))
-            .map(|i| (format!("p{i}"), g.random_type_string(2)))
+        let params: Vec<(String, Ty)> = (0..g.count(0..=3))
+            .map(|i| (format!("p{i}"), g.random_type(2)))
             .collect();
-        let return_type = g.random_type_string(2);
+        let return_type = g.random_type(2);
         builder = builder.declare(
             name,
-            params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
-            &return_type,
+            params.iter().map(|(n, t)| (n.as_str(), t.clone())),
+            return_type,
         );
     }
 
     // Generate entrypoint functions, each rendering Html as a page body does.
     // Their parameters are drawn before any body, like those of the
     // functions above.
-    let entrypoints: Vec<(String, Vec<(String, String)>)> = if single_test_entrypoint {
+    let entrypoints: Vec<(String, Vec<(String, Ty)>)> = if single_test_entrypoint {
         vec![("Test".to_string(), Vec::new())]
     } else {
         (0..g.count(1..=3))
             .map(|i| {
                 let params = (0..g.count(0..=3))
-                    .map(|i| (format!("p{i}"), g.random_type_string(2)))
+                    .map(|i| (format!("p{i}"), g.random_type(2)))
                     .collect();
                 (format!("V{i}"), params)
             })
@@ -285,13 +288,12 @@ fn random_module_inner(
     for (name, params) in &entrypoints {
         builder = builder.entrypoint(
             name,
-            params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
-            "Html",
+            params.iter().map(|(n, t)| (n.as_str(), t.clone())),
+            Ty::Html,
             |b| {
                 let mut scope = Scope::default();
                 for (n, t) in params {
-                    let typ = b.resolve_type(t);
-                    scope.bound(b.param(n), &typ);
+                    scope.bound(b.param(n), &t.clone().into());
                 }
                 g.block(b, &mut scope, &Type::Html, MAX_BLOCK_DEPTH)
             },
@@ -400,29 +402,25 @@ impl FlatGenerator<'_, '_> {
         Some((*name, (*typ).clone()))
     }
 
-    /// A random source-syntax type string. E.g. `Array[String]`.
-    fn random_type_string(&mut self, depth: usize) -> String {
-        self.type_string(depth, NamedTypes::Any, true)
+    /// A random type, Html included.
+    fn random_type(&mut self, depth: usize) -> Ty {
+        self.random_type_where(depth, NamedTypes::Any, true)
     }
 
     /// A random type of data, which can be part of another type.
-    fn random_data_type(&mut self, b: &FlatBlockBuilder<'_>, depth: usize) -> DataType {
-        let Type::Data(typ) = b.resolve_type(&self.type_string(depth, NamedTypes::Any, false))
-        else {
-            unreachable!("a type string without Html is data")
-        };
-        typ
+    fn random_data_type(&mut self, depth: usize) -> DataType {
+        self.random_type_where(depth, NamedTypes::Any, false).into()
     }
 
-    /// A random source-syntax type string for a field of the record or
-    /// enum currently being declared.
-    fn random_field_type_string(&mut self, depth: usize) -> String {
-        self.type_string(depth, NamedTypes::Complete, false)
+    /// A random type for a field of the record or enum currently being
+    /// declared.
+    fn random_field_type(&mut self, depth: usize) -> Ty {
+        self.random_type_where(depth, NamedTypes::Complete, false)
     }
 
     /// A random type. It is Html only when `html` allows it, and the types
     /// it is made of never are, since Html is never part of another type.
-    fn type_string(&mut self, depth: usize, named: NamedTypes, html: bool) -> String {
+    fn random_type_where(&mut self, depth: usize, named: NamedTypes, html: bool) -> Ty {
         enum P {
             Scalar,
             Html,
@@ -443,30 +441,17 @@ impl FlatGenerator<'_, '_> {
             kinds.extend([P::Array, P::Option, P::Tuple]);
         }
         match self.u.choose(&kinds).unwrap() {
-            P::Scalar => SCALARS[self.index(SCALARS.len())].to_string(),
-            P::Html => "Html".to_string(),
+            P::Scalar => SCALARS[self.index(SCALARS.len())].clone(),
+            P::Html => Ty::Html,
             P::Named => {
                 let i = self.index(named_count);
                 self.named_type(named, i)
             }
-            P::Array => format!(
-                "Array[{}]",
-                self.type_string(depth - 1, NamedTypes::Any, false)
-            ),
-            P::Option => format!(
-                "Option[{}]",
-                self.type_string(depth - 1, NamedTypes::Any, false)
-            ),
+            P::Array => Ty::array(self.random_type_where(depth - 1, NamedTypes::Any, false)),
+            P::Option => Ty::option(self.random_type_where(depth - 1, NamedTypes::Any, false)),
             P::Tuple => {
                 let arity = self.count(0..=3);
-                let elements: Vec<String> = (0..arity)
-                    .map(|_| self.type_string(depth - 1, named, false))
-                    .collect();
-                if arity == 1 {
-                    format!("({},)", elements[0])
-                } else {
-                    format!("({})", elements.join(", "))
-                }
+                Ty::tuple((0..arity).map(|_| self.random_type_where(depth - 1, named, false)))
             }
         }
     }
@@ -478,11 +463,11 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
-    fn named_type(&self, named: NamedTypes, i: usize) -> String {
+    fn named_type(&self, named: NamedTypes, i: usize) -> Ty {
         match named {
-            NamedTypes::Any => self.declared_names[i].clone(),
-            NamedTypes::Complete if i < self.record_names.len() => self.record_names[i].clone(),
-            NamedTypes::Complete => self.enum_names[i - self.record_names.len()].clone(),
+            NamedTypes::Any => Ty::named(&self.declared_names[i]),
+            NamedTypes::Complete if i < self.record_names.len() => Ty::named(&self.record_names[i]),
+            NamedTypes::Complete => Ty::named(&self.enum_names[i - self.record_names.len()]),
         }
     }
 
@@ -542,7 +527,7 @@ impl FlatGenerator<'_, '_> {
         // one an exhausted input never gives, so a minimal module has no
         // dead binding.
         if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
-            let typ = b.resolve_type(&self.random_type_string(1));
+            let typ = Type::from(self.random_type(1));
             self.production(b, scope, &typ, depth);
         }
         let result = if self.coin() {
@@ -835,7 +820,7 @@ impl FlatGenerator<'_, '_> {
                 let (subject, option_ty) = match var {
                     Some(pair) => pair,
                     None => {
-                        let option_ty = Type::option(self.random_data_type(b, 1));
+                        let option_ty = Type::option(self.random_data_type(1));
                         (self.operand(b, scope, &option_ty, depth), option_ty)
                     }
                 };
@@ -942,7 +927,7 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(scope, |ty| matches!(ty, Type::Data(DataType::Option(_))))
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
-                        let option_ty = Type::option(self.random_data_type(b, 1));
+                        let option_ty = Type::option(self.random_data_type(1));
                         self.operand(b, scope, &option_ty, depth)
                     });
                 b.option_is_none(operand)
@@ -952,7 +937,7 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(scope, |ty| matches!(ty, Type::Data(DataType::Option(_))))
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
-                        let option_ty = Type::option(self.random_data_type(b, 1));
+                        let option_ty = Type::option(self.random_data_type(1));
                         self.operand(b, scope, &option_ty, depth)
                     });
                 b.option_is_some(operand)
@@ -966,7 +951,7 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(scope, |ty| matches!(ty, Type::Data(DataType::Array(_))))
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
-                        let array_ty = Type::array(self.random_data_type(b, 1));
+                        let array_ty = Type::array(self.random_data_type(1));
                         self.operand(b, scope, &array_ty, depth)
                     });
                 b.array_is_empty(operand)
@@ -976,7 +961,7 @@ impl FlatGenerator<'_, '_> {
                     .var_in_scope(scope, |ty| matches!(ty, Type::Data(DataType::Array(_))))
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
-                        let array_ty = Type::array(self.random_data_type(b, 1));
+                        let array_ty = Type::array(self.random_data_type(1));
                         self.operand(b, scope, &array_ty, depth)
                     });
                 b.array_length(operand)
@@ -1015,7 +1000,7 @@ impl FlatGenerator<'_, '_> {
                                 if i == index {
                                     target_data.clone()
                                 } else {
-                                    self.random_data_type(b, 1)
+                                    self.random_data_type(1)
                                 }
                             })
                             .collect();
@@ -1041,7 +1026,7 @@ impl FlatGenerator<'_, '_> {
                     Some(pair) => pair,
                     None => {
                         let elements = (0..self.count(1..=3))
-                            .map(|_| self.random_data_type(b, 1))
+                            .map(|_| self.random_data_type(1))
                             .collect();
                         let tuple_ty = Type::Data(DataType::Tuple(elements));
                         (self.operand(b, scope, &tuple_ty, depth), tuple_ty)
@@ -1130,7 +1115,7 @@ impl FlatGenerator<'_, '_> {
                 let (array, array_ty) = match var {
                     Some(pair) => pair,
                     None => {
-                        let array_ty = Type::array(self.random_data_type(b, 1));
+                        let array_ty = Type::array(self.random_data_type(1));
                         (self.operand(b, scope, &array_ty, depth), array_ty)
                     }
                 };
@@ -1243,7 +1228,7 @@ impl FlatGenerator<'_, '_> {
                     b.none(Type::Data(inner.as_ref().clone()))
                 }
             }
-            DataType::Named { name, .. } => match b.registry().resolve(data) {
+            DataType::Named { .. } => match b.registry().resolve(data) {
                 Some(ResolvedType::Record { fields, .. }) => {
                     let fields = self.shuffled(fields.iter().collect());
                     let mut values = Vec::new();
@@ -1254,7 +1239,7 @@ impl FlatGenerator<'_, '_> {
                             self.value(b, scope, &ty, depth.saturating_sub(1)),
                         ));
                     }
-                    b.record(name.as_str(), values)
+                    b.record(target.clone(), values)
                 }
                 Some(ResolvedType::Enum { variants, .. }) => {
                     let variant = self.u.choose(variants).unwrap();
@@ -1267,7 +1252,7 @@ impl FlatGenerator<'_, '_> {
                             self.value(b, scope, &ty, depth.saturating_sub(1)),
                         ));
                     }
-                    b.enum_variant_with_fields(name.as_str(), variant.name.as_str(), values)
+                    b.enum_variant_with_fields(target.clone(), variant.name.as_str(), values)
                 }
                 _ => unreachable!("named type must be a generated record or enum"),
             },

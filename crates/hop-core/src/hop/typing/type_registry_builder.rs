@@ -1,16 +1,11 @@
-use crate::document::DocumentCursor;
-use crate::document_annotator::DocumentAnnotator;
-use crate::hop::parsing::parse_type;
-use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::r#type::{DataType, Type};
-use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
 /// The module all test-declared types live in.
-fn test_module() -> RootContainedFilePath {
+pub fn test_module() -> RootContainedFilePath {
     RootContainedFilePath::new("test.hop").unwrap()
 }
 
@@ -22,11 +17,74 @@ fn field_name(name: &str) -> FieldName {
     FieldName::parse(name).unwrap_or_else(|e| panic!("invalid field name `{name}`: {e:?}"))
 }
 
+/// A type as a test writes it. Named types live in the test module and
+/// are checked against the declarations when the registry is built.
+#[derive(Clone, Debug)]
+pub enum Ty {
+    Int,
+    String,
+    Bool,
+    Float,
+    Html,
+    Named(String),
+    Array(Box<Ty>),
+    Option(Box<Ty>),
+    Tuple(Vec<Ty>),
+}
+
+impl Ty {
+    pub fn named(name: &str) -> Ty {
+        Ty::Named(name.to_string())
+    }
+
+    pub fn array(element: Ty) -> Ty {
+        Ty::Array(Box::new(element))
+    }
+
+    pub fn option(element: Ty) -> Ty {
+        Ty::Option(Box::new(element))
+    }
+
+    pub fn tuple(elements: impl IntoIterator<Item = Ty>) -> Ty {
+        Ty::Tuple(elements.into_iter().collect())
+    }
+}
+
+impl From<Ty> for Type {
+    fn from(ty: Ty) -> Type {
+        match ty {
+            Ty::Html => Type::Html,
+            data => Type::Data(data.into()),
+        }
+    }
+}
+
+impl From<Ty> for DataType {
+    fn from(ty: Ty) -> DataType {
+        match ty {
+            Ty::Int => DataType::Int,
+            Ty::String => DataType::String,
+            Ty::Bool => DataType::Bool,
+            Ty::Float => DataType::Float,
+            Ty::Html => panic!("Html is not a data type"),
+            Ty::Named(name) => DataType::Named {
+                module: test_module(),
+                name: type_name(&name),
+            },
+            Ty::Array(element) => DataType::Array(Box::new((*element).into())),
+            Ty::Option(element) => DataType::Option(Box::new((*element).into())),
+            Ty::Tuple(elements) => {
+                DataType::Tuple(elements.into_iter().map(DataType::from).collect())
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 enum Decl {
     Record {
         name: String,
-        fields: Vec<(String, String)>,
+        fields: Vec<(String, DataType)>,
     },
     EnumUnit {
         name: String,
@@ -34,7 +92,7 @@ enum Decl {
     },
     Enum {
         name: String,
-        variants: Vec<(String, Vec<(String, String)>)>,
+        variants: Vec<(String, Vec<(String, DataType)>)>,
     },
 }
 
@@ -51,13 +109,13 @@ impl TypeRegistryBuilder {
     pub fn record<'a>(
         mut self,
         name: &str,
-        fields: impl IntoIterator<Item = (&'a str, &'a str)>,
+        fields: impl IntoIterator<Item = (&'a str, Ty)>,
     ) -> Self {
         self.decls.push(Decl::Record {
             name: name.to_string(),
             fields: fields
                 .into_iter()
-                .map(|(f, t)| (f.to_string(), t.to_string()))
+                .map(|(f, t)| (f.to_string(), t.into()))
                 .collect(),
         });
         self
@@ -78,7 +136,7 @@ impl TypeRegistryBuilder {
     pub fn enum_<'a>(
         mut self,
         name: &str,
-        variants: impl IntoIterator<Item = (&'a str, Vec<(&'a str, &'a str)>)>,
+        variants: impl IntoIterator<Item = (&'a str, Vec<(&'a str, Ty)>)>,
     ) -> Self {
         self.decls.push(Decl::Enum {
             name: name.to_string(),
@@ -89,7 +147,7 @@ impl TypeRegistryBuilder {
                         v.to_string(),
                         fields
                             .into_iter()
-                            .map(|(f, t)| (f.to_string(), t.to_string()))
+                            .map(|(f, t)| (f.to_string(), t.into()))
                             .collect(),
                     )
                 })
@@ -98,50 +156,20 @@ impl TypeRegistryBuilder {
         self
     }
 
-    pub fn build(self) -> TestTypes {
-        let mut types = TestTypes {
-            module: test_module(),
-            registry: TypeRegistry::default(),
-        };
-
-        // Every name is registered with an empty definition before any
-        // field is resolved, so a field may name a type declared later.
-        for decl in &self.decls {
-            let (name, def) = match decl {
-                Decl::Record { name, .. } => (name, TypeDef::Record { fields: vec![] }),
-                Decl::EnumUnit { name, .. } | Decl::Enum { name, .. } => {
-                    (name, TypeDef::Enum { variants: vec![] })
-                }
-            };
-            if types.declared().any(|declared| declared.as_str() == name) {
-                panic!("duplicate declaration of type `{name}`");
-            }
-            types
-                .registry
-                .insert(types.module.clone(), type_name(name), def);
-        }
-
+    pub fn build(self) -> TypeRegistry {
+        let mut registry = TypeRegistry::default();
         for decl in self.decls {
-            match decl {
+            let (name, def) = match decl {
                 Decl::Record { name, fields } => {
                     let fields = fields
-                        .iter()
-                        .map(|(f, t)| {
-                            let Type::Data(typ) = types.resolve(t) else {
-                                panic!("field `{f}` cannot have type Html")
-                            };
-                            RecordField {
-                                name: field_name(f),
-                                typ,
-                                examples: None,
-                            }
+                        .into_iter()
+                        .map(|(f, typ)| RecordField {
+                            name: field_name(&f),
+                            typ,
+                            examples: None,
                         })
                         .collect();
-                    types.registry.insert(
-                        types.module.clone(),
-                        type_name(&name),
-                        TypeDef::Record { fields },
-                    );
+                    (name, TypeDef::Record { fields })
                 }
                 Decl::EnumUnit { name, variants } => {
                     let variants = variants
@@ -151,139 +179,63 @@ impl TypeRegistryBuilder {
                             fields: vec![],
                         })
                         .collect();
-                    types.registry.insert(
-                        types.module.clone(),
-                        type_name(&name),
-                        TypeDef::Enum { variants },
-                    );
+                    (name, TypeDef::Enum { variants })
                 }
                 Decl::Enum { name, variants } => {
                     let variants = variants
-                        .iter()
+                        .into_iter()
                         .map(|(v, fields)| EnumVariant {
-                            name: type_name(v),
+                            name: type_name(&v),
                             fields: fields
-                                .iter()
-                                .map(|(f, t)| {
-                                    let Type::Data(typ) = types.resolve(t) else {
-                                        panic!("field `{f}` cannot have type Html")
-                                    };
-                                    RecordField {
-                                        name: field_name(f),
-                                        typ,
-                                        examples: None,
-                                    }
+                                .into_iter()
+                                .map(|(f, typ)| RecordField {
+                                    name: field_name(&f),
+                                    typ,
+                                    examples: None,
                                 })
                                 .collect(),
                         })
                         .collect();
-                    types.registry.insert(
-                        types.module.clone(),
-                        type_name(&name),
-                        TypeDef::Enum { variants },
-                    );
+                    (name, TypeDef::Enum { variants })
                 }
+            };
+            if registry
+                .iter()
+                .any(|(_, declared, _)| declared.as_str() == name)
+            {
+                panic!("duplicate declaration of type `{name}`");
+            }
+            registry.insert(test_module(), type_name(&name), def);
+        }
+
+        // A field may name a type declared after it, so the names are
+        // checked once every declaration is in.
+        let fields = registry.iter().flat_map(|(_, _, def)| match def {
+            TypeDef::Record { fields } => fields.iter().collect::<Vec<_>>(),
+            TypeDef::Enum { variants } => variants.iter().flat_map(|v| v.fields.iter()).collect(),
+        });
+        for field in fields {
+            assert_declared(&registry, &field.typ);
+        }
+
+        registry
+    }
+}
+
+/// Panics if `typ` names a type the registry does not declare.
+fn assert_declared(registry: &TypeRegistry, typ: &DataType) {
+    match typ {
+        DataType::String | DataType::Bool | DataType::Int | DataType::Float => {}
+        DataType::Array(element) | DataType::Option(element) => assert_declared(registry, element),
+        DataType::Tuple(elements) => {
+            for element in elements {
+                assert_declared(registry, element);
             }
         }
-
-        types
-    }
-}
-
-/// An immutable bundle of a TypeRegistry and handles to the types
-/// registered in it. Every DataType::Named handed out by this value has a
-/// matching TypeDef in the registry.
-#[derive(Clone)]
-pub struct TestTypes {
-    module: RootContainedFilePath,
-    registry: TypeRegistry,
-}
-
-impl TestTypes {
-    pub fn registry(&self) -> &TypeRegistry {
-        &self.registry
-    }
-
-    pub fn module(&self) -> &RootContainedFilePath {
-        &self.module
-    }
-
-    /// The names of the declared types, sorted.
-    fn declared(&self) -> impl Iterator<Item = &TypeName> {
-        self.registry
-            .iter()
-            .filter(|(module, _, _)| *module == &self.module)
-            .map(|(_, name, _)| name)
-    }
-
-    pub fn named(&self, name: &str) -> Type {
-        let typ = DataType::Named {
-            module: self.module.clone(),
-            name: type_name(name),
-        };
-        if self.registry.resolve(&typ).is_none() {
-            panic!(
-                "type `{name}` is not declared, declared types: {:?}",
-                self.declared().map(|k| k.as_str()).collect::<Vec<_>>()
-            )
-        }
-        Type::Data(typ)
-    }
-
-    pub fn resolve(&self, type_str: &str) -> Type {
-        let mut iter = DocumentCursor::new(self.module.clone(), type_str.to_string());
-        let mut comments = Vec::new();
-        let mut errors = Vec::new();
-        let parsed = parse_type(&mut iter, &mut comments, &mut errors);
-        let Ok(parsed) = parsed else {
-            panic!("failed to parse type `{type_str}`: {errors:?}");
-        };
-        if !errors.is_empty() {
-            panic!("failed to parse type `{type_str}`: {errors:?}");
-        }
-        if iter.peek().is_some() {
-            panic!("trailing input after type `{type_str}`");
-        }
-        let type_env = self.type_env();
-        let mut definition_links = Vec::new();
-        let mut type_errors = Vec::new();
-        resolve_type(
-            &parsed,
-            &type_env.names,
-            &mut definition_links,
-            &mut type_errors,
-        )
-        .unwrap_or_else(|| {
-            let rendered = DocumentAnnotator::new()
-                .with_severity_label()
-                .without_location()
-                .without_line_numbers()
-                .annotate(type_errors.iter().map(|e| e.to_diagnostic()))
-                .render();
-            panic!("failed to resolve type `{type_str}`:\n{rendered}")
-        })
-    }
-
-    /// The environment of a module that declares these types and nothing
-    /// else.
-    pub fn type_env(&self) -> TypeEnv {
-        let decl_range = DocumentCursor::new(self.module.clone(), String::new()).eof_range();
-        let names = self.declared().map(|name| {
-            (
-                name.to_cheap_string(),
-                Name {
-                    kind: NameKind::Type(DataType::Named {
-                        module: self.module.clone(),
-                        name: name.clone(),
-                    }),
-                    definition_range: decl_range.clone(),
-                    import_range: None,
-                },
-            )
-        });
-        TypeEnv {
-            names: names.collect(),
-            functions: Default::default(),
+        DataType::Named { name, .. } => {
+            if registry.resolve(typ).is_none() {
+                panic!("type `{}` is not declared", name.as_str());
+            }
         }
     }
 }

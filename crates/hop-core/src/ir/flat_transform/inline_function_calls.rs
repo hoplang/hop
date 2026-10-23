@@ -162,6 +162,7 @@ fn inline_block(
 mod tests {
 
     use super::*;
+    use crate::hop::typing::Ty;
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
     use crate::ir::runtime::EvalError;
@@ -221,10 +222,10 @@ mod tests {
     fn should_inline_a_call_and_read_the_argument_where_the_parameter_was_read() {
         check(
             FlatModuleBuilder::new()
-                .function("double", [("x", "Int")], "Int", |t| {
+                .function("double", [("x", Ty::Int)], Ty::Int, |t| {
                     t.add(t.param("x"), t.param("x"))
                 })
-                .entrypoint("Test", [("n", "Int")], "Html", |t| {
+                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.call("double", [t.param("n")])))
                 })
                 .build(),
@@ -256,13 +257,13 @@ mod tests {
     fn should_inline_callees_before_their_callers() {
         check(
             FlatModuleBuilder::new()
-                .function("inner", [("x", "Int")], "Int", |t| {
+                .function("inner", [("x", Ty::Int)], Ty::Int, |t| {
                     t.add(t.param("x"), t.int(1))
                 })
-                .function("outer", [("y", "Int")], "Int", |t| {
+                .function("outer", [("y", Ty::Int)], Ty::Int, |t| {
                     t.mul(t.call("inner", [t.param("y")]), t.int(2))
                 })
-                .entrypoint("Test", [("n", "Int")], "Html", |t| {
+                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.call("outer", [t.param("n")])))
                 })
                 .build(),
@@ -304,15 +305,15 @@ mod tests {
     fn should_give_each_copy_of_a_loop_fresh_names() {
         check(
             FlatModuleBuilder::new()
-                .function("list", [("items", "Array[String]")], "Html", |t| {
+                .function("list", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, item| {
                         t.element("li", [], t.escape(item))
                     })
                 })
                 .entrypoint(
                     "Test",
-                    [("a", "Array[String]"), ("b", "Array[String]")],
-                    "Html",
+                    [("a", Ty::array(Ty::String)), ("b", Ty::array(Ty::String))],
+                    Ty::Html,
                     |t| {
                         t.html_concat([
                             t.call("list", vec![t.param("a")]),
@@ -361,7 +362,7 @@ mod tests {
     fn should_leave_a_self_recursive_function_alone() {
         check(
             FlatModuleBuilder::new()
-                .function("count", [("n", "Int")], "Html", |t| {
+                .function("count", [("n", Ty::Int)], Ty::Html, |t| {
                     t.match_(t.lt(t.param("n"), t.int(1)), |m| {
                         m.arm(Pat::True, |t, _| t.text("."));
                         m.arm(Pat::False, |t, _| {
@@ -369,7 +370,7 @@ mod tests {
                         });
                     })
                 })
-                .entrypoint("Test", [], "Html", |t| t.call("count", [t.int(3)]))
+                .entrypoint("Test", [], Ty::Html, |t| t.call("count", [t.int(3)]))
                 .build(),
             expect![[r#"
                 -- before --
@@ -427,8 +428,8 @@ mod tests {
     fn should_leave_mutually_recursive_functions_alone() {
         check(
             FlatModuleBuilder::new()
-                .declare("ping", [("n", "Int")], "Html")
-                .declare("pong", [("n", "Int")], "Html")
+                .declare("ping", [("n", Ty::Int)], Ty::Html)
+                .declare("pong", [("n", Ty::Int)], Ty::Html)
                 .define("ping", |t, _| {
                     t.match_(t.lt(t.param("n"), t.int(1)), |m| {
                         m.arm(Pat::True, |t, _| t.text("."));
@@ -438,7 +439,7 @@ mod tests {
                     })
                 })
                 .define("pong", |t, _| t.call("ping", [t.param("n")]))
-                .entrypoint("Test", [], "Html", |t| t.call("ping", [t.int(2)]))
+                .entrypoint("Test", [], Ty::Html, |t| t.call("ping", [t.int(2)]))
                 .build(),
             expect![[r#"
                 -- before --

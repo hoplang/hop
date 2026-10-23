@@ -1,7 +1,6 @@
 use crate::document::CheapString;
 use crate::hop::typing::{
-    Constructor, DataType, Pattern, PatternField, RecordField, ResolvedType, TestTypes, Type,
-    TypeRegistry, TypeRegistryBuilder,
+    Constructor, DataType, Pattern, PatternField, RecordField, ResolvedType, Ty, Type, TypeRegistry,
 };
 use crate::html::HtmlElementKind;
 use crate::ir::flat_lint;
@@ -23,7 +22,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 pub struct FlatModuleBuilder {
-    types: TestTypes,
+    registry: TypeRegistry,
     function_ids: FunctionIdCounter,
     value_ids: RefCell<ValueIdCounter>,
     value_types: RefCell<HashMap<ValueId, Type>>,
@@ -38,12 +37,12 @@ impl Default for FlatModuleBuilder {
 
 impl FlatModuleBuilder {
     pub fn new() -> Self {
-        Self::with_types(TypeRegistryBuilder::new().build())
+        Self::with_registry(TypeRegistry::default())
     }
 
-    pub fn with_types(types: TestTypes) -> Self {
+    pub fn with_registry(registry: TypeRegistry) -> Self {
         FlatModuleBuilder {
-            types,
+            registry,
             function_ids: FunctionIdCounter::new(),
             value_ids: RefCell::new(ValueIdCounter::new()),
             value_types: RefCell::new(HashMap::new()),
@@ -54,8 +53,8 @@ impl FlatModuleBuilder {
     pub fn function<'p>(
         self,
         name: &str,
-        params: impl IntoIterator<Item = (&'p str, &'p str)>,
-        return_type: &str,
+        params: impl IntoIterator<Item = (&'p str, Ty)>,
+        return_type: Ty,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> Self {
         self.declare(name, params, return_type)
@@ -65,8 +64,8 @@ impl FlatModuleBuilder {
     pub fn entrypoint<'p>(
         self,
         name: &str,
-        params: impl IntoIterator<Item = (&'p str, &'p str)>,
-        return_type: &str,
+        params: impl IntoIterator<Item = (&'p str, Ty)>,
+        return_type: Ty,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> Self {
         self.declare_function(name, true, params, return_type)
@@ -76,8 +75,8 @@ impl FlatModuleBuilder {
     pub fn declare<'p>(
         self,
         name: &str,
-        params: impl IntoIterator<Item = (&'p str, &'p str)>,
-        return_type: &str,
+        params: impl IntoIterator<Item = (&'p str, Ty)>,
+        return_type: Ty,
     ) -> Self {
         self.declare_function(name, false, params, return_type)
     }
@@ -86,8 +85,8 @@ impl FlatModuleBuilder {
         mut self,
         name: &str,
         entrypoint: bool,
-        params: impl IntoIterator<Item = (&'p str, &'p str)>,
-        return_type: &str,
+        params: impl IntoIterator<Item = (&'p str, Ty)>,
+        return_type: Ty,
     ) -> Self {
         assert!(
             !self
@@ -100,7 +99,7 @@ impl FlatModuleBuilder {
         let parameters = params
             .into_iter()
             .map(|(name, typ)| {
-                let typ = self.types.resolve(typ);
+                let typ = Type::from(typ);
                 let var = self.binder(typ.clone());
                 IrParameter {
                     name: AttributeName::parse(name).unwrap(),
@@ -108,12 +107,11 @@ impl FlatModuleBuilder {
                 }
             })
             .collect();
-        let return_type = self.types.resolve(return_type);
         self.functions.push(DeclaredFunction {
             function,
             entrypoint,
             parameters,
-            return_type,
+            return_type: return_type.into(),
             body: None,
         });
         self
@@ -147,7 +145,7 @@ impl FlatModuleBuilder {
     }
 
     pub fn build_with_registry(self) -> (FlatModule, TypeRegistry) {
-        let registry = self.types.registry().clone();
+        let registry = self.registry.clone();
         let functions = self
             .functions
             .into_iter()
@@ -219,15 +217,11 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn registry(&self) -> &'a TypeRegistry {
-        self.module.types.registry()
+        &self.module.registry
     }
 
     pub fn functions(&self) -> &'a [DeclaredFunction] {
         &self.module.functions
-    }
-
-    pub fn resolve_type(&self, type_str: &str) -> Type {
-        self.module.types.resolve(type_str)
     }
 
     pub fn str(&self, s: &str) -> ValueId {
@@ -373,11 +367,11 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn record<'f>(
         &self,
-        record_name: &str,
+        typ: impl Into<Type>,
         fields: impl IntoIterator<Item = (&'f str, ValueId)>,
     ) -> ValueId {
         self.push(
-            self.module.types.named(record_name),
+            typ.into(),
             FlatOp::Data(IrDataOp::Record(
                 fields
                     .into_iter()
@@ -389,12 +383,12 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn enum_variant_with_fields<'f>(
         &self,
-        enum_name: &str,
+        typ: impl Into<Type>,
         variant_name: &str,
         field_values: impl IntoIterator<Item = (&'f str, ValueId)>,
     ) -> ValueId {
         self.push(
-            self.module.types.named(enum_name),
+            typ.into(),
             FlatOp::Data(IrDataOp::Enum(
                 TypeName::parse(variant_name).unwrap(),
                 field_values
@@ -446,7 +440,7 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         let resolved = typ
             .as_data()
-            .and_then(|data| self.module.types.registry().resolve(data));
+            .and_then(|data| self.module.registry.resolve(data));
         match (pat, resolved) {
             (Pat::Wildcard, _) => Pattern::Wildcard,
             (Pat::Bind(name), _) => {

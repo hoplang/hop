@@ -340,7 +340,7 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::typing::{TypeRegistry, TypeRegistryBuilder};
+    use crate::hop::typing::{Ty, TypeRegistry, TypeRegistryBuilder};
     use crate::ir::flat_module::FlatModule;
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
@@ -390,7 +390,7 @@ mod tests {
     fn should_bind_loop_names_afresh_on_each_iteration() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Items", [("items", "Array[String]")], "Html", |t| {
+                .entrypoint("Items", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.element(
                         "ul",
                         [],
@@ -423,8 +423,8 @@ mod tests {
     fn should_skip_the_right_operand_of_a_decided_and() {
         check(
             FlatModuleBuilder::new()
-                .function("diverge", [], "Bool", |t| t.call("diverge", []))
-                .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
+                .function("diverge", [], Ty::Bool, |t| t.call("diverge", []))
+                .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                     let and = t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.call("diverge", []));
                         m.arm(Pat::False, |t, _| t.bool(false));
@@ -478,12 +478,12 @@ mod tests {
         let types = TypeRegistryBuilder::new()
             .enum_(
                 "Shape",
-                [("Dot", vec![]), ("Circle", vec![("radius", "Int")])],
+                [("Dot", vec![]), ("Circle", vec![("radius", Ty::Int)])],
             )
             .build();
         check(
-            FlatModuleBuilder::with_types(types)
-                .entrypoint("Test", [("shape", "Shape")], "Html", |t| {
+            FlatModuleBuilder::with_registry(types)
+                .entrypoint("Test", [("shape", Ty::named("Shape"))], Ty::Html, |t| {
                     t.escape(t.match_(t.param("shape"), |m| {
                         m.arm(Pat::variant("Dot", []), |t, _| t.str("dot"));
                         m.arm(
@@ -525,12 +525,12 @@ mod tests {
     #[test]
     fn should_hold_an_empty_tuple_in_a_record_field() {
         let types = TypeRegistryBuilder::new()
-            .record("Holder", [("nothing", "()")])
+            .record("Holder", [("nothing", Ty::tuple([]))])
             .build();
         check(
-            FlatModuleBuilder::with_types(types)
-                .entrypoint("Test", [], "Html", |t| {
-                    let held = t.record("Holder", [("nothing", t.tuple(vec![]))]);
+            FlatModuleBuilder::with_registry(types)
+                .entrypoint("Test", [], Ty::Html, |t| {
+                    let held = t.record(Ty::named("Holder"), [("nothing", t.tuple(vec![]))]);
                     t.escape(
                         t.int_to_string(t.array_length(t.array([t.field_access(held, "nothing")]))),
                     )
@@ -560,7 +560,7 @@ mod tests {
     fn should_read_an_element_back_out_of_a_tuple() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     let pair = t.tuple([t.int(1), t.str("two")]);
                     t.escape(t.tuple_index(pair, 1))
                 })
@@ -587,7 +587,7 @@ mod tests {
     fn should_read_an_element_back_out_of_a_one_tuple() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     let only = t.tuple([t.str("alone")]);
                     t.escape(t.tuple_index(only, 0))
                 })
@@ -613,7 +613,7 @@ mod tests {
     fn should_index_a_nested_tuple() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     let inner = t.tuple([t.str("deep"), t.int(2)]);
                     let outer = t.tuple([t.int(1), inner]);
                     t.escape(t.tuple_index(t.tuple_index(outer, 1), 0))
@@ -644,7 +644,7 @@ mod tests {
     fn should_wrap_int_addition_at_i32_boundary() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     let sum = t.add(t.int(2147483647), t.int(1));
                     t.escape(t.int_to_string(sum))
                 })
@@ -671,7 +671,7 @@ mod tests {
     fn should_evaluate_an_element() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     t.element("div", [], t.text("Hello World"))
                 })
                 .build_with_registry(),
@@ -694,17 +694,22 @@ mod tests {
     fn should_escape_attribute_values_and_settle_boolean_attributes() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("cls", "String"), ("flag", "Bool")], "Html", |t| {
-                    t.element(
-                        "input",
-                        [
-                            t.attr_value("class", t.param("cls")),
-                            t.attr_presence("disabled", t.param("flag")),
-                            t.attr_presence("checked", t.bool(false)),
-                        ],
-                        t.html_concat(vec![]),
-                    )
-                })
+                .entrypoint(
+                    "Test",
+                    [("cls", Ty::String), ("flag", Ty::Bool)],
+                    Ty::Html,
+                    |t| {
+                        t.element(
+                            "input",
+                            [
+                                t.attr_value("class", t.param("cls")),
+                                t.attr_presence("disabled", t.param("flag")),
+                                t.attr_presence("checked", t.bool(false)),
+                            ],
+                            t.html_concat(vec![]),
+                        )
+                    },
+                )
                 .build_with_registry(),
             |v| vec![("cls", v.str("a\"b")), ("flag", v.bool(true))],
             expect![[r#"
@@ -726,7 +731,7 @@ mod tests {
     fn should_escape_html_in_expressions() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("content", "String")], "Html", |t| {
+                .entrypoint("Test", [("content", Ty::String)], Ty::Html, |t| {
                     t.escape(t.param("content"))
                 })
                 .build_with_registry(),
@@ -748,7 +753,7 @@ mod tests {
     fn should_render_if_body_when_condition_is_true() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("show", "Bool")], "Html", |t| {
+                .entrypoint("Test", [("show", Ty::Bool)], Ty::Html, |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| t.element("div", [], t.text("Visible")));
                         m.arm(Pat::False, |t, _| t.html_concat([]));
@@ -783,7 +788,7 @@ mod tests {
     fn should_skip_if_body_when_condition_is_false() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("show", "Bool")], "Html", |t| {
+                .entrypoint("Test", [("show", Ty::Bool)], Ty::Html, |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| t.element("div", [], t.text("Hidden")));
                         m.arm(Pat::False, |t, _| t.html_concat([]));
@@ -818,7 +823,7 @@ mod tests {
     fn should_iterate_over_array_in_for_loop() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("items", "Array[String]")], "Html", |t| {
+                .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, item| {
                         t.html_concat([t.element("li", vec![], t.escape(item)), t.text("\n")])
                     })
@@ -855,7 +860,7 @@ mod tests {
     #[test]
     fn should_evaluate_a_function_on_its_own() {
         let (module, types) = FlatModuleBuilder::new()
-            .function("Double", [("n", "Int")], "Int", |t| {
+            .function("Double", [("n", Ty::Int)], Ty::Int, |t| {
                 t.add(t.param("n"), t.param("n"))
             })
             .build_with_registry();
@@ -869,7 +874,7 @@ mod tests {
     fn should_evaluate_a_recursive_function() {
         check(
             FlatModuleBuilder::new()
-                .function("Sum", [("n", "Int")], "Int", |t| {
+                .function("Sum", [("n", Ty::Int)], Ty::Int, |t| {
                     t.match_(t.lte(t.param("n"), t.int(0)), |m| {
                         m.arm(Pat::True, |t, _| t.int(0));
                         m.arm(Pat::False, |t, _| {
@@ -877,7 +882,7 @@ mod tests {
                         });
                     })
                 })
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.call("Sum", [t.int(10)])))
                 })
                 .build_with_registry(),
@@ -919,10 +924,10 @@ mod tests {
     #[test]
     fn should_error_when_a_function_never_stops_calling_itself() {
         let module = FlatModuleBuilder::new()
-            .function("Loop", [("n", "Int")], "Int", |t| {
+            .function("Loop", [("n", Ty::Int)], Ty::Int, |t| {
                 t.call("Loop", [t.add(t.param("n"), t.int(1))])
             })
-            .entrypoint("Test", [], "Html", |t| {
+            .entrypoint("Test", [], Ty::Html, |t| {
                 t.escape(t.int_to_string(t.call("Loop", [t.int(0)])))
             })
             .build();
@@ -940,22 +945,23 @@ mod tests {
                 "Tree",
                 [
                     ("Leaf", vec![]),
-                    ("Node", vec![("children", "Array[Tree]")]),
+                    ("Node", vec![("children", Ty::array(Ty::named("Tree")))]),
                 ],
             )
             .build();
         // Each call holds eight of the tree it was called with, so the tree at
         // the call depth limit has 8^11 leaves, too many to hold unless the
         // copies are shared.
-        let module = FlatModuleBuilder::with_types(types)
-            .function("Grow", [("tree", "Tree")], "Int", |t| {
+        let module = FlatModuleBuilder::with_registry(types)
+            .function("Grow", [("tree", Ty::named("Tree"))], Ty::Int, |t| {
                 let tree = t.param("tree");
                 let children = t.array([tree; 8]);
-                let node = t.enum_variant_with_fields("Tree", "Node", [("children", children)]);
+                let node =
+                    t.enum_variant_with_fields(Ty::named("Tree"), "Node", [("children", children)]);
                 t.call("Grow", [node])
             })
-            .entrypoint("Test", [], "Html", |t| {
-                let leaf = t.enum_variant_with_fields("Tree", "Leaf", []);
+            .entrypoint("Test", [], Ty::Html, |t| {
+                let leaf = t.enum_variant_with_fields(Ty::named("Tree"), "Leaf", []);
                 t.escape(t.int_to_string(t.call("Grow", [leaf])))
             })
             .build();
@@ -969,7 +975,7 @@ mod tests {
     #[test]
     fn should_error_when_a_range_is_too_long() {
         let module = FlatModuleBuilder::new()
-            .entrypoint("Test", [], "Html", |t| {
+            .entrypoint("Test", [], Ty::Html, |t| {
                 let all = t.array_from_range(t.int(i32::MIN), t.int(i32::MAX));
                 t.escape(t.int_to_string(t.array_length(all)))
             })
@@ -984,7 +990,7 @@ mod tests {
     #[test]
     fn should_error_when_required_param_not_provided() {
         let module = FlatModuleBuilder::new()
-            .entrypoint("Test", [("name", "String")], "Html", |t| {
+            .entrypoint("Test", [("name", Ty::String)], Ty::Html, |t| {
                 t.escape(t.param("name"))
             })
             .build();

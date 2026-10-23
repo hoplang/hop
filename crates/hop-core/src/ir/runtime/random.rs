@@ -239,7 +239,7 @@ fn generate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::typing::TypeRegistryBuilder;
+    use crate::hop::typing::{Ty, TypeRegistryBuilder};
     use rand::SeedableRng;
     use rand::rngs::SmallRng;
 
@@ -251,28 +251,35 @@ mod tests {
                 [
                     (
                         "Node",
-                        vec![("left", "Tree"), ("middle", "Tree"), ("right", "Tree")],
+                        vec![
+                            ("left", Ty::named("Tree")),
+                            ("middle", Ty::named("Tree")),
+                            ("right", Ty::named("Tree")),
+                        ],
                     ),
                     ("Leaf", vec![]),
                 ],
             )
             .build();
-        let ty = types.named("Tree");
+        let ty = Type::from(Ty::named("Tree"));
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
-            random_value(&mut rng, &ty, None, types.registry());
+            random_value(&mut rng, &ty, None, &types);
         }
     }
 
     #[test]
     fn recursive_record_through_option_terminates() {
         let types = TypeRegistryBuilder::new()
-            .record("Node", [("value", "Int"), ("next", "Option[Node]")])
+            .record(
+                "Node",
+                [("value", Ty::Int), ("next", Ty::option(Ty::named("Node")))],
+            )
             .build();
-        let ty = types.named("Node");
+        let ty = Type::from(Ty::named("Node"));
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
-            random_value(&mut rng, &ty, None, types.registry());
+            random_value(&mut rng, &ty, None, &types);
         }
     }
 
@@ -282,22 +289,25 @@ mod tests {
             .enum_(
                 "Expr",
                 [
-                    ("Lit", vec![("value", "Int")]),
-                    ("Group", vec![("items", "ExprList")]),
+                    ("Lit", vec![("value", Ty::Int)]),
+                    ("Group", vec![("items", Ty::named("ExprList"))]),
                 ],
             )
             .enum_(
                 "ExprList",
                 [
-                    ("Cons", vec![("head", "Expr"), ("tail", "ExprList")]),
+                    (
+                        "Cons",
+                        vec![("head", Ty::named("Expr")), ("tail", Ty::named("ExprList"))],
+                    ),
                     ("Nil", vec![]),
                 ],
             )
             .build();
-        let ty = types.named("Expr");
+        let ty = Type::from(Ty::named("Expr"));
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
-            random_value(&mut rng, &ty, None, types.registry());
+            random_value(&mut rng, &ty, None, &types);
         }
     }
 
@@ -305,16 +315,16 @@ mod tests {
     #[should_panic(expected = "cannot generate a value")]
     fn uninhabited_recursive_record_panics() {
         let types = TypeRegistryBuilder::new()
-            .record("Node", [("value", "Int"), ("next", "Node")])
+            .record("Node", [("value", Ty::Int), ("next", Ty::named("Node"))])
             .build();
-        let ty = types.named("Node");
+        let ty = Type::from(Ty::named("Node"));
         let mut rng = SmallRng::seed_from_u64(0);
-        random_value(&mut rng, &ty, None, types.registry());
+        random_value(&mut rng, &ty, None, &types);
     }
 
     #[test]
     fn array_length_respects_min_len_and_max_len() {
-        let ty = Type::array(DataType::Int);
+        let ty = Type::from(Ty::array(Ty::Int));
         let examples = ExamplesAnnotation {
             min_len: Some(3),
             max_len: Some(4),
@@ -338,7 +348,7 @@ mod tests {
 
     #[test]
     fn array_length_defaults_to_zero_through_five() {
-        let ty = Type::array(DataType::Int);
+        let ty = Type::from(Ty::array(Ty::Int));
         let registry = TypeRegistry::default();
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);

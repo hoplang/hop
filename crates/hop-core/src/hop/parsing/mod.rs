@@ -33,6 +33,4 @@ mod source_generator;
 #[cfg(test)]
 pub use parse_expr::{parse_expr, parse_pattern};
 #[cfg(test)]
-pub use parse_type::parse_type;
-#[cfg(test)]
 pub use source_generator::random_source;

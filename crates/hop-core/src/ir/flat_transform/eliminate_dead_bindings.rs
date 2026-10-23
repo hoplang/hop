@@ -71,7 +71,7 @@ fn eliminate(block: FlatBlock, live: &mut HashSet<ValueId>) -> FlatBlock {
 mod tests {
 
     use super::*;
-    use crate::hop::typing::TypeRegistryBuilder;
+    use crate::hop::typing::{Ty, TypeRegistryBuilder};
     use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
@@ -149,7 +149,7 @@ mod tests {
     fn should_drop_a_value_nothing_reads() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     let _unused = t.str("value");
                     t.text("Hello")
                 })
@@ -175,8 +175,8 @@ mod tests {
     fn should_drop_a_dead_match_with_its_arms() {
         check(
             FlatModuleBuilder::new()
-                .function("f", [], "Int", |t| t.call("f", []))
-                .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
+                .function("f", [], Ty::Int, |t| t.call("f", []))
+                .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                     let _unused = t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.call("f", []));
                         m.arm(Pat::False, |t, _| t.int(0));
@@ -222,7 +222,7 @@ mod tests {
     fn should_unbind_an_unused_loop_variable() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("items", "Array[String]")], "Html", |t| {
+                .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, _| t.text("."))
                 })
                 .build(),
@@ -252,7 +252,7 @@ mod tests {
     fn should_unbind_an_unused_option_binding() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("name", "Option[String]")], "Html", |t| {
+                .entrypoint("Test", [("name", Ty::option(Ty::String))], Ty::Html, |t| {
                     t.match_(t.param("name"), |m| {
                         m.arm(Pat::some(Pat::bind("n")), |t, _| t.text("some"));
                         m.arm(Pat::None, |t, _| t.text("none"));
@@ -300,13 +300,13 @@ mod tests {
                 "Shape",
                 [
                     ("Dot", vec![]),
-                    ("Rect", vec![("width", "Int"), ("height", "Int")]),
+                    ("Rect", vec![("width", Ty::Int), ("height", Ty::Int)]),
                 ],
             )
             .build();
         check(
-            FlatModuleBuilder::with_types(types)
-                .function("width", [("shape", "Shape")], "Int", |t| {
+            FlatModuleBuilder::with_registry(types)
+                .function("width", [("shape", Ty::named("Shape"))], Ty::Int, |t| {
                     t.match_(t.param("shape"), |m| {
                         m.arm(Pat::variant("Dot", []), |t, _| t.int(0));
                         m.arm(

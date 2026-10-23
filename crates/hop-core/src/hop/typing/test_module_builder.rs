@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
-use crate::document::DocumentCursor;
+use crate::document::{CheapString, DocumentCursor};
+use crate::hop::typing::r#type::{DataType, Type};
 use crate::hop::typing::type_env::{
     FunctionSignature, Name, NameKind, ParamEntry, Row, Tail, TypeEnv,
 };
-use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
+use crate::hop::typing::type_registry::TypeRegistry;
+use crate::hop::typing::type_registry_builder::{Ty, TypeRegistryBuilder, test_module};
 use crate::symbols::var_name::VarName;
 
 fn var_name(name: &str) -> VarName {
@@ -14,8 +16,8 @@ fn var_name(name: &str) -> VarName {
 #[derive(Clone)]
 struct FunctionDecl {
     name: String,
-    params: Vec<(String, String)>,
-    return_type: String,
+    params: Vec<(String, Type)>,
+    return_type: Type,
 }
 
 /// Declares the types of a TypeRegistryBuilder together with functions
@@ -43,30 +45,30 @@ impl TestModuleBuilder {
     pub fn function<'a>(
         mut self,
         name: &str,
-        params: impl IntoIterator<Item = (&'a str, &'a str)>,
-        return_type: &str,
+        params: impl IntoIterator<Item = (&'a str, Ty)>,
+        return_type: Ty,
     ) -> Self {
         self.functions.push(FunctionDecl {
             name: name.to_string(),
             params: params
                 .into_iter()
-                .map(|(p, t)| (p.to_string(), t.to_string()))
+                .map(|(p, t)| (p.to_string(), t.into()))
                 .collect(),
-            return_type: return_type.to_string(),
+            return_type: return_type.into(),
         });
         self
     }
 
     pub fn build(self) -> TestModule {
-        let types = self.types.build();
+        let registry = self.types.build();
         let mut functions = HashMap::new();
         for decl in self.functions {
             let params: Vec<ParamEntry> = decl
                 .params
-                .iter()
-                .map(|(p, t)| ParamEntry {
-                    name: var_name(p),
-                    typ: types.resolve(t),
+                .into_iter()
+                .map(|(p, typ)| ParamEntry {
+                    name: var_name(&p),
+                    typ,
                     fallback: None,
                 })
                 .collect();
@@ -76,36 +78,41 @@ impl TestModuleBuilder {
                     fields: params,
                     tail: Tail::Closed,
                 },
-                return_type: types.resolve(&decl.return_type),
+                return_type: decl.return_type,
                 rest_param: None,
             };
             if functions.insert(var_name(&decl.name), signature).is_some() {
                 panic!("duplicate declaration of function `{}`", decl.name);
             }
         }
-        TestModule { types, functions }
+        TestModule {
+            registry,
+            functions,
+        }
     }
 }
 
-/// An immutable bundle of TestTypes and the settled signatures of the
-/// functions declared beside them.
+/// An immutable bundle of a TypeRegistry and the settled signatures of the
+/// functions declared beside its types.
 #[derive(Clone)]
 pub struct TestModule {
-    types: TestTypes,
+    registry: TypeRegistry,
     functions: HashMap<VarName, FunctionSignature>,
 }
 
 impl TestModule {
-    pub fn types(&self) -> &TestTypes {
-        &self.types
+    pub fn registry(&self) -> &TypeRegistry {
+        &self.registry
     }
 
     /// The environment of a module that declares these types and
     /// functions.
     pub fn type_env(&self) -> TypeEnv {
-        let decl_range =
-            DocumentCursor::new(self.types.module().clone(), String::new()).eof_range();
-        let mut type_env = self.types.type_env();
+        let decl_range = DocumentCursor::new(test_module(), String::new()).eof_range();
+        let mut type_env = TypeEnv {
+            names: type_names(&self.registry),
+            functions: Default::default(),
+        };
         for (name, signature) in &self.functions {
             type_env.names.insert(
                 name.to_cheap_string(),
@@ -121,4 +128,25 @@ impl TestModule {
         }
         type_env
     }
+}
+
+/// The names table of a module that declares the types in the registry.
+fn type_names(registry: &TypeRegistry) -> HashMap<CheapString, Name> {
+    let decl_range = DocumentCursor::new(test_module(), String::new()).eof_range();
+    registry
+        .iter()
+        .map(|(module, name, _)| {
+            (
+                name.to_cheap_string(),
+                Name {
+                    kind: NameKind::Type(DataType::Named {
+                        module: module.clone(),
+                        name: name.clone(),
+                    }),
+                    definition_range: decl_range.clone(),
+                    import_range: None,
+                },
+            )
+        })
+        .collect()
 }

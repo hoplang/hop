@@ -272,6 +272,7 @@ impl Converter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hop::typing::Ty;
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::random_module;
     use crate::ir::optimize_flat;
@@ -302,8 +303,8 @@ mod tests {
             FlatModuleBuilder::new()
                 .entrypoint(
                     "Card",
-                    [("title", "String"), ("hidden", "Bool")],
-                    "Html",
+                    [("title", Ty::String), ("hidden", Ty::Bool)],
+                    Ty::Html,
                     |t| {
                         t.element(
                             "div",
@@ -347,8 +348,8 @@ mod tests {
             FlatModuleBuilder::new()
                 .entrypoint(
                     "Greeting",
-                    [("name", "Option[String]"), ("formal", "Bool")],
-                    "Html",
+                    [("name", Ty::option(Ty::String)), ("formal", Ty::Bool)],
+                    Ty::Html,
                     |t| {
                         let greeting = t.match_(t.param("name"), |m| {
                             m.arm(Pat::some(Pat::bind("n")), |t, arm| {
@@ -437,8 +438,8 @@ mod tests {
             FlatModuleBuilder::new()
                 .entrypoint(
                     "Items",
-                    [("items", "Array[String]"), ("n", "Int")],
-                    "Html",
+                    [("items", Ty::array(Ty::String)), ("n", Ty::Int)],
+                    Ty::Html,
                     |t| {
                         let _unused = t.text("never");
                         let data_x = t.int_to_string(t.add(t.param("n"), t.int(1)));
@@ -491,13 +492,13 @@ mod tests {
     fn should_unfold_the_children_of_inlined_calls() {
         check(
             FlatModuleBuilder::new()
-                .function("Badge", [("label", "String")], "Html", |t| {
+                .function("Badge", [("label", Ty::String)], Ty::Html, |t| {
                     t.element("span", [], t.escape(t.param("label")))
                 })
-                .function("Wrap", [("content", "Html")], "Html", |t| {
+                .function("Wrap", [("content", Ty::Html)], Ty::Html, |t| {
                     t.element("div", [], t.param("content"))
                 })
-                .entrypoint("Test", [("label", "String")], "Html", |t| {
+                .entrypoint("Test", [("label", Ty::String)], Ty::Html, |t| {
                     t.call(
                         "Wrap",
                         [t.html_concat(vec![
@@ -540,8 +541,8 @@ mod tests {
             FlatModuleBuilder::new()
                 .function(
                     "Nest",
-                    [("depth", "Int"), ("children", "Html")],
-                    "Html",
+                    [("depth", Ty::Int), ("children", Ty::Html)],
+                    Ty::Html,
                     |t| {
                         t.match_(t.lt(t.int(0), t.param("depth")), |m| {
                             m.arm(Pat::True, |t, _| {
@@ -561,7 +562,7 @@ mod tests {
                         })
                     },
                 )
-                .entrypoint("Test", [("name", "String")], "Html", |t| {
+                .entrypoint("Test", [("name", Ty::String)], Ty::Html, |t| {
                     t.call(
                         "Nest",
                         [t.int(2), t.element("b", vec![], t.escape(t.param("name")))],

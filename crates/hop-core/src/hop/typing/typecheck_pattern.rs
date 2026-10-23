@@ -349,15 +349,20 @@ mod tests {
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
     use crate::hop::parsing::parse_pattern;
-    use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::hop::typing::test_module_builder::TestModuleBuilder;
+    use crate::hop::typing::type_registry_builder::{Ty, TypeRegistryBuilder, test_module};
     use expect_test::{Expect, expect};
 
-    fn reject(types: TypeRegistryBuilder, subject: &str, pattern_str: &str, expected: Expect) {
-        let types = types.build();
-        let Type::Data(subject_type) = types.resolve(subject) else {
-            panic!("cannot match on Html")
-        };
-        let mut iter = DocumentCursor::new(types.module().clone(), pattern_str.to_string());
+    fn reject(
+        module: impl Into<TestModuleBuilder>,
+        subject: Ty,
+        pattern_str: &str,
+        expected: Expect,
+    ) {
+        let module = module.into().build();
+        let type_env = module.type_env();
+        let subject_type = DataType::from(subject);
+        let mut iter = DocumentCursor::new(test_module(), pattern_str.to_string());
         let mut comments = Vec::new();
         let mut errors = Vec::new();
         let parsed = parse_pattern(&mut iter, &mut comments, &mut errors);
@@ -375,8 +380,8 @@ mod tests {
         if let Some(typed) = typecheck_pattern(
             &parsed,
             &subject_type,
-            &types.type_env(),
-            types.registry(),
+            &type_env,
+            module.registry(),
             &mut Vec::new(),
             &mut Vec::new(),
             &mut type_errors,
@@ -396,7 +401,7 @@ mod tests {
     fn rejects_enum_pattern_naming_an_undefined_enum() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
-            "Color",
+            Ty::named("Color"),
             "Colour::Red",
             expect![[r#"
                 error: Type 'Colour' is not defined
@@ -409,8 +414,8 @@ mod tests {
     #[test]
     fn rejects_record_pattern_naming_an_undefined_record() {
         reject(
-            TypeRegistryBuilder::new().record("User", [("name", "String")]),
-            "User",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String)]),
+            Ty::named("User"),
             "Person {name: n}",
             expect![[r#"
                 error: Type 'Person' is not defined
@@ -426,11 +431,11 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Outcome",
                 [
-                    ("Success", vec![("value", "Int")]),
-                    ("Failure", vec![("message", "String")]),
+                    ("Success", vec![("value", Ty::Int)]),
+                    ("Failure", vec![("message", Ty::String)]),
                 ],
             ),
-            "Outcome",
+            Ty::named("Outcome"),
             "Outcome::Success {unknown: v}",
             expect![[r#"
                 error: Unknown field 'unknown' in enum variant 'Outcome::Success'
@@ -442,8 +447,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_unknown_field_after_valid_field() {
         reject(
-            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
-            "Point",
+            TypeRegistryBuilder::new()
+                .enum_("Point", [("XY", vec![("x", Ty::Int), ("y", Ty::Int)])]),
+            Ty::named("Point"),
             "Point::XY {x: a, unknown: b}",
             expect![[r#"
                 error: Unknown field 'unknown' in enum variant 'Point::XY'
@@ -455,8 +461,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_two_unknown_fields() {
         reject(
-            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
-            "Point",
+            TypeRegistryBuilder::new()
+                .enum_("Point", [("XY", vec![("x", Ty::Int), ("y", Ty::Int)])]),
+            Ty::named("Point"),
             "Point::XY {foo: a, bar: b}",
             expect![[r#"
                 error: Unknown field 'foo' in enum variant 'Point::XY'
@@ -468,8 +475,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_missing_field_in_pattern() {
         reject(
-            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
-            "Point",
+            TypeRegistryBuilder::new()
+                .enum_("Point", [("XY", vec![("x", Ty::Int), ("y", Ty::Int)])]),
+            Ty::named("Point"),
             "Point::XY {x: a}",
             expect![[r#"
                 error: Enum variant 'Point::XY' is missing fields: y
@@ -483,9 +491,9 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().enum_(
                 "Point",
-                [("XYZ", vec![("x", "Int"), ("y", "Int"), ("z", "Int")])],
+                [("XYZ", vec![("x", Ty::Int), ("y", Ty::Int), ("z", Ty::Int)])],
             ),
-            "Point",
+            Ty::named("Point"),
             "Point::XYZ {x: a}",
             expect![[r#"
                 error: Enum variant 'Point::XYZ' is missing fields: y, z
@@ -497,8 +505,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_no_parens_when_fields_expected() {
         reject(
-            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
-            "Point",
+            TypeRegistryBuilder::new()
+                .enum_("Point", [("XY", vec![("x", Ty::Int), ("y", Ty::Int)])]),
+            Ty::named("Point"),
             "Point::XY",
             expect![[r#"
                 error: Enum variant 'Point::XY' is missing fields: x, y
@@ -512,9 +521,9 @@ mod tests {
         reject(
             TypeRegistryBuilder::new().enum_(
                 "Maybe",
-                [("Just", vec![("value", "Int")]), ("Nothing", vec![])],
+                [("Just", vec![("value", Ty::Int)]), ("Nothing", vec![])],
             ),
-            "Maybe",
+            Ty::named("Maybe"),
             "Maybe::Nothing {value: v}",
             expect![[r#"
                 error: Unknown field 'value' in enum variant 'Maybe::Nothing'
@@ -527,7 +536,7 @@ mod tests {
     fn rejects_validation_undefined_enum_variant() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
-            "Color",
+            Ty::named("Color"),
             "Color::Blue",
             expect![[r#"
                 error: Variant 'Blue' is not defined in enum 'Color'
@@ -539,8 +548,9 @@ mod tests {
     #[test]
     fn rejects_undefined_enum_variant_with_fields() {
         reject(
-            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
-            "Point",
+            TypeRegistryBuilder::new()
+                .enum_("Point", [("XY", vec![("x", Ty::Int), ("y", Ty::Int)])]),
+            Ty::named("Point"),
             "Point::XYZ {x: a, y: b}",
             expect![[r#"
                 error: Variant 'XYZ' is not defined in enum 'Point'
@@ -552,8 +562,8 @@ mod tests {
     #[test]
     fn rejects_validation_record_missing_fields() {
         reject(
-            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
-            "User",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String), ("age", Ty::Int)]),
+            Ty::named("User"),
             "User {name: n}",
             expect![[r#"
                 error: Record 'User' is missing fields: age
@@ -565,8 +575,8 @@ mod tests {
     #[test]
     fn rejects_record_duplicate_field_in_pattern() {
         reject(
-            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
-            "User",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String), ("age", Ty::Int)]),
+            Ty::named("User"),
             "User {name: _, name: _}",
             expect![[r#"
                 error: Duplicate field 'name' in record 'User'
@@ -578,8 +588,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_duplicate_field_in_pattern() {
         reject(
-            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
-            "Point",
+            TypeRegistryBuilder::new()
+                .enum_("Point", [("XY", vec![("x", Ty::Int), ("y", Ty::Int)])]),
+            Ty::named("Point"),
             "Point::XY {x: _, x: _}",
             expect![[r#"
                 error: Duplicate field 'x' in enum variant 'Point::XY'
@@ -592,7 +603,7 @@ mod tests {
     fn rejects_tuple_pattern_binding_a_name_twice() {
         reject(
             TypeRegistryBuilder::new(),
-            "(Bool, Bool)",
+            Ty::tuple([Ty::Bool, Ty::Bool]),
             "(x, x)",
             expect![[r#"
                 error: Variable x is bound more than once in the pattern
@@ -604,9 +615,11 @@ mod tests {
     #[test]
     fn rejects_enum_variant_pattern_binding_a_name_twice() {
         reject(
-            TypeRegistryBuilder::new()
-                .enum_("Point", [("XY", vec![("x", "Int"), ("y", "Option[Int]")])]),
-            "Point",
+            TypeRegistryBuilder::new().enum_(
+                "Point",
+                [("XY", vec![("x", Ty::Int), ("y", Ty::option(Ty::Int))])],
+            ),
+            Ty::named("Point"),
             "Point::XY {x: a, y: Some(a)}",
             expect![[r#"
                 error: Variable a is bound more than once in the pattern
@@ -618,8 +631,8 @@ mod tests {
     #[test]
     fn rejects_validation_record_unknown_field() {
         reject(
-            TypeRegistryBuilder::new().record("User", [("name", "String")]),
-            "User",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String)]),
+            Ty::named("User"),
             "User {email: e}",
             expect![[r#"
                 error: Unknown field 'email' in record 'User'
@@ -632,7 +645,7 @@ mod tests {
     fn rejects_validation_bool_pattern_on_enum() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
-            "Color",
+            Ty::named("Color"),
             "true",
             expect![[r#"
                 error: Pattern does not match type Color
@@ -645,7 +658,7 @@ mod tests {
     fn rejects_validation_option_pattern_on_enum() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
-            "Color",
+            Ty::named("Color"),
             "Some(v)",
             expect![[r#"
                 error: Pattern does not match type Color
@@ -658,7 +671,7 @@ mod tests {
     fn rejects_validation_nested_option_wrong_inner_type() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[Bool]",
+            Ty::option(Ty::Bool),
             "Some(Some(v))",
             expect![[r#"
                 error: Pattern does not match type Bool
@@ -672,7 +685,7 @@ mod tests {
     fn rejects_tuple_pattern_with_too_many_elements() {
         reject(
             TypeRegistryBuilder::new(),
-            "(Bool, Bool)",
+            Ty::tuple([Ty::Bool, Ty::Bool]),
             "(a, b, c)",
             expect![[r#"
                 error: Pattern does not match type (Bool, Bool)
@@ -686,7 +699,7 @@ mod tests {
     fn rejects_tuple_pattern_with_too_few_elements() {
         reject(
             TypeRegistryBuilder::new(),
-            "(Bool, Bool)",
+            Ty::tuple([Ty::Bool, Ty::Bool]),
             "(a,)",
             expect![[r#"
                 error: Pattern does not match type (Bool, Bool)
@@ -700,7 +713,7 @@ mod tests {
     fn rejects_tuple_pattern_with_wrong_element_type() {
         reject(
             TypeRegistryBuilder::new(),
-            "(Bool, Int)",
+            Ty::tuple([Ty::Bool, Ty::Int]),
             "(true, None)",
             expect![[r#"
                 error: Pattern does not match type Int
@@ -713,8 +726,8 @@ mod tests {
     #[test]
     fn rejects_tuple_pattern_on_record() {
         reject(
-            TypeRegistryBuilder::new().record("User", [("name", "String")]),
-            "User",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String)]),
+            Ty::named("User"),
             "(name,)",
             expect![[r#"
                 error: Pattern does not match type User
@@ -727,8 +740,8 @@ mod tests {
     #[test]
     fn rejects_record_pattern_on_tuple() {
         reject(
-            TypeRegistryBuilder::new().record("User", [("name", "String")]),
-            "(String,)",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String)]),
+            Ty::tuple([Ty::String]),
             "User {name}",
             expect![[r#"
                 error: Pattern does not match type (String,)

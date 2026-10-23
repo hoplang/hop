@@ -765,16 +765,22 @@ mod tests {
     use crate::document_annotator::DocumentAnnotator;
     use crate::hop::parsing::ParsedExpr;
     use crate::hop::parsing::parse_expr;
-    use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::hop::typing::test_module_builder::TestModuleBuilder;
+    use crate::hop::typing::type_registry_builder::{Ty, TypeRegistryBuilder, test_module};
     use crate::hop::typing::typecheck_pattern::typecheck_pattern;
     use crate::hop::typing::{Type, TypeError};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    fn run_check(types: TypeRegistryBuilder, subject: &str, expr_str: &str) -> (String, bool) {
-        let types = types.build();
-        let subject_type = types.resolve(subject);
-        let mut iter = DocumentCursor::new(types.module().clone(), expr_str.to_string());
+    fn run_check(
+        module: impl Into<TestModuleBuilder>,
+        subject: Ty,
+        expr_str: &str,
+    ) -> (String, bool) {
+        let module = module.into().build();
+        let type_env = module.type_env();
+        let subject_type = Type::from(subject);
+        let mut iter = DocumentCursor::new(test_module(), expr_str.to_string());
         let mut comments = Vec::new();
         let mut errors = Vec::new();
         let expr =
@@ -814,8 +820,8 @@ mod tests {
                 typecheck_pattern(
                     p,
                     &subject_type,
-                    &types.type_env(),
-                    types.registry(),
+                    &type_env,
+                    module.registry(),
                     &mut Vec::new(),
                     &mut Vec::new(),
                     &mut type_errors,
@@ -824,7 +830,7 @@ mod tests {
             .collect::<Option<Vec<_>>>()
             .unwrap_or_else(|| panic!("pattern failed to typecheck: {type_errors:?}"));
 
-        match compile_match(types.registry(), &typed_patterns, subject_type) {
+        match compile_match(module.registry(), &typed_patterns, subject_type) {
             Ok(decision) => (format_decision(&decision, 0), true),
             Err(error) => {
                 let range = match error.site {
@@ -845,7 +851,7 @@ mod tests {
         }
     }
 
-    fn accept(types: TypeRegistryBuilder, subject: &str, expr_str: &str, expected: Expect) {
+    fn accept(types: TypeRegistryBuilder, subject: Ty, expr_str: &str, expected: Expect) {
         let (actual, ok) = run_check(types, subject, expr_str);
         if !ok {
             panic!("expected patterns to compile, got error:\n{actual}");
@@ -853,7 +859,7 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    fn reject(types: TypeRegistryBuilder, subject: &str, expr_str: &str, expected: Expect) {
+    fn reject(types: TypeRegistryBuilder, subject: Ty, expr_str: &str, expected: Expect) {
         let (actual, ok) = run_check(types, subject, expr_str);
         if ok {
             panic!("expected a compile error, but patterns compiled to:\n{actual}");
@@ -963,7 +969,7 @@ mod tests {
     fn accepts_bool_exhaustive() {
         accept(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     true => 0,
@@ -983,7 +989,7 @@ mod tests {
     fn rejects_bool_missing_false() {
         reject(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     true => 0,
@@ -1001,7 +1007,7 @@ mod tests {
     fn rejects_bool_missing_true() {
         reject(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     false => 0,
@@ -1019,7 +1025,7 @@ mod tests {
     fn rejects_bool_unreachable_arm() {
         reject(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     true => 0,
@@ -1039,7 +1045,7 @@ mod tests {
     fn rejects_bool_wildcard_covers_all() {
         reject(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     _ => 0,
@@ -1057,7 +1063,7 @@ mod tests {
     fn accepts_bool_binding_covers_all() {
         accept(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     b => 0,
@@ -1074,7 +1080,7 @@ mod tests {
     fn accepts_option_exhaustive() {
         accept(
             TypeRegistryBuilder::new(),
-            "Option[String]",
+            Ty::option(Ty::String),
             indoc! {"
                 match x {
                     Some(item) => 0,
@@ -1095,7 +1101,7 @@ mod tests {
     fn rejects_option_missing_none() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[String]",
+            Ty::option(Ty::String),
             indoc! {"
                 match x {
                     Some(item) => 0,
@@ -1113,7 +1119,7 @@ mod tests {
     fn rejects_option_missing_some() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[String]",
+            Ty::option(Ty::String),
             indoc! {"
                 match x {
                     None => 0,
@@ -1131,7 +1137,7 @@ mod tests {
     fn accepts_nested_option_exhaustive() {
         accept(
             TypeRegistryBuilder::new(),
-            "Option[Option[String]]",
+            Ty::option(Ty::option(Ty::String)),
             indoc! {"
                 match x {
                     Some(Some(item)) => 0,
@@ -1156,7 +1162,7 @@ mod tests {
     fn accepts_enum_exhaustive() {
         accept(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
-            "Color",
+            Ty::named("Color"),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -1179,7 +1185,7 @@ mod tests {
     fn rejects_enum_missing_variant() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
-            "Color",
+            Ty::named("Color"),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -1198,7 +1204,7 @@ mod tests {
     fn accepts_enum_wildcard_covers_remaining() {
         accept(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
-            "Color",
+            Ty::named("Color"),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -1220,7 +1226,7 @@ mod tests {
     fn rejects_enum_unreachable_after_wildcard() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
-            "Color",
+            Ty::named("Color"),
             indoc! {"
                 match x {
                     _ => 0,
@@ -1241,11 +1247,11 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Outcome",
                 [
-                    ("Success", vec![("value", "Int")]),
-                    ("Failure", vec![("message", "String")]),
+                    ("Success", vec![("value", Ty::Int)]),
+                    ("Failure", vec![("message", Ty::String)]),
                 ],
             ),
-            "Outcome",
+            Ty::named("Outcome"),
             indoc! {"
                 match x {
                     Outcome::Success {value: v} => 0,
@@ -1268,9 +1274,9 @@ mod tests {
         accept(
             TypeRegistryBuilder::new().enum_(
                 "Maybe",
-                [("Just", vec![("value", "Int")]), ("Nothing", vec![])],
+                [("Just", vec![("value", Ty::Int)]), ("Nothing", vec![])],
             ),
-            "Maybe",
+            Ty::named("Maybe"),
             indoc! {"
                 match x {
                     Maybe::Just {value: v} => 0,
@@ -1293,11 +1299,11 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Outcome",
                 [
-                    ("Success", vec![("value", "Int")]),
-                    ("Failure", vec![("message", "String")]),
+                    ("Success", vec![("value", Ty::Int)]),
+                    ("Failure", vec![("message", Ty::String)]),
                 ],
             ),
-            "Outcome",
+            Ty::named("Outcome"),
             indoc! {"
                 match x {
                     Outcome::Success {value: _} => 0,
@@ -1319,12 +1325,12 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Status",
                 [
-                    ("Pending", vec![("since", "Int")]),
-                    ("Active", vec![("id", "Int"), ("name", "String")]),
+                    ("Pending", vec![("since", Ty::Int)]),
+                    ("Active", vec![("id", Ty::Int), ("name", Ty::String)]),
                     ("Inactive", vec![]),
                 ],
             ),
-            "Status",
+            Ty::named("Status"),
             indoc! {"
                 match x {
                     Status::Pending {since: s} => 0,
@@ -1351,9 +1357,12 @@ mod tests {
         accept(
             TypeRegistryBuilder::new().enum_(
                 "Point3D",
-                [("Coords", vec![("x", "Int"), ("y", "Int"), ("z", "Int")])],
+                [(
+                    "Coords",
+                    vec![("x", Ty::Int), ("y", Ty::Int), ("z", Ty::Int)],
+                )],
             ),
-            "Point3D",
+            Ty::named("Point3D"),
             indoc! {"
                 match x {
                     Point3D::Coords {x: a, y: b, z: c} => 0,
@@ -1374,9 +1383,12 @@ mod tests {
         accept(
             TypeRegistryBuilder::new().enum_(
                 "Point3D",
-                [("Coords", vec![("x", "Int"), ("y", "Int"), ("z", "Int")])],
+                [(
+                    "Coords",
+                    vec![("x", Ty::Int), ("y", Ty::Int), ("z", Ty::Int)],
+                )],
             ),
-            "Point3D",
+            Ty::named("Point3D"),
             indoc! {"
                 match x {
                     Point3D::Coords {x: _, y: _, z: _} => 0,
@@ -1394,9 +1406,12 @@ mod tests {
         accept(
             TypeRegistryBuilder::new().enum_(
                 "Point3D",
-                [("Coords", vec![("x", "Int"), ("y", "Int"), ("z", "Int")])],
+                [(
+                    "Coords",
+                    vec![("x", Ty::Int), ("y", Ty::Int), ("z", Ty::Int)],
+                )],
             ),
-            "Point3D",
+            Ty::named("Point3D"),
             indoc! {"
                 match x {
                     Point3D::Coords {x: a, y: _, z: c} => 0,
@@ -1417,11 +1432,11 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Res",
                 [
-                    ("Success", vec![("value", "Int")]),
-                    ("Failure", vec![("message", "String")]),
+                    ("Success", vec![("value", Ty::Int)]),
+                    ("Failure", vec![("message", Ty::String)]),
                 ],
             ),
-            "Res",
+            Ty::named("Res"),
             indoc! {"
                 match x {
                     _ => 0,
@@ -1441,11 +1456,11 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Res",
                 [
-                    ("Success", vec![("value", "Int")]),
-                    ("Failure", vec![("message", "String")]),
+                    ("Success", vec![("value", Ty::Int)]),
+                    ("Failure", vec![("message", Ty::String)]),
                 ],
             ),
-            "Res",
+            Ty::named("Res"),
             indoc! {"
                 match x {
                     r => 0,
@@ -1464,12 +1479,12 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Status",
                 [
-                    ("Pending", vec![("since", "Int")]),
-                    ("Active", vec![("id", "Int")]),
+                    ("Pending", vec![("since", Ty::Int)]),
+                    ("Active", vec![("id", Ty::Int)]),
                     ("Inactive", vec![]),
                 ],
             ),
-            "Status",
+            Ty::named("Status"),
             indoc! {"
                 match x {
                     Status::Pending {since: s} => 0,
@@ -1494,11 +1509,11 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Outcome",
                 [
-                    ("Success", vec![("value", "Int")]),
-                    ("Failure", vec![("message", "String")]),
+                    ("Success", vec![("value", Ty::Int)]),
+                    ("Failure", vec![("message", Ty::String)]),
                 ],
             ),
-            "Outcome",
+            Ty::named("Outcome"),
             indoc! {"
                 match x {
                     Outcome::Success {value: v} => 0,
@@ -1518,12 +1533,12 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Status",
                 [
-                    ("Pending", vec![("since", "Int")]),
-                    ("Active", vec![("id", "Int")]),
+                    ("Pending", vec![("since", Ty::Int)]),
+                    ("Active", vec![("id", Ty::Int)]),
                     ("Inactive", vec![]),
                 ],
             ),
-            "Status",
+            Ty::named("Status"),
             indoc! {"
                 match x {
                     Status::Pending {since: _} => 0,
@@ -1543,11 +1558,11 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Outcome",
                 [
-                    ("Success", vec![("value", "Int")]),
-                    ("Failure", vec![("message", "String")]),
+                    ("Success", vec![("value", Ty::Int)]),
+                    ("Failure", vec![("message", Ty::String)]),
                 ],
             ),
-            "Outcome",
+            Ty::named("Outcome"),
             indoc! {"
                 match x {
                     Outcome::Success {value: v} => 0,
@@ -1569,11 +1584,11 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Outcome",
                 [
-                    ("Success", vec![("value", "Int")]),
-                    ("Failure", vec![("message", "String")]),
+                    ("Success", vec![("value", Ty::Int)]),
+                    ("Failure", vec![("message", Ty::String)]),
                 ],
             ),
-            "Outcome",
+            Ty::named("Outcome"),
             indoc! {"
                 match x {
                     _ => 0,
@@ -1591,9 +1606,11 @@ mod tests {
     #[test]
     fn accepts_enum_variant_nested_option_field() {
         accept(
-            TypeRegistryBuilder::new()
-                .enum_("Container", [("Wrapped", vec![("inner", "Option[Int]")])]),
-            "Container",
+            TypeRegistryBuilder::new().enum_(
+                "Container",
+                [("Wrapped", vec![("inner", Ty::option(Ty::Int))])],
+            ),
+            Ty::named("Container"),
             indoc! {"
                 match x {
                     Container::Wrapped {inner: Some(v)} => 0,
@@ -1614,9 +1631,11 @@ mod tests {
     #[test]
     fn rejects_enum_variant_nested_option_field_missing_none() {
         reject(
-            TypeRegistryBuilder::new()
-                .enum_("Container", [("Wrapped", vec![("inner", "Option[Int]")])]),
-            "Container",
+            TypeRegistryBuilder::new().enum_(
+                "Container",
+                [("Wrapped", vec![("inner", Ty::option(Ty::Int))])],
+            ),
+            Ty::named("Container"),
             indoc! {"
                 match x {
                     Container::Wrapped {inner: Some(v)} => 0,
@@ -1633,8 +1652,8 @@ mod tests {
     #[test]
     fn accepts_enum_variant_nested_bool_field() {
         accept(
-            TypeRegistryBuilder::new().enum_("Flag", [("Active", vec![("enabled", "Bool")])]),
-            "Flag",
+            TypeRegistryBuilder::new().enum_("Flag", [("Active", vec![("enabled", Ty::Bool)])]),
+            Ty::named("Flag"),
             indoc! {"
                 match x {
                     Flag::Active {enabled: true} => 0,
@@ -1654,8 +1673,8 @@ mod tests {
     #[test]
     fn rejects_enum_variant_nested_bool_field_missing_case() {
         reject(
-            TypeRegistryBuilder::new().enum_("Flag", [("Active", vec![("enabled", "Bool")])]),
-            "Flag",
+            TypeRegistryBuilder::new().enum_("Flag", [("Active", vec![("enabled", Ty::Bool)])]),
+            Ty::named("Flag"),
             indoc! {"
                 match x {
                     Flag::Active {enabled: true} => 0,
@@ -1677,14 +1696,14 @@ mod tests {
                 [(
                     "Bounds",
                     vec![
-                        ("x", "Int"),
-                        ("y", "Int"),
-                        ("width", "Int"),
-                        ("height", "Int"),
+                        ("x", Ty::Int),
+                        ("y", Ty::Int),
+                        ("width", Ty::Int),
+                        ("height", Ty::Int),
                     ],
                 )],
             ),
-            "Rectangle",
+            Ty::named("Rectangle"),
             indoc! {"
                 match x {
                     Rectangle::Bounds {x: a, y: b, width: w, height: h} => 0,
@@ -1707,13 +1726,13 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Event",
                 [
-                    ("Click", vec![("x", "Int"), ("y", "Int")]),
-                    ("KeyPress", vec![("key", "String")]),
+                    ("Click", vec![("x", Ty::Int), ("y", Ty::Int)]),
+                    ("KeyPress", vec![("key", Ty::String)]),
                     ("Focus", vec![]),
                     ("Blur", vec![]),
                 ],
             ),
-            "Event",
+            Ty::named("Event"),
             indoc! {"
                 match x {
                     Event::Click {x: a, y: b} => 0,
@@ -1741,8 +1760,8 @@ mod tests {
     #[test]
     fn accepts_record_match() {
         accept(
-            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
-            "User",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String), ("age", Ty::Int)]),
+            Ty::named("User"),
             indoc! {"
                 match x {
                     User {name: n, age: a} => 0,
@@ -1760,8 +1779,8 @@ mod tests {
     #[test]
     fn accepts_record_match_with_fields_out_of_order() {
         accept(
-            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
-            "User",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String), ("age", Ty::Int)]),
+            Ty::named("User"),
             indoc! {"
                 match x {
                     User {age: a, name: n} => 0,
@@ -1782,11 +1801,11 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Shape",
                 [
-                    ("Point", vec![("x", "Int"), ("visible", "Bool")]),
+                    ("Point", vec![("x", Ty::Int), ("visible", Ty::Bool)]),
                     ("Empty", vec![]),
                 ],
             ),
-            "Shape",
+            Ty::named("Shape"),
             indoc! {"
                 match x {
                     Shape::Point {visible: true, x: a} => 0,
@@ -1810,8 +1829,8 @@ mod tests {
     #[test]
     fn rejects_unreachable_record_pattern_with_fields_out_of_order() {
         reject(
-            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
-            "User",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String), ("age", Ty::Int)]),
+            Ty::named("User"),
             indoc! {"
                 match x {
                     User {name: n, age: a} => 0,
@@ -1829,8 +1848,8 @@ mod tests {
     #[test]
     fn accepts_record_with_bool_fields_exhaustive() {
         accept(
-            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "Bool")]),
-            "Foo",
+            TypeRegistryBuilder::new().record("Foo", [("a", Ty::Bool), ("b", Ty::Bool)]),
+            Ty::named("Foo"),
             indoc! {"
                 match x {
                     Foo {a: true, b: true} => 0,
@@ -1859,7 +1878,7 @@ mod tests {
     fn accepts_bool_true_with_wildcard() {
         accept(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     true => 0,
@@ -1879,7 +1898,7 @@ mod tests {
     fn rejects_bool_duplicate_false() {
         reject(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     true => 0,
@@ -1899,7 +1918,7 @@ mod tests {
     fn rejects_bool_unreachable_after_wildcard() {
         reject(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     _ => 0,
@@ -1918,7 +1937,7 @@ mod tests {
     fn rejects_bool_unreachable_after_binding() {
         reject(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             indoc! {"
                 match x {
                     b => 0,
@@ -1937,7 +1956,7 @@ mod tests {
     fn rejects_option_wildcard_covers_all() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[String]",
+            Ty::option(Ty::String),
             indoc! {"
                 match x {
                     _ => 0,
@@ -1955,7 +1974,7 @@ mod tests {
     fn accepts_option_some_with_wildcard() {
         accept(
             TypeRegistryBuilder::new(),
-            "Option[String]",
+            Ty::option(Ty::String),
             indoc! {"
                 match x {
                     Some(v) => 0,
@@ -1976,7 +1995,7 @@ mod tests {
     fn rejects_option_duplicate_some() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[String]",
+            Ty::option(Ty::String),
             indoc! {"
                 match x {
                     Some(_) => 0,
@@ -1996,7 +2015,7 @@ mod tests {
     fn rejects_option_duplicate_none() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[String]",
+            Ty::option(Ty::String),
             indoc! {"
                 match x {
                     Some(_) => 0,
@@ -2016,7 +2035,7 @@ mod tests {
     fn rejects_nested_option_missing_some_none() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[Option[Int]]",
+            Ty::option(Ty::option(Ty::Int)),
             indoc! {"
                 match x {
                     Some(Some(_)) => 0,
@@ -2035,7 +2054,7 @@ mod tests {
     fn rejects_nested_option_with_bool_missing() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[Option[Bool]]",
+            Ty::option(Ty::option(Ty::Bool)),
             indoc! {"
                 match x {
                     Some(Some(false)) => 0,
@@ -2055,7 +2074,7 @@ mod tests {
     fn accepts_nested_option_with_bool_exhaustive() {
         accept(
             TypeRegistryBuilder::new(),
-            "Option[Option[Bool]]",
+            Ty::option(Ty::option(Ty::Bool)),
             indoc! {"
                 match x {
                     Some(Some(true)) => 0,
@@ -2083,7 +2102,7 @@ mod tests {
     fn rejects_nested_option_with_bool_missing_multiple() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[Option[Bool]]",
+            Ty::option(Ty::option(Ty::Bool)),
             indoc! {"
                 match x {
                     Some(None) => 1,
@@ -2102,7 +2121,7 @@ mod tests {
     fn accepts_enum_binding_covers_all() {
         accept(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
-            "Color",
+            Ty::named("Color"),
             indoc! {"
                 match x {
                     c => 0,
@@ -2119,7 +2138,7 @@ mod tests {
     fn rejects_enum_duplicate_variant() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
-            "Color",
+            Ty::named("Color"),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -2139,7 +2158,7 @@ mod tests {
     fn rejects_enum_multiple_wildcards() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
-            "Color",
+            Ty::named("Color"),
             indoc! {"
                 match x {
                     _ => 0,
@@ -2158,7 +2177,7 @@ mod tests {
     fn rejects_enum_missing_multiple_variants() {
         reject(
             TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
-            "Color",
+            Ty::named("Color"),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -2175,8 +2194,8 @@ mod tests {
     #[test]
     fn rejects_record_with_wildcard_fields() {
         reject(
-            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
-            "User",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String), ("age", Ty::Int)]),
+            Ty::named("User"),
             indoc! {"
                 match x {
                     User {name: _, age: _} => 0,
@@ -2193,9 +2212,11 @@ mod tests {
     #[test]
     fn accepts_record_with_nested_option() {
         accept(
-            TypeRegistryBuilder::new()
-                .record("User", [("name", "String"), ("email", "Option[String]")]),
-            "User",
+            TypeRegistryBuilder::new().record(
+                "User",
+                [("name", Ty::String), ("email", Ty::option(Ty::String))],
+            ),
+            Ty::named("User"),
             indoc! {"
                 match x {
                     User {name: n, email: Some(e)} => 0,
@@ -2218,9 +2239,11 @@ mod tests {
     #[test]
     fn rejects_record_with_option_field_missing_none() {
         reject(
-            TypeRegistryBuilder::new()
-                .record("User", [("name", "String"), ("email", "Option[String]")]),
-            "User",
+            TypeRegistryBuilder::new().record(
+                "User",
+                [("name", Ty::String), ("email", Ty::option(Ty::String))],
+            ),
+            Ty::named("User"),
             indoc! {"
                 match x {
                     User {name: n, email: Some(e)} => 0,
@@ -2237,8 +2260,8 @@ mod tests {
     #[test]
     fn rejects_record_with_bool_fields_missing() {
         reject(
-            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "Bool")]),
-            "Foo",
+            TypeRegistryBuilder::new().record("Foo", [("a", Ty::Bool), ("b", Ty::Bool)]),
+            Ty::named("Foo"),
             indoc! {"
                 match x {
                     Foo {a: true, b: true} => 0,
@@ -2257,8 +2280,8 @@ mod tests {
     #[test]
     fn rejects_record_with_bool_fields_missing_multiple() {
         reject(
-            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "Bool")]),
-            "Foo",
+            TypeRegistryBuilder::new().record("Foo", [("a", Ty::Bool), ("b", Ty::Bool)]),
+            Ty::named("Foo"),
             indoc! {"
                 match x {
                     Foo {a: true, b: true} => 0,
@@ -2276,8 +2299,8 @@ mod tests {
     #[test]
     fn accepts_option_of_record_exhaustive() {
         accept(
-            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
-            "Option[User]",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String), ("age", Ty::Int)]),
+            Ty::option(Ty::named("User")),
             indoc! {"
                 match x {
                     Some(User {name: n, age: a}) => 0,
@@ -2299,8 +2322,8 @@ mod tests {
     #[test]
     fn accepts_option_of_record_with_wildcard_fields() {
         accept(
-            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
-            "Option[User]",
+            TypeRegistryBuilder::new().record("User", [("name", Ty::String), ("age", Ty::Int)]),
+            Ty::option(Ty::named("User")),
             indoc! {"
                 match x {
                     Some(User {name: _, age: _}) => 0,
@@ -2321,9 +2344,12 @@ mod tests {
         // Role is a nested record inside User
         accept(
             TypeRegistryBuilder::new()
-                .record("Role", [("title", "String"), ("salary", "Int")])
-                .record("User", [("role", "Role"), ("created_at", "Int")]),
-            "Option[User]",
+                .record("Role", [("title", Ty::String), ("salary", Ty::Int)])
+                .record(
+                    "User",
+                    [("role", Ty::named("Role")), ("created_at", Ty::Int)],
+                ),
+            Ty::option(Ty::named("User")),
             indoc! {"
                 match x {
                     Some(User {role: Role {title: _, salary: _}, created_at: _}) => 0,
@@ -2344,9 +2370,12 @@ mod tests {
         // All fields are effectively wildcards (one literal, one nested record)
         reject(
             TypeRegistryBuilder::new()
-                .record("Address", [("street", "String"), ("city", "String")])
-                .record("User", [("name", "String"), ("address", "Address")]),
-            "User",
+                .record("Address", [("street", Ty::String), ("city", Ty::String)])
+                .record(
+                    "User",
+                    [("name", Ty::String), ("address", Ty::named("Address"))],
+                ),
+            Ty::named("User"),
             indoc! {"
                 match x {
                     User {name: _, address: Address {street: _, city: _}} => 0,
@@ -2365,9 +2394,12 @@ mod tests {
         // First arm has all wildcard fields (effectively a wildcard), second arm is unreachable
         reject(
             TypeRegistryBuilder::new()
-                .record("Role", [("title", "String"), ("salary", "Int")])
-                .record("User", [("role", "Role"), ("created_at", "Int")]),
-            "User",
+                .record("Role", [("title", Ty::String), ("salary", Ty::Int)])
+                .record(
+                    "User",
+                    [("role", Ty::named("Role")), ("created_at", Ty::Int)],
+                ),
+            Ty::named("User"),
             indoc! {"
                 match x {
                     User {role: Role {title: _, salary: _}, created_at: _} => 0,
@@ -2387,9 +2419,12 @@ mod tests {
         // User has a binding for `name` but `address` is an effectively-wildcard record
         accept(
             TypeRegistryBuilder::new()
-                .record("Address", [("street", "String"), ("city", "String")])
-                .record("User", [("name", "String"), ("address", "Address")]),
-            "User",
+                .record("Address", [("street", Ty::String), ("city", Ty::String)])
+                .record(
+                    "User",
+                    [("name", Ty::String), ("address", Ty::named("Address"))],
+                ),
+            Ty::named("User"),
             indoc! {"
                 match x {
                     User {name: n, address: Address {street: _, city: _}} => 0,
@@ -2408,18 +2443,18 @@ mod tests {
         // Outcome::Success has a binding for `value` but `metadata` is an effectively-wildcard record
         accept(
             TypeRegistryBuilder::new()
-                .record("Metadata", [("created", "Int"), ("updated", "Int")])
+                .record("Metadata", [("created", Ty::Int), ("updated", Ty::Int)])
                 .enum_(
                     "Outcome",
                     [
                         (
                             "Success",
-                            vec![("value", "String"), ("metadata", "Metadata")],
+                            vec![("value", Ty::String), ("metadata", Ty::named("Metadata"))],
                         ),
-                        ("Failure", vec![("message", "String")]),
+                        ("Failure", vec![("message", Ty::String)]),
                     ],
                 ),
-            "Outcome",
+            Ty::named("Outcome"),
             indoc! {"
                 match x {
                     Outcome::Success {value: v, metadata: Metadata {created: _, updated: _}} => 0,
@@ -2441,10 +2476,13 @@ mod tests {
         // Outer -> Middle (has binding) -> Inner (all wildcards)
         accept(
             TypeRegistryBuilder::new()
-                .record("Inner", [("x", "Int"), ("y", "Int")])
-                .record("Middle", [("name", "String"), ("inner", "Inner")])
-                .record("Outer", [("middle", "Middle")]),
-            "Outer",
+                .record("Inner", [("x", Ty::Int), ("y", Ty::Int)])
+                .record(
+                    "Middle",
+                    [("name", Ty::String), ("inner", Ty::named("Inner"))],
+                )
+                .record("Outer", [("middle", Ty::named("Middle"))]),
+            Ty::named("Outer"),
             indoc! {"
                 match x {
                     Outer {middle: Middle {name: n, inner: Inner {x: _, y: _}}} => 0,
@@ -2463,7 +2501,7 @@ mod tests {
     fn rejects_match_no_arms() {
         reject(
             TypeRegistryBuilder::new(),
-            "Bool",
+            Ty::Bool,
             "match x {}",
             expect![[r#"
                 error: Match expression must have at least one arm
@@ -2479,11 +2517,14 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "IntList",
                 [
-                    ("Cons", vec![("head", "Int"), ("tail", "IntList")]),
+                    (
+                        "Cons",
+                        vec![("head", Ty::Int), ("tail", Ty::named("IntList"))],
+                    ),
                     ("Nil", vec![]),
                 ],
             ),
-            "IntList",
+            Ty::named("IntList"),
             indoc! {"
                 match x {
                     IntList::Cons {head: h, tail: t} => 0,
@@ -2507,11 +2548,14 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "IntList",
                 [
-                    ("Cons", vec![("head", "Int"), ("tail", "IntList")]),
+                    (
+                        "Cons",
+                        vec![("head", Ty::Int), ("tail", Ty::named("IntList"))],
+                    ),
                     ("Nil", vec![]),
                 ],
             ),
-            "IntList",
+            Ty::named("IntList"),
             indoc! {"
                 match x {
                     IntList::Cons {head: h, tail: IntList::Nil} => 0,
@@ -2541,11 +2585,14 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "IntList",
                 [
-                    ("Cons", vec![("head", "Int"), ("tail", "IntList")]),
+                    (
+                        "Cons",
+                        vec![("head", Ty::Int), ("tail", Ty::named("IntList"))],
+                    ),
                     ("Nil", vec![]),
                 ],
             ),
-            "IntList",
+            Ty::named("IntList"),
             indoc! {"
                 match x {
                     IntList::Cons {head: h, tail: IntList::Nil} => 0,
@@ -2563,8 +2610,11 @@ mod tests {
     #[test]
     fn accepts_recursive_record_through_option() {
         accept(
-            TypeRegistryBuilder::new().record("Node", [("value", "Int"), ("next", "Option[Node]")]),
-            "Node",
+            TypeRegistryBuilder::new().record(
+                "Node",
+                [("value", Ty::Int), ("next", Ty::option(Ty::named("Node")))],
+            ),
+            Ty::named("Node"),
             indoc! {"
                 match x {
                     Node {value: v, next: Some(n)} => 0,
@@ -2587,8 +2637,11 @@ mod tests {
     #[test]
     fn rejects_recursive_record_missing_nested_case() {
         reject(
-            TypeRegistryBuilder::new().record("Node", [("value", "Int"), ("next", "Option[Node]")]),
-            "Node",
+            TypeRegistryBuilder::new().record(
+                "Node",
+                [("value", Ty::Int), ("next", Ty::option(Ty::named("Node")))],
+            ),
+            Ty::named("Node"),
             indoc! {"
                 match x {
                     Node {value: v, next: Some(Node {value: v2, next: None})} => 0,
@@ -2607,7 +2660,7 @@ mod tests {
     fn accepts_option_test_and_wildcard_in_some() {
         accept(
             TypeRegistryBuilder::new(),
-            "Option[Bool]",
+            Ty::option(Ty::Bool),
             indoc! {"
                 match x {
                     Some(true) => 0,
@@ -2630,8 +2683,9 @@ mod tests {
     #[test]
     fn accepts_record_test_and_wildcard_in_field() {
         accept(
-            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "Option[String]")]),
-            "Foo",
+            TypeRegistryBuilder::new()
+                .record("Foo", [("a", Ty::Bool), ("b", Ty::option(Ty::String))]),
+            Ty::named("Foo"),
             indoc! {"
                 match x {
                     Foo {a: true, b: Some(n)} => 0,
@@ -2656,8 +2710,8 @@ mod tests {
     #[test]
     fn accepts_record_binding_and_wildcard_in_field() {
         accept(
-            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "String")]),
-            "Foo",
+            TypeRegistryBuilder::new().record("Foo", [("a", Ty::Bool), ("b", Ty::String)]),
+            Ty::named("Foo"),
             indoc! {"
                 match x {
                     Foo {a: true, b: _} => 0,
@@ -2680,9 +2734,9 @@ mod tests {
         accept(
             TypeRegistryBuilder::new().enum_(
                 "Status",
-                [("Active", vec![("admin", "Bool")]), ("Inactive", vec![])],
+                [("Active", vec![("admin", Ty::Bool)]), ("Inactive", vec![])],
             ),
-            "Status",
+            Ty::named("Status"),
             indoc! {"
                 match x {
                     Status::Active {admin: true} => 0,
@@ -2706,7 +2760,7 @@ mod tests {
     fn accepts_tuple_of_bools_exhaustive() {
         accept(
             TypeRegistryBuilder::new(),
-            "(Bool, Bool)",
+            Ty::tuple([Ty::Bool, Ty::Bool]),
             indoc! {"
                 match x {
                     (true, true) => 0,
@@ -2731,7 +2785,7 @@ mod tests {
     fn rejects_tuple_of_bools_missing_case() {
         reject(
             TypeRegistryBuilder::new(),
-            "(Bool, Bool)",
+            Ty::tuple([Ty::Bool, Ty::Bool]),
             indoc! {"
                 match x {
                     (true, _) => 0,
@@ -2750,7 +2804,7 @@ mod tests {
     fn accepts_tuple_with_binding_and_wildcard() {
         accept(
             TypeRegistryBuilder::new(),
-            "(Bool, String, Int)",
+            Ty::tuple([Ty::Bool, Ty::String, Ty::Int]),
             indoc! {"
                 match x {
                     (true, s, _) => 0,
@@ -2773,7 +2827,7 @@ mod tests {
     fn accepts_tuple_with_only_bindings() {
         accept(
             TypeRegistryBuilder::new(),
-            "(String, Int)",
+            Ty::tuple([Ty::String, Ty::Int]),
             indoc! {"
                 match x {
                     (s, n) => 0,
@@ -2792,7 +2846,7 @@ mod tests {
     fn rejects_tuple_with_wildcard_elements() {
         reject(
             TypeRegistryBuilder::new(),
-            "(Bool, Bool)",
+            Ty::tuple([Ty::Bool, Ty::Bool]),
             indoc! {"
                 match x {
                     (_, _) => 0,
@@ -2810,7 +2864,7 @@ mod tests {
     fn rejects_empty_tuple_pattern() {
         reject(
             TypeRegistryBuilder::new(),
-            "()",
+            Ty::tuple([]),
             indoc! {"
                 match x {
                     () => 0,
@@ -2828,7 +2882,7 @@ mod tests {
     fn rejects_tuple_unreachable_arm() {
         reject(
             TypeRegistryBuilder::new(),
-            "(Bool, Bool)",
+            Ty::tuple([Ty::Bool, Ty::Bool]),
             indoc! {"
                 match x {
                     (a, _) => 0,
@@ -2847,7 +2901,7 @@ mod tests {
     fn accepts_one_tuple() {
         accept(
             TypeRegistryBuilder::new(),
-            "(Bool,)",
+            Ty::tuple([Ty::Bool]),
             indoc! {"
                 match x {
                     (true,) => 0,
@@ -2868,7 +2922,7 @@ mod tests {
     fn rejects_one_tuple_missing_case() {
         reject(
             TypeRegistryBuilder::new(),
-            "(Bool,)",
+            Ty::tuple([Ty::Bool]),
             indoc! {"
                 match x {
                     (true,) => 0,
@@ -2886,7 +2940,7 @@ mod tests {
     fn accepts_nested_tuple() {
         accept(
             TypeRegistryBuilder::new(),
-            "((Bool, Int), Option[String])",
+            Ty::tuple([Ty::tuple([Ty::Bool, Ty::Int]), Ty::option(Ty::String)]),
             indoc! {"
                 match x {
                     ((true, n), Some(s)) => 0,
@@ -2914,7 +2968,7 @@ mod tests {
     fn rejects_nested_tuple_missing_case() {
         reject(
             TypeRegistryBuilder::new(),
-            "((Bool, Bool), Bool)",
+            Ty::tuple([Ty::tuple([Ty::Bool, Ty::Bool]), Ty::Bool]),
             indoc! {"
                 match x {
                     ((true, _), _) => 0,
@@ -2933,7 +2987,7 @@ mod tests {
     fn rejects_nested_tuple_with_wildcard_elements_followed_by_wildcard() {
         reject(
             TypeRegistryBuilder::new(),
-            "((Bool, Bool), Bool)",
+            Ty::tuple([Ty::tuple([Ty::Bool, Ty::Bool]), Ty::Bool]),
             indoc! {"
                 match x {
                     ((_, _), _) => 0,
@@ -2952,7 +3006,7 @@ mod tests {
     fn accepts_tuple_with_binding_and_nested_wildcard_tuple() {
         accept(
             TypeRegistryBuilder::new(),
-            "((Bool, Bool), String)",
+            Ty::tuple([Ty::tuple([Ty::Bool, Ty::Bool]), Ty::String]),
             indoc! {"
                 match x {
                     ((_, _), s) => 0,
@@ -2970,7 +3024,7 @@ mod tests {
     fn accepts_option_of_tuple_exhaustive() {
         accept(
             TypeRegistryBuilder::new(),
-            "Option[(Bool, Int)]",
+            Ty::option(Ty::tuple([Ty::Bool, Ty::Int])),
             indoc! {"
                 match x {
                     Some((true, n)) => 0,
@@ -2996,7 +3050,7 @@ mod tests {
     fn rejects_option_of_tuple_missing_case() {
         reject(
             TypeRegistryBuilder::new(),
-            "Option[(Bool, Int)]",
+            Ty::option(Ty::tuple([Ty::Bool, Ty::Int])),
             indoc! {"
                 match x {
                     Some((true, n)) => 0,
@@ -3014,8 +3068,8 @@ mod tests {
     #[test]
     fn accepts_record_with_tuple_field() {
         accept(
-            TypeRegistryBuilder::new().record("Point", [("xy", "(Int, Bool)")]),
-            "Point",
+            TypeRegistryBuilder::new().record("Point", [("xy", Ty::tuple([Ty::Int, Ty::Bool]))]),
+            Ty::named("Point"),
             indoc! {"
                 match x {
                     Point {xy: (n, true)} => 0,
@@ -3038,7 +3092,7 @@ mod tests {
     fn accepts_tuple_of_enums() {
         accept(
             TypeRegistryBuilder::new().enum_("Color", [("Red", vec![]), ("Green", vec![])]),
-            "(Color, Color)",
+            Ty::tuple([Ty::named("Color"), Ty::named("Color")]),
             indoc! {"
                 match x {
                     (Color::Red, Color::Red) => 0,
@@ -3066,7 +3120,7 @@ mod tests {
     fn rejects_tuple_of_enums_missing_case() {
         reject(
             TypeRegistryBuilder::new().enum_("Color", [("Red", vec![]), ("Green", vec![])]),
-            "(Color, Color)",
+            Ty::tuple([Ty::named("Color"), Ty::named("Color")]),
             indoc! {"
                 match x {
                     (Color::Red, _) => 0,

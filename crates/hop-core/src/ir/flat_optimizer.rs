@@ -28,6 +28,7 @@ pub fn optimize_flat(module: FlatModule) -> FlatModule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hop::typing::Ty;
     use crate::ir::flat_lint;
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
@@ -89,7 +90,7 @@ mod tests {
     fn should_leave_only_the_computations_an_entrypoint_renders() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Items", [("items", "Array[String]")], "Html", |t| {
+                .entrypoint("Items", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     let _unused = t.str("value");
                     t.element(
                         "ul",
@@ -131,7 +132,7 @@ mod tests {
     fn should_select_an_arm_and_drop_what_the_match_read() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     let flag = t.bool(true);
                     t.html_concat([t.match_(flag, |m| {
                         m.arm(Pat::True, |t, _| t.html_concat(vec![t.text("yes")]));
@@ -171,10 +172,10 @@ mod tests {
     fn should_inline_a_call_and_fold_what_its_argument_makes_constant() {
         check(
             FlatModuleBuilder::new()
-                .function("double", [("x", "Int")], "Int", |t| {
+                .function("double", [("x", Ty::Int)], Ty::Int, |t| {
                     t.add(t.param("x"), t.param("x"))
                 })
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.call("double", [t.int(21)])))
                 })
                 .build(),

@@ -501,7 +501,7 @@ mod tests {
 
     use super::*;
     use crate::document::Document;
-    use crate::hop::typing::TypeRegistryBuilder;
+    use crate::hop::typing::{Ty, TypeRegistryBuilder};
     use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
@@ -721,7 +721,7 @@ mod tests {
     fn should_fold_arithmetic_with_wrapping() {
         check(
             FlatModuleBuilder::new()
-                .function("wrap", [], "Int", |t| t.add(t.int(i32::MAX), t.int(1)))
+                .function("wrap", [], Ty::Int, |t| t.add(t.int(i32::MAX), t.int(1)))
                 .build(),
             expect![[r#"
                 -- before --
@@ -747,7 +747,7 @@ mod tests {
     fn should_select_the_arm_of_a_match_on_a_negated_constant() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     t.match_(t.not(t.bool(true)), |m| {
                         m.arm(Pat::True, |t, _| t.text("yes"));
                         m.arm(Pat::False, |t, _| t.text("no"));
@@ -787,7 +787,7 @@ mod tests {
     fn should_keep_a_match_on_a_dynamic_subject() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("flag", "Bool")], "Html", |t| {
+                .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                     t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.text("yes"));
                         m.arm(Pat::False, |t, _| t.text("no"));
@@ -831,13 +831,13 @@ mod tests {
     #[test]
     fn should_read_a_field_of_a_record_constructor() {
         let types = TypeRegistryBuilder::new()
-            .record("Point", [("x", "Int"), ("y", "Int")])
+            .record("Point", [("x", Ty::Int), ("y", Ty::Int)])
             .build();
         check(
-            FlatModuleBuilder::with_types(types)
-                .entrypoint("Test", [("n", "Int")], "Html", |t| {
+            FlatModuleBuilder::with_registry(types)
+                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.field_access(
-                        t.record("Point", [("x", t.param("n")), ("y", t.int(2))]),
+                        t.record(Ty::named("Point"), [("x", t.param("n")), ("y", t.int(2))]),
                         "x",
                     )))
                 })
@@ -869,7 +869,7 @@ mod tests {
     fn should_read_an_element_of_a_tuple_constructor() {
         check(
             FlatModuleBuilder::new()
-                .function("second", [], "String", |t| {
+                .function("second", [], Ty::String, |t| {
                     t.tuple_index(t.tuple([t.int(1), t.str("two")]), 1)
                 })
                 .build(),
@@ -898,7 +898,7 @@ mod tests {
     fn should_flatten_a_concat_and_merge_its_adjacent_constants() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("dyn", "String")], "Html", |t| {
+                .entrypoint("Test", [("dyn", Ty::String)], Ty::Html, |t| {
                     t.escape(t.string_concat([
                         t.string_concat(vec![t.param("dyn"), t.str("a")]),
                         t.string_concat(vec![t.str("b"), t.param("dyn")]),
@@ -936,7 +936,7 @@ mod tests {
     fn should_drop_empty_strings_and_read_the_one_part_left() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [("dyn", "String")], "Html", |t| {
+                .entrypoint("Test", [("dyn", Ty::String)], Ty::Html, |t| {
                     t.escape(t.string_concat([t.str(""), t.param("dyn"), t.str("")]))
                 })
                 .build(),
@@ -965,7 +965,7 @@ mod tests {
     fn should_fold_a_concat_of_constants_to_one_constant() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     t.escape(t.string_concat([t.str("Hello, "), t.str("World")]))
                 })
                 .build(),
@@ -995,7 +995,7 @@ mod tests {
     fn should_flatten_a_nested_html_concat() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     t.html_concat([
                         t.text("a"),
                         t.html_concat(vec![t.text("b"), t.text("c")]),
@@ -1035,14 +1035,18 @@ mod tests {
         let types = TypeRegistryBuilder::new()
             .enum_(
                 "Shape",
-                [("Dot", vec![]), ("Circle", vec![("radius", "Int")])],
+                [("Dot", vec![]), ("Circle", vec![("radius", Ty::Int)])],
             )
             .build();
         check(
-            FlatModuleBuilder::with_types(types)
-                .function("area", [("n", "Int")], "Int", |t| {
+            FlatModuleBuilder::with_registry(types)
+                .function("area", [("n", Ty::Int)], Ty::Int, |t| {
                     t.match_(
-                        t.enum_variant_with_fields("Shape", "Circle", [("radius", t.param("n"))]),
+                        t.enum_variant_with_fields(
+                            Ty::named("Shape"),
+                            "Circle",
+                            [("radius", t.param("n"))],
+                        ),
                         |m| {
                             m.arm(Pat::variant("Dot", []), |t, _| t.int(0));
                             m.arm(
@@ -1084,7 +1088,7 @@ mod tests {
     fn should_select_the_some_arm_and_bind_its_value() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     t.match_(t.some(t.str("x")), |m| {
                         m.arm(Pat::some(Pat::bind("v")), |t, arm| {
                             t.escape(arm.binding("v"))
@@ -1126,7 +1130,7 @@ mod tests {
     fn should_saturate_a_float_to_int_conversion() {
         check(
             FlatModuleBuilder::new()
-                .function("big", [], "Int", |t| t.float_to_int(t.float(1e10)))
+                .function("big", [], Ty::Int, |t| t.float_to_int(t.float(1e10)))
                 .build(),
             expect![[r#"
                 -- before --
@@ -1150,7 +1154,7 @@ mod tests {
     fn should_select_an_arm_through_a_folded_equality() {
         check(
             FlatModuleBuilder::new()
-                .entrypoint("Test", [], "Html", |t| {
+                .entrypoint("Test", [], Ty::Html, |t| {
                     t.match_(t.eq(t.str("a"), t.str("a")), |m| {
                         m.arm(Pat::True, |t, _| t.text("same"));
                         m.arm(Pat::False, |t, _| t.text("other"));
