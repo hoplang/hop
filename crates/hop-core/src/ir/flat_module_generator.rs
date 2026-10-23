@@ -1,5 +1,5 @@
 use crate::hop::typing::{
-    DataType, EnumVariant, RecordField, ResolvedType, Ty, Type, TypeRegistry, TypeRegistryBuilder,
+    DataType, RecordField, ResolvedType, Ty, Type, TypeRegistry, TypeRegistryBuilder,
 };
 use crate::ir::flat_module::FlatModule;
 use crate::ir::flat_module_builder::{
@@ -17,11 +17,11 @@ use std::ops::RangeInclusive;
 
 /// How deep the blocks of a body nest, in the arms of matches and the
 /// bodies of loops.
-const MAX_BLOCK_DEPTH: usize = 4;
+const MAX_BLOCK_DEPTH: usize = 6;
 
 /// How deep the ops of an expression nest, an op reading the result of
 /// another op as an operand.
-const MAX_EXPRESSION_DEPTH: usize = 15;
+const MAX_EXPRESSION_DEPTH: usize = 30;
 
 /// How deep the values of a literal nest before they start to converge.
 const MAX_LITERAL_DEPTH: usize = 5;
@@ -172,10 +172,6 @@ struct FlatGenerator<'a, 'b> {
     enum_names: Vec<String>,
     /// The records of the module, in the order of `record_names`.
     records: Vec<Type>,
-    /// The enums of the module, in the order of `enum_names`.
-    enums: Vec<Type>,
-    /// How many more ops the expression being generated may nest.
-    expression_depth: usize,
 }
 
 /// The definition of `typ`, when it is data.
@@ -202,8 +198,6 @@ fn random_module_inner(
         record_names: Vec::new(),
         enum_names: Vec::new(),
         records: Vec::new(),
-        enums: Vec::new(),
-        expression_depth: MAX_EXPRESSION_DEPTH,
     };
 
     // Name every type before generating any field types, so that a field
@@ -262,11 +256,6 @@ fn random_module_inner(
 
     g.records = g
         .record_names
-        .iter()
-        .map(|name| Ty::named(name).into())
-        .collect();
-    g.enums = g
-        .enum_names
         .iter()
         .map(|name| Ty::named(name).into())
         .collect();
@@ -414,8 +403,8 @@ impl FlatGenerator<'_, '_> {
             .filter(move |function| !function.entrypoint && function.return_type == *target)
     }
 
-    /// With even odds, pick a name in scope whose type fits, when there is
-    /// one, with its type.
+    /// Nine times in ten, pick a name in scope whose type fits, when there
+    /// is one, with its type.
     fn var_in_scope(
         &mut self,
         b: &FlatBlockBuilder<'_>,
@@ -423,7 +412,7 @@ impl FlatGenerator<'_, '_> {
         fits: impl Fn(&Type) -> bool,
     ) -> Option<(ValueId, Type)> {
         let types = b.value_types();
-        if scope.names_where(&types, &fits).next().is_none() || !self.coin() {
+        if scope.names_where(&types, &fits).next().is_none() || self.index(10) == 0 {
             return None;
         }
         let count = scope.names_where(&types, &fits).count();
@@ -549,8 +538,7 @@ impl FlatGenerator<'_, '_> {
     }
 
     /// Generate the result of a block of the target type, binding what it
-    /// reads before it. The blocks it nests nest at most `depth` deep. The
-    /// caller uses the result once, so an Html result counts as used.
+    /// reads before it. The blocks it nests nest at most `depth` deep.
     fn block(
         &mut self,
         b: &FlatBlockBuilder<'_>,
@@ -565,45 +553,15 @@ impl FlatGenerator<'_, '_> {
         // dead binding.
         if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
             let typ = Type::from(self.random_type(1));
-            self.production(b, scope, &typ, depth);
+            self.op(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
         }
-        let result = if self.coin() {
-            self.operand(b, scope, target, depth)
-        } else {
-            self.production(b, scope, target, depth)
-        };
-        if *target == Type::Html {
-            scope.used(result);
-        }
-        result
+        self.op(b, scope, target, depth, MAX_EXPRESSION_DEPTH)
     }
 
-    /// A value of type `typ` for an op to read: two times in three an op of
-    /// its own while the expression may still nest, else a name in scope
-    /// or a literal. The blocks it nests nest at most `depth` deep. An
-    /// Html value counts as used.
-    fn operand(
-        &mut self,
-        b: &FlatBlockBuilder<'_>,
-        scope: &mut Scope,
-        typ: &Type,
-        depth: usize,
-    ) -> ValueId {
-        if self.expression_depth == 0 || self.index(3) == 0 {
-            return self.value(b, scope, typ, MAX_LITERAL_DEPTH);
-        }
-        self.expression_depth -= 1;
-        let value = self.production(b, scope, typ, depth);
-        self.expression_depth += 1;
-        if *typ == Type::Html {
-            scope.used(value);
-        }
-        value
-    }
-
-    /// A name in scope of type `typ` that may be read, or a literal that
-    /// nests at most `depth` values deep. An Html value counts as used.
-    fn value(
+    /// A name in scope of type `typ` that may be read, or a literal whose
+    /// parts nest at most `depth` values deep (or deeper if the type
+    /// forces it). An Html value counts as used.
+    fn leaf(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
@@ -622,31 +580,117 @@ impl FlatGenerator<'_, '_> {
         };
         let value = match candidate {
             Some(name) => name,
-            None => self.leaf(b, scope, typ, depth),
+            None => {
+                let literal = match typ {
+                    Type::Html => match self.index(3) {
+                        0 => b.html_concat(Vec::new()),
+                        1 => b.text(self.u.choose(TEXTS).unwrap()),
+                        _ => {
+                            let (tag, void) = *self.u.choose(ELEMENTS).unwrap();
+                            let children = if void || depth == 0 {
+                                b.html_concat(Vec::new())
+                            } else {
+                                self.leaf(b, scope, &Type::Html, depth - 1)
+                            };
+                            b.element(tag, Vec::new(), children)
+                        }
+                    },
+                    Type::Data(DataType::String) => b.str(self.u.choose(STRING_LITERALS).unwrap()),
+                    Type::Data(DataType::Int) => {
+                        if self.count(0..=7) == 0 {
+                            b.int(
+                                *self
+                                    .u
+                                    .choose(&[i32::MIN, i32::MIN + 1, i32::MAX - 1, i32::MAX])
+                                    .unwrap(),
+                            )
+                        } else {
+                            b.int(self.zigzag(100))
+                        }
+                    }
+                    Type::Data(DataType::Bool) => b.bool(self.coin()),
+                    Type::Data(DataType::Float) => b.float(*self.u.choose(FLOATS).unwrap()),
+                    Type::Data(DataType::Array(inner)) => {
+                        let len = if depth == 0 { 0 } else { self.count(0..=3) };
+                        let elements: Vec<_> = (0..len)
+                            .map(|_| {
+                                self.leaf(
+                                    b,
+                                    scope,
+                                    &Type::Data((**inner).clone()),
+                                    depth.saturating_sub(1),
+                                )
+                            })
+                            .collect();
+                        if elements.is_empty() {
+                            b.empty_array(Type::Data(inner.as_ref().clone()))
+                        } else {
+                            b.array(elements)
+                        }
+                    }
+                    Type::Data(DataType::Option(inner)) => {
+                        if depth > 0 && self.coin() {
+                            let value = self.leaf(
+                                b,
+                                scope,
+                                &Type::Data((**inner).clone()),
+                                depth.saturating_sub(1),
+                            );
+                            b.some(value)
+                        } else {
+                            b.none(Type::Data(inner.as_ref().clone()))
+                        }
+                    }
+                    Type::Data(data @ DataType::Named { .. }) => match b.registry().resolve(data) {
+                        Some(ResolvedType::Record { fields, .. }) => {
+                            let fields = self.shuffled(fields.iter().collect());
+                            let mut values = Vec::new();
+                            for field in fields {
+                                let ty = Type::Data(field.typ.clone());
+                                values.push((
+                                    field.name.as_str(),
+                                    self.leaf(b, scope, &ty, depth.saturating_sub(1)),
+                                ));
+                            }
+                            b.record(typ.clone(), values)
+                        }
+                        Some(ResolvedType::Enum { variants, .. }) => {
+                            let variant = self.u.choose(variants).unwrap();
+                            let fields = self.shuffled(variant.fields.iter().collect());
+                            let mut values = Vec::new();
+                            for field in fields {
+                                let ty = Type::Data(field.typ.clone());
+                                values.push((
+                                    field.name.as_str(),
+                                    self.leaf(b, scope, &ty, depth.saturating_sub(1)),
+                                ));
+                            }
+                            b.enum_variant_with_fields(typ.clone(), variant.name.as_str(), values)
+                        }
+                        _ => unreachable!("named type must be a generated record or enum"),
+                    },
+                    Type::Data(DataType::Tuple(elements)) => {
+                        let values: Vec<_> = elements
+                            .iter()
+                            .map(|element| {
+                                self.leaf(
+                                    b,
+                                    scope,
+                                    &Type::Data(element.clone()),
+                                    depth.saturating_sub(1),
+                                )
+                            })
+                            .collect();
+                        b.tuple(values)
+                    }
+                };
+                scope.bound(literal)
+            }
         };
         if *typ == Type::Html {
             scope.used(value);
         }
         value
-    }
-
-    /// Plan the arms of an enum match: every variant in a random order,
-    /// each with the fields it binds and their types.
-    fn enum_match_arms(&mut self, variants: &[EnumVariant]) -> Vec<(String, Vec<(String, Type)>)> {
-        let mut arms = Vec::new();
-        for variant in self.shuffled(variants.iter().collect()) {
-            let mut bindings = Vec::new();
-            for field in &variant.fields {
-                if self.coin() {
-                    bindings.push((
-                        field.name.as_str().to_string(),
-                        Type::Data(field.typ.clone()),
-                    ));
-                }
-            }
-            arms.push((variant.name.as_str().to_string(), bindings));
-        }
-        arms
     }
 
     /// A pattern that binds a name of type `typ`, added to `binds` under a
@@ -655,6 +699,27 @@ impl FlatGenerator<'_, '_> {
         let name = format!("x{}", binds.len());
         binds.push((name.clone(), typ.clone()));
         Pat::Bind(name)
+    }
+
+    /// One pattern per constructor of `typ` with wildcard parts, which
+    /// together match every value.
+    fn constructors(b: &FlatBlockBuilder<'_>, typ: &Type) -> Vec<Pat> {
+        match typ {
+            Type::Data(DataType::Bool) => vec![Pat::True, Pat::False],
+            Type::Data(DataType::Option(_)) => vec![Pat::some(Pat::Wildcard), Pat::None],
+            Type::Data(DataType::Tuple(elements)) => {
+                vec![Pat::Tuple(elements.iter().map(|_| Pat::Wildcard).collect())]
+            }
+            Type::Data(DataType::Named { .. }) => match resolve(b.registry(), typ) {
+                Some(ResolvedType::Record { .. }) => vec![Pat::Record(Vec::new())],
+                Some(ResolvedType::Enum { variants, .. }) => variants
+                    .iter()
+                    .map(|variant| Pat::Variant(variant.name.as_str().to_string(), Vec::new()))
+                    .collect(),
+                _ => unreachable!("a named type is a declared record or enum"),
+            },
+            _ => unreachable!("a match subject is a bool, an option, a tuple or a named type"),
+        }
     }
 
     /// A random pattern for values of `typ` that tests at most `depth`
@@ -722,23 +787,26 @@ impl FlatGenerator<'_, '_> {
         Self::bind(binds, typ)
     }
 
-    /// Bind a random op of the target type in the block `b` builds, with
-    /// its operands taken from what is in scope, and give its name. The
-    /// blocks it nests nest at most `depth` deep.
-    fn production(
+    /// A value of the target type for an op or a block to read: two times
+    /// in three an op of its own bound in the block `b` builds while the
+    /// expression may still nest, with its operands taken from what is in
+    /// scope, else a name in scope or a literal. The blocks it nests nest
+    /// at most `depth` deep and the ops at most `nesting` deep. An Html
+    /// value counts as used.
+    fn op(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
         target: &Type,
         depth: usize,
+        nesting: usize,
     ) -> ValueId {
+        if nesting == 0 || self.index(4) == 0 {
+            return self.leaf(b, scope, target, MAX_LITERAL_DEPTH);
+        }
         enum P {
-            Leaf,
             FieldAccess,
             MatchPattern,
-            MatchBool,
-            MatchOption,
-            MatchEnum,
             Eq,
             Lt,
             Lte,
@@ -766,7 +834,7 @@ impl FlatGenerator<'_, '_> {
             HtmlForRange,
             Call,
         }
-        let mut productions = vec![P::Leaf];
+        let mut productions: Vec<P> = Vec::new();
         if self.record_fields_of_type(b, target).next().is_some() {
             productions.push(P::FieldAccess);
         }
@@ -813,16 +881,12 @@ impl FlatGenerator<'_, '_> {
         }
         // Only an op that may still nest a block is one that nests one.
         if depth > 0 {
-            productions.extend([P::MatchBool, P::MatchOption, P::MatchPattern]);
-            if !self.enums.is_empty() {
-                productions.push(P::MatchEnum);
-            }
+            productions.push(P::MatchPattern);
             if *target == Type::Html {
                 productions.extend([P::HtmlForArray, P::HtmlForRange]);
             }
         }
         let value = match self.u.choose(&productions).unwrap() {
-            P::Leaf => return self.leaf(b, scope, target, MAX_LITERAL_DEPTH),
             P::FieldAccess => {
                 let record_fields: Vec<(Type, String)> = self
                     .record_fields_of_type(b, target)
@@ -842,139 +906,10 @@ impl FlatGenerator<'_, '_> {
                     }
                     None => {
                         let (record, field) = self.u.choose(&record_fields).unwrap().clone();
-                        let object = self.operand(b, scope, &record, depth);
+                        let object = self.op(b, scope, &record, depth, nesting - 1);
                         b.field_access(object, &field)
                     }
                 }
-            }
-            P::MatchBool => {
-                let var = self.var_in_scope(b, scope, |ty| matches!(ty, &Type::BOOL));
-                let subject = match var {
-                    Some(bool) => bool.0,
-                    None => self.operand(b, scope, &Type::BOOL, depth),
-                };
-                let before = scope.snapshot();
-                let mut after = before.clone();
-                let result = b.match_(subject, |m| {
-                    m.arm(Pat::True, |b, bindings| {
-                        self.arm(
-                            b,
-                            scope,
-                            &before,
-                            &mut after,
-                            bindings,
-                            &[],
-                            target,
-                            depth - 1,
-                        )
-                    });
-                    m.arm(Pat::False, |b, bindings| {
-                        self.arm(
-                            b,
-                            scope,
-                            &before,
-                            &mut after,
-                            bindings,
-                            &[],
-                            target,
-                            depth - 1,
-                        )
-                    });
-                });
-                scope.restore(&after);
-                result
-            }
-            P::MatchOption => {
-                let var =
-                    self.var_in_scope(b, scope, |ty| matches!(ty, Type::Data(DataType::Option(_))));
-                let (subject, option_ty) = match var {
-                    Some(pair) => pair,
-                    None => {
-                        let option_ty = Type::option(self.random_data_type(1));
-                        (self.operand(b, scope, &option_ty, depth), option_ty)
-                    }
-                };
-                let Type::Data(DataType::Option(inner)) = option_ty else {
-                    unreachable!("the subject is an option")
-                };
-                let mut binds = Vec::new();
-                let inner = if self.coin() {
-                    Self::bind(&mut binds, &Type::Data(*inner))
-                } else {
-                    Pat::Wildcard
-                };
-                let before = scope.snapshot();
-                let mut after = before.clone();
-                let result = b.match_(subject, |m| {
-                    m.arm(Pat::some(inner), |b, bindings| {
-                        self.arm(
-                            b,
-                            scope,
-                            &before,
-                            &mut after,
-                            bindings,
-                            &binds,
-                            target,
-                            depth - 1,
-                        )
-                    });
-                    m.arm(Pat::None, |b, bindings| {
-                        self.arm(
-                            b,
-                            scope,
-                            &before,
-                            &mut after,
-                            bindings,
-                            &[],
-                            target,
-                            depth - 1,
-                        )
-                    });
-                });
-                scope.restore(&after);
-                result
-            }
-            P::MatchEnum => {
-                let enums = self.enums.clone();
-                let var = self.var_in_scope(b, scope, |ty| enums.contains(ty));
-                let subject_ty = match &var {
-                    Some((_, typ)) => typ.clone(),
-                    None => self.u.choose(&enums).unwrap().clone(),
-                };
-                let subject = match var {
-                    Some((var, _)) => var,
-                    None => self.operand(b, scope, &subject_ty, depth),
-                };
-                let Some(ResolvedType::Enum { variants, .. }) = resolve(b.registry(), &subject_ty)
-                else {
-                    unreachable!("an enum of the module resolves to its declaration")
-                };
-                let arm_plan = self.enum_match_arms(variants);
-                let before = scope.snapshot();
-                let mut after = before.clone();
-                let result = b.match_(subject, |m| {
-                    for (variant, bound) in arm_plan {
-                        let mut binds = Vec::new();
-                        let fields = bound
-                            .into_iter()
-                            .map(|(field, typ)| (field, Self::bind(&mut binds, &typ)))
-                            .collect();
-                        m.arm(Pat::Variant(variant, fields), |b, bindings| {
-                            self.arm(
-                                b,
-                                scope,
-                                &before,
-                                &mut after,
-                                bindings,
-                                &binds,
-                                target,
-                                depth - 1,
-                            )
-                        });
-                    }
-                });
-                scope.restore(&after);
-                result
             }
             P::Eq => {
                 let ty = match self.index(4) {
@@ -983,42 +918,42 @@ impl FlatGenerator<'_, '_> {
                     2 => Type::BOOL,
                     _ => Type::FLOAT,
                 };
-                let left = self.operand(b, scope, &ty, depth);
-                let right = self.operand(b, scope, &ty, depth);
+                let left = self.op(b, scope, &ty, depth, nesting - 1);
+                let right = self.op(b, scope, &ty, depth, nesting - 1);
                 b.eq(left, right)
             }
             P::Lt => {
                 let ty = if self.coin() { Type::INT } else { Type::FLOAT };
-                let left = self.operand(b, scope, &ty, depth);
-                let right = self.operand(b, scope, &ty, depth);
+                let left = self.op(b, scope, &ty, depth, nesting - 1);
+                let right = self.op(b, scope, &ty, depth, nesting - 1);
                 b.lt(left, right)
             }
             P::Lte => {
                 let ty = if self.coin() { Type::INT } else { Type::FLOAT };
-                let left = self.operand(b, scope, &ty, depth);
-                let right = self.operand(b, scope, &ty, depth);
+                let left = self.op(b, scope, &ty, depth, nesting - 1);
+                let right = self.op(b, scope, &ty, depth, nesting - 1);
                 b.lte(left, right)
             }
             P::Not => {
-                let operand = self.operand(b, scope, &Type::BOOL, depth);
+                let operand = self.op(b, scope, &Type::BOOL, depth, nesting - 1);
                 b.not(operand)
             }
             P::Concat => {
                 let parts: Vec<_> = (0..self.count(0..=4))
-                    .map(|_| self.operand(b, scope, &Type::STRING, depth))
+                    .map(|_| self.op(b, scope, &Type::STRING, depth, nesting - 1))
                     .collect();
                 b.string_concat(parts)
             }
             P::IntToString => {
-                let operand = self.operand(b, scope, &Type::INT, depth);
+                let operand = self.op(b, scope, &Type::INT, depth, nesting - 1);
                 b.int_to_string(operand)
             }
             P::FloatToInt => {
-                let operand = self.operand(b, scope, &Type::FLOAT, depth);
+                let operand = self.op(b, scope, &Type::FLOAT, depth, nesting - 1);
                 b.float_to_int(operand)
             }
             P::IntToFloat => {
-                let operand = self.operand(b, scope, &Type::INT, depth);
+                let operand = self.op(b, scope, &Type::INT, depth, nesting - 1);
                 b.int_to_float(operand)
             }
             P::OptionIsNone => {
@@ -1027,7 +962,7 @@ impl FlatGenerator<'_, '_> {
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
                         let option_ty = Type::option(self.random_data_type(1));
-                        self.operand(b, scope, &option_ty, depth)
+                        self.op(b, scope, &option_ty, depth, nesting - 1)
                     });
                 b.option_is_none(operand)
             }
@@ -1037,12 +972,12 @@ impl FlatGenerator<'_, '_> {
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
                         let option_ty = Type::option(self.random_data_type(1));
-                        self.operand(b, scope, &option_ty, depth)
+                        self.op(b, scope, &option_ty, depth, nesting - 1)
                     });
                 b.option_is_some(operand)
             }
             P::StringIsEmpty => {
-                let operand = self.operand(b, scope, &Type::STRING, depth);
+                let operand = self.op(b, scope, &Type::STRING, depth, nesting - 1);
                 b.string_is_empty(operand)
             }
             P::ArrayIsEmpty => {
@@ -1051,7 +986,7 @@ impl FlatGenerator<'_, '_> {
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
                         let array_ty = Type::array(self.random_data_type(1));
-                        self.operand(b, scope, &array_ty, depth)
+                        self.op(b, scope, &array_ty, depth, nesting - 1)
                     });
                 b.array_is_empty(operand)
             }
@@ -1061,7 +996,7 @@ impl FlatGenerator<'_, '_> {
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
                         let array_ty = Type::array(self.random_data_type(1));
-                        self.operand(b, scope, &array_ty, depth)
+                        self.op(b, scope, &array_ty, depth, nesting - 1)
                     });
                 b.array_length(operand)
             }
@@ -1103,8 +1038,13 @@ impl FlatGenerator<'_, '_> {
                                 }
                             })
                             .collect();
-                        let tuple =
-                            self.operand(b, scope, &Type::Data(DataType::Tuple(elements)), depth);
+                        let tuple = self.op(
+                            b,
+                            scope,
+                            &Type::Data(DataType::Tuple(elements)),
+                            depth,
+                            nesting - 1,
+                        );
                         b.tuple_index(tuple, index)
                     }
                 }
@@ -1124,25 +1064,41 @@ impl FlatGenerator<'_, '_> {
                 let (subject, subject_ty) = match var {
                     Some(pair) => pair,
                     None => {
-                        let elements = (0..self.count(1..=3))
-                            .map(|_| self.random_data_type(1))
-                            .collect();
-                        let tuple_ty = Type::Data(DataType::Tuple(elements));
-                        (self.operand(b, scope, &tuple_ty, depth), tuple_ty)
+                        let named = self.declared_names.len();
+                        let subject_ty: Type = match self.index(3 + named) {
+                            0 => Ty::Bool,
+                            1 => Ty::option(self.random_type_where(1, NamedTypes::Any, false)),
+                            2 => Ty::tuple(
+                                (0..self.count(1..=3))
+                                    .map(|_| self.random_type_where(1, NamedTypes::Any, false)),
+                            ),
+                            i => Ty::named(&self.declared_names[i - 3]),
+                        }
+                        .into();
+                        (
+                            self.op(b, scope, &subject_ty, depth, nesting - 1),
+                            subject_ty,
+                        )
                     }
                 };
-                let mut pats: Vec<(Pat, Vec<(String, Type)>)> = (0..self.count(1..=3))
+                let mut pats: Vec<(Pat, Vec<(String, Type)>)> = (0..self.count(0..=2))
                     .map(|_| {
                         let mut binds = Vec::new();
                         let pat = self.pattern(b, &subject_ty, 2, &mut binds);
                         (pat, binds)
                     })
                     .collect();
-                // A last arm that matches every value makes the match
-                // exhaustive, whether or not the arms before it are.
-                let mut binds = Vec::new();
-                let pat = self.pattern(b, &subject_ty, 0, &mut binds);
-                pats.push((pat, binds));
+                // The last arms make the match exhaustive, whether or not
+                // the arms before them are: one arm per constructor of the
+                // subject type, or one arm that matches every value.
+                if self.coin() {
+                    let constructors = Self::constructors(b, &subject_ty);
+                    pats.extend(constructors.into_iter().map(|pat| (pat, Vec::new())));
+                } else {
+                    let mut binds = Vec::new();
+                    let pat = self.pattern(b, &subject_ty, 0, &mut binds);
+                    pats.push((pat, binds));
+                }
                 let before = scope.snapshot();
                 let mut after = before.clone();
                 let result = b.match_(subject, |m| {
@@ -1165,27 +1121,27 @@ impl FlatGenerator<'_, '_> {
                 result
             }
             P::Neg => {
-                let operand = self.operand(b, scope, target, depth);
+                let operand = self.op(b, scope, target, depth, nesting - 1);
                 b.neg(operand)
             }
             P::Add => {
-                let left = self.operand(b, scope, target, depth);
-                let right = self.operand(b, scope, target, depth);
+                let left = self.op(b, scope, target, depth, nesting - 1);
+                let right = self.op(b, scope, target, depth, nesting - 1);
                 b.add(left, right)
             }
             P::Sub => {
-                let left = self.operand(b, scope, target, depth);
-                let right = self.operand(b, scope, target, depth);
+                let left = self.op(b, scope, target, depth, nesting - 1);
+                let right = self.op(b, scope, target, depth, nesting - 1);
                 b.sub(left, right)
             }
             P::Mul => {
-                let left = self.operand(b, scope, target, depth);
-                let right = self.operand(b, scope, target, depth);
+                let left = self.op(b, scope, target, depth, nesting - 1);
+                let right = self.op(b, scope, target, depth, nesting - 1);
                 b.mul(left, right)
             }
             P::HtmlText => b.text(self.u.choose(TEXTS).unwrap()),
             P::HtmlEscape => {
-                let operand = self.operand(b, scope, &Type::STRING, depth);
+                let operand = self.op(b, scope, &Type::STRING, depth, nesting - 1);
                 b.escape(operand)
             }
             P::HtmlElement => {
@@ -1195,12 +1151,12 @@ impl FlatGenerator<'_, '_> {
                 let mut attributes = Vec::new();
                 for name in ["class", "id", "data-x"] {
                     if self.coin() {
-                        let value = self.operand(b, scope, &Type::STRING, depth);
+                        let value = self.op(b, scope, &Type::STRING, depth, nesting - 1);
                         attributes.push(b.attr_value(name, value));
                     }
                 }
                 if self.coin() {
-                    let present = self.operand(b, scope, &Type::BOOL, depth);
+                    let present = self.op(b, scope, &Type::BOOL, depth, nesting - 1);
                     attributes.push(b.attr_presence("disabled", present));
                 }
                 let children = if void {
@@ -1208,13 +1164,13 @@ impl FlatGenerator<'_, '_> {
                     // into scope.
                     b.html_concat(Vec::new())
                 } else {
-                    self.operand(b, scope, &Type::Html, depth)
+                    self.op(b, scope, &Type::Html, depth, nesting - 1)
                 };
                 b.element(tag, attributes, children)
             }
             P::HtmlConcat => {
                 let parts: Vec<_> = (0..self.count(0..=4))
-                    .map(|_| self.operand(b, scope, &Type::Html, depth))
+                    .map(|_| self.op(b, scope, &Type::Html, depth, nesting - 1))
                     .collect();
                 b.html_concat(parts)
             }
@@ -1225,7 +1181,7 @@ impl FlatGenerator<'_, '_> {
                     Some((array, _)) => array,
                     None => {
                         let array_ty = Type::array(self.random_data_type(1));
-                        self.operand(b, scope, &array_ty, depth)
+                        self.op(b, scope, &array_ty, depth, nesting - 1)
                     }
                 };
                 b.html_for(array, |b, var| {
@@ -1254,130 +1210,16 @@ impl FlatGenerator<'_, '_> {
                 let args: Vec<_> = callee
                     .parameters
                     .iter()
-                    .map(|parameter| self.operand(b, scope, &parameter.binder.typ, depth))
+                    .map(|parameter| self.op(b, scope, &parameter.binder.typ, depth, nesting - 1))
                     .collect();
                 b.call(callee.function.name.as_str(), args)
             }
         };
-        scope.bound(value)
-    }
-
-    /// A leaf of the target type, its parts nesting at most `depth`
-    /// values deep (or deeper if the target type forces it).
-    fn leaf(
-        &mut self,
-        b: &FlatBlockBuilder<'_>,
-        scope: &mut Scope,
-        target: &Type,
-        depth: usize,
-    ) -> ValueId {
-        let Type::Data(data) = target else {
-            let value = match self.index(3) {
-                0 => b.html_concat(Vec::new()),
-                1 => b.text(self.u.choose(TEXTS).unwrap()),
-                _ => {
-                    let (tag, void) = *self.u.choose(ELEMENTS).unwrap();
-                    let children = if void || depth == 0 {
-                        b.html_concat(Vec::new())
-                    } else {
-                        self.value(b, scope, &Type::Html, depth - 1)
-                    };
-                    b.element(tag, Vec::new(), children)
-                }
-            };
-            return scope.bound(value);
-        };
-        let value = match data {
-            DataType::String => b.str(self.u.choose(STRING_LITERALS).unwrap()),
-            DataType::Int => {
-                if self.count(0..=7) == 0 {
-                    b.int(
-                        *self
-                            .u
-                            .choose(&[i32::MIN, i32::MIN + 1, i32::MAX - 1, i32::MAX])
-                            .unwrap(),
-                    )
-                } else {
-                    b.int(self.zigzag(100))
-                }
-            }
-            DataType::Bool => b.bool(self.coin()),
-            DataType::Float => b.float(*self.u.choose(FLOATS).unwrap()),
-            DataType::Array(inner) => {
-                let len = if depth == 0 { 0 } else { self.count(0..=3) };
-                let elements: Vec<_> = (0..len)
-                    .map(|_| {
-                        self.value(
-                            b,
-                            scope,
-                            &Type::Data((**inner).clone()),
-                            depth.saturating_sub(1),
-                        )
-                    })
-                    .collect();
-                if elements.is_empty() {
-                    b.empty_array(Type::Data(inner.as_ref().clone()))
-                } else {
-                    b.array(elements)
-                }
-            }
-            DataType::Option(inner) => {
-                if depth > 0 && self.coin() {
-                    let value = self.value(
-                        b,
-                        scope,
-                        &Type::Data((**inner).clone()),
-                        depth.saturating_sub(1),
-                    );
-                    b.some(value)
-                } else {
-                    b.none(Type::Data(inner.as_ref().clone()))
-                }
-            }
-            DataType::Named { .. } => match b.registry().resolve(data) {
-                Some(ResolvedType::Record { fields, .. }) => {
-                    let fields = self.shuffled(fields.iter().collect());
-                    let mut values = Vec::new();
-                    for field in fields {
-                        let ty = Type::Data(field.typ.clone());
-                        values.push((
-                            field.name.as_str(),
-                            self.value(b, scope, &ty, depth.saturating_sub(1)),
-                        ));
-                    }
-                    b.record(target.clone(), values)
-                }
-                Some(ResolvedType::Enum { variants, .. }) => {
-                    let variant = self.u.choose(variants).unwrap();
-                    let fields = self.shuffled(variant.fields.iter().collect());
-                    let mut values = Vec::new();
-                    for field in fields {
-                        let ty = Type::Data(field.typ.clone());
-                        values.push((
-                            field.name.as_str(),
-                            self.value(b, scope, &ty, depth.saturating_sub(1)),
-                        ));
-                    }
-                    b.enum_variant_with_fields(target.clone(), variant.name.as_str(), values)
-                }
-                _ => unreachable!("named type must be a generated record or enum"),
-            },
-            DataType::Tuple(elements) => {
-                let values: Vec<_> = elements
-                    .iter()
-                    .map(|element| {
-                        self.value(
-                            b,
-                            scope,
-                            &Type::Data(element.clone()),
-                            depth.saturating_sub(1),
-                        )
-                    })
-                    .collect();
-                b.tuple(values)
-            }
-        };
-        scope.bound(value)
+        scope.bound(value);
+        if *target == Type::Html {
+            scope.used(value);
+        }
+        value
     }
 }
 
@@ -1556,49 +1398,49 @@ mod tests {
             ));
         }
         expect![[r#"
-            1437 of 65536 input bytes consumed per module on average, at most 10112
+            3164 of 65536 input bytes consumed per module on average, at most 37009
             0 of 100 modules exhaust the input
             1 of 194 entrypoints hit the recursion limit
             0 of 194 entrypoints hit the array length limit
 
             op                  ops/module  % live   % dyn
-            Array                     43.3    94.6    15.5
-            ArrayFromRange             1.1    94.3     0.0
-            ArrayIsEmpty               0.9   100.0    48.8
-            ArrayLength                1.7    92.8    40.4
-            BoolLiteral               12.3    94.2     0.0
-            BoolNegation               0.7    94.2    30.4
-            Call                       1.5    98.0    73.5
-            Enum                      28.7    93.0    15.7
-            Equals                     0.7    95.8    36.1
-            FieldAccess                0.7    91.5    52.1
-            FloatLiteral              17.1    93.8     0.0
-            FloatToInt                 1.3    94.6    32.6
-            HtmlConcat                 4.9    95.9    14.4
-            HtmlElement                3.9    96.1    28.8
-            HtmlEscape                 1.8    96.1    29.3
-            HtmlFor                    2.1    97.6    41.0
-            HtmlText                   4.0    97.0     0.0
-            IntLiteral                17.3    93.6     0.0
-            IntToFloat                 1.0    93.2    25.2
-            IntToString                2.5    98.4    30.0
-            LessThan                   0.7    96.9    43.1
-            LessThanOrEqual            0.9    93.1    43.7
-            Match                     39.2    95.4    60.5
-            NumericAdd                 2.4    91.1    38.3
-            NumericMultiply            2.2    93.3    43.3
-            NumericNegation            2.5    92.3    22.3
-            NumericSubtract            2.4    89.9    37.4
-            OptionIsNone               0.7    89.6    22.4
-            OptionIsSome               0.9    97.7    31.0
-            OptionNone                31.6    93.7     0.0
-            OptionSome                24.2    93.9    19.3
-            Record                    21.3    93.6    19.0
-            StringConcat               2.2    97.3    28.9
-            StringIsEmpty              0.8    96.2    26.2
-            StringLiteral             18.6    94.0     0.0
-            Tuple                     95.8    93.3    30.8
-            TupleIndex                38.4    93.6    44.9
+            Array                    112.6    94.2    10.1
+            ArrayFromRange             1.3    90.2     0.0
+            ArrayIsEmpty               0.2    94.7    68.4
+            ArrayLength                7.8    98.8    50.0
+            BoolLiteral               34.0    95.3     0.0
+            BoolNegation               0.2    94.1    41.2
+            Call                       3.4    97.0    94.3
+            Enum                      54.4    94.2    13.8
+            Equals                     0.2   100.0    84.2
+            FieldAccess                0.7    90.5    68.9
+            FloatLiteral              30.4    95.9     0.0
+            FloatToInt                 7.3    99.0    81.1
+            HtmlConcat                 3.9    93.3    25.1
+            HtmlElement                3.1    91.9    46.9
+            HtmlEscape                 1.9    90.1    58.6
+            HtmlFor                    2.3    95.6    51.3
+            HtmlText                   3.3    93.1     0.0
+            IntLiteral                32.6    95.9     0.0
+            IntToFloat                11.3    98.0    75.3
+            IntToString                2.8    93.5    63.4
+            LessThan                   0.2    89.5    68.4
+            LessThanOrEqual            0.2   100.0    68.2
+            Match                     53.0    95.7    86.4
+            NumericAdd                20.3    98.8    91.8
+            NumericMultiply           19.5    97.9    90.5
+            NumericNegation           18.9    98.4    80.6
+            NumericSubtract           18.9    98.1    90.8
+            OptionIsNone               0.3    86.2    48.3
+            OptionIsSome               0.2    94.1    64.7
+            OptionNone                71.0    94.6     0.0
+            OptionSome                29.0    94.7    21.8
+            Record                    62.8    92.3    17.0
+            StringConcat               2.8    92.9    65.0
+            StringIsEmpty              0.2    94.1    70.6
+            StringLiteral             36.4    95.5     0.0
+            Tuple                    420.4    95.0    46.6
+            TupleIndex               201.7    94.1    73.0
         "#]]
         .assert_eq(&report);
     }
@@ -1640,64 +1482,26 @@ mod tests {
                 record R1 {}
 
                 entrypoint fn V0@f0(p0@v0: (Option[E0], (E1, Int, Bool)), p1@v1: E1) -> Html {
-                  let v2: E0 = W0
-                  let v33: Html = match v2 {
-                    E0::W0 => {
-                      let v3: E0 = W0
-                      let v28: Html = match v3 {
-                        E0::W0 => {
-                          let v4: Array[E1] = [v1]
-                          let v5: Option[Array[E1]] = Some(v4)
-                          let v6: String = "`${x}`"
-                          let v7: Bool = true
-                          let v8: Int = -99
-                          let v9: Int = 70
-                          let v10: Array[Int] = [v8, v9]
-                          let v11: (Array[E1], Bool, Array[Int]) = (v4, v7, v10)
-                          let v12: Float = 99.75
-                          let v13: R1 = {}
-                          let v14: Array[Bool] = []
-                          let v15: Array[Bool] = []
-                          let v16: Array[Array[Bool]] = [v14, v15]
-                          let v17: R0 = {f1: v13, f0: v16}
-                          let v18: (Float, Int, R0) = (v12, v8, v17)
-                          let v19: E1 = W0 {f0: v11, f1: v18}
-                          let v20: (Option[Array[E1]], String, E1) = (v5, v6, v19)
-                          let v21: Option[Array[E1]] = v20.0
-                          let v27: Html = match v21 {
-                            Some(v22: Array[E1]) => {
-                              let v23: Html = concat()
-                              v23
-                            }
-                            None => {
-                              let v26: Html = match v7 {
-                                true => {
-                                  let v24: Html = concat()
-                                  v24
-                                }
-                                false => {
-                                  let v25: Html = concat()
-                                  v25
-                                }
-                              }
-                              v26
-                            }
-                          }
-                          v27
-                        }
-                      }
-                      let v29: Html = concat()
-                      let v30: Html = concat()
-                      let v31: Html = concat()
-                      let v32: Html = concat(v28, v29, v30, v31)
-                      v32
-                    }
-                  }
-                  v33
+                  let v2: String = "`${x}`"
+                  let v3: Html = escape(v2)
+                  v3
                 }
-                entrypoint fn V1@f1(p0@v34: Array[E0], p1@v35: R1, p2@v36: Array[(Bool, E1)]) -> Html {
-                  let v37: Html = concat()
-                  v37
+                entrypoint fn V1@f1(p0@v4: Array[E0], p1@v5: R1, p2@v6: Array[(Bool, E1)]) -> Html {
+                  let v7: Int = -1
+                  let v8: Int = -3
+                  let v9: Array[Int] = v7..=v8
+                  let v18: Html = for v10: Int in v9 {
+                    let v11: Int = 1
+                    let v12: Int = -1
+                    let v13: Array[Int] = v11..=v12
+                    let v17: Html = for v14: Int in v13 {
+                      let v15: Html = concat()
+                      let v16: Html = element("input", {}, v15)
+                      v16
+                    }
+                    v17
+                  }
+                  v18
                 }
             "#]],
         );
@@ -1720,12 +1524,44 @@ mod tests {
                 }
 
                 entrypoint fn V0@f0(p0@v0: Bool, p1@v1: Int) -> Html {
-                  let v2: Html = text("a\"b'c")
+                  let v2: Html = concat()
                   v2
                 }
                 entrypoint fn V1@f1() -> Html {
-                  let v3: Html = text("&amp;")
-                  v3
+                  let v3: String = "back\\slash"
+                  let v4: Bool = true
+                  let v5: Int = -86
+                  let v6: Option[Float] = None
+                  let v7: Option[Option[Float]] = Some(v6)
+                  let v8: E1 = W0 {f1: v5, f0: v7}
+                  let v9: (String, Bool, E1) = (v3, v4, v8)
+                  let v10: Option[Int] = None
+                  let v11: (Bool, E1) = (v4, v8)
+                  let v12: ((String, Bool, E1), Option[Int], (Bool, E1)) = (v9, v10, v11)
+                  let v13: (String, Bool, E1) = v12.0
+                  let v14: Bool = v13.1
+                  let v23: Html = match v14 {
+                    true => {
+                      let v15: Html = text("&amp;")
+                      v15
+                    }
+                    true => {
+                      let v16: Int = -1
+                      let v17: Int = 0
+                      let v18: Array[Int] = v16..=v17
+                      let v20: Html = for _ in v18 {
+                        let v19: Html = concat()
+                        v19
+                      }
+                      v20
+                    }
+                    false => {
+                      let v21: Html = concat()
+                      let v22: Html = element("input", {}, v21)
+                      v22
+                    }
+                  }
+                  v23
                 }
             "#]],
         );
