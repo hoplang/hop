@@ -34,6 +34,8 @@ pub use typed_module::{
 pub use typed_pattern::{Constructor, Pattern, PatternField, TypedPattern};
 
 #[cfg(test)]
+mod test_module_builder;
+#[cfg(test)]
 mod type_registry_builder;
 
 #[cfg(test)]

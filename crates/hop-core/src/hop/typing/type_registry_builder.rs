@@ -1,18 +1,13 @@
-use std::collections::{BTreeMap, HashMap};
-
 use crate::document::DocumentCursor;
 use crate::document_annotator::DocumentAnnotator;
 use crate::hop::parsing::parse_type;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::r#type::{DataType, Type};
-use crate::hop::typing::type_env::{
-    FunctionSignature, Name, NameKind, ParamEntry, Row, Tail, TypeEnv,
-};
+use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 
 /// The module all test-declared types live in.
 fn test_module() -> RootContainedFilePath {
@@ -25,10 +20,6 @@ fn type_name(name: &str) -> TypeName {
 
 fn field_name(name: &str) -> FieldName {
     FieldName::parse(name).unwrap_or_else(|e| panic!("invalid field name `{name}`: {e:?}"))
-}
-
-fn var_name(name: &str) -> VarName {
-    VarName::parse(name).unwrap_or_else(|e| panic!("invalid var name `{name}`: {e:?}"))
 }
 
 #[derive(Clone)]
@@ -44,11 +35,6 @@ enum Decl {
     Enum {
         name: String,
         variants: Vec<(String, Vec<(String, String)>)>,
-    },
-    Function {
-        name: String,
-        params: Vec<(String, String)>,
-        return_type: String,
     },
 }
 
@@ -112,50 +98,28 @@ impl TypeRegistryBuilder {
         self
     }
 
-    pub fn function<'a>(
-        mut self,
-        name: &str,
-        params: impl IntoIterator<Item = (&'a str, &'a str)>,
-        return_type: &str,
-    ) -> Self {
-        self.decls.push(Decl::Function {
-            name: name.to_string(),
-            params: params
-                .into_iter()
-                .map(|(p, t)| (p.to_string(), t.to_string()))
-                .collect(),
-            return_type: return_type.to_string(),
-        });
-        self
-    }
-
     pub fn build(self) -> TestTypes {
-        let module = test_module();
-        let mut named = BTreeMap::new();
+        let mut types = TestTypes {
+            module: test_module(),
+            registry: TypeRegistry::default(),
+        };
 
+        // Every name is registered with an empty definition before any
+        // field is resolved, so a field may name a type declared later.
         for decl in &self.decls {
-            let name = match decl {
-                Decl::Record { name, .. }
-                | Decl::EnumUnit { name, .. }
-                | Decl::Enum { name, .. } => name,
-                Decl::Function { .. } => continue,
+            let (name, def) = match decl {
+                Decl::Record { name, .. } => (name, TypeDef::Record { fields: vec![] }),
+                Decl::EnumUnit { name, .. } | Decl::Enum { name, .. } => {
+                    (name, TypeDef::Enum { variants: vec![] })
+                }
             };
-            let type_name = type_name(name);
-            let typ = DataType::Named {
-                module: module.clone(),
-                name: type_name.clone(),
-            };
-            if named.insert(type_name, typ).is_some() {
+            if types.declared().any(|declared| declared.as_str() == name) {
                 panic!("duplicate declaration of type `{name}`");
             }
+            types
+                .registry
+                .insert(types.module.clone(), type_name(name), def);
         }
-
-        let mut types = TestTypes {
-            module,
-            registry: TypeRegistry::default(),
-            named,
-            functions: HashMap::new(),
-        };
 
         for decl in self.decls {
             match decl {
@@ -219,32 +183,6 @@ impl TypeRegistryBuilder {
                         TypeDef::Enum { variants },
                     );
                 }
-                Decl::Function {
-                    name,
-                    params,
-                    return_type,
-                } => {
-                    let params: Vec<ParamEntry> = params
-                        .iter()
-                        .map(|(p, t)| ParamEntry {
-                            name: var_name(p),
-                            typ: types.resolve(t),
-                            fallback: None,
-                        })
-                        .collect();
-                    let signature = FunctionSignature {
-                        declared: params.len(),
-                        row: Row {
-                            fields: params,
-                            tail: Tail::Closed,
-                        },
-                        return_type: types.resolve(&return_type),
-                        rest_param: None,
-                    };
-                    if types.functions.insert(var_name(&name), signature).is_some() {
-                        panic!("duplicate declaration of function `{name}`");
-                    }
-                }
             }
         }
 
@@ -259,8 +197,6 @@ impl TypeRegistryBuilder {
 pub struct TestTypes {
     module: RootContainedFilePath,
     registry: TypeRegistry,
-    named: BTreeMap<TypeName, DataType>,
-    functions: HashMap<VarName, FunctionSignature>,
 }
 
 impl TestTypes {
@@ -272,17 +208,26 @@ impl TestTypes {
         &self.module
     }
 
+    /// The names of the declared types, sorted.
+    fn declared(&self) -> impl Iterator<Item = &TypeName> {
+        self.registry
+            .iter()
+            .filter(|(module, _, _)| *module == &self.module)
+            .map(|(_, name, _)| name)
+    }
+
     pub fn named(&self, name: &str) -> Type {
-        self.named
-            .get(&type_name(name))
-            .cloned()
-            .map(Type::Data)
-            .unwrap_or_else(|| {
-                panic!(
-                    "type `{name}` is not declared, declared types: {:?}",
-                    self.named.keys().map(|k| k.as_str()).collect::<Vec<_>>()
-                )
-            })
+        let typ = DataType::Named {
+            module: self.module.clone(),
+            name: type_name(name),
+        };
+        if self.registry.resolve(&typ).is_none() {
+            panic!(
+                "type `{name}` is not declared, declared types: {:?}",
+                self.declared().map(|k| k.as_str()).collect::<Vec<_>>()
+            )
+        }
+        Type::Data(typ)
     }
 
     pub fn resolve(&self, type_str: &str) -> Type {
@@ -319,35 +264,26 @@ impl TestTypes {
         })
     }
 
+    /// The environment of a module that declares these types and nothing
+    /// else.
     pub fn type_env(&self) -> TypeEnv {
         let decl_range = DocumentCursor::new(self.module.clone(), String::new()).eof_range();
-        let types = self.named.iter().map(|(name, typ)| {
+        let names = self.declared().map(|name| {
             (
                 name.to_cheap_string(),
                 Name {
-                    kind: NameKind::Type(typ.clone()),
-                    definition_range: decl_range.clone(),
-                    import_range: None,
-                },
-            )
-        });
-        let functions = self.functions.keys().map(|name| {
-            (
-                name.to_cheap_string(),
-                Name {
-                    kind: NameKind::Function,
+                    kind: NameKind::Type(DataType::Named {
+                        module: self.module.clone(),
+                        name: name.clone(),
+                    }),
                     definition_range: decl_range.clone(),
                     import_range: None,
                 },
             )
         });
         TypeEnv {
-            names: types.chain(functions).collect(),
-            functions: self
-                .functions
-                .iter()
-                .map(|(name, signature)| (name.to_cheap_string(), signature.clone()))
-                .collect(),
+            names: names.collect(),
+            functions: Default::default(),
         }
     }
 }

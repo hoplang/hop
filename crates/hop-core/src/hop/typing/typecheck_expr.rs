@@ -1501,18 +1501,20 @@ mod tests {
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
     use crate::hop::parsing::parse_expr;
+    use crate::hop::typing::test_module_builder::TestModuleBuilder;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn run_check(
-        types: TypeRegistryBuilder,
+        module: impl Into<TestModuleBuilder>,
         env_vars: &[(&str, &str)],
         expr_str: &str,
     ) -> (String, bool) {
-        let types = types.build();
+        let module = module.into().build();
+        let types = module.types();
 
-        let type_env = types.type_env();
+        let type_env = module.type_env();
 
         let decl_range = DocumentCursor::new(types.module().clone(), String::new()).eof_range();
         let mut env = VariableScope::new();
@@ -1559,12 +1561,12 @@ mod tests {
     }
 
     fn accept(
-        types: TypeRegistryBuilder,
+        module: impl Into<TestModuleBuilder>,
         env_vars: &[(&str, &str)],
         expr_str: &str,
         expected: Expect,
     ) {
-        let (actual, ok) = run_check(types, env_vars, expr_str);
+        let (actual, ok) = run_check(module, env_vars, expr_str);
         if !ok {
             panic!("expected expression to typecheck, got error:\n{actual}");
         }
@@ -1572,12 +1574,12 @@ mod tests {
     }
 
     fn reject(
-        types: TypeRegistryBuilder,
+        module: impl Into<TestModuleBuilder>,
         env_vars: &[(&str, &str)],
         expr_str: &str,
         expected: Expect,
     ) {
-        let (actual, ok) = run_check(types, env_vars, expr_str);
+        let (actual, ok) = run_check(module, env_vars, expr_str);
         if ok {
             panic!("expected a type error, but expression typechecked to: {actual}");
         }
@@ -5331,7 +5333,7 @@ mod tests {
     #[test]
     fn accepts_call_to_registered_function() {
         accept(
-            TypeRegistryBuilder::new().function("add_ten", [("x", "Int")], "Int"),
+            TestModuleBuilder::new().function("add_ten", [("x", "Int")], "Int"),
             &[],
             "add_ten(10)",
             expect!["Int"],
@@ -5341,7 +5343,7 @@ mod tests {
     #[test]
     fn accepts_call_to_function_with_multiple_arguments() {
         accept(
-            TypeRegistryBuilder::new().function("clamp", [("value", "Int"), ("max", "Int")], "Int"),
+            TestModuleBuilder::new().function("clamp", [("value", "Int"), ("max", "Int")], "Int"),
             &[],
             "clamp(10, 20)",
             expect!["Int"],
@@ -5351,7 +5353,7 @@ mod tests {
     #[test]
     fn accepts_call_to_function_with_no_arguments() {
         accept(
-            TypeRegistryBuilder::new().function("zero", [], "Int"),
+            TestModuleBuilder::new().function("zero", [], "Int"),
             &[],
             "zero()",
             expect!["Int"],
@@ -5375,7 +5377,7 @@ mod tests {
     #[test]
     fn rejects_call_with_too_few_arguments() {
         reject(
-            TypeRegistryBuilder::new().function("add_ten", [("x", "Int")], "Int"),
+            TestModuleBuilder::new().function("add_ten", [("x", "Int")], "Int"),
             &[],
             "add_ten()",
             expect![[r#"
@@ -5389,7 +5391,7 @@ mod tests {
     #[test]
     fn rejects_call_with_too_many_arguments() {
         reject(
-            TypeRegistryBuilder::new().function("add_ten", [("x", "Int")], "Int"),
+            TestModuleBuilder::new().function("add_ten", [("x", "Int")], "Int"),
             &[],
             "add_ten(10, 20)",
             expect![[r#"
@@ -5403,7 +5405,7 @@ mod tests {
     #[test]
     fn rejects_call_with_mismatched_argument_type() {
         reject(
-            TypeRegistryBuilder::new().function("add_ten", [("x", "Int")], "Int"),
+            TestModuleBuilder::new().function("add_ten", [("x", "Int")], "Int"),
             &[],
             "add_ten(\"hello\")",
             expect![[r#"
