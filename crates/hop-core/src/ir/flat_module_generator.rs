@@ -17,7 +17,7 @@ use std::ops::RangeInclusive;
 
 /// How deep the blocks of a body nest, in the arms of matches and the
 /// bodies of loops.
-const MAX_BLOCK_DEPTH: usize = 5;
+const MAX_BLOCK_DEPTH: usize = 4;
 
 /// How deep the ops of an expression nest, an op reading the result of
 /// another op as an operand.
@@ -27,7 +27,7 @@ const MAX_EXPRESSION_DEPTH: usize = 15;
 const MAX_LITERAL_DEPTH: usize = 5;
 
 /// One block in this many binds a value nothing asked for.
-const DEAD_BINDING_ODDS: usize = 128;
+const DEAD_BINDING_ODDS: usize = 64;
 
 const FLOATS: &[f64] = &[
     0.0,
@@ -276,7 +276,7 @@ fn random_module_inner(
     // a function declared after it.
     let function_names: Vec<String> = (0..g.count(0..=2)).map(|i| format!("C{i}")).collect();
     for name in &function_names {
-        let params: Vec<(String, Ty)> = (0..g.count(0..=3))
+        let params: Vec<(String, Ty)> = (0..g.count(0..=8))
             .map(|i| (format!("p{i}"), g.random_type(2)))
             .collect();
         let return_type = g.random_type(2);
@@ -295,7 +295,7 @@ fn random_module_inner(
     } else {
         (0..g.count(1..=3))
             .map(|i| {
-                let params = (0..g.count(0..=3))
+                let params = (0..g.count(0..=8))
                     .map(|i| (format!("p{i}"), g.random_type(2)))
                     .collect();
                 (format!("V{i}"), params)
@@ -1552,49 +1552,49 @@ mod tests {
             ));
         }
         expect![[r#"
-            3696 of 65536 input bytes consumed per module on average, at most 27553
+            1754 of 65536 input bytes consumed per module on average, at most 11912
             0 of 100 modules exhaust the input
-            4 of 210 entrypoints hit the recursion limit
-            0 of 210 entrypoints hit the array length limit
+            2 of 194 entrypoints hit the recursion limit
+            0 of 194 entrypoints hit the array length limit
 
             op                  ops/module  % live   % dyn
-            Array                    108.1    97.8    10.8
-            ArrayFromRange             1.3    98.4     0.0
-            ArrayIsEmpty               3.0    97.7    27.7
-            ArrayLength                4.0    97.5    24.7
-            BoolLiteral               31.9    98.1     0.0
-            BoolNegation               2.7    97.8    25.4
-            Call                       2.6    98.1    40.5
-            Enum                      82.7    98.0    10.1
-            Equals                     3.1    97.7    32.2
-            FieldAccess                1.9    96.4    32.3
-            FloatLiteral              50.3    98.0     0.0
-            FloatToInt                 3.7    97.3    17.6
-            HtmlConcat                 5.7    92.6     7.9
-            HtmlElement                4.4    92.9    15.4
-            HtmlEscape                 1.6    93.3    23.6
-            HtmlFor                    2.1    97.7    29.6
-            HtmlText                   4.3    92.3     0.0
-            IntLiteral                50.1    98.1     0.0
-            IntToFloat                 4.5    98.7    19.6
-            IntToString                4.3    97.4    14.7
-            LessThan                   3.0    97.7    38.1
-            LessThanOrEqual            2.9    98.3    39.4
-            Match                    108.1    98.6    49.0
-            NumericAdd                 8.8    96.4    29.5
-            NumericMultiply            8.3    96.3    30.0
-            NumericNegation            8.1    97.3    19.3
-            NumericSubtract            7.6    98.6    28.7
-            OptionIsNone               2.6    97.3    23.7
-            OptionIsSome               3.0    97.0    26.0
-            OptionNone                85.5    98.1     0.0
-            OptionSome                68.7    97.8    13.4
-            Record                    62.1    97.4    15.9
-            StringConcat               4.0    96.8    19.4
-            StringIsEmpty              3.1    97.7    19.0
-            StringLiteral             46.2    97.6     0.0
-            Tuple                    281.6    97.9    21.3
-            TupleIndex               102.7    97.0    31.2
+            Array                     51.4    96.3    14.6
+            ArrayFromRange             0.8    96.4     0.0
+            ArrayIsEmpty               1.2    98.3    45.8
+            ArrayLength                2.3    94.8    40.9
+            BoolLiteral               17.6    96.7     0.0
+            BoolNegation               1.2    94.3    31.1
+            Call                       1.9    97.9    63.0
+            Enum                      33.4    95.1    17.1
+            Equals                     1.4    97.2    44.8
+            FieldAccess                1.0    95.8    63.5
+            FloatLiteral              21.8    96.3     0.0
+            FloatToInt                 2.5    96.8    23.0
+            HtmlConcat                 4.5    92.9    12.0
+            HtmlElement                3.4    95.0    27.1
+            HtmlEscape                 1.6    91.9    28.1
+            HtmlFor                    1.7    98.2    52.9
+            HtmlText                   3.3    94.5     0.0
+            IntLiteral                21.6    96.6     0.0
+            IntToFloat                 2.5    96.3    26.8
+            IntToString                2.1    95.8    24.1
+            LessThan                   1.4    96.5    44.4
+            LessThanOrEqual            1.1    94.5    49.1
+            Match                     46.6    96.9    67.0
+            NumericAdd                 5.1    96.5    42.4
+            NumericMultiply            4.6    96.7    45.6
+            NumericNegation            4.7    97.0    25.4
+            NumericSubtract            4.6    96.5    41.9
+            OptionIsNone               1.3    95.4    36.2
+            OptionIsSome               1.4    96.4    41.3
+            OptionNone                34.9    96.6     0.0
+            OptionSome                28.6    97.4    21.8
+            Record                    28.0    96.1    23.4
+            StringConcat               2.3    95.3    28.4
+            StringIsEmpty              1.3    96.0    24.6
+            StringLiteral             20.4    96.2     0.0
+            Tuple                    117.8    96.0    33.1
+            TupleIndex                47.8    95.7    46.5
         "#]]
         .assert_eq(&report);
     }
