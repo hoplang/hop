@@ -145,7 +145,7 @@ impl FlatModuleBuilder {
     }
 
     pub fn build_with_registry(self) -> (FlatModule, TypeRegistry) {
-        let registry = self.registry.clone();
+        let registry = self.registry;
         let functions = self
             .functions
             .into_iter()
