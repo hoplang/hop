@@ -17,17 +17,17 @@ use std::ops::RangeInclusive;
 
 /// How deep the blocks of a body nest, in the arms of matches and the
 /// bodies of loops.
-const MAX_BLOCK_DEPTH: usize = 3;
+const MAX_BLOCK_DEPTH: usize = 5;
 
 /// How deep the ops of an expression nest, an op reading the result of
 /// another op as an operand.
-const MAX_EXPRESSION_DEPTH: usize = 3;
+const MAX_EXPRESSION_DEPTH: usize = 15;
 
-/// How deep the values of a literal nest.
-const MAX_LITERAL_DEPTH: usize = 2;
+/// How deep the values of a literal nest before they start to converge.
+const MAX_LITERAL_DEPTH: usize = 5;
 
 /// One block in this many binds a value nothing asked for.
-const DEAD_BINDING_ODDS: usize = 64;
+const DEAD_BINDING_ODDS: usize = 128;
 
 const FLOATS: &[f64] = &[
     0.0,
@@ -1500,7 +1500,7 @@ mod tests {
     /// as the longest arbtest gives.
     #[test]
     fn should_report_generator_stats() {
-        const SAMPLES: usize = 200;
+        const SAMPLES: usize = 100;
         const INPUT_LEN: usize = 65_536;
         let mut rng = SmallRng::seed_from_u64(0);
         let mut counts = BTreeMap::new();
@@ -1552,49 +1552,49 @@ mod tests {
             ));
         }
         expect![[r#"
-            334 of 65536 input bytes consumed per module on average, at most 1393
-            0 of 200 modules exhaust the input
-            2 of 408 entrypoints hit the recursion limit
-            0 of 408 entrypoints hit the array length limit
+            3696 of 65536 input bytes consumed per module on average, at most 27553
+            0 of 100 modules exhaust the input
+            4 of 210 entrypoints hit the recursion limit
+            0 of 210 entrypoints hit the array length limit
 
             op                  ops/module  % live   % dyn
-            Array                      9.3    94.5     3.1
-            ArrayFromRange             0.5    99.0     0.0
-            ArrayIsEmpty               0.2    97.4    36.8
-            ArrayLength                0.1    92.9    17.9
-            BoolLiteral                4.1    95.1     0.0
-            BoolNegation               0.2    97.6     9.5
-            Call                       0.8    97.6    42.4
-            Enum                       7.0    96.0     3.5
-            Equals                     0.2    94.6    13.5
-            FieldAccess                0.2    91.7    22.2
-            FloatLiteral               3.2    92.6     0.0
-            FloatToInt                 0.1    93.3     0.0
-            HtmlConcat                 3.1    98.0     4.4
-            HtmlElement                2.2    98.4    11.1
-            HtmlEscape                 1.0    99.0    11.9
-            HtmlFor                    1.0    98.5    15.6
-            HtmlText                   2.4    97.7     0.0
-            IntLiteral                 4.4    95.5     0.0
-            IntToFloat                 0.0   100.0     0.0
-            IntToString                0.6    98.4     6.3
-            LessThan                   0.2    97.3    16.2
-            LessThanOrEqual            0.3    88.2    15.7
-            Match                     10.4    95.7    34.7
-            NumericAdd                 0.2    93.5    12.9
-            NumericMultiply            0.1    96.6    10.3
-            NumericNegation            0.1    88.2    11.8
-            NumericSubtract            0.1    96.4    14.3
-            OptionIsNone               0.2   100.0    27.8
-            OptionIsSome               0.2    93.2    15.9
-            OptionNone                 7.0    95.6     0.0
-            OptionSome                 3.5    95.6     7.1
-            Record                     3.6    90.9     5.1
-            StringConcat               0.6    95.2    11.3
-            StringIsEmpty              0.2    93.9     3.0
-            StringLiteral              5.2    96.9     0.0
-            Tuple                     15.4    95.5    11.4
-            TupleIndex                 5.2    94.6    18.3
+            Array                    108.1    97.8    10.8
+            ArrayFromRange             1.3    98.4     0.0
+            ArrayIsEmpty               3.0    97.7    27.7
+            ArrayLength                4.0    97.5    24.7
+            BoolLiteral               31.9    98.1     0.0
+            BoolNegation               2.7    97.8    25.4
+            Call                       2.6    98.1    40.5
+            Enum                      82.7    98.0    10.1
+            Equals                     3.1    97.7    32.2
+            FieldAccess                1.9    96.4    32.3
+            FloatLiteral              50.3    98.0     0.0
+            FloatToInt                 3.7    97.3    17.6
+            HtmlConcat                 5.7    92.6     7.9
+            HtmlElement                4.4    92.9    15.4
+            HtmlEscape                 1.6    93.3    23.6
+            HtmlFor                    2.1    97.7    29.6
+            HtmlText                   4.3    92.3     0.0
+            IntLiteral                50.1    98.1     0.0
+            IntToFloat                 4.5    98.7    19.6
+            IntToString                4.3    97.4    14.7
+            LessThan                   3.0    97.7    38.1
+            LessThanOrEqual            2.9    98.3    39.4
+            Match                    108.1    98.6    49.0
+            NumericAdd                 8.8    96.4    29.5
+            NumericMultiply            8.3    96.3    30.0
+            NumericNegation            8.1    97.3    19.3
+            NumericSubtract            7.6    98.6    28.7
+            OptionIsNone               2.6    97.3    23.7
+            OptionIsSome               3.0    97.0    26.0
+            OptionNone                85.5    98.1     0.0
+            OptionSome                68.7    97.8    13.4
+            Record                    62.1    97.4    15.9
+            StringConcat               4.0    96.8    19.4
+            StringIsEmpty              3.1    97.7    19.0
+            StringLiteral             46.2    97.6     0.0
+            Tuple                    281.6    97.9    21.3
+            TupleIndex               102.7    97.0    31.2
         "#]]
         .assert_eq(&report);
     }
@@ -1637,55 +1637,74 @@ mod tests {
 
                 entrypoint fn V0@f0(p0@v0: (Option[E0], (E1, Int, Bool)), p1@v1: E1) -> Html {
                   let v2: E0 = W0
-                  let v32: Html = match v2 {
+                  let v37: Html = match v2 {
                     E0::W0 => {
                       let v3: E0 = W0
-                      let v27: Html = match v3 {
+                      let v32: Html = match v3 {
                         E0::W0 => {
-                          let v4: Option[Array[E1]] = None
-                          let v5: String = "&amp;"
-                          let v6: Float = -0.5
-                          let v7: Int = -3
-                          let v8: Array[Array[Bool]] = []
-                          let v9: R1 = {}
-                          let v10: R0 = {f0: v8, f1: v9}
-                          let v11: (Float, Int, R0) = (v6, v7, v10)
-                          let v12: Array[E1] = []
-                          let v13: Bool = false
-                          let v14: Array[Int] = []
-                          let v15: (Array[E1], Bool, Array[Int]) = (v12, v13, v14)
-                          let v16: E1 = W0 {f1: v11, f0: v15}
-                          let v17: (Option[Array[E1]], String, E1) = (v4, v5, v16)
-                          let v18: Option[Array[E1]] = v17.0
-                          let v26: Html = match v18 {
-                            Some(v19: Array[E1]) => {
-                              let v20: String = "line\nbreak"
-                              let v21: String = v17.1
-                              let v22: Bool = true
+                          let v4: Array[E1] = [v1]
+                          let v5: Option[Array[E1]] = Some(v4)
+                          let v6: String = "`${x}`"
+                          let v7: Bool = true
+                          let v8: Int = -99
+                          let v9: Int = 70
+                          let v10: Array[Int] = [v8, v9]
+                          let v11: (Array[E1], Bool, Array[Int]) = (v4, v7, v10)
+                          let v12: Float = 99.75
+                          let v13: R1 = {}
+                          let v14: Array[Bool] = []
+                          let v15: Array[Bool] = []
+                          let v16: Array[Array[Bool]] = [v14, v15]
+                          let v17: R0 = {f1: v13, f0: v16}
+                          let v18: (Float, Int, R0) = (v12, v8, v17)
+                          let v19: E1 = W0 {f0: v11, f1: v18}
+                          let v20: (Option[Array[E1]], String, E1) = (v5, v6, v19)
+                          let v21: Option[Array[E1]] = v20.0
+                          let v31: Html = match v21 {
+                            Some(v22: Array[E1]) => {
                               let v23: Html = concat()
-                              let v24: Html = element("input", {class: v20, id: v21, disabled: v22}, v23)
-                              v24
+                              v23
                             }
                             None => {
-                              let v25: Html = concat()
-                              v25
+                              let v24: Option[Int] = None
+                              let v27: Bool = match v24 {
+                                Some(_) => {
+                                  let v25: Bool = false
+                                  v25
+                                }
+                                None => {
+                                  let v26: Bool = false
+                                  v26
+                                }
+                              }
+                              let v30: Html = match v27 {
+                                true => {
+                                  let v28: Html = concat()
+                                  v28
+                                }
+                                false => {
+                                  let v29: Html = concat()
+                                  v29
+                                }
+                              }
+                              v30
                             }
                           }
-                          v26
+                          v31
                         }
                       }
-                      let v28: Html = concat()
-                      let v29: Html = concat()
-                      let v30: Html = concat()
-                      let v31: Html = concat(v27, v28, v29, v30)
-                      v31
+                      let v33: Html = concat()
+                      let v34: Html = concat()
+                      let v35: Html = concat()
+                      let v36: Html = concat(v32, v33, v34, v35)
+                      v36
                     }
                   }
-                  v32
+                  v37
                 }
-                entrypoint fn V1@f1(p0@v33: Array[E0], p1@v34: R1, p2@v35: Array[(Bool, E1)]) -> Html {
-                  let v36: Html = concat()
-                  v36
+                entrypoint fn V1@f1(p0@v38: Array[E0], p1@v39: R1, p2@v40: Array[(Bool, E1)]) -> Html {
+                  let v41: Html = concat()
+                  v41
                 }
             "#]],
         );
