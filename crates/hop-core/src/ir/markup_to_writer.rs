@@ -186,11 +186,11 @@ impl<'a> Lowerer<'a> {
     /// Record the bindings and what they read.
     fn analyze_bindings(&mut self, bindings: &'a [MarkupDataBinding]) {
         for binding in bindings {
-            self.bindings.insert(binding.name, binding);
+            self.bindings.insert(binding.binder.var, binding);
             match &binding.op {
                 MarkupDataOp::Data(IrDataOp::StringConcat(parts)) => {
                     for part in parts {
-                        self.read(*part, Reader::ConcatPart(binding.name));
+                        self.read(*part, Reader::ConcatPart(binding.binder.var));
                     }
                 }
                 MarkupDataOp::Data(op) => {
@@ -422,13 +422,13 @@ impl<'a> Lowerer<'a> {
     /// readers and leaving out the bindings folded where they are read.
     fn lower_bindings(&mut self, bindings: &'a [MarkupDataBinding], out: &mut Vec<WriterBinding>) {
         for binding in bindings {
-            if self.folded(binding.name) {
+            if self.folded(binding.binder.var) {
                 continue;
             }
             let op = match &binding.op {
                 MarkupDataOp::Match(match_) => {
-                    let alias = self.lower_data_match(match_, &binding.typ, out);
-                    self.aliases.insert(binding.name, alias);
+                    let alias = self.lower_data_match(match_, &binding.binder.typ, out);
+                    self.aliases.insert(binding.binder.var, alias);
                     continue;
                 }
                 MarkupDataOp::Call(function, args) => {
@@ -441,8 +441,8 @@ impl<'a> Lowerer<'a> {
                 }
             };
             out.push(WriterBinding {
-                name: self.bind(binding.name),
-                typ: Type::Data(binding.typ.clone()),
+                name: self.bind(binding.binder.var),
+                typ: Type::Data(binding.binder.typ.clone()),
                 op,
             });
         }
@@ -490,7 +490,7 @@ impl<'a> Lowerer<'a> {
     ) -> ValueId {
         let patterns: Vec<_> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
         let subject_type = match self.bindings.get(&match_.subject) {
-            Some(binding) => binding.typ.clone(),
+            Some(binding) => binding.binder.typ.clone(),
             None => self.binder_types[&match_.subject].clone(),
         };
         let decision = compile_decision_tree(self.registry, &patterns, subject_type);
@@ -838,7 +838,7 @@ impl<'a> Lowerer<'a> {
                     let patterns: Vec<_> =
                         match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
                     let subject_type = match self.bindings.get(&match_.subject) {
-                        Some(binding) => binding.typ.clone(),
+                        Some(binding) => binding.binder.typ.clone(),
                         None => self.binder_types[&match_.subject].clone(),
                     };
                     let decision = compile_decision_tree(self.registry, &patterns, subject_type);

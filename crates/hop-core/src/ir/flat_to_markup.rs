@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::hop::typing::Type;
 use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatModule, FlatOp};
 use crate::ir::flat_transform::freshener::Freshener;
+use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_html_element::IrHtmlElement;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
@@ -154,8 +155,10 @@ impl Converter {
             }
         };
         MarkupDataBinding {
-            name: binding.binder.var,
-            typ,
+            binder: IrBinder {
+                var: binding.binder.var,
+                typ,
+            },
             op,
         }
     }

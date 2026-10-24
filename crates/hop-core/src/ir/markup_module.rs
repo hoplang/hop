@@ -4,6 +4,7 @@ use pretty::BoxDoc;
 
 use crate::document::CheapString;
 use crate::hop::typing::{DataType, Type};
+use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
@@ -79,8 +80,7 @@ pub struct MarkupDataBlock {
 /// A binding of data, which is never Html.
 #[derive(Debug)]
 pub struct MarkupDataBinding {
-    pub name: ValueId,
-    pub typ: DataType,
+    pub binder: IrBinder<DataType>,
     pub op: MarkupDataOp,
 }
 
@@ -149,7 +149,7 @@ impl MarkupDataBlock {
 
 impl MarkupDataBinding {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(format!("let {}: {} = ", self.name, self.typ)).append(self.op.to_doc())
+        BoxDoc::text(format!("let {} = ", self.binder)).append(self.op.to_doc())
     }
 }
 
