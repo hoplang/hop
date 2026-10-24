@@ -3,7 +3,7 @@ use std::fmt;
 use pretty::BoxDoc;
 
 use crate::document::CheapString;
-use crate::hop::typing::{DataType, Type};
+use crate::hop::typing::DataType;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
@@ -19,50 +19,76 @@ pub struct MarkupModule {
     pub value_ids: ValueIdCounter,
 }
 
+/// A function that returns Html renders markup, and any other function
+/// computes a value.
 #[derive(Debug)]
-pub struct MarkupFunctionDeclaration {
+pub enum MarkupFunctionDeclaration {
+    Data(MarkupDataFunction),
+    Html(MarkupHtmlFunction),
+}
+
+/// A function whose body computes a value of its return type.
+#[derive(Debug)]
+pub struct MarkupDataFunction {
     pub function: IrFunction,
     pub entrypoint: bool,
     pub parameters: Vec<IrParameter>,
-    pub return_type: Type,
-    pub body: MarkupBody,
+    pub return_type: DataType,
+    pub body: MarkupDataBlock,
 }
 
-/// The body of a function that returns Html is markup, and the body of any
-/// other function is a value.
+/// A function whose body renders markup.
 #[derive(Debug)]
-pub enum MarkupBody {
-    Value(MarkupValueBlock),
-    Markup(MarkupBlock),
+pub struct MarkupHtmlFunction {
+    pub function: IrFunction,
+    pub entrypoint: bool,
+    pub parameters: Vec<IrParameter>,
+    pub body: MarkupHtmlBlock,
+}
+
+impl MarkupFunctionDeclaration {
+    pub fn function(&self) -> &IrFunction {
+        match self {
+            MarkupFunctionDeclaration::Data(function) => &function.function,
+            MarkupFunctionDeclaration::Html(function) => &function.function,
+        }
+    }
+
+    pub fn parameters(&self) -> &[IrParameter] {
+        match self {
+            MarkupFunctionDeclaration::Data(function) => &function.parameters,
+            MarkupFunctionDeclaration::Html(function) => &function.parameters,
+        }
+    }
 }
 
 /// A scope that renders markup.
 #[derive(Debug)]
-pub struct MarkupBlock {
-    pub bindings: Vec<MarkupValueBinding>,
+pub struct MarkupHtmlBlock {
+    pub bindings: Vec<MarkupDataBinding>,
     pub markup: Vec<MarkupNode>,
 }
 
 /// A scope that computes a value.
 #[derive(Debug)]
-pub struct MarkupValueBlock {
-    pub bindings: Vec<MarkupValueBinding>,
+pub struct MarkupDataBlock {
+    pub bindings: Vec<MarkupDataBinding>,
     pub result: ValueId,
 }
 
 /// A binding of data, which is never Html.
 #[derive(Debug)]
-pub struct MarkupValueBinding {
+pub struct MarkupDataBinding {
     pub name: ValueId,
     pub typ: DataType,
-    pub op: MarkupValueOp,
+    pub op: MarkupDataOp,
 }
 
 #[derive(Debug)]
-pub enum MarkupValueOp {
+pub enum MarkupDataOp {
     Data(IrDataOp),
     Call(IrFunction, Vec<MarkupCallArg>),
-    Match(IrMatch<MarkupValueBlock>),
+    Match(IrMatch<MarkupDataBlock>),
 }
 
 /// An argument of a call, one for each parameter of the function: a value,
@@ -70,8 +96,8 @@ pub enum MarkupValueOp {
 /// caller, wherever the function renders it.
 #[derive(Debug)]
 pub enum MarkupCallArg {
-    Value(ValueId),
-    Markup(Vec<MarkupNode>),
+    Data(ValueId),
+    Html(Vec<MarkupNode>),
 }
 
 #[derive(Debug)]
@@ -84,9 +110,9 @@ pub enum MarkupNode {
     /// children.
     Element(IrHtmlElement<Vec<MarkupNode>>),
     /// The markup of the first arm whose pattern matches the subject.
-    Match(IrMatch<MarkupBlock>),
+    Match(IrMatch<MarkupHtmlBlock>),
     /// The body's markup once per element of the array, in order.
-    For(IrFor<MarkupBlock>),
+    For(IrFor<MarkupHtmlBlock>),
     /// The markup of a function that returns Html.
     Call(IrFunction, Vec<MarkupCallArg>),
     /// The markup the caller passed for the named Html parameter. A function
@@ -94,9 +120,9 @@ pub enum MarkupNode {
     Slot(ValueId),
 }
 
-impl MarkupBlock {
+impl MarkupHtmlBlock {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let bindings = self.bindings.iter().map(MarkupValueBinding::to_doc);
+        let bindings = self.bindings.iter().map(MarkupDataBinding::to_doc);
         let markup = self.markup.iter().map(MarkupNode::to_doc);
         if self.bindings.is_empty() || self.markup.is_empty() {
             BoxDoc::intersperse(bindings.chain(markup), BoxDoc::line())
@@ -109,35 +135,35 @@ impl MarkupBlock {
     }
 }
 
-impl MarkupValueBlock {
+impl MarkupDataBlock {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::intersperse(
             self.bindings
                 .iter()
-                .map(MarkupValueBinding::to_doc)
+                .map(MarkupDataBinding::to_doc)
                 .chain(std::iter::once(BoxDoc::text(self.result.to_string()))),
             BoxDoc::line(),
         )
     }
 }
 
-impl MarkupValueBinding {
+impl MarkupDataBinding {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::text(format!("let {}: {} = ", self.name, self.typ)).append(self.op.to_doc())
     }
 }
 
-impl MarkupValueOp {
+impl MarkupDataOp {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            MarkupValueOp::Data(op) => op.to_doc(),
-            MarkupValueOp::Call(function, args) => BoxDoc::text(format!("{function}("))
+            MarkupDataOp::Data(op) => op.to_doc(),
+            MarkupDataOp::Call(function, args) => BoxDoc::text(format!("{function}("))
                 .append(BoxDoc::intersperse(
                     args.iter().map(MarkupCallArg::to_doc),
                     BoxDoc::text(", "),
                 ))
                 .append(BoxDoc::text(")")),
-            MarkupValueOp::Match(match_) => {
+            MarkupDataOp::Match(match_) => {
                 match_.to_doc(|body| BoxDoc::line().append(body.to_doc()))
             }
         }
@@ -206,8 +232,8 @@ impl MarkupNode {
 impl MarkupCallArg {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            MarkupCallArg::Value(value) => BoxDoc::text(value.to_string()),
-            MarkupCallArg::Markup(markup) => {
+            MarkupCallArg::Data(value) => BoxDoc::text(value.to_string()),
+            MarkupCallArg::Html(markup) => {
                 if markup.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -232,24 +258,28 @@ impl MarkupCallArg {
 
 impl MarkupFunctionDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
+        let (entrypoint, return_type, body) = match self {
+            MarkupFunctionDeclaration::Data(function) => (
+                function.entrypoint,
+                function.return_type.to_string(),
+                function.body.to_doc(),
+            ),
+            MarkupFunctionDeclaration::Html(function) => (
+                function.entrypoint,
+                "Html".to_string(),
+                function.body.to_doc(),
+            ),
+        };
         let parameters = self
-            .parameters
+            .parameters()
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ");
-        let keyword = if self.entrypoint {
-            "entrypoint fn"
-        } else {
-            "fn"
-        };
-        let body = match &self.body {
-            MarkupBody::Value(block) => block.to_doc(),
-            MarkupBody::Markup(block) => block.to_doc(),
-        };
+        let keyword = if entrypoint { "entrypoint fn" } else { "fn" };
         BoxDoc::text(format!(
-            "{keyword} {}({parameters}) -> {} {{",
-            self.function, self.return_type
+            "{keyword} {}({parameters}) -> {return_type} {{",
+            self.function()
         ))
         .append(BoxDoc::line().append(body).nest(2))
         .append(BoxDoc::line())

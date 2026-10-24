@@ -15,8 +15,8 @@ use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::markup_module::{
-    MarkupBlock, MarkupBody, MarkupCallArg, MarkupFunctionDeclaration, MarkupModule, MarkupNode,
-    MarkupValueBinding, MarkupValueBlock, MarkupValueOp,
+    MarkupCallArg, MarkupDataBinding, MarkupDataBlock, MarkupDataOp, MarkupFunctionDeclaration,
+    MarkupHtmlBlock, MarkupHtmlFunction, MarkupModule, MarkupNode,
 };
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::ir::writer_module::{
@@ -73,12 +73,14 @@ pub fn markup_to_writer(
         bound: HashSet::new(),
     };
     for function in &functions {
-        for param in &function.parameters {
+        for param in function.parameters() {
             lowerer.analyze_binder(&param.binder);
         }
-        match &function.body {
-            MarkupBody::Value(block) => lowerer.analyze_value_block(block),
-            MarkupBody::Markup(block) => lowerer.analyze_block(block),
+        match function {
+            MarkupFunctionDeclaration::Data(function) => {
+                lowerer.analyze_data_block(&function.body);
+            }
+            MarkupFunctionDeclaration::Html(function) => lowerer.analyze_html_block(&function.body),
         }
     }
     let page_functions: HashSet<FunctionId> = pages
@@ -88,10 +90,15 @@ pub fn markup_to_writer(
         .collect();
     let (page_functions, functions): (Vec<_>, Vec<_>) = functions
         .iter()
-        .partition(|decl| page_functions.contains(&decl.function.id));
-    let mut page_functions: HashMap<FunctionId, &MarkupFunctionDeclaration> = page_functions
+        .partition(|decl| page_functions.contains(&decl.function().id));
+    let mut page_functions: HashMap<FunctionId, &MarkupHtmlFunction> = page_functions
         .into_iter()
-        .map(|decl| (decl.function.id, decl))
+        .map(|decl| match decl {
+            MarkupFunctionDeclaration::Html(function) => (function.function.id, function),
+            MarkupFunctionDeclaration::Data(function) => {
+                panic!("the page function {} returns a value", function.function)
+            }
+        })
         .collect();
     let pages = pages
         .iter()
@@ -153,7 +160,7 @@ struct Lowerer<'a> {
     value_ids: ValueIdCounter,
     /// Every value binding of the module, by name and by the fresh name of
     /// each copy of it. Names are unique, so one map serves every block.
-    bindings: HashMap<ValueId, &'a MarkupValueBinding>,
+    bindings: HashMap<ValueId, &'a MarkupDataBinding>,
     /// The type of each parameter, loop variable and binding of a pattern
     /// of data, which no value binding binds.
     binder_types: HashMap<ValueId, DataType>,
@@ -175,20 +182,20 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Record the bindings and what they read.
-    fn analyze_bindings(&mut self, bindings: &'a [MarkupValueBinding]) {
+    fn analyze_bindings(&mut self, bindings: &'a [MarkupDataBinding]) {
         for binding in bindings {
             self.bindings.insert(binding.name, binding);
             match &binding.op {
-                MarkupValueOp::Data(IrDataOp::StringConcat(parts)) => {
+                MarkupDataOp::Data(IrDataOp::StringConcat(parts)) => {
                     for part in parts {
                         self.read(*part, Reader::ConcatPart(binding.name));
                     }
                 }
-                MarkupValueOp::Data(op) => {
+                MarkupDataOp::Data(op) => {
                     op.for_each_operand(&mut |operand| self.read(operand, Reader::Value));
                 }
-                MarkupValueOp::Call(_, args) => self.analyze_args(args),
-                MarkupValueOp::Match(match_) => {
+                MarkupDataOp::Call(_, args) => self.analyze_args(args),
+                MarkupDataOp::Match(match_) => {
                     let bound_whole = match_
                         .arms
                         .iter()
@@ -200,19 +207,19 @@ impl<'a> Lowerer<'a> {
                     }
                     for arm in &match_.arms {
                         self.analyze_pattern(&arm.pattern);
-                        self.analyze_value_block(&arm.body);
+                        self.analyze_data_block(&arm.body);
                     }
                 }
             }
         }
     }
 
-    fn analyze_value_block(&mut self, block: &'a MarkupValueBlock) {
+    fn analyze_data_block(&mut self, block: &'a MarkupDataBlock) {
         self.analyze_bindings(&block.bindings);
         self.read(block.result, Reader::Value);
     }
 
-    fn analyze_block(&mut self, block: &'a MarkupBlock) {
+    fn analyze_html_block(&mut self, block: &'a MarkupHtmlBlock) {
         self.analyze_bindings(&block.bindings);
         self.analyze_markup(&block.markup);
     }
@@ -251,13 +258,13 @@ impl<'a> Lowerer<'a> {
                     }
                     for arm in &match_.arms {
                         self.analyze_pattern(&arm.pattern);
-                        self.analyze_block(&arm.body);
+                        self.analyze_html_block(&arm.body);
                     }
                 }
                 MarkupNode::For(IrFor { var, array, body }) => {
                     self.analyze_loop_var(var.as_ref());
                     self.read(*array, Reader::Value);
-                    self.analyze_block(body);
+                    self.analyze_html_block(body);
                 }
                 MarkupNode::Call(_, args) => self.analyze_args(args),
             }
@@ -267,8 +274,8 @@ impl<'a> Lowerer<'a> {
     fn analyze_args(&mut self, args: &'a [MarkupCallArg]) {
         for arg in args {
             match arg {
-                MarkupCallArg::Value(value) => self.read(*value, Reader::Value),
-                MarkupCallArg::Markup(markup) => self.analyze_markup(markup),
+                MarkupCallArg::Data(value) => self.read(*value, Reader::Value),
+                MarkupCallArg::Html(markup) => self.analyze_markup(markup),
             }
         }
     }
@@ -303,17 +310,17 @@ impl<'a> Lowerer<'a> {
             return false;
         };
         match binding.op {
-            MarkupValueOp::Data(IrDataOp::StringLiteral(_) | IrDataOp::StringConcat(_)) => {
+            MarkupDataOp::Data(IrDataOp::StringLiteral(_) | IrDataOp::StringConcat(_)) => {
                 readers.iter().all(|reader| match reader {
                     Reader::Escaped => true,
                     Reader::ConcatPart(concat) => self.folded(*concat),
                     Reader::Presence | Reader::TakenApart | Reader::Value => false,
                 })
             }
-            MarkupValueOp::Data(IrDataOp::BoolLiteral(_)) => readers
+            MarkupDataOp::Data(IrDataOp::BoolLiteral(_)) => readers
                 .iter()
                 .all(|reader| matches!(reader, Reader::Presence)),
-            MarkupValueOp::Data(IrDataOp::Tuple(_) | IrDataOp::Record(..)) => readers
+            MarkupDataOp::Data(IrDataOp::Tuple(_) | IrDataOp::Record(..)) => readers
                 .iter()
                 .all(|reader| matches!(reader, Reader::TakenApart)),
             _ => false,
@@ -345,22 +352,16 @@ impl<'a> Lowerer<'a> {
     fn lower_page(
         &mut self,
         name: TypeName,
-        head: Option<&'a MarkupFunctionDeclaration>,
-        body: &'a MarkupFunctionDeclaration,
+        head: Option<&'a MarkupHtmlFunction>,
+        body: &'a MarkupHtmlFunction,
         shell: Option<&DocumentShell>,
     ) -> WriterPageDeclaration {
         let head = head.map(|head| {
             for (from, to) in head.parameters.iter().zip(&body.parameters) {
                 self.aliases.insert(from.binder.var, to.binder.var);
             }
-            let MarkupBody::Markup(block) = &head.body else {
-                panic!("the head of a page is Html");
-            };
-            block
+            &head.body
         });
-        let MarkupBody::Markup(body_block) = &body.body else {
-            panic!("the body of a page is Html");
-        };
         let mut statements = Vec::new();
         match shell {
             Some(shell) => {
@@ -369,14 +370,14 @@ impl<'a> Lowerer<'a> {
                     self.write_block(head, &mut statements);
                 }
                 statements.push(WriterStmt::Write(shell.after_head.clone()));
-                self.write_block(body_block, &mut statements);
+                self.write_block(&body.body, &mut statements);
                 statements.push(WriterStmt::Write(shell.after_body.to_string()));
             }
             None => {
                 if let Some(head) = head {
                     self.write_block(head, &mut statements);
                 }
-                self.write_block(body_block, &mut statements);
+                self.write_block(&body.body, &mut statements);
             }
         }
         WriterPageDeclaration {
@@ -387,49 +388,53 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Lower a function declaration, choosing the calling convention from
-    /// its body. Markup compiles to destination passing, a value to an
+    /// its kind. Markup compiles to destination passing, a value to an
     /// ordinary value returning function.
     fn lower_function(&mut self, decl: &'a MarkupFunctionDeclaration) -> WriterFunctionDeclaration {
-        let body = match &decl.body {
-            MarkupBody::Markup(block) => {
+        match decl {
+            MarkupFunctionDeclaration::Html(function) => {
                 let mut statements = Vec::new();
-                self.write_block(block, &mut statements);
-                WriterFunctionBody::Writes(statements)
+                self.write_block(&function.body, &mut statements);
+                WriterFunctionDeclaration {
+                    function: function.function.clone(),
+                    parameters: function.parameters.clone(),
+                    return_type: Type::Html,
+                    body: WriterFunctionBody::Writes(statements),
+                }
             }
-            MarkupBody::Value(block) => {
+            MarkupFunctionDeclaration::Data(function) => {
                 let mut bindings = Vec::new();
-                self.lower_bindings(&block.bindings, &mut bindings);
-                WriterFunctionBody::Returns(WriterBlock {
-                    bindings,
-                    result: self.name(block.result),
-                })
+                self.lower_bindings(&function.body.bindings, &mut bindings);
+                WriterFunctionDeclaration {
+                    function: function.function.clone(),
+                    parameters: function.parameters.clone(),
+                    return_type: Type::Data(function.return_type.clone()),
+                    body: WriterFunctionBody::Returns(WriterBlock {
+                        bindings,
+                        result: self.name(function.body.result),
+                    }),
+                }
             }
-        };
-        WriterFunctionDeclaration {
-            function: decl.function.clone(),
-            parameters: decl.parameters.clone(),
-            return_type: decl.return_type.clone(),
-            body,
         }
     }
 
     /// Lower the bindings to lets, folding the results of matches into their
     /// readers and leaving out the bindings folded where they are read.
-    fn lower_bindings(&mut self, bindings: &'a [MarkupValueBinding], out: &mut Vec<WriterBinding>) {
+    fn lower_bindings(&mut self, bindings: &'a [MarkupDataBinding], out: &mut Vec<WriterBinding>) {
         for binding in bindings {
             if self.folded(binding.name) {
                 continue;
             }
             let op = match &binding.op {
-                MarkupValueOp::Match(match_) => {
-                    let alias = self.lower_value_match(match_, &binding.typ, out);
+                MarkupDataOp::Match(match_) => {
+                    let alias = self.lower_data_match(match_, &binding.typ, out);
                     self.aliases.insert(binding.name, alias);
                     continue;
                 }
-                MarkupValueOp::Call(function, args) => {
+                MarkupDataOp::Call(function, args) => {
                     WriterOp::Call(function.clone(), self.lower_args(args, out))
                 }
-                MarkupValueOp::Data(op) => {
+                MarkupDataOp::Data(op) => {
                     let mut op = op.clone();
                     op.for_each_operand_mut(&mut |name| *name = self.name(*name));
                     WriterOp::Data(op)
@@ -454,8 +459,8 @@ impl<'a> Lowerer<'a> {
         let mut names = Vec::new();
         for arg in args {
             let name = match arg {
-                MarkupCallArg::Value(value) => self.name(*value),
-                MarkupCallArg::Markup(markup) => match markup.as_slice() {
+                MarkupCallArg::Data(value) => self.name(*value),
+                MarkupCallArg::Html(markup) => match markup.as_slice() {
                     [MarkupNode::Slot(parameter)] => self.name(*parameter),
                     _ => {
                         let mut body = Vec::new();
@@ -477,9 +482,9 @@ impl<'a> Lowerer<'a> {
 
     /// The name of the result of a value match of type `typ`, with the lets
     /// that compute it appended to `lets`.
-    fn lower_value_match(
+    fn lower_data_match(
         &mut self,
-        match_: &'a IrMatch<MarkupValueBlock>,
+        match_: &'a IrMatch<MarkupDataBlock>,
         typ: &DataType,
         lets: &mut Vec<WriterBinding>,
     ) -> ValueId {
@@ -492,7 +497,7 @@ impl<'a> Lowerer<'a> {
         let mut used = HashSet::new();
         decision.collect_used(&mut used);
         let mut parts = HashMap::from([(CaseVar(0), self.name(match_.subject))]);
-        self.lower_value_decision(&decision, &match_.arms, typ, &used, &mut parts, lets)
+        self.lower_data_decision(&decision, &match_.arms, typ, &used, &mut parts, lets)
     }
 
     /// The name of the value a decision tree of a match of type `typ`
@@ -500,10 +505,10 @@ impl<'a> Lowerer<'a> {
     /// `lets`. `parts` holds the name of the part of the subject each case
     /// variable bound so far stands for. A case variable that is not in
     /// `used` is not bound.
-    fn lower_value_decision(
+    fn lower_data_decision(
         &mut self,
         decision: &Decision<IrBinder>,
-        arms: &'a [IrMatchArm<MarkupValueBlock>],
+        arms: &'a [IrMatchArm<MarkupDataBlock>],
         typ: &DataType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
@@ -525,8 +530,8 @@ impl<'a> Lowerer<'a> {
                 // A record the module constructs is taken apart through the
                 // operands of its constructor.
                 let fields = match self.bindings.get(&record).copied() {
-                    Some(MarkupValueBinding {
-                        op: MarkupValueOp::Data(IrDataOp::Record(fields)),
+                    Some(MarkupDataBinding {
+                        op: MarkupDataOp::Data(IrDataOp::Record(fields)),
                         ..
                     }) => Some(fields),
                     _ => None,
@@ -558,7 +563,7 @@ impl<'a> Lowerer<'a> {
                     };
                     parts.insert(binding.var.id, part);
                 }
-                return self.lower_value_decision(&case.body, arms, typ, used, parts, lets);
+                return self.lower_data_decision(&case.body, arms, typ, used, parts, lets);
             }
 
             Decision::SwitchTuple { variable, case } => {
@@ -566,8 +571,8 @@ impl<'a> Lowerer<'a> {
                 // A tuple the module constructs is taken apart through the
                 // operands of its constructor.
                 let elements = match self.bindings.get(&tuple).copied() {
-                    Some(MarkupValueBinding {
-                        op: MarkupValueOp::Data(IrDataOp::Tuple(elements)),
+                    Some(MarkupDataBinding {
+                        op: MarkupDataOp::Data(IrDataOp::Tuple(elements)),
                         ..
                     }) => Some(elements),
                     _ => None,
@@ -590,7 +595,7 @@ impl<'a> Lowerer<'a> {
                     };
                     parts.insert(element.id, part);
                 }
-                return self.lower_value_decision(&case.body, arms, typ, used, parts, lets);
+                return self.lower_data_decision(&case.body, arms, typ, used, parts, lets);
             }
 
             Decision::SwitchBool {
@@ -599,7 +604,7 @@ impl<'a> Lowerer<'a> {
                 false_case,
             } => {
                 let mut true_lets = Vec::new();
-                let true_result = self.lower_value_decision(
+                let true_result = self.lower_data_decision(
                     &true_case.body,
                     arms,
                     typ,
@@ -608,7 +613,7 @@ impl<'a> Lowerer<'a> {
                     &mut true_lets,
                 );
                 let mut false_lets = Vec::new();
-                let false_result = self.lower_value_decision(
+                let false_result = self.lower_data_decision(
                     &false_case.body,
                     arms,
                     typ,
@@ -637,7 +642,7 @@ impl<'a> Lowerer<'a> {
                 let some_arm_binding =
                     self.bind_part(some_case.var.id, &some_case.var.typ, used, parts);
                 let mut some_lets = Vec::new();
-                let some_result = self.lower_value_decision(
+                let some_result = self.lower_data_decision(
                     &some_case.body,
                     arms,
                     typ,
@@ -646,7 +651,7 @@ impl<'a> Lowerer<'a> {
                     &mut some_lets,
                 );
                 let mut none_lets = Vec::new();
-                let none_result = self.lower_value_decision(
+                let none_result = self.lower_data_decision(
                     &none_case.body,
                     arms,
                     typ,
@@ -680,7 +685,7 @@ impl<'a> Lowerer<'a> {
                         }
                     }
                     let mut case_lets = Vec::new();
-                    let result = self.lower_value_decision(
+                    let result = self.lower_data_decision(
                         &case.body,
                         arms,
                         typ,
@@ -737,7 +742,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Write a block: the lets of its bindings, then its markup.
-    fn write_block(&mut self, block: &'a MarkupBlock, out: &mut Vec<WriterStmt>) {
+    fn write_block(&mut self, block: &'a MarkupHtmlBlock, out: &mut Vec<WriterStmt>) {
         let mut lets = Vec::new();
         self.lower_bindings(&block.bindings, &mut lets);
         out.extend(lets.into_iter().map(WriterStmt::Let));
@@ -753,12 +758,12 @@ impl<'a> Lowerer<'a> {
             return;
         }
         match &self.bindings[&name].op {
-            MarkupValueOp::Data(IrDataOp::StringLiteral(value)) => {
+            MarkupDataOp::Data(IrDataOp::StringLiteral(value)) => {
                 let mut content = String::new();
                 write_escaped_html(value.as_str(), &mut content);
                 write(out, &content);
             }
-            MarkupValueOp::Data(IrDataOp::StringConcat(parts)) => {
+            MarkupDataOp::Data(IrDataOp::StringConcat(parts)) => {
                 for part in parts {
                     self.write_escaped(*part, out);
                 }
@@ -796,10 +801,10 @@ impl<'a> Lowerer<'a> {
                             IrAttribute::Presence(present) => {
                                 if self.folded(*present) {
                                     match &self.bindings[present].op {
-                                        MarkupValueOp::Data(IrDataOp::BoolLiteral(true)) => {
+                                        MarkupDataOp::Data(IrDataOp::BoolLiteral(true)) => {
                                             write(&mut unit, &format!(" {}", name.as_str()));
                                         }
-                                        MarkupValueOp::Data(IrDataOp::BoolLiteral(false)) => {}
+                                        MarkupDataOp::Data(IrDataOp::BoolLiteral(false)) => {}
                                         op => unreachable!(
                                             "a folded presence is a constant, not {op:?}"
                                         ),
@@ -879,7 +884,7 @@ impl<'a> Lowerer<'a> {
     fn write_decision(
         &mut self,
         decision: &Decision<IrBinder>,
-        arms: &'a [IrMatchArm<MarkupBlock>],
+        arms: &'a [IrMatchArm<MarkupHtmlBlock>],
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         out: &mut Vec<WriterStmt>,
@@ -899,8 +904,8 @@ impl<'a> Lowerer<'a> {
                 // A record the module constructs is taken apart through the
                 // operands of its constructor.
                 let fields = match self.bindings.get(&record).copied() {
-                    Some(MarkupValueBinding {
-                        op: MarkupValueOp::Data(IrDataOp::Record(fields)),
+                    Some(MarkupDataBinding {
+                        op: MarkupDataOp::Data(IrDataOp::Record(fields)),
                         ..
                     }) => Some(fields),
                     _ => None,
@@ -940,8 +945,8 @@ impl<'a> Lowerer<'a> {
                 // A tuple the module constructs is taken apart through the
                 // operands of its constructor.
                 let elements = match self.bindings.get(&tuple).copied() {
-                    Some(MarkupValueBinding {
-                        op: MarkupValueOp::Data(IrDataOp::Tuple(elements)),
+                    Some(MarkupDataBinding {
+                        op: MarkupDataOp::Data(IrDataOp::Tuple(elements)),
                         ..
                     }) => Some(elements),
                     _ => None,

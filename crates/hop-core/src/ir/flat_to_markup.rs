@@ -7,8 +7,8 @@ use crate::ir::ir_for::IrFor;
 use crate::ir::ir_html_element::IrHtmlElement;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::markup_module::{
-    MarkupBlock, MarkupBody, MarkupCallArg, MarkupFunctionDeclaration, MarkupModule, MarkupNode,
-    MarkupValueBinding, MarkupValueBlock, MarkupValueOp,
+    MarkupCallArg, MarkupDataBinding, MarkupDataBlock, MarkupDataFunction, MarkupDataOp,
+    MarkupFunctionDeclaration, MarkupHtmlBlock, MarkupHtmlFunction, MarkupModule, MarkupNode,
 };
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
@@ -42,19 +42,20 @@ pub fn flat_to_markup(module: FlatModule) -> MarkupModule {
     let functions = module
         .functions
         .into_iter()
-        .map(|function| {
-            let body = if function.return_type == Type::Html {
-                MarkupBody::Markup(cx.markup_block(&function.body))
-            } else {
-                MarkupBody::Value(cx.value_block(&function.body))
-            };
-            MarkupFunctionDeclaration {
+        .map(|function| match function.return_type {
+            Type::Html => MarkupFunctionDeclaration::Html(MarkupHtmlFunction {
+                body: cx.html_block(&function.body),
                 function: function.function,
                 entrypoint: function.entrypoint,
                 parameters: function.parameters,
-                return_type: function.return_type,
-                body,
-            }
+            }),
+            Type::Data(return_type) => MarkupFunctionDeclaration::Data(MarkupDataFunction {
+                body: cx.data_block(&function.body),
+                function: function.function,
+                entrypoint: function.entrypoint,
+                parameters: function.parameters,
+                return_type,
+            }),
         })
         .collect();
     MarkupModule {
@@ -79,7 +80,7 @@ struct Converter {
 impl Converter {
     /// The markup of a block whose result is Html, with the bindings of the
     /// block that are not Html.
-    fn markup_block(&mut self, block: &FlatBlock) -> MarkupBlock {
+    fn html_block(&mut self, block: &FlatBlock) -> MarkupHtmlBlock {
         for binding in &block.bindings {
             self.bindings.insert(binding.binder.var, binding.clone());
         }
@@ -89,24 +90,24 @@ impl Converter {
             .bindings
             .iter()
             .filter(|binding| binding.binder.typ != Type::Html)
-            .map(|binding| self.value_binding(binding))
+            .map(|binding| self.data_binding(binding))
             .collect();
-        MarkupBlock { bindings, markup }
+        MarkupHtmlBlock { bindings, markup }
     }
 
     /// The result of a block whose result is data, with the bindings of the
     /// block that are not Html. An Html binding of the block is unfolded
     /// where a call reads it, or dropped when nothing does.
-    fn value_block(&mut self, block: &FlatBlock) -> MarkupValueBlock {
+    fn data_block(&mut self, block: &FlatBlock) -> MarkupDataBlock {
         for binding in &block.bindings {
             self.bindings.insert(binding.binder.var, binding.clone());
         }
-        MarkupValueBlock {
+        MarkupDataBlock {
             bindings: block
                 .bindings
                 .iter()
                 .filter(|binding| binding.binder.typ != Type::Html)
-                .map(|binding| self.value_binding(binding))
+                .map(|binding| self.data_binding(binding))
                 .collect(),
             result: block.result,
         }
@@ -114,7 +115,7 @@ impl Converter {
 
     /// A binding of data. Panics if it has type Html, builds Html, or reads
     /// Html other than as the argument of a call.
-    fn value_binding(&mut self, binding: &FlatBinding) -> MarkupValueBinding {
+    fn data_binding(&mut self, binding: &FlatBinding) -> MarkupDataBinding {
         let Type::Data(typ) = binding.binder.typ.clone() else {
             panic!("{} is a value of type Html", binding.binder.var);
         };
@@ -132,15 +133,15 @@ impl Converter {
             });
         }
         let op = match binding.op.clone() {
-            FlatOp::Data(op) => MarkupValueOp::Data(op),
-            FlatOp::Call(function, args) => MarkupValueOp::Call(function, self.call_args(args)),
-            FlatOp::Match(IrMatch { subject, arms }) => MarkupValueOp::Match(IrMatch {
+            FlatOp::Data(op) => MarkupDataOp::Data(op),
+            FlatOp::Call(function, args) => MarkupDataOp::Call(function, self.call_args(args)),
+            FlatOp::Match(IrMatch { subject, arms }) => MarkupDataOp::Match(IrMatch {
                 subject,
                 arms: arms
                     .into_iter()
                     .map(|arm| IrMatchArm {
                         pattern: arm.pattern,
-                        body: self.value_block(&arm.body),
+                        body: self.data_block(&arm.body),
                     })
                     .collect(),
             }),
@@ -152,7 +153,7 @@ impl Converter {
                 panic!("{} builds Html as a value: {op:?}", binding.binder.var)
             }
         };
-        MarkupValueBinding {
+        MarkupDataBinding {
             name: binding.binder.var,
             typ,
             op,
@@ -207,7 +208,7 @@ impl Converter {
                             .into_iter()
                             .map(|arm| IrMatchArm {
                                 pattern: arm.pattern,
-                                body: self.markup_block(&arm.body),
+                                body: self.html_block(&arm.body),
                             })
                             .collect();
                         out.push(MarkupNode::Match(IrMatch { subject, arms }));
@@ -216,7 +217,7 @@ impl Converter {
                         out.push(MarkupNode::For(IrFor {
                             var,
                             array,
-                            body: self.markup_block(&body),
+                            body: self.html_block(&body),
                         }));
                     }
                     _ => unreachable!("a copy of a match or loop is a match or loop"),
@@ -245,9 +246,9 @@ impl Converter {
                 {
                     let mut markup = Vec::new();
                     self.unfold(arg, &mut markup);
-                    MarkupCallArg::Markup(markup)
+                    MarkupCallArg::Html(markup)
                 } else {
-                    MarkupCallArg::Value(arg)
+                    MarkupCallArg::Data(arg)
                 }
             })
             .collect()
