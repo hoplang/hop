@@ -65,7 +65,7 @@ pub trait Transpiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder>,
+        var: Option<&'a IrBinder<DataType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a>;

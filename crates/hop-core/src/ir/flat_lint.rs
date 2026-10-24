@@ -1,8 +1,9 @@
+use std::fmt;
+
 use crate::hop::typing::{
     Constructor, DataType, Pattern, RecordField, ResolvedType, Type, TypeRegistry,
 };
 use crate::ir::flat_module::{FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
-use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::IrAttribute;
@@ -107,7 +108,7 @@ pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
     };
     for function in &module.functions {
         for param in &function.parameters {
-            checker.bind(&param.binder);
+            checker.bind(param.binder.var, BoundType::of(&param.binder.typ));
         }
         checker.block(&function.body, &function.return_type, &function.function);
     }
@@ -118,25 +119,56 @@ pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
 struct Checker<'a> {
     registry: &'a TypeRegistry,
     functions: &'a [FlatFunctionDeclaration],
-    types: Vec<Option<&'a Type>>,
+    types: Vec<Option<BoundType<'a>>>,
+}
+
+/// The type of a name as its binder gives it, a Type for a binding or a
+/// parameter and a DataType for a loop or a pattern.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum BoundType<'a> {
+    Data(&'a DataType),
+    Html,
+}
+
+impl<'a> BoundType<'a> {
+    fn of(typ: &'a Type) -> Self {
+        match typ {
+            Type::Data(data) => BoundType::Data(data),
+            Type::Html(_) => BoundType::Html,
+        }
+    }
+
+    fn is(self, typ: &Type) -> bool {
+        self == BoundType::of(typ)
+    }
+}
+
+impl fmt::Display for BoundType<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BoundType::Data(data) => data.fmt(f),
+            BoundType::Html => Type::HTML.fmt(f),
+        }
+    }
 }
 
 impl<'a> Checker<'a> {
-    fn bind(&mut self, binder: &'a IrBinder) {
+    fn bind(&mut self, name: ValueId, typ: BoundType<'a>) {
         assert!(
-            self.types[binder.var.index()]
-                .replace(&binder.typ)
-                .is_none(),
-            "{binder} is bound twice"
+            self.types[name.index()].replace(typ).is_none(),
+            "{name}: {typ} is bound twice"
         );
     }
 
-    fn typ(&self, name: ValueId) -> &'a Type {
+    fn typ(&self, name: ValueId) -> BoundType<'a> {
         self.types[name.index()].unwrap_or_else(|| panic!("{name} is read before it is bound"))
     }
 
     fn data(&self, name: ValueId) -> Option<&'a DataType> {
-        self.typ(name).as_data()
+        match self.typ(name) {
+            BoundType::Data(data) => Some(data),
+            BoundType::Html => None,
+        }
     }
 
     fn resolve<'t>(&self, typ: &'t Type) -> Option<ResolvedType<'t>>
@@ -153,10 +185,10 @@ impl<'a> Checker<'a> {
                 "{function} binds {} to an op that does not produce that type",
                 binding.binder
             );
-            self.bind(&binding.binder);
+            self.bind(binding.binder.var, BoundType::of(&binding.binder.typ));
         }
         assert!(
-            self.typ(block.result) == expected,
+            self.typ(block.result).is(expected),
             "{function} has a block that produces {} where {expected} is expected",
             self.typ(block.result)
         );
@@ -177,7 +209,7 @@ impl<'a> Checker<'a> {
                     && args
                         .iter()
                         .zip(params)
-                        .all(|(arg, param)| *self.typ(*arg) == param.binder.typ)
+                        .all(|(arg, param)| self.typ(*arg).is(&param.binder.typ))
                     && callee.return_type == *declared
             }
             FlatOp::Match(match_) => {
@@ -189,29 +221,31 @@ impl<'a> Checker<'a> {
                 true
             }
             FlatOp::HtmlText(_) => *declared == Type::HTML,
-            FlatOp::HtmlEscape(name) => *self.typ(*name) == Type::STRING && *declared == Type::HTML,
+            FlatOp::HtmlEscape(name) => {
+                self.typ(*name).is(&Type::STRING) && *declared == Type::HTML
+            }
             FlatOp::HtmlConcat(parts) => {
-                parts.iter().all(|part| *self.typ(*part) == Type::HTML) && *declared == Type::HTML
+                parts.iter().all(|part| self.typ(*part).is(&Type::HTML)) && *declared == Type::HTML
             }
             FlatOp::HtmlElement(element) => {
                 let attributes = element
                     .attributes
                     .values()
                     .all(|attribute| match attribute {
-                        IrAttribute::Value(name) => *self.typ(*name) == Type::STRING,
-                        IrAttribute::Presence(name) => *self.typ(*name) == Type::BOOL,
+                        IrAttribute::Value(name) => self.typ(*name).is(&Type::STRING),
+                        IrAttribute::Presence(name) => self.typ(*name).is(&Type::BOOL),
                     });
-                attributes && *self.typ(element.children) == Type::HTML && *declared == Type::HTML
+                attributes && self.typ(element.children).is(&Type::HTML) && *declared == Type::HTML
             }
             FlatOp::HtmlFor(for_) => {
                 let Some(DataType::Array(element)) = self.data(for_.array) else {
                     return false;
                 };
                 if let Some(var) = &for_.var {
-                    if var.typ.as_data() != Some(element) {
+                    if var.typ != **element {
                         return false;
                     }
-                    self.bind(var);
+                    self.bind(var.var, BoundType::Data(&var.typ));
                 }
                 self.block(&for_.body, &Type::HTML, function);
                 *declared == Type::HTML
@@ -221,10 +255,10 @@ impl<'a> Checker<'a> {
 
     fn data_op(&self, op: &IrDataOp, declared: &Type) -> bool {
         let same = |left: ValueId, right: ValueId| {
-            let typ = self.typ(left);
-            (typ == self.typ(right)).then_some(typ)
+            let typ = self.data(left)?;
+            (Some(typ) == self.data(right)).then_some(typ)
         };
-        let all = |names: &[ValueId], typ: Type| names.iter().all(|name| *self.typ(*name) == typ);
+        let all = |names: &[ValueId], typ: Type| names.iter().all(|name| self.typ(*name).is(&typ));
         let data = |name: ValueId| self.data(name);
         let declared_data = declared.as_data();
         match op {
@@ -271,7 +305,7 @@ impl<'a> Checker<'a> {
             IrDataOp::NumericAdd(left, right)
             | IrDataOp::NumericSubtract(left, right)
             | IrDataOp::NumericMultiply(left, right) => same(*left, *right)
-                .is_some_and(|typ| typ.as_numeric_type().is_some() && typ == declared),
+                .is_some_and(|typ| typ.as_numeric_type().is_some() && Some(typ) == declared_data),
             IrDataOp::Equals(left, right) => {
                 same(*left, *right).is_some_and(|typ| typ.as_equatable_type().is_some())
                     && *declared == Type::BOOL
@@ -285,8 +319,8 @@ impl<'a> Checker<'a> {
                     && matches!(declared_data, Some(DataType::Array(element)) if **element == DataType::Int)
             }
             IrDataOp::NumericNegation(operand) => {
-                let typ = self.typ(*operand);
-                typ.as_numeric_type().is_some() && typ == declared
+                let typ = data(*operand);
+                typ.and_then(DataType::as_numeric_type).is_some() && typ == declared_data
             }
             IrDataOp::BoolNegation(operand) => {
                 all(&[*operand], Type::BOOL) && *declared == Type::BOOL
@@ -312,13 +346,15 @@ impl<'a> Checker<'a> {
             IrDataOp::IntToFloat(operand) => {
                 all(&[*operand], Type::INT) && *declared == Type::FLOAT
             }
-            IrDataOp::FieldAccess(object, field) => match self.resolve(self.typ(*object)) {
-                Some(ResolvedType::Record { fields, .. }) => fields
-                    .iter()
-                    .find(|f| f.name == *field)
-                    .is_some_and(|field| Some(&field.typ) == declared_data),
-                _ => false,
-            },
+            IrDataOp::FieldAccess(object, field) => {
+                match data(*object).and_then(|typ| self.registry.resolve(typ)) {
+                    Some(ResolvedType::Record { fields, .. }) => fields
+                        .iter()
+                        .find(|f| f.name == *field)
+                        .is_some_and(|field| Some(&field.typ) == declared_data),
+                    _ => false,
+                }
+            }
             IrDataOp::TupleIndex(tuple, index) => match self.data(*tuple) {
                 Some(DataType::Tuple(elements)) => elements.get(*index) == declared_data,
                 _ => false,
@@ -334,21 +370,17 @@ impl<'a> Checker<'a> {
                     .filter(|(name, _)| *name == field.name)
                     .map(|(_, value)| *value);
                 match (values.next(), values.next()) {
-                    (Some(value), None) => self.typ(value).as_data() == Some(&field.typ),
+                    (Some(value), None) => self.data(value) == Some(&field.typ),
                     _ => false,
                 }
             })
     }
 
-    fn pattern(&mut self, pattern: &'a IrPattern, typ: &Type) {
+    fn pattern(&mut self, pattern: &'a IrPattern, typ: BoundType<'a>) {
         match (pattern, typ) {
             (Pattern::Wildcard, _) => {}
-            (Pattern::Binding(binder), _) => {
-                assert!(binder.typ == *typ, "{binder} binds a {typ}");
-                self.bind(binder);
-            }
-            (Pattern::Constructor { .. }, Type::Data(data)) => self.data_pattern(pattern, data),
-            (Pattern::Constructor { .. }, Type::Html(_)) => {
+            (_, BoundType::Data(data)) => self.data_pattern(pattern, data),
+            (_, BoundType::Html) => {
                 panic!("a {typ} is matched against {}", pattern.to_doc().pretty(80))
             }
         }
@@ -358,8 +390,8 @@ impl<'a> Checker<'a> {
         match pattern {
             Pattern::Wildcard => {}
             Pattern::Binding(binder) => {
-                assert!(binder.typ.as_data() == Some(typ), "{binder} binds a {typ}");
-                self.bind(binder);
+                assert!(binder.typ == *typ, "{binder} binds a {typ}");
+                self.bind(binder.var, BoundType::Data(&binder.typ));
             }
             Pattern::Constructor {
                 constructor,

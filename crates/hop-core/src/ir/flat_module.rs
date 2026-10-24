@@ -43,7 +43,7 @@ pub struct FlatBlock {
 
 #[derive(Debug, Clone)]
 pub struct FlatBinding {
-    pub binder: IrBinder,
+    pub binder: IrBinder<Type>,
     pub op: FlatOp,
 }
 

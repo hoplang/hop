@@ -333,10 +333,15 @@ impl<'a> Compiler<'a> {
     fn compile_pattern(&mut self, pattern: &TypedPattern) -> IrPattern {
         match pattern {
             Pattern::Wildcard => Pattern::Wildcard,
-            Pattern::Binding(binder) => Pattern::Binding(IrBinder {
-                var: self.bind(&binder.var),
-                typ: binder.typ.clone(),
-            }),
+            Pattern::Binding(binder) => {
+                let Type::Data(typ) = binder.typ.clone() else {
+                    unreachable!("a pattern binds data");
+                };
+                Pattern::Binding(IrBinder {
+                    var: self.bind(&binder.var),
+                    typ,
+                })
+            }
             Pattern::Constructor {
                 constructor,
                 args,
@@ -704,9 +709,9 @@ impl<'a> Compiler<'a> {
                         let Type::Data(DataType::Array(element_type)) = array_expr.typ() else {
                             unreachable!("a loop over an array has an Array source");
                         };
-                        Type::Data(*element_type)
+                        *element_type
                     }
-                    TypedLoopSource::RangeInclusive { .. } => Type::INT,
+                    TypedLoopSource::RangeInclusive { .. } => DataType::Int,
                 };
                 self.push_scope();
                 let var = var_name.as_ref().map(|name| IrBinder {
@@ -735,6 +740,9 @@ impl<'a> Compiler<'a> {
             TypedExpr::OptionUnwrapOr {
                 option, default, ..
             } => {
+                let Type::Data(element_type) = typ.clone() else {
+                    unreachable!("an Option holds data");
+                };
                 let subject = self.compile_expr(option);
                 let binding = self.value_id_counter.next();
                 FlatOp::Match(IrMatch {
@@ -745,7 +753,7 @@ impl<'a> Compiler<'a> {
                                 constructor: Constructor::OptionSome,
                                 args: vec![Pattern::Binding(IrBinder {
                                     var: binding,
-                                    typ: typ.clone(),
+                                    typ: element_type,
                                 })],
                                 fields: Vec::new(),
                             },

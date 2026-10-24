@@ -79,51 +79,15 @@ impl Type {
     }
 
     pub fn as_equatable_type(&self) -> Option<EquatableType> {
-        match self {
-            Type::Data(DataType::Bool) => Some(EquatableType::Bool),
-            Type::Data(DataType::String) => Some(EquatableType::String),
-            Type::Data(DataType::Int) => Some(EquatableType::Int),
-            Type::Data(DataType::Float) => Some(EquatableType::Float),
-            Type::Data(
-                DataType::Option(_)
-                | DataType::Array(_)
-                | DataType::Tuple(_)
-                | DataType::Named { .. },
-            )
-            | Type::Html(_) => None,
-        }
+        self.as_data()?.as_equatable_type()
     }
 
     pub fn as_comparable_type(&self) -> Option<ComparableType> {
-        match self {
-            Type::Data(DataType::Int) => Some(ComparableType::Int),
-            Type::Data(DataType::Float) => Some(ComparableType::Float),
-            Type::Data(
-                DataType::Bool
-                | DataType::String
-                | DataType::Array(_)
-                | DataType::Option(_)
-                | DataType::Tuple(_)
-                | DataType::Named { .. },
-            )
-            | Type::Html(_) => None,
-        }
+        self.as_data()?.as_comparable_type()
     }
 
     pub fn as_numeric_type(&self) -> Option<NumericType> {
-        match self {
-            Type::Data(DataType::Int) => Some(NumericType::Int),
-            Type::Data(DataType::Float) => Some(NumericType::Float),
-            Type::Data(
-                DataType::Bool
-                | DataType::String
-                | DataType::Array(_)
-                | DataType::Option(_)
-                | DataType::Tuple(_)
-                | DataType::Named { .. },
-            )
-            | Type::Html(_) => None,
-        }
+        self.as_data()?.as_numeric_type()
     }
 
     /// Whether values of this type can be destructured by a `match` expression.
@@ -134,6 +98,47 @@ impl Type {
             ) => true,
             Type::Data(DataType::String | DataType::Int | DataType::Float | DataType::Array(_))
             | Type::Html(_) => false,
+        }
+    }
+}
+
+impl DataType {
+    pub fn as_equatable_type(&self) -> Option<EquatableType> {
+        match self {
+            DataType::Bool => Some(EquatableType::Bool),
+            DataType::String => Some(EquatableType::String),
+            DataType::Int => Some(EquatableType::Int),
+            DataType::Float => Some(EquatableType::Float),
+            DataType::Option(_)
+            | DataType::Array(_)
+            | DataType::Tuple(_)
+            | DataType::Named { .. } => None,
+        }
+    }
+
+    pub fn as_comparable_type(&self) -> Option<ComparableType> {
+        match self {
+            DataType::Int => Some(ComparableType::Int),
+            DataType::Float => Some(ComparableType::Float),
+            DataType::Bool
+            | DataType::String
+            | DataType::Array(_)
+            | DataType::Option(_)
+            | DataType::Tuple(_)
+            | DataType::Named { .. } => None,
+        }
+    }
+
+    pub fn as_numeric_type(&self) -> Option<NumericType> {
+        match self {
+            DataType::Int => Some(NumericType::Int),
+            DataType::Float => Some(NumericType::Float),
+            DataType::Bool
+            | DataType::String
+            | DataType::Array(_)
+            | DataType::Option(_)
+            | DataType::Tuple(_)
+            | DataType::Named { .. } => None,
         }
     }
 }

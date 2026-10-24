@@ -350,21 +350,20 @@ impl RustTranspiler {
         &mut self,
         variants: &[EnumVariant],
         arm_pattern: &EnumPattern,
-        bindings: &[(FieldName, IrBinder)],
+        bindings: &[(FieldName, IrBinder<DataType>)],
     ) -> String {
         let EnumPattern::Variant {
             type_name,
             variant_name,
         } = arm_pattern;
         for (_, binder) in bindings {
-            let binding = if let Type::Data(field_type) = &binder.typ
-                && self.field_type_is_boxed(field_type, type_name.as_str())
-            {
+            let binding = if self.field_type_is_boxed(&binder.typ, type_name.as_str()) {
                 Binding::BorrowedBoxed
             } else {
                 Binding::Borrowed
             };
-            self.names.insert(binder.var, (binding, binder.typ.clone()));
+            self.names
+                .insert(binder.var, (binding, Type::Data(binder.typ.clone())));
         }
         if bindings.is_empty() {
             let has_fields = variants
@@ -934,7 +933,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder>,
+        var: Option<&'a IrBinder<DataType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a> {
@@ -951,8 +950,10 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(".iter() {"));
 
         if let Some(binder) = var {
-            self.names
-                .insert(binder.var, (Binding::Borrowed, binder.typ.clone()));
+            self.names.insert(
+                binder.var,
+                (Binding::Borrowed, Type::Data(binder.typ.clone())),
+            );
         }
         doc.append(
             arena
@@ -1057,8 +1058,10 @@ impl Transpiler for RustTranspiler {
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names
-                        .insert(binder.var, (Binding::Borrowed, binder.typ.clone()));
+                    self.names.insert(
+                        binder.var,
+                        (Binding::Borrowed, Type::Data(binder.typ.clone())),
+                    );
                 }
 
                 let some_arm = arena
@@ -1712,8 +1715,10 @@ impl Transpiler for RustTranspiler {
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names
-                        .insert(binder.var, (Binding::Borrowed, binder.typ.clone()));
+                    self.names.insert(
+                        binder.var,
+                        (Binding::Borrowed, Type::Data(binder.typ.clone())),
+                    );
                 }
                 let subject_doc = self.name_ref(arena, *subject);
                 let some_arm = arena

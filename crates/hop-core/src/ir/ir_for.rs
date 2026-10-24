@@ -1,5 +1,6 @@
 use pretty::BoxDoc;
 
+use crate::hop::typing::DataType;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::value_id::ValueId;
 
@@ -7,7 +8,7 @@ use crate::ir::value_id::ValueId;
 /// var is None, the loop binds no variable, but still iterates.
 #[derive(Debug, Clone)]
 pub struct IrFor<Body> {
-    pub var: Option<IrBinder>,
+    pub var: Option<IrBinder<DataType>>,
     pub array: ValueId,
     pub body: Body,
 }

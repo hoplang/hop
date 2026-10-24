@@ -226,7 +226,8 @@ impl TsTranspiler {
             .map(|arm| {
                 let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
                 for (_, binder) in &arm.bindings {
-                    self.name_types.insert(binder.var, binder.typ.clone());
+                    self.name_types
+                        .insert(binder.var, Type::Data(binder.typ.clone()));
                 }
                 let bindings_doc = if arm.bindings.is_empty() {
                     arena.nil()
@@ -285,7 +286,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         subject: ValueId,
-        some_arm_binding: Option<&'a IrBinder>,
+        some_arm_binding: Option<&'a IrBinder<DataType>>,
         some_arm_body: &'a Body,
         none_arm_body: &'a Body,
         mut body: impl FnMut(&mut Self, &'a Body) -> Doc<'a>,
@@ -300,7 +301,8 @@ impl TsTranspiler {
         };
         let binding_doc = match some_arm_binding {
             Some(binder) => {
-                self.name_types.insert(binder.var, binder.typ.clone());
+                self.name_types
+                    .insert(binder.var, Type::Data(binder.typ.clone()));
                 arena
                     .text("const ")
                     .append(arena.text(name_ident(binder.var)))
@@ -824,13 +826,14 @@ impl Transpiler for TsTranspiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder>,
+        var: Option<&'a IrBinder<DataType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a> {
         let var_name = match var {
             Some(binder) => {
-                self.name_types.insert(binder.var, binder.typ.clone());
+                self.name_types
+                    .insert(binder.var, Type::Data(binder.typ.clone()));
                 name_ident(binder.var)
             }
             None => "_".to_string(),

@@ -74,7 +74,9 @@ pub fn markup_to_writer(
     };
     for function in &functions {
         for param in function.parameters() {
-            lowerer.analyze_binder(&param.binder);
+            if let Type::Data(typ) = &param.binder.typ {
+                lowerer.binder_types.insert(param.binder.var, typ.clone());
+            }
         }
         match function {
             MarkupFunctionDeclaration::Data(function) => {
@@ -286,17 +288,15 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Record the type of a loop variable.
-    fn analyze_loop_var(&mut self, var: Option<&IrBinder>) {
+    fn analyze_loop_var(&mut self, var: Option<&IrBinder<DataType>>) {
         if let Some(binder) = var {
             self.analyze_binder(binder);
         }
     }
 
-    /// Record the type of a name a parameter, a loop or a pattern binds.
-    fn analyze_binder(&mut self, binder: &IrBinder) {
-        if let Type::Data(typ) = &binder.typ {
-            self.binder_types.insert(binder.var, typ.clone());
-        }
+    /// Record the type of a name a loop or a pattern binds.
+    fn analyze_binder(&mut self, binder: &IrBinder<DataType>) {
+        self.binder_types.insert(binder.var, binder.typ.clone());
     }
 
     /// Whether the binding is written or folded where it is read, rather
@@ -507,7 +507,7 @@ impl<'a> Lowerer<'a> {
     /// `used` is not bound.
     fn lower_data_decision(
         &mut self,
-        decision: &Decision<IrBinder>,
+        decision: &Decision<IrBinder<DataType>>,
         arms: &'a [IrMatchArm<MarkupDataBlock>],
         typ: &DataType,
         used: &HashSet<CaseVar>,
@@ -729,7 +729,7 @@ impl<'a> Lowerer<'a> {
         typ: &DataType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
-    ) -> Option<IrBinder> {
+    ) -> Option<IrBinder<DataType>> {
         if !used.contains(&part) {
             return None;
         }
@@ -737,7 +737,7 @@ impl<'a> Lowerer<'a> {
         parts.insert(part, binder);
         Some(IrBinder {
             var: binder,
-            typ: Type::Data(typ.clone()),
+            typ: typ.clone(),
         })
     }
 
@@ -883,7 +883,7 @@ impl<'a> Lowerer<'a> {
     /// bound.
     fn write_decision(
         &mut self,
-        decision: &Decision<IrBinder>,
+        decision: &Decision<IrBinder<DataType>>,
         arms: &'a [IrMatchArm<MarkupHtmlBlock>],
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
@@ -1404,7 +1404,7 @@ mod tests {
             }
         }
 
-        fn binder(&mut self, binder: &IrBinder) {
+        fn binder(&mut self, binder: &IrBinder<DataType>) {
             self.bind(binder.var);
         }
 

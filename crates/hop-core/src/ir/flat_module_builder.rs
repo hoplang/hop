@@ -452,11 +452,14 @@ impl<'a> FlatBlockBuilder<'a> {
         match (pat, resolved) {
             (Pat::Wildcard, _) => Pattern::Wildcard,
             (Pat::Bind(name), _) => {
+                let Type::Data(data) = typ else {
+                    panic!("a pattern binds data, not {typ}");
+                };
                 let var = self.module.binder(typ.clone());
                 bindings.bindings.push((name, var));
                 Pattern::Binding(IrBinder {
                     var,
-                    typ: typ.clone(),
+                    typ: data.clone(),
                 })
             }
             (Pat::True, _) => constructor(Constructor::BoolTrue, Vec::new()),
@@ -510,7 +513,7 @@ impl<'a> FlatBlockBuilder<'a> {
         declared: &[RecordField],
         listed: Vec<(String, Pat)>,
         bindings: &mut ArmBindings,
-    ) -> Vec<PatternField<IrBinder>> {
+    ) -> Vec<PatternField<IrBinder<DataType>>> {
         let mut patterns: Vec<(String, IrPattern)> = Vec::new();
         for (field_name, field_pat) in listed {
             assert!(!patterns.iter().any(|(listed, _)| *listed == field_name));
@@ -637,8 +640,8 @@ impl<'a> FlatBlockBuilder<'a> {
         let Type::Data(DataType::Array(element_type)) = self.typ(array) else {
             panic!();
         };
-        let typ = Type::Data(*element_type);
-        let var = self.module.binder(typ.clone());
+        let typ = *element_type;
+        let var = self.module.binder(Type::Data(typ.clone()));
         let (body, _) = self.block(|t| body_fn(t, var));
         self.push(
             Type::HTML,

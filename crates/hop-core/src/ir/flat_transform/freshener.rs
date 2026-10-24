@@ -31,7 +31,7 @@ impl<'a> Freshener<'a> {
         self.names.get(&name).copied().unwrap_or(name)
     }
 
-    fn fresh_binder(&mut self, binder: &IrBinder) -> IrBinder {
+    fn fresh_binder<T: Clone>(&mut self, binder: &IrBinder<T>) -> IrBinder<T> {
         let var = self.value_ids.next();
         self.names.insert(binder.var, var);
         IrBinder {

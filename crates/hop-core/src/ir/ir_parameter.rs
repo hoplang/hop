@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::hop::typing::Type;
 use crate::ir::ir_binder::IrBinder;
 use crate::symbols::attribute_name::AttributeName;
 
@@ -9,7 +10,7 @@ use crate::symbols::attribute_name::AttributeName;
 #[derive(Debug, Clone)]
 pub struct IrParameter {
     pub name: AttributeName,
-    pub binder: IrBinder,
+    pub binder: IrBinder<Type>,
 }
 
 impl IrParameter {
