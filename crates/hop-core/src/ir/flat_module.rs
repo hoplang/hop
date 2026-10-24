@@ -28,7 +28,7 @@ pub struct FlatFunctionDeclaration {
     /// Whether the function is called from outside the module, so it is kept
     /// even when nothing in the module calls it.
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter>,
+    pub parameters: Vec<IrParameter<Type>>,
     pub return_type: Type,
     pub body: FlatBlock,
 }

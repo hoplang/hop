@@ -115,8 +115,8 @@ struct Specialization {
 /// functions: the parameters and the body of each.
 struct CompiledPage {
     name: TypeName,
-    head: Option<(Vec<IrParameter>, FlatBlock)>,
-    body: (Vec<IrParameter>, FlatBlock),
+    head: Option<(Vec<IrParameter<Type>>, FlatBlock)>,
+    body: (Vec<IrParameter<Type>>, FlatBlock),
 }
 
 impl CompiledPage {
@@ -257,7 +257,7 @@ impl<'a> Compiler<'a> {
         &mut self,
         params: &[TypedParameter],
         expr: &TypedExpr,
-    ) -> (Vec<IrParameter>, FlatBlock) {
+    ) -> (Vec<IrParameter<Type>>, FlatBlock) {
         self.push_scope();
         let parameters = params
             .iter()

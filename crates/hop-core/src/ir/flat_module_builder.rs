@@ -172,7 +172,7 @@ impl FlatModuleBuilder {
 pub struct DeclaredFunction {
     pub function: IrFunction,
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter>,
+    pub parameters: Vec<IrParameter<Type>>,
     pub return_type: Type,
     pub body: Option<FlatBlock>,
 }

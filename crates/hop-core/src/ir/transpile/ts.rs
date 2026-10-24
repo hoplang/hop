@@ -29,7 +29,7 @@ fn name_ident(name: ValueId) -> String {
 
 /// Destructuring entry for a parameter: `name: v_0`. The property name stays
 /// the source name, since it is the caller-facing argument name.
-fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter) -> Doc<'a> {
+fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter<Type>) -> Doc<'a> {
     arena
         .text(param.name().as_str())
         .append(arena.text(": "))
@@ -108,7 +108,7 @@ impl TsTranspiler {
     fn transpile_parameter_list<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parameters: &'a [IrParameter],
+        parameters: &'a [IrParameter<Type>],
     ) -> Doc<'a> {
         for param in parameters {
             self.name_types

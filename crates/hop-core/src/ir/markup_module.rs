@@ -3,7 +3,7 @@ use std::fmt;
 use pretty::BoxDoc;
 
 use crate::document::CheapString;
-use crate::hop::typing::DataType;
+use crate::hop::typing::{DataType, Type};
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
@@ -32,7 +32,7 @@ pub enum MarkupFunctionDeclaration {
 pub struct MarkupDataFunction {
     pub function: IrFunction,
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter>,
+    pub parameters: Vec<IrParameter<Type>>,
     pub return_type: DataType,
     pub body: MarkupDataBlock,
 }
@@ -42,7 +42,7 @@ pub struct MarkupDataFunction {
 pub struct MarkupHtmlFunction {
     pub function: IrFunction,
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter>,
+    pub parameters: Vec<IrParameter<Type>>,
     pub body: MarkupHtmlBlock,
 }
 
@@ -54,7 +54,7 @@ impl MarkupFunctionDeclaration {
         }
     }
 
-    pub fn parameters(&self) -> &[IrParameter] {
+    pub fn parameters(&self) -> &[IrParameter<Type>] {
         match self {
             MarkupFunctionDeclaration::Data(function) => &function.parameters,
             MarkupFunctionDeclaration::Html(function) => &function.parameters,

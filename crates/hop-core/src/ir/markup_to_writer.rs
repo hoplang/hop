@@ -1408,7 +1408,7 @@ mod tests {
             self.bind(binder.var);
         }
 
-        fn parameters(&mut self, parameters: &[IrParameter]) {
+        fn parameters(&mut self, parameters: &[IrParameter<Type>]) {
             for parameter in parameters {
                 self.bind(parameter.binder.var);
             }

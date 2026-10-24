@@ -465,7 +465,7 @@ impl RustTranspiler {
     fn transpile_function_params<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parameters: &'a [crate::ir::ir_parameter::IrParameter],
+        parameters: &'a [crate::ir::ir_parameter::IrParameter<Type>],
     ) -> Vec<Doc<'a>> {
         parameters
             .iter()

@@ -30,14 +30,14 @@ pub struct WriterModule {
 #[derive(Debug)]
 pub struct WriterPageDeclaration {
     pub name: TypeName,
-    pub parameters: Vec<IrParameter>,
+    pub parameters: Vec<IrParameter<Type>>,
     pub body: Vec<WriterStmt>,
 }
 
 #[derive(Debug)]
 pub struct WriterFunctionDeclaration {
     pub function: IrFunction,
-    pub parameters: Vec<IrParameter>,
+    pub parameters: Vec<IrParameter<Type>>,
     pub return_type: Type,
     pub body: WriterFunctionBody,
 }
