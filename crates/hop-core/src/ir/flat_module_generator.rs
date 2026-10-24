@@ -1339,6 +1339,34 @@ mod tests {
         }
     }
 
+    /// Count the references to each name in `block` and the blocks it
+    /// nests, as an operand or as the result of a block, and add the Html
+    /// names it binds to `html`.
+    fn count_html_references(
+        block: &FlatBlock,
+        references: &mut HashMap<ValueId, usize>,
+        html: &mut HashSet<ValueId>,
+    ) {
+        for binding in &block.bindings {
+            if binding.binder.typ == Type::Html {
+                html.insert(binding.binder.var);
+            }
+            binding.op.for_each_operand(&mut |operand| {
+                *references.entry(operand).or_default() += 1;
+            });
+            match &binding.op {
+                FlatOp::Match(match_) => {
+                    for arm in &match_.arms {
+                        count_html_references(&arm.body, references, html);
+                    }
+                }
+                FlatOp::HtmlFor(for_) => count_html_references(&for_.body, references, html),
+                _ => {}
+            }
+        }
+        *references.entry(block.result).or_default() += 1;
+    }
+
     /// Report how often each kind of op occurs in a generated module, what
     /// share of those is live, that is read on the way to the result, what
     /// share is live and depends on the parameters, and how many
@@ -1352,6 +1380,7 @@ mod tests {
         let mut counts = BTreeMap::new();
         let (mut entrypoints, mut diverged, mut too_long) = (0, 0, 0);
         let (mut consumed, mut most_consumed, mut exhausted) = (0, 0, 0);
+        let (mut html_bindings, mut shared_html) = (0, 0);
         for _ in 0..SAMPLES {
             let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
             let mut u = Unstructured::new(&bytes);
@@ -1376,12 +1405,23 @@ mod tests {
             for function in &module.functions {
                 count_ops(&function.body, &live, &dynamic, &mut counts);
             }
+            let mut references = HashMap::new();
+            let mut html = HashSet::new();
+            for function in &module.functions {
+                count_html_references(&function.body, &mut references, &mut html);
+            }
+            html_bindings += html.len();
+            shared_html += html
+                .iter()
+                .filter(|name| references.get(name).copied().unwrap_or(0) > 1)
+                .count();
         }
         let mut report = format!(
             "{} of {INPUT_LEN} input bytes consumed per module on average, at most {most_consumed}\n\
              {exhausted} of {SAMPLES} modules exhaust the input\n\
              {diverged} of {entrypoints} entrypoints hit the recursion limit\n\
-             {too_long} of {entrypoints} entrypoints hit the array length limit\n\n\
+             {too_long} of {entrypoints} entrypoints hit the array length limit\n\
+             {shared_html} of {html_bindings} Html bindings have more than one reference\n\n\
              {:<20}{:>10}{:>8}{:>8}\n",
             consumed / SAMPLES,
             "op",
@@ -1402,6 +1442,7 @@ mod tests {
             0 of 100 modules exhaust the input
             1 of 194 entrypoints hit the recursion limit
             0 of 194 entrypoints hit the array length limit
+            0 of 1592 Html bindings have more than one reference
 
             op                  ops/module  % live   % dyn
             Array                    112.6    94.2    10.1
