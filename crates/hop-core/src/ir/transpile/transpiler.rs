@@ -135,7 +135,7 @@ pub trait Transpiler {
     fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &Type) -> Doc<'a> {
         match t {
             Type::Data(data) => self.transpile_data_type(arena, data),
-            Type::Html => self.transpile_html_type(arena),
+            Type::Html(_) => self.transpile_html_type(arena),
         }
     }
     fn transpile_data_type<'a>(&mut self, arena: &'a Arena<'a>, t: &DataType) -> Doc<'a> {

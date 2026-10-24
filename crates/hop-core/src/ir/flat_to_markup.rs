@@ -33,7 +33,7 @@ pub fn flat_to_markup(module: FlatModule) -> MarkupModule {
             .functions
             .iter()
             .flat_map(|function| &function.parameters)
-            .filter(|param| param.binder.typ == Type::Html)
+            .filter(|param| param.binder.typ == Type::HTML)
             .map(|param| param.binder.var)
             .collect(),
         bindings: HashMap::new(),
@@ -43,7 +43,7 @@ pub fn flat_to_markup(module: FlatModule) -> MarkupModule {
         .functions
         .into_iter()
         .map(|function| match function.return_type {
-            Type::Html => MarkupFunctionDeclaration::Html(MarkupHtmlFunction {
+            Type::Html(_) => MarkupFunctionDeclaration::Html(MarkupHtmlFunction {
                 body: cx.html_block(&function.body),
                 function: function.function,
                 entrypoint: function.entrypoint,
@@ -89,7 +89,7 @@ impl Converter {
         let bindings = block
             .bindings
             .iter()
-            .filter(|binding| binding.binder.typ != Type::Html)
+            .filter(|binding| binding.binder.typ != Type::HTML)
             .map(|binding| self.data_binding(binding))
             .collect();
         MarkupHtmlBlock { bindings, markup }
@@ -106,7 +106,7 @@ impl Converter {
             bindings: block
                 .bindings
                 .iter()
-                .filter(|binding| binding.binder.typ != Type::Html)
+                .filter(|binding| binding.binder.typ != Type::HTML)
                 .map(|binding| self.data_binding(binding))
                 .collect(),
             result: block.result,
@@ -126,7 +126,7 @@ impl Converter {
                         && self
                             .bindings
                             .get(&operand)
-                            .is_none_or(|b| b.binder.typ != Type::Html),
+                            .is_none_or(|b| b.binder.typ != Type::HTML),
                     "{} reads the Html of {operand} as a value",
                     binding.binder.var
                 );
@@ -242,7 +242,7 @@ impl Converter {
                     || self
                         .bindings
                         .get(&arg)
-                        .is_some_and(|b| b.binder.typ == Type::Html)
+                        .is_some_and(|b| b.binder.typ == Type::HTML)
                 {
                     let mut markup = Vec::new();
                     self.unfold(arg, &mut markup);

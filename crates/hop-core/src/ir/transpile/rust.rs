@@ -431,7 +431,7 @@ impl RustTranspiler {
                 | DataType::Named { .. }
                 | DataType::Option(_),
             )
-            | Type::Html => false,
+            | Type::Html(_) => false,
         }
     }
 
@@ -442,7 +442,7 @@ impl RustTranspiler {
             Type::Data(DataType::String) => arena.text("&str"),
             Type::Data(DataType::Float) => arena.text("f64"),
             Type::Data(DataType::Int) => arena.text("i32"),
-            Type::Html => {
+            Type::Html(_) => {
                 self.needs_html = true;
                 arena.text("&Html")
             }

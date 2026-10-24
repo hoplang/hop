@@ -19,7 +19,7 @@ pub fn assert_html_affine(module: &FlatModule) {
     let mut html = vec![false; module.value_ids.count()];
     for function in &module.functions {
         for param in &function.parameters {
-            if param.binder.typ == Type::Html {
+            if param.binder.typ == Type::HTML {
                 html[param.binder.var.index()] = true;
             }
         }
@@ -38,7 +38,7 @@ pub fn assert_html_affine(module: &FlatModule) {
 
 fn collect_html(block: &FlatBlock, html: &mut [bool]) {
     for binding in &block.bindings {
-        if binding.binder.typ == Type::Html {
+        if binding.binder.typ == Type::HTML {
             html[binding.binder.var.index()] = true;
         }
         match &binding.op {
@@ -188,10 +188,10 @@ impl<'a> Checker<'a> {
                 }
                 true
             }
-            FlatOp::HtmlText(_) => *declared == Type::Html,
-            FlatOp::HtmlEscape(name) => *self.typ(*name) == Type::STRING && *declared == Type::Html,
+            FlatOp::HtmlText(_) => *declared == Type::HTML,
+            FlatOp::HtmlEscape(name) => *self.typ(*name) == Type::STRING && *declared == Type::HTML,
             FlatOp::HtmlConcat(parts) => {
-                parts.iter().all(|part| *self.typ(*part) == Type::Html) && *declared == Type::Html
+                parts.iter().all(|part| *self.typ(*part) == Type::HTML) && *declared == Type::HTML
             }
             FlatOp::HtmlElement(element) => {
                 let attributes = element
@@ -201,7 +201,7 @@ impl<'a> Checker<'a> {
                         IrAttribute::Value(name) => *self.typ(*name) == Type::STRING,
                         IrAttribute::Presence(name) => *self.typ(*name) == Type::BOOL,
                     });
-                attributes && *self.typ(element.children) == Type::Html && *declared == Type::Html
+                attributes && *self.typ(element.children) == Type::HTML && *declared == Type::HTML
             }
             FlatOp::HtmlFor(for_) => {
                 let Some(DataType::Array(element)) = self.data(for_.array) else {
@@ -213,8 +213,8 @@ impl<'a> Checker<'a> {
                     }
                     self.bind(var);
                 }
-                self.block(&for_.body, &Type::Html, function);
-                *declared == Type::Html
+                self.block(&for_.body, &Type::HTML, function);
+                *declared == Type::HTML
             }
         }
     }
@@ -348,7 +348,7 @@ impl<'a> Checker<'a> {
                 self.bind(binder);
             }
             (Pattern::Constructor { .. }, Type::Data(data)) => self.data_pattern(pattern, data),
-            (Pattern::Constructor { .. }, Type::Html) => {
+            (Pattern::Constructor { .. }, Type::Html(_)) => {
                 panic!("a {typ} is matched against {}", pattern.to_doc().pretty(80))
             }
         }

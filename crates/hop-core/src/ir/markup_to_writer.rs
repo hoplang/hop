@@ -398,7 +398,7 @@ impl<'a> Lowerer<'a> {
                 WriterFunctionDeclaration {
                     function: function.function.clone(),
                     parameters: function.parameters.clone(),
-                    return_type: Type::Html,
+                    return_type: Type::HTML,
                     body: WriterFunctionBody::Writes(statements),
                 }
             }
@@ -468,7 +468,7 @@ impl<'a> Lowerer<'a> {
                         let name = self.value_ids.next();
                         lets.push(WriterBinding {
                             name,
-                            typ: Type::Html,
+                            typ: Type::HTML,
                             op: WriterOp::HtmlLiteral(body),
                         });
                         name

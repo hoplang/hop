@@ -132,7 +132,7 @@ impl CompiledPage {
                 function: function.clone(),
                 entrypoint: true,
                 parameters,
-                return_type: Type::Html,
+                return_type: Type::HTML,
                 body,
             });
             function
@@ -547,7 +547,7 @@ impl<'a> Compiler<'a> {
                 for part in parts {
                     assert_eq!(
                         part.typ(),
-                        Type::Html,
+                        Type::HTML,
                         "HtmlConcat must hold Html, but holds {part}"
                     );
                     compiled.push(self.compile_expr(part));
@@ -686,7 +686,7 @@ impl<'a> Compiler<'a> {
             } => {
                 assert_eq!(
                     typ,
-                    Type::Html,
+                    Type::HTML,
                     "For must fold into Html, but folds into {typ}"
                 );
                 let array = match &**source {

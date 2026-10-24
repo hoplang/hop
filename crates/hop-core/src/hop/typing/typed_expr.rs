@@ -370,7 +370,7 @@ impl TypedExpr {
             TypedExpr::HtmlConcat { .. }
             | TypedExpr::HtmlText { .. }
             | TypedExpr::HtmlEscape { .. }
-            | TypedExpr::Element { .. } => Type::Html,
+            | TypedExpr::Element { .. } => Type::HTML,
         }
     }
 

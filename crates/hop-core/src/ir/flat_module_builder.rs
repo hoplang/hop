@@ -342,7 +342,7 @@ impl<'a> FlatBlockBuilder<'a> {
             .iter()
             .map(|element| match self.typ(*element) {
                 Type::Data(element_type) => element_type,
-                Type::Html => panic!(),
+                Type::Html(_) => panic!(),
             })
             .collect();
         self.push(
@@ -586,7 +586,7 @@ impl<'a> FlatBlockBuilder<'a> {
     pub fn text(&self, content: &str) -> ValueId {
         assert!(!content.contains(['<', '{', '}']));
         self.push(
-            Type::Html,
+            Type::HTML,
             FlatOp::HtmlText(CheapString::new(content.to_string())),
         )
     }
@@ -599,7 +599,7 @@ impl<'a> FlatBlockBuilder<'a> {
     ) -> ValueId {
         let element = HtmlElementKind::parse(tag).unwrap();
         self.push(
-            Type::Html,
+            Type::HTML,
             FlatOp::HtmlElement(IrHtmlElement {
                 element,
                 attributes: attributes.into_iter().collect(),
@@ -623,11 +623,11 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn escape(&self, expr: ValueId) -> ValueId {
-        self.push(Type::Html, FlatOp::HtmlEscape(expr))
+        self.push(Type::HTML, FlatOp::HtmlEscape(expr))
     }
 
     pub fn html_concat(&self, parts: impl IntoIterator<Item = ValueId>) -> ValueId {
-        self.push(Type::Html, FlatOp::HtmlConcat(parts.into_iter().collect()))
+        self.push(Type::HTML, FlatOp::HtmlConcat(parts.into_iter().collect()))
     }
 
     pub fn html_for<F>(&self, array: ValueId, body_fn: F) -> ValueId
@@ -641,7 +641,7 @@ impl<'a> FlatBlockBuilder<'a> {
         let var = self.module.binder(typ.clone());
         let (body, _) = self.block(|t| body_fn(t, var));
         self.push(
-            Type::Html,
+            Type::HTML,
             FlatOp::HtmlFor(IrFor {
                 var: Some(IrBinder { var, typ }),
                 array,
@@ -656,7 +656,7 @@ impl<'a> FlatBlockBuilder<'a> {
     {
         let (body, _) = self.block(body_fn);
         self.push(
-            Type::Html,
+            Type::HTML,
             FlatOp::HtmlFor(IrFor {
                 var: None,
                 array,

@@ -19,7 +19,7 @@ pub fn resolve_type(
         ParsedType::Bool { .. } => DataType::Bool,
         ParsedType::Int { .. } => DataType::Int,
         ParsedType::Float { .. } => DataType::Float,
-        ParsedType::Html { .. } => return Some(Type::Html),
+        ParsedType::Html { .. } => return Some(Type::HTML),
         ParsedType::Option { element, .. } => {
             let elem_type = resolve_data_type(element, names, definition_links, errors)?;
             DataType::Option(Box::new(elem_type))
@@ -89,7 +89,7 @@ pub fn resolve_data_type(
 ) -> Option<DataType> {
     match resolve_type(parsed_type, names, definition_links, errors)? {
         Type::Data(data) => Some(data),
-        Type::Html => {
+        Type::Html(_) => {
             errors.push(TypeError::new(
                 TypeErrorKind::HtmlInData,
                 parsed_type.range().clone(),

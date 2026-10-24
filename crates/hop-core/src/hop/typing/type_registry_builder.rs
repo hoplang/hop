@@ -53,7 +53,7 @@ impl Ty {
 impl From<Ty> for Type {
     fn from(ty: Ty) -> Type {
         match ty {
-            Ty::Html => Type::Html,
+            Ty::Html => Type::HTML,
             data => Type::Data(data.into()),
         }
     }

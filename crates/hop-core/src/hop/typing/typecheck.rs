@@ -551,11 +551,11 @@ fn check_declaration_body(
         return TypedExpr::HtmlConcat { parts: Vec::new() };
     };
     let found = typed_body.typ();
-    if found != Type::Html {
+    if found != Type::HTML {
         errors.push(TypeError::new(
             TypeErrorKind::TypeMismatch {
                 context: TypeMismatchContext::FunctionBody,
-                expected: Type::Html,
+                expected: Type::HTML,
                 found,
             },
             range.clone(),
@@ -604,7 +604,7 @@ fn typecheck_page_declaration(
             continue;
         };
 
-        if param_type == Type::Html {
+        if param_type == Type::HTML {
             errors.push(TypeError::new(
                 TypeErrorKind::HtmlInPageParameter,
                 param.var_type.range().clone(),

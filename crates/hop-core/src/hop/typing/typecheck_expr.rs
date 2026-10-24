@@ -66,7 +66,7 @@ pub fn typecheck_expr(
                     use_range: parsed_expr.range().clone(),
                     definition_range: entry.range.clone(),
                 });
-                if typ == Type::Html
+                if typ == Type::HTML
                     && let Err(misuse) = var_env.use_html(var_name)
                 {
                     let name = var_name.clone();
@@ -534,7 +534,7 @@ pub fn typecheck_expr(
             for (typed_element, element) in typed_elements.iter().zip(elements) {
                 match typed_element.typ() {
                     Type::Data(element_type) => element_types.push(element_type),
-                    Type::Html => errors.push(TypeError::new(
+                    Type::Html(_) => errors.push(TypeError::new(
                         TypeErrorKind::HtmlInData,
                         element.range().clone(),
                     )),
@@ -1185,7 +1185,7 @@ pub fn typecheck_expr(
             var_env.enter_loop();
             let typed_body = typecheck_expr(
                 body,
-                Some(&Type::Html),
+                Some(&Type::HTML),
                 forwarded_params,
                 var_env,
                 type_env,
@@ -1207,11 +1207,11 @@ pub fn typecheck_expr(
             }
             let typed_body = typed_body?;
             let body_type = typed_body.typ();
-            if body_type != Type::Html {
+            if body_type != Type::HTML {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeMismatch {
                         context: TypeMismatchContext::ForBody,
-                        expected: Type::Html,
+                        expected: Type::HTML,
                         found: body_type,
                     },
                     body.range().clone(),
@@ -1222,7 +1222,7 @@ pub fn typecheck_expr(
                 var_name: var_name.clone(),
                 source: Box::new(typed_source),
                 body: Box::new(typed_body),
-                typ: Type::Html,
+                typ: Type::HTML,
             })
         }
         ParsedExpr::Macro {

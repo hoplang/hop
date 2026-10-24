@@ -311,7 +311,7 @@ fn random_module_inner(
                 for (n, _) in params {
                     scope.bound(b.param(n));
                 }
-                g.block(b, &mut scope, &Type::Html, MAX_BLOCK_DEPTH)
+                g.block(b, &mut scope, &Type::HTML, MAX_BLOCK_DEPTH)
             },
         );
     }
@@ -526,13 +526,13 @@ impl FlatGenerator<'_, '_> {
         {
             let types = b.value_types();
             for (name, used) in &mut scope.names {
-                *used |= types[name.index()] == Type::Html;
+                *used |= types[name.index()] == Type::HTML;
             }
         }
         if let Some(var) = var {
             scope.bound(var);
         }
-        let body = self.block(b, scope, &Type::Html, depth);
+        let body = self.block(b, scope, &Type::HTML, depth);
         scope.restore(&before);
         body
     }
@@ -582,7 +582,7 @@ impl FlatGenerator<'_, '_> {
             Some(name) => name,
             None => {
                 let literal = match typ {
-                    Type::Html => match self.index(3) {
+                    Type::Html(_) => match self.index(3) {
                         0 => b.html_concat(Vec::new()),
                         1 => b.text(self.u.choose(TEXTS).unwrap()),
                         _ => {
@@ -590,7 +590,7 @@ impl FlatGenerator<'_, '_> {
                             let children = if void || depth == 0 {
                                 b.html_concat(Vec::new())
                             } else {
-                                self.leaf(b, scope, &Type::Html, depth - 1)
+                                self.leaf(b, scope, &Type::HTML, depth - 1)
                             };
                             b.element(tag, Vec::new(), children)
                         }
@@ -687,7 +687,7 @@ impl FlatGenerator<'_, '_> {
                 scope.bound(literal)
             }
         };
-        if *typ == Type::Html {
+        if *typ == Type::HTML {
             scope.used(value);
         }
         value
@@ -838,7 +838,7 @@ impl FlatGenerator<'_, '_> {
         if self.record_fields_of_type(b, target).next().is_some() {
             productions.push(P::FieldAccess);
         }
-        if *target != Type::Html {
+        if *target != Type::HTML {
             productions.push(P::TupleIndex);
         }
         if *target == Type::BOOL {
@@ -873,7 +873,7 @@ impl FlatGenerator<'_, '_> {
         if *target == Type::STRING {
             productions.extend([P::Concat, P::IntToString]);
         }
-        if *target == Type::Html {
+        if *target == Type::HTML {
             productions.extend([P::HtmlText, P::HtmlEscape, P::HtmlElement, P::HtmlConcat]);
         }
         if Self::callees(b, target).next().is_some() {
@@ -882,7 +882,7 @@ impl FlatGenerator<'_, '_> {
         // Only an op that may still nest a block is one that nests one.
         if depth > 0 {
             productions.push(P::MatchPattern);
-            if *target == Type::Html {
+            if *target == Type::HTML {
                 productions.extend([P::HtmlForArray, P::HtmlForRange]);
             }
         }
@@ -1164,13 +1164,13 @@ impl FlatGenerator<'_, '_> {
                     // into scope.
                     b.html_concat(Vec::new())
                 } else {
-                    self.op(b, scope, &Type::Html, depth, nesting - 1)
+                    self.op(b, scope, &Type::HTML, depth, nesting - 1)
                 };
                 b.element(tag, attributes, children)
             }
             P::HtmlConcat => {
                 let parts: Vec<_> = (0..self.count(0..=4))
-                    .map(|_| self.op(b, scope, &Type::Html, depth, nesting - 1))
+                    .map(|_| self.op(b, scope, &Type::HTML, depth, nesting - 1))
                     .collect();
                 b.html_concat(parts)
             }
@@ -1216,7 +1216,7 @@ impl FlatGenerator<'_, '_> {
             }
         };
         scope.bound(value);
-        if *target == Type::Html {
+        if *target == Type::HTML {
             scope.used(value);
         }
         value
@@ -1348,7 +1348,7 @@ mod tests {
         html: &mut HashSet<ValueId>,
     ) {
         for binding in &block.bindings {
-            if binding.binder.typ == Type::Html {
+            if binding.binder.typ == Type::HTML {
                 html.insert(binding.binder.var);
             }
             binding.op.for_each_operand(&mut |operand| {

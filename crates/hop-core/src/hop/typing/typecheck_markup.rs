@@ -161,7 +161,7 @@ pub fn typecheck_markup(
             // String.
             let return_type = call.typ();
             match return_type {
-                Type::Html => Some(call),
+                Type::Html(_) => Some(call),
                 Type::STRING => Some(TypedExpr::HtmlEscape {
                     expr: Box::new(call),
                 }),
@@ -313,7 +313,7 @@ pub fn typecheck_markup(
             ) {
                 let expr_type = typed_expr.typ();
                 match expr_type {
-                    Type::Html => Some(typed_expr),
+                    Type::Html(_) => Some(typed_expr),
                     Type::STRING => Some(TypedExpr::HtmlEscape {
                         expr: Box::new(typed_expr),
                     }),

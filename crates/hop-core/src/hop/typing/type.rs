@@ -8,8 +8,11 @@ use crate::symbols::type_name::TypeName;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Data(DataType),
-    Html,
+    Html(HtmlType),
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HtmlType;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataType {
@@ -57,6 +60,7 @@ impl Type {
     pub const BOOL: Type = Type::Data(DataType::Bool);
     pub const INT: Type = Type::Data(DataType::Int);
     pub const FLOAT: Type = Type::Data(DataType::Float);
+    pub const HTML: Type = Type::Html(HtmlType);
 
     pub fn array(element: DataType) -> Type {
         Type::Data(DataType::Array(Box::new(element)))
@@ -70,7 +74,7 @@ impl Type {
     pub fn as_data(&self) -> Option<&DataType> {
         match self {
             Type::Data(data) => Some(data),
-            Type::Html => None,
+            Type::Html(_) => None,
         }
     }
 
@@ -86,7 +90,7 @@ impl Type {
                 | DataType::Tuple(_)
                 | DataType::Named { .. },
             )
-            | Type::Html => None,
+            | Type::Html(_) => None,
         }
     }
 
@@ -102,7 +106,7 @@ impl Type {
                 | DataType::Tuple(_)
                 | DataType::Named { .. },
             )
-            | Type::Html => None,
+            | Type::Html(_) => None,
         }
     }
 
@@ -118,7 +122,7 @@ impl Type {
                 | DataType::Tuple(_)
                 | DataType::Named { .. },
             )
-            | Type::Html => None,
+            | Type::Html(_) => None,
         }
     }
 
@@ -129,7 +133,7 @@ impl Type {
                 DataType::Bool | DataType::Option(_) | DataType::Tuple(_) | DataType::Named { .. },
             ) => true,
             Type::Data(DataType::String | DataType::Int | DataType::Float | DataType::Array(_))
-            | Type::Html => false,
+            | Type::Html(_) => false,
         }
     }
 }
@@ -150,7 +154,7 @@ impl<'a> Type {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
             Type::Data(data) => data.to_doc(),
-            Type::Html => BoxDoc::text("Html"),
+            Type::Html(_) => BoxDoc::text("Html"),
         }
     }
 }
