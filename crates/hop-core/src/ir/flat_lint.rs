@@ -19,21 +19,29 @@ use crate::symbols::field_name::FieldName;
 pub fn assert_html_affine(module: &FlatModule) {
     let mut html = vec![false; module.value_ids.count()];
     for function in &module.functions {
-        for param in &function.parameters {
+        for param in function.parameters() {
             if param.binder.typ == Type::HTML {
                 html[param.binder.var.index()] = true;
             }
         }
-        collect_html(&function.body, &mut html);
+        let body = match function {
+            FlatFunctionDeclaration::Data(function) => &function.body,
+            FlatFunctionDeclaration::Html(function) => &function.body,
+        };
+        collect_html(body, &mut html);
     }
     for function in &module.functions {
         let mut scope = vec![false; html.len()];
-        for param in &function.parameters {
+        for param in function.parameters() {
             if html[param.binder.var.index()] {
                 scope[param.binder.var.index()] = true;
             }
         }
-        check_block(&function.body, scope, &html, &function.function);
+        let body = match function {
+            FlatFunctionDeclaration::Data(function) => &function.body,
+            FlatFunctionDeclaration::Html(function) => &function.body,
+        };
+        check_block(body, scope, &html, function.function());
     }
 }
 
@@ -107,10 +115,16 @@ pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
         types: vec![None; module.value_ids.count()],
     };
     for function in &module.functions {
-        for param in &function.parameters {
+        for param in function.parameters() {
             checker.bind(param.binder.var, BoundType::of(&param.binder.typ));
         }
-        checker.block(&function.body, &function.return_type, &function.function);
+        let (body, return_type) = match function {
+            FlatFunctionDeclaration::Data(function) => {
+                (&function.body, Type::Data(function.return_type.clone()))
+            }
+            FlatFunctionDeclaration::Html(function) => (&function.body, Type::HTML),
+        };
+        checker.block(body, &return_type, function.function());
     }
 }
 
@@ -202,15 +216,23 @@ impl<'a> Checker<'a> {
                 let callee = self
                     .functions
                     .iter()
-                    .find(|declared| declared.function.id == callee.id)
+                    .find(|declared| declared.function().id == callee.id)
                     .unwrap_or_else(|| panic!("{function} calls the undeclared {callee}"));
-                let params = &callee.parameters;
+                let params = callee.parameters();
+                let returns_declared = match (callee, declared) {
+                    (FlatFunctionDeclaration::Data(callee), Type::Data(declared)) => {
+                        callee.return_type == *declared
+                    }
+                    (FlatFunctionDeclaration::Html(_), Type::Html(_)) => true,
+                    (FlatFunctionDeclaration::Data(_), Type::Html(_))
+                    | (FlatFunctionDeclaration::Html(_), Type::Data(_)) => false,
+                };
                 args.len() == params.len()
                     && args
                         .iter()
                         .zip(params)
                         .all(|(arg, param)| self.typ(*arg).is(&param.binder.typ))
-                    && callee.return_type == *declared
+                    && returns_declared
             }
             FlatOp::Match(match_) => {
                 let subject = self.typ(match_.subject);

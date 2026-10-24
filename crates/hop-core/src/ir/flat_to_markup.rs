@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::hop::typing::Type;
-use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatModule, FlatOp};
+use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_for::IrFor;
@@ -33,7 +33,7 @@ pub fn flat_to_markup(module: FlatModule) -> MarkupModule {
         html_parameters: module
             .functions
             .iter()
-            .flat_map(|function| &function.parameters)
+            .flat_map(|function| function.parameters())
             .filter(|param| param.binder.typ == Type::HTML)
             .map(|param| param.binder.var)
             .collect(),
@@ -43,20 +43,24 @@ pub fn flat_to_markup(module: FlatModule) -> MarkupModule {
     let functions = module
         .functions
         .into_iter()
-        .map(|function| match function.return_type {
-            Type::Html(_) => MarkupFunctionDeclaration::Html(MarkupHtmlFunction {
-                body: cx.html_block(&function.body),
-                function: function.function,
-                entrypoint: function.entrypoint,
-                parameters: function.parameters,
-            }),
-            Type::Data(return_type) => MarkupFunctionDeclaration::Data(MarkupDataFunction {
-                body: cx.data_block(&function.body),
-                function: function.function,
-                entrypoint: function.entrypoint,
-                parameters: function.parameters,
-                return_type,
-            }),
+        .map(|function| match function {
+            FlatFunctionDeclaration::Html(function) => {
+                MarkupFunctionDeclaration::Html(MarkupHtmlFunction {
+                    body: cx.html_block(&function.body),
+                    function: function.function,
+                    entrypoint: function.entrypoint,
+                    parameters: function.parameters,
+                })
+            }
+            FlatFunctionDeclaration::Data(function) => {
+                MarkupFunctionDeclaration::Data(MarkupDataFunction {
+                    body: cx.data_block(&function.body),
+                    function: function.function,
+                    entrypoint: function.entrypoint,
+                    parameters: function.parameters,
+                    return_type: function.return_type,
+                })
+            }
         })
         .collect();
     MarkupModule {

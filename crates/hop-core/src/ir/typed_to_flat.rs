@@ -8,7 +8,10 @@ use crate::hop::typing::{
     TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration, TypedParameter, TypedPattern,
     TypedRecordUpdateField,
 };
-use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
+use crate::ir::flat_module::{
+    FlatBinding, FlatBlock, FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction,
+    FlatModule, FlatOp,
+};
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
@@ -128,13 +131,12 @@ impl CompiledPage {
         functions: &mut Vec<FlatFunctionDeclaration>,
     ) -> IrPage {
         let mut declare = |function: IrFunction, (parameters, body)| {
-            functions.push(FlatFunctionDeclaration {
+            functions.push(FlatFunctionDeclaration::Html(FlatHtmlFunction {
                 function: function.clone(),
                 entrypoint: true,
                 parameters,
-                return_type: Type::HTML,
                 body,
-            });
+            }));
             function
         };
         let head = self
@@ -227,12 +229,21 @@ impl<'a> Compiler<'a> {
             });
         }
 
-        let declaration = FlatFunctionDeclaration {
-            function,
-            entrypoint: false,
-            parameters,
-            return_type: decl.return_type.clone(),
-            body: self.compile_block(&decl.body),
+        let body = self.compile_block(&decl.body);
+        let declaration = match &decl.return_type {
+            Type::Html(_) => FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                function,
+                entrypoint: false,
+                parameters,
+                body,
+            }),
+            Type::Data(return_type) => FlatFunctionDeclaration::Data(FlatDataFunction {
+                function,
+                entrypoint: false,
+                parameters,
+                return_type: return_type.clone(),
+                body,
+            }),
         };
         self.pop_scope();
         self.params.clear();

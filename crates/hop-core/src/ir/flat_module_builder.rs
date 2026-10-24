@@ -4,7 +4,10 @@ use crate::hop::typing::{
 };
 use crate::html::HtmlElementKind;
 use crate::ir::flat_lint;
-use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
+use crate::ir::flat_module::{
+    FlatBinding, FlatBlock, FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction,
+    FlatModule, FlatOp,
+};
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
@@ -151,12 +154,20 @@ impl FlatModuleBuilder {
         let functions = self
             .functions
             .into_iter()
-            .map(|declared| FlatFunctionDeclaration {
-                function: declared.function,
-                entrypoint: declared.entrypoint,
-                parameters: declared.parameters,
-                return_type: declared.return_type,
-                body: declared.body.unwrap(),
+            .map(|declared| match declared.return_type {
+                Type::Html(_) => FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                    function: declared.function,
+                    entrypoint: declared.entrypoint,
+                    parameters: declared.parameters,
+                    body: declared.body.unwrap(),
+                }),
+                Type::Data(return_type) => FlatFunctionDeclaration::Data(FlatDataFunction {
+                    function: declared.function,
+                    entrypoint: declared.entrypoint,
+                    parameters: declared.parameters,
+                    return_type,
+                    body: declared.body.unwrap(),
+                }),
             })
             .collect();
         let module = FlatModule {

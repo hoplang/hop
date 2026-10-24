@@ -1,4 +1,6 @@
-use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
+use crate::ir::flat_module::{
+    FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction, FlatModule,
+};
 use crate::ir::flat_transform;
 
 /// Optimize the module: inline every call that can be, then in every body
@@ -9,14 +11,27 @@ pub fn optimize_flat(module: FlatModule) -> FlatModule {
     let functions = module
         .functions
         .into_iter()
-        .map(|function| FlatFunctionDeclaration {
-            function: function.function,
-            entrypoint: function.entrypoint,
-            parameters: function.parameters,
-            return_type: function.return_type,
-            body: flat_transform::eliminate_dead_bindings(
-                flat_transform::perform_partial_evaluation(function.body, &mut value_ids),
-            ),
+        .map(|function| {
+            let mut optimize = |body| {
+                flat_transform::eliminate_dead_bindings(flat_transform::perform_partial_evaluation(
+                    body,
+                    &mut value_ids,
+                ))
+            };
+            match function {
+                FlatFunctionDeclaration::Data(function) => {
+                    FlatFunctionDeclaration::Data(FlatDataFunction {
+                        body: optimize(function.body),
+                        ..function
+                    })
+                }
+                FlatFunctionDeclaration::Html(function) => {
+                    FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                        body: optimize(function.body),
+                        ..function
+                    })
+                }
+            }
         })
         .collect();
     FlatModule {

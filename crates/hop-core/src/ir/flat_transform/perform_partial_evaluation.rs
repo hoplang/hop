@@ -502,7 +502,9 @@ mod tests {
     use super::*;
     use crate::document::Document;
     use crate::hop::typing::{Ty, TypeRegistryBuilder};
-    use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
+    use crate::ir::flat_module::{
+        FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction, FlatModule,
+    };
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
     use crate::ir::runtime::EvalError;
@@ -520,12 +522,19 @@ mod tests {
         let functions = module
             .functions
             .into_iter()
-            .map(|function| FlatFunctionDeclaration {
-                function: function.function,
-                entrypoint: function.entrypoint,
-                parameters: function.parameters,
-                return_type: function.return_type,
-                body: perform_partial_evaluation(function.body, &mut value_ids),
+            .map(|function| match function {
+                FlatFunctionDeclaration::Data(function) => {
+                    FlatFunctionDeclaration::Data(FlatDataFunction {
+                        body: perform_partial_evaluation(function.body, &mut value_ids),
+                        ..function
+                    })
+                }
+                FlatFunctionDeclaration::Html(function) => {
+                    FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                        body: perform_partial_evaluation(function.body, &mut value_ids),
+                        ..function
+                    })
+                }
             })
             .collect();
         FlatModule {

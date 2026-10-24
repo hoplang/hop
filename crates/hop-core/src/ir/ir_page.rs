@@ -21,15 +21,20 @@ impl IrPage {
     /// function alone and named after it.
     #[cfg(test)]
     pub fn for_entrypoints(module: &crate::ir::flat_module::FlatModule) -> Vec<IrPage> {
+        use crate::ir::flat_module::FlatFunctionDeclaration;
+
         module
             .functions
             .iter()
-            .filter(|decl| decl.entrypoint)
+            .filter(|decl| match decl {
+                FlatFunctionDeclaration::Data(function) => function.entrypoint,
+                FlatFunctionDeclaration::Html(function) => function.entrypoint,
+            })
             .map(|decl| IrPage {
-                name: TypeName::parse(decl.function.name.as_str())
+                name: TypeName::parse(decl.function().name.as_str())
                     .expect("a test entrypoint function is named like a page"),
                 head: None,
-                body: decl.function.clone(),
+                body: decl.function().clone(),
             })
             .collect()
     }

@@ -78,10 +78,10 @@ pub fn evaluate_entrypoint(
     let decl = module
         .functions
         .iter()
-        .find(|decl| decl.function.id == function.id)
+        .find(|decl| decl.function().id == function.id)
         .unwrap();
-    let mut values = Vec::with_capacity(decl.parameters.len());
-    for param in &decl.parameters {
+    let mut values = Vec::with_capacity(decl.parameters().len());
+    for param in decl.parameters() {
         let value = args
             .remove(param.name())
             .ok_or_else(|| EvalError::MissingParameter {
@@ -110,15 +110,19 @@ pub fn evaluate_function(
     }
     let decl = functions
         .iter()
-        .find(|decl| decl.function.id == function.id)
+        .find(|decl| decl.function().id == function.id)
         .unwrap();
     let env = decl
-        .parameters
+        .parameters()
         .iter()
         .map(|param| param.binder.var)
         .zip(args)
         .collect();
-    evaluate_block(&decl.body, &env, functions, depth + 1)
+    let body = match decl {
+        FlatFunctionDeclaration::Data(decl) => &decl.body,
+        FlatFunctionDeclaration::Html(decl) => &decl.body,
+    };
+    evaluate_block(body, &env, functions, depth + 1)
 }
 
 /// Evaluate the bindings in order and produce the result. The block extends
@@ -376,9 +380,12 @@ mod tests {
         let entrypoint = module
             .functions
             .iter()
-            .find(|decl| decl.entrypoint)
+            .find(|decl| match decl {
+                FlatFunctionDeclaration::Data(decl) => decl.entrypoint,
+                FlatFunctionDeclaration::Html(decl) => decl.entrypoint,
+            })
             .expect("the module has an entrypoint function")
-            .function
+            .function()
             .clone();
         let after = evaluate_entrypoint(&module, &entrypoint, args)
             .expect("Evaluation should succeed")
@@ -866,7 +873,7 @@ mod tests {
             .build_with_registry();
         let v = ValueBuilder::new(&types);
         let args = vec![v.int(21)];
-        let result = evaluate_function(&module.functions, &module.functions[0].function, args, 0);
+        let result = evaluate_function(&module.functions, module.functions[0].function(), args, 0);
         assert_eq!(result.unwrap(), v.int(42));
     }
 
@@ -931,7 +938,7 @@ mod tests {
                 t.escape(t.int_to_string(t.call("Loop", [t.int(0)])))
             })
             .build();
-        let result = evaluate_entrypoint(&module, &module.functions[1].function, HashMap::new());
+        let result = evaluate_entrypoint(&module, module.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Function 'Loop@f0' exceeded the call depth limit of 12"
@@ -965,7 +972,7 @@ mod tests {
                 t.escape(t.int_to_string(t.call("Grow", [leaf])))
             })
             .build();
-        let result = evaluate_entrypoint(&module, &module.functions[1].function, HashMap::new());
+        let result = evaluate_entrypoint(&module, module.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Function 'Grow@f0' exceeded the call depth limit of 12"
@@ -980,7 +987,7 @@ mod tests {
                 t.escape(t.int_to_string(t.array_length(all)))
             })
             .build();
-        let result = evaluate_entrypoint(&module, &module.functions[0].function, HashMap::new());
+        let result = evaluate_entrypoint(&module, module.functions[0].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An array exceeded the array length limit of 10000000"
@@ -994,7 +1001,7 @@ mod tests {
                 t.escape(t.param("name"))
             })
             .build();
-        let result = evaluate_entrypoint(&module, &module.functions[0].function, HashMap::new());
+        let result = evaluate_entrypoint(&module, module.functions[0].function(), HashMap::new());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));

@@ -3,7 +3,7 @@ use std::fmt;
 use pretty::BoxDoc;
 
 use crate::document::CheapString;
-use crate::hop::typing::Type;
+use crate::hop::typing::{DataType, Type};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
@@ -21,16 +21,51 @@ pub struct FlatModule {
     pub value_ids: ValueIdCounter,
 }
 
-/// A function declaration in the Flat IR.
+/// A function that returns Html renders markup, and any other function
+/// computes a value.
 #[derive(Debug, Clone)]
-pub struct FlatFunctionDeclaration {
+pub enum FlatFunctionDeclaration {
+    Data(FlatDataFunction),
+    Html(FlatHtmlFunction),
+}
+
+/// A function whose body computes a value of its return type.
+#[derive(Debug, Clone)]
+pub struct FlatDataFunction {
     pub function: IrFunction,
     /// Whether the function is called from outside the module, so it is kept
     /// even when nothing in the module calls it.
     pub entrypoint: bool,
     pub parameters: Vec<IrParameter<Type>>,
-    pub return_type: Type,
+    pub return_type: DataType,
     pub body: FlatBlock,
+}
+
+/// A function whose body renders markup.
+#[derive(Debug, Clone)]
+pub struct FlatHtmlFunction {
+    pub function: IrFunction,
+    /// Whether the function is called from outside the module, so it is kept
+    /// even when nothing in the module calls it.
+    pub entrypoint: bool,
+    pub parameters: Vec<IrParameter<Type>>,
+    pub body: FlatBlock,
+}
+
+impl FlatFunctionDeclaration {
+    pub fn function(&self) -> &IrFunction {
+        match self {
+            FlatFunctionDeclaration::Data(function) => &function.function,
+            FlatFunctionDeclaration::Html(function) => &function.function,
+        }
+    }
+
+    pub fn parameters(&self) -> &[IrParameter<Type>] {
+        match self {
+            FlatFunctionDeclaration::Data(function) => &function.parameters,
+            FlatFunctionDeclaration::Html(function) => &function.parameters,
+        }
+    }
 }
 
 /// A block. A binding is in scope for every later binding of the block, for the
@@ -176,22 +211,28 @@ impl FlatOp {
 
 impl FlatFunctionDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
+        let (entrypoint, return_type, body) = match self {
+            FlatFunctionDeclaration::Data(function) => (
+                function.entrypoint,
+                function.return_type.to_string(),
+                &function.body,
+            ),
+            FlatFunctionDeclaration::Html(function) => {
+                (function.entrypoint, "Html".to_string(), &function.body)
+            }
+        };
         let parameters = self
-            .parameters
+            .parameters()
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ");
-        let keyword = if self.entrypoint {
-            "entrypoint fn"
-        } else {
-            "fn"
-        };
+        let keyword = if entrypoint { "entrypoint fn" } else { "fn" };
         BoxDoc::text(format!(
-            "{keyword} {}({parameters}) -> {} {{",
-            self.function, self.return_type
+            "{keyword} {}({parameters}) -> {return_type} {{",
+            self.function()
         ))
-        .append(BoxDoc::line().append(self.body.to_doc()).nest(2))
+        .append(BoxDoc::line().append(body.to_doc()).nest(2))
         .append(BoxDoc::line())
         .append(BoxDoc::text("}"))
     }

@@ -1,7 +1,7 @@
 use crate::hop::typing::{
     DataType, RecordField, ResolvedType, Ty, Type, TypeRegistry, TypeRegistryBuilder,
 };
-use crate::ir::flat_module::FlatModule;
+use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
 use crate::ir::flat_module_builder::{
     ArmBindings, DeclaredFunction, FlatBlockBuilder, FlatModuleBuilder, Pat,
 };
@@ -328,17 +328,20 @@ pub fn random_entrypoint_args(
     module
         .functions
         .iter()
-        .filter(|decl| decl.entrypoint)
+        .filter(|decl| match decl {
+            FlatFunctionDeclaration::Data(decl) => decl.entrypoint,
+            FlatFunctionDeclaration::Html(decl) => decl.entrypoint,
+        })
         .map(|decl| {
             let args = decl
-                .parameters
+                .parameters()
                 .iter()
                 .map(|param| {
                     let value = random_value(rng, &param.binder.typ, None, registry);
                     (param.name.clone(), value)
                 })
                 .collect();
-            (decl.function.clone(), args)
+            (decl.function().clone(), args)
         })
         .collect()
 }
@@ -1397,18 +1400,26 @@ mod tests {
             }
             let mut live = HashSet::new();
             let mut dynamic = HashSet::new();
-            for function in &module.functions {
-                mark_live(&function.body, &mut live);
-                dynamic.extend(function.parameters.iter().map(|param| param.binder.var));
-                mark_dynamic(&function.body, &mut dynamic);
+            let bodies: Vec<&FlatBlock> = module
+                .functions
+                .iter()
+                .map(|function| match function {
+                    FlatFunctionDeclaration::Data(function) => &function.body,
+                    FlatFunctionDeclaration::Html(function) => &function.body,
+                })
+                .collect();
+            for (function, body) in module.functions.iter().zip(&bodies) {
+                mark_live(body, &mut live);
+                dynamic.extend(function.parameters().iter().map(|param| param.binder.var));
+                mark_dynamic(body, &mut dynamic);
             }
-            for function in &module.functions {
-                count_ops(&function.body, &live, &dynamic, &mut counts);
+            for body in &bodies {
+                count_ops(body, &live, &dynamic, &mut counts);
             }
             let mut references = HashMap::new();
             let mut html = HashSet::new();
-            for function in &module.functions {
-                count_html_references(&function.body, &mut references, &mut html);
+            for body in &bodies {
+                count_html_references(body, &mut references, &mut html);
             }
             html_bindings += html.len();
             shared_html += html

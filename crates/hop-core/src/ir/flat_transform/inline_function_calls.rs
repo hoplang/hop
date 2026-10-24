@@ -1,7 +1,10 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
-use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
+use crate::ir::flat_module::{
+    FlatBinding, FlatBlock, FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction,
+    FlatModule, FlatOp,
+};
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_for::IrFor;
@@ -24,9 +27,13 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
 
     let mut graph: DependencyGraph<FunctionId> = DependencyGraph::new();
     for function in &functions {
+        let body = match function {
+            FlatFunctionDeclaration::Data(function) => &function.body,
+            FlatFunctionDeclaration::Html(function) => &function.body,
+        };
         let mut callees = BTreeSet::new();
-        collect_callees(&function.body, &mut callees);
-        graph.set_dependencies(function.function.id, callees);
+        collect_callees(body, &mut callees);
+        graph.set_dependencies(function.function().id, callees);
     }
 
     let sccs = graph.sorted_sccs();
@@ -38,9 +45,11 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
         .collect();
 
     // Declaration order is part of the module's identity, so keep it.
-    let order: Vec<FunctionId> = functions.iter().map(|f| f.function.id).collect();
-    let mut decls: HashMap<FunctionId, FlatFunctionDeclaration> =
-        functions.into_iter().map(|f| (f.function.id, f)).collect();
+    let order: Vec<FunctionId> = functions.iter().map(|f| f.function().id).collect();
+    let mut decls: HashMap<FunctionId, FlatFunctionDeclaration> = functions
+        .into_iter()
+        .map(|f| (f.function().id, f))
+        .collect();
 
     // The name each inlined call's result is read through. One map serves
     // every body, since names are unique in the module.
@@ -51,10 +60,25 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
     for id in sccs.into_iter().flatten() {
         // Taking the declaration out while its own body is inlined keeps the
         // map borrow-free, and means a self-call finds nothing to inline.
-        let Some(mut decl) = decls.remove(&id) else {
+        let Some(decl) = decls.remove(&id) else {
             continue;
         };
-        decl.body = inline_block(decl.body, &decls, &recursive, &mut value_ids, &mut renames);
+        let mut inline =
+            |body| inline_block(body, &decls, &recursive, &mut value_ids, &mut renames);
+        let decl = match decl {
+            FlatFunctionDeclaration::Data(function) => {
+                FlatFunctionDeclaration::Data(FlatDataFunction {
+                    body: inline(function.body),
+                    ..function
+                })
+            }
+            FlatFunctionDeclaration::Html(function) => {
+                FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                    body: inline(function.body),
+                    ..function
+                })
+            }
+        };
         decls.insert(id, decl);
     }
 
@@ -64,7 +88,13 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
     let functions = order
         .into_iter()
         .map(|id| decls.remove(&id).expect("each function is declared once"))
-        .filter(|decl| decl.entrypoint || recursive.contains(&decl.function.id))
+        .filter(|decl| {
+            let entrypoint = match decl {
+                FlatFunctionDeclaration::Data(function) => function.entrypoint,
+                FlatFunctionDeclaration::Html(function) => function.entrypoint,
+            };
+            entrypoint || recursive.contains(&decl.function().id)
+        })
         .collect();
 
     FlatModule {
@@ -116,17 +146,21 @@ fn inline_block(
                 let decl = &decls[&function.id];
                 assert_eq!(
                     args.len(),
-                    decl.parameters.len(),
+                    decl.parameters().len(),
                     "call to {} supplies one argument per parameter",
-                    decl.function
+                    decl.function()
                 );
                 let arguments = decl
-                    .parameters
+                    .parameters()
                     .iter()
                     .zip(args)
                     .map(|(param, arg)| (param.binder.var, arg))
                     .collect();
-                let body = Freshener::new(value_ids, arguments).freshen_block(&decl.body);
+                let body = match decl {
+                    FlatFunctionDeclaration::Data(decl) => &decl.body,
+                    FlatFunctionDeclaration::Html(decl) => &decl.body,
+                };
+                let body = Freshener::new(value_ids, arguments).freshen_block(body);
                 bindings.extend(body.bindings);
                 // The result is a fresh name or an argument, and neither is
                 // ever renamed, so no read goes through two renames.
