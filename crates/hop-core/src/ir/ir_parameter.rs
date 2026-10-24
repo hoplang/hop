@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::hop::typing::{DataType, Type};
 use crate::ir::ir_binder::IrBinder;
 use crate::symbols::attribute_name::AttributeName;
 
@@ -16,6 +17,36 @@ pub struct IrParameter<T> {
 impl<T> IrParameter<T> {
     pub fn name(&self) -> &AttributeName {
         &self.name
+    }
+}
+
+impl IrParameter<Type> {
+    /// The parameter as one of a function that returns a value, or None if
+    /// it takes Html.
+    pub fn into_data(self) -> Option<IrParameter<DataType>> {
+        let Type::Data(typ) = self.binder.typ else {
+            return None;
+        };
+        Some(IrParameter {
+            name: self.name,
+            binder: IrBinder {
+                var: self.binder.var,
+                typ,
+            },
+        })
+    }
+}
+
+impl IrParameter<DataType> {
+    /// The parameter as one of a function that may take Html.
+    pub fn widen(&self) -> IrParameter<Type> {
+        IrParameter {
+            name: self.name.clone(),
+            binder: IrBinder {
+                var: self.binder.var,
+                typ: Type::Data(self.binder.typ.clone()),
+            },
+        }
     }
 }
 

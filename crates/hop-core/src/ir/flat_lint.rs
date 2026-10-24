@@ -3,77 +3,79 @@ use std::fmt;
 use crate::hop::typing::{
     Constructor, DataType, Pattern, RecordField, ResolvedType, Type, TypeRegistry,
 };
-use crate::ir::flat_module::{FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
+use crate::ir::flat_module::{
+    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBlock, FlatHtmlOp,
+    FlatModule,
+};
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_match::IrPattern;
+use crate::ir::ir_parameter::IrParameter;
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 
 /// Panics unless every Html value is read at most once on each path and
-/// never from a loop body it is bound outside of.
+/// never from a loop body it is bound outside of. Only Html reads Html,
+/// which `assert_well_typed` checks, so only the Html of a block is walked.
 ///
 /// Sets of names are vectors of flags indexed by the name's number, so
 /// that forking the scope at a match is a copy and joining it is a loop.
 pub fn assert_html_affine(module: &FlatModule) {
     let mut html = vec![false; module.value_ids.count()];
-    for function in &module.functions {
-        for param in function.parameters() {
+    let html_functions = module
+        .functions
+        .iter()
+        .filter_map(|function| match function {
+            FlatFunctionDeclaration::Html(function) => Some(function),
+            FlatFunctionDeclaration::Data(_) => None,
+        });
+    for function in html_functions.clone() {
+        for param in &function.parameters {
             if param.binder.typ == Type::HTML {
                 html[param.binder.var.index()] = true;
             }
         }
-        let body = match function {
-            FlatFunctionDeclaration::Data(function) => &function.body,
-            FlatFunctionDeclaration::Html(function) => &function.body,
-        };
-        collect_html(body, &mut html);
+        collect_html(&function.body, &mut html);
     }
-    for function in &module.functions {
+    for function in html_functions {
         let mut scope = vec![false; html.len()];
-        for param in function.parameters() {
+        for param in &function.parameters {
             if html[param.binder.var.index()] {
                 scope[param.binder.var.index()] = true;
             }
         }
-        let body = match function {
-            FlatFunctionDeclaration::Data(function) => &function.body,
-            FlatFunctionDeclaration::Html(function) => &function.body,
-        };
-        check_block(body, scope, &html, function.function());
+        check_block(&function.body, scope, &html, &function.function);
     }
 }
 
-fn collect_html(block: &FlatBlock, html: &mut [bool]) {
-    for binding in &block.bindings {
-        if binding.binder.typ == Type::HTML {
-            html[binding.binder.var.index()] = true;
-        }
+fn collect_html(block: &FlatHtmlBlock, html: &mut [bool]) {
+    for binding in &block.html {
+        html[binding.binder.var.index()] = true;
         match &binding.op {
-            FlatOp::Match(match_) => {
+            FlatHtmlOp::Match(match_) => {
                 for arm in &match_.arms {
                     collect_html(&arm.body, html);
                 }
             }
-            FlatOp::HtmlFor(for_) => collect_html(&for_.body, html),
+            FlatHtmlOp::For(for_) => collect_html(&for_.body, html),
             _ => {}
         }
     }
 }
 
 fn check_block(
-    block: &FlatBlock,
+    block: &FlatHtmlBlock,
     mut scope: Vec<bool>,
     html: &[bool],
     function: &IrFunction,
 ) -> Vec<bool> {
-    for binding in &block.bindings {
+    for binding in &block.html {
         binding
             .op
             .for_each_operand(&mut |operand| read(operand, &mut scope, html, function));
         match &binding.op {
-            FlatOp::Match(match_) => {
+            FlatHtmlOp::Match(match_) => {
                 let mut after = scope.clone();
                 for arm in &match_.arms {
                     let inner = check_block(&arm.body, scope.clone(), html, function);
@@ -83,14 +85,12 @@ fn check_block(
                 }
                 scope = after;
             }
-            FlatOp::HtmlFor(for_) => {
+            FlatHtmlOp::For(for_) => {
                 check_block(&for_.body, vec![false; html.len()], html, function);
             }
             _ => {}
         }
-        if html[binding.binder.var.index()] {
-            scope[binding.binder.var.index()] = true;
-        }
+        scope[binding.binder.var.index()] = true;
     }
     read(block.result, &mut scope, html, function);
     scope
@@ -107,8 +107,7 @@ fn read(name: ValueId, scope: &mut [bool], html: &[bool], function: &IrFunction)
 
 /// Panics unless every binding has the type its op produces from the types
 /// of its operands and every block produces the type its context expects.
-/// A name is read only after it is bound. A function that returns a value
-/// has no Html parameter, and a block that produces a value binds no Html.
+/// A name is read only after it is bound.
 pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
     let mut checker = Checker {
         registry,
@@ -116,22 +115,20 @@ pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
         types: vec![None; module.value_ids.count()],
     };
     for function in &module.functions {
-        for param in function.parameters() {
-            assert!(
-                matches!(function, FlatFunctionDeclaration::Html(_))
-                    || param.binder.typ != Type::HTML,
-                "{} returns a value but has the Html parameter {param}",
-                function.function()
-            );
-            checker.bind(param.binder.var, BoundType::of(&param.binder.typ));
-        }
-        let (body, return_type) = match function {
-            FlatFunctionDeclaration::Data(function) => {
-                (&function.body, Type::Data(function.return_type.clone()))
+        match function {
+            FlatFunctionDeclaration::Data(data) => {
+                for param in &data.parameters {
+                    checker.bind(param.binder.var, BoundType::Data(&param.binder.typ));
+                }
+                checker.data_block(&data.body, &data.return_type, function.function());
             }
-            FlatFunctionDeclaration::Html(function) => (&function.body, Type::HTML),
-        };
-        checker.block(body, &return_type, function.function());
+            FlatFunctionDeclaration::Html(html) => {
+                for param in &html.parameters {
+                    checker.bind(param.binder.var, BoundType::of(&param.binder.typ));
+                }
+                checker.html_block(&html.body, function.function());
+            }
+        }
     }
 }
 
@@ -143,8 +140,8 @@ struct Checker<'a> {
     types: Vec<Option<BoundType<'a>>>,
 }
 
-/// The type of a name as its binder gives it, a Type for a binding or a
-/// parameter and a DataType for a loop or a pattern.
+/// The type of a name as its binder gives it, a Type for a parameter, a
+/// DataType for a value and Html for Html.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BoundType<'a> {
     Data(&'a DataType),
@@ -192,76 +189,108 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn resolve<'t>(&self, typ: &'t Type) -> Option<ResolvedType<'t>>
-    where
-        'a: 't,
-    {
-        self.registry.resolve(typ.as_data()?)
-    }
-
-    fn block(&mut self, block: &'a FlatBlock, expected: &Type, function: &IrFunction) {
-        for binding in &block.bindings {
-            assert!(
-                *expected == Type::HTML || binding.binder.typ != Type::HTML,
-                "{function} binds {} in a block that produces {expected}",
-                binding.binder
-            );
-            assert!(
-                self.op(&binding.op, &binding.binder.typ, function),
-                "{function} binds {} to an op that does not produce that type",
-                binding.binder
-            );
-            self.bind(binding.binder.var, BoundType::of(&binding.binder.typ));
-        }
+    fn data_block(&mut self, block: &'a FlatDataBlock, expected: &DataType, function: &IrFunction) {
+        self.data_bindings(&block.bindings, function);
         assert!(
-            self.typ(block.result).is(expected),
+            self.typ(block.result) == BoundType::Data(expected),
             "{function} has a block that produces {} where {expected} is expected",
             self.typ(block.result)
         );
     }
 
+    fn html_block(&mut self, block: &'a FlatHtmlBlock, function: &IrFunction) {
+        self.data_bindings(&block.bindings, function);
+        for binding in &block.html {
+            assert!(
+                self.html_op(&binding.op, function),
+                "{function} binds {} to an op that does not produce Html",
+                binding.binder
+            );
+            self.bind(binding.binder.var, BoundType::Html);
+        }
+        assert!(
+            self.typ(block.result) == BoundType::Html,
+            "{function} has a block that produces {} where Html is expected",
+            self.typ(block.result)
+        );
+    }
+
+    fn data_bindings(&mut self, bindings: &'a [FlatDataBinding], function: &IrFunction) {
+        for binding in bindings {
+            assert!(
+                self.flat_data_op(&binding.op, &binding.binder.typ, function),
+                "{function} binds {} to an op that does not produce that type",
+                binding.binder
+            );
+            self.bind(binding.binder.var, BoundType::Data(&binding.binder.typ));
+        }
+    }
+
+    /// The declaration of the function a call in `function` calls.
+    fn callee(&self, callee: &IrFunction, function: &IrFunction) -> &'a FlatFunctionDeclaration {
+        self.functions
+            .iter()
+            .find(|declared| declared.function().id == callee.id)
+            .unwrap_or_else(|| panic!("{function} calls the undeclared {callee}"))
+    }
+
+    /// Whether the arguments follow the parameters, one of its type for each.
+    fn args(&self, args: &[ValueId], params: &[IrParameter<Type>]) -> bool {
+        args.len() == params.len()
+            && args
+                .iter()
+                .zip(params)
+                .all(|(arg, param)| self.typ(*arg).is(&param.binder.typ))
+    }
+
     /// Whether `op` produces a `declared` from the types of its operands.
-    fn op(&mut self, op: &'a FlatOp, declared: &Type, function: &IrFunction) -> bool {
+    fn flat_data_op(
+        &mut self,
+        op: &'a FlatDataOp,
+        declared: &DataType,
+        function: &IrFunction,
+    ) -> bool {
         match op {
-            FlatOp::Data(op) => self.data_op(op, declared),
-            FlatOp::Call(callee, args) => {
-                let callee = self
-                    .functions
-                    .iter()
-                    .find(|declared| declared.function().id == callee.id)
-                    .unwrap_or_else(|| panic!("{function} calls the undeclared {callee}"));
-                let params = callee.parameters();
-                let returns_declared = match (callee, declared) {
-                    (FlatFunctionDeclaration::Data(callee), Type::Data(declared)) => {
-                        callee.return_type == *declared
-                    }
-                    (FlatFunctionDeclaration::Html(_), Type::Html(_)) => true,
-                    (FlatFunctionDeclaration::Data(_), Type::Html(_))
-                    | (FlatFunctionDeclaration::Html(_), Type::Data(_)) => false,
+            FlatDataOp::Data(op) => self.data_op(op, declared),
+            FlatDataOp::Call(callee, args) => {
+                let callee = self.callee(callee, function);
+                let returns_declared = match callee {
+                    FlatFunctionDeclaration::Data(callee) => callee.return_type == *declared,
+                    FlatFunctionDeclaration::Html(_) => false,
                 };
-                args.len() == params.len()
-                    && args
-                        .iter()
-                        .zip(params)
-                        .all(|(arg, param)| self.typ(*arg).is(&param.binder.typ))
-                    && returns_declared
+                returns_declared && self.args(args, &callee.parameters())
             }
-            FlatOp::Match(match_) => {
+            FlatDataOp::Match(match_) => {
                 let subject = self.typ(match_.subject);
                 for arm in &match_.arms {
                     self.pattern(&arm.pattern, subject);
-                    self.block(&arm.body, declared, function);
+                    self.data_block(&arm.body, declared, function);
                 }
                 true
             }
-            FlatOp::HtmlText(_) => *declared == Type::HTML,
-            FlatOp::HtmlEscape(name) => {
-                self.typ(*name).is(&Type::STRING) && *declared == Type::HTML
+        }
+    }
+
+    /// Whether `op` produces Html from the types of its operands.
+    fn html_op(&mut self, op: &'a FlatHtmlOp, function: &IrFunction) -> bool {
+        match op {
+            FlatHtmlOp::Call(callee, args) => {
+                let callee = self.callee(callee, function);
+                matches!(callee, FlatFunctionDeclaration::Html(_))
+                    && self.args(args, &callee.parameters())
             }
-            FlatOp::HtmlConcat(parts) => {
-                parts.iter().all(|part| self.typ(*part).is(&Type::HTML)) && *declared == Type::HTML
+            FlatHtmlOp::Match(match_) => {
+                let subject = self.typ(match_.subject);
+                for arm in &match_.arms {
+                    self.pattern(&arm.pattern, subject);
+                    self.html_block(&arm.body, function);
+                }
+                true
             }
-            FlatOp::HtmlElement(element) => {
+            FlatHtmlOp::Text(_) => true,
+            FlatHtmlOp::Escape(name) => self.typ(*name).is(&Type::STRING),
+            FlatHtmlOp::Concat(parts) => parts.iter().all(|part| self.typ(*part).is(&Type::HTML)),
+            FlatHtmlOp::Element(element) => {
                 let attributes = element
                     .attributes
                     .values()
@@ -269,9 +298,9 @@ impl<'a> Checker<'a> {
                         IrAttribute::Value(name) => self.typ(*name).is(&Type::STRING),
                         IrAttribute::Presence(name) => self.typ(*name).is(&Type::BOOL),
                     });
-                attributes && self.typ(element.children).is(&Type::HTML) && *declared == Type::HTML
+                attributes && self.typ(element.children).is(&Type::HTML)
             }
-            FlatOp::HtmlFor(for_) => {
+            FlatHtmlOp::For(for_) => {
                 let Some(DataType::Array(element)) = self.data(for_.array) else {
                     return false;
                 };
@@ -281,25 +310,25 @@ impl<'a> Checker<'a> {
                     }
                     self.bind(var.var, BoundType::Data(&var.typ));
                 }
-                self.block(&for_.body, &Type::HTML, function);
-                *declared == Type::HTML
+                self.html_block(&for_.body, function);
+                true
             }
         }
     }
 
-    fn data_op(&self, op: &IrDataOp, declared: &Type) -> bool {
+    fn data_op(&self, op: &IrDataOp, declared: &DataType) -> bool {
         let same = |left: ValueId, right: ValueId| {
             let typ = self.data(left)?;
             (Some(typ) == self.data(right)).then_some(typ)
         };
         let all = |names: &[ValueId], typ: Type| names.iter().all(|name| self.typ(*name).is(&typ));
         let data = |name: ValueId| self.data(name);
-        let declared_data = declared.as_data();
+        let declared_data = Some(declared);
         match op {
-            IrDataOp::StringLiteral(_) => *declared == Type::STRING,
-            IrDataOp::IntLiteral(_) => *declared == Type::INT,
-            IrDataOp::FloatLiteral(_) => *declared == Type::FLOAT,
-            IrDataOp::BoolLiteral(_) => *declared == Type::BOOL,
+            IrDataOp::StringLiteral(_) => *declared == DataType::String,
+            IrDataOp::IntLiteral(_) => *declared == DataType::Int,
+            IrDataOp::FloatLiteral(_) => *declared == DataType::Float,
+            IrDataOp::BoolLiteral(_) => *declared == DataType::Bool,
             IrDataOp::Array(elements) => match declared_data {
                 Some(DataType::Array(element)) => {
                     elements.iter().all(|name| data(*name) == Some(&**element))
@@ -316,14 +345,14 @@ impl<'a> Checker<'a> {
                 }
                 _ => false,
             },
-            IrDataOp::Record(fields) => match self.resolve(declared) {
+            IrDataOp::Record(fields) => match self.registry.resolve(declared) {
                 Some(ResolvedType::Record {
                     fields: declared_fields,
                     ..
                 }) => self.fields(fields, declared_fields),
                 _ => false,
             },
-            IrDataOp::Enum(variant, fields) => match self.resolve(declared) {
+            IrDataOp::Enum(variant, fields) => match self.registry.resolve(declared) {
                 Some(ResolvedType::Enum { variants, .. }) => variants
                     .iter()
                     .find(|v| v.name == *variant)
@@ -335,18 +364,20 @@ impl<'a> Checker<'a> {
                 _ => false,
             },
             IrDataOp::OptionNone => matches!(declared_data, Some(DataType::Option(_))),
-            IrDataOp::StringConcat(parts) => all(parts, Type::STRING) && *declared == Type::STRING,
+            IrDataOp::StringConcat(parts) => {
+                all(parts, Type::STRING) && *declared == DataType::String
+            }
             IrDataOp::NumericAdd(left, right)
             | IrDataOp::NumericSubtract(left, right)
             | IrDataOp::NumericMultiply(left, right) => same(*left, *right)
                 .is_some_and(|typ| typ.as_numeric_type().is_some() && Some(typ) == declared_data),
             IrDataOp::Equals(left, right) => {
                 same(*left, *right).is_some_and(|typ| typ.as_equatable_type().is_some())
-                    && *declared == Type::BOOL
+                    && *declared == DataType::Bool
             }
             IrDataOp::LessThan(left, right) | IrDataOp::LessThanOrEqual(left, right) => {
                 same(*left, *right).is_some_and(|typ| typ.as_comparable_type().is_some())
-                    && *declared == Type::BOOL
+                    && *declared == DataType::Bool
             }
             IrDataOp::ArrayFromRange(start, end) => {
                 all(&[*start, *end], Type::INT)
@@ -357,28 +388,28 @@ impl<'a> Checker<'a> {
                 typ.and_then(DataType::as_numeric_type).is_some() && typ == declared_data
             }
             IrDataOp::BoolNegation(operand) => {
-                all(&[*operand], Type::BOOL) && *declared == Type::BOOL
+                all(&[*operand], Type::BOOL) && *declared == DataType::Bool
             }
             IrDataOp::ArrayLength(operand) => {
-                matches!(data(*operand), Some(DataType::Array(_))) && *declared == Type::INT
+                matches!(data(*operand), Some(DataType::Array(_))) && *declared == DataType::Int
             }
             IrDataOp::ArrayIsEmpty(operand) => {
-                matches!(data(*operand), Some(DataType::Array(_))) && *declared == Type::BOOL
+                matches!(data(*operand), Some(DataType::Array(_))) && *declared == DataType::Bool
             }
             IrDataOp::StringIsEmpty(operand) => {
-                all(&[*operand], Type::STRING) && *declared == Type::BOOL
+                all(&[*operand], Type::STRING) && *declared == DataType::Bool
             }
             IrDataOp::OptionIsSome(operand) | IrDataOp::OptionIsNone(operand) => {
-                matches!(data(*operand), Some(DataType::Option(_))) && *declared == Type::BOOL
+                matches!(data(*operand), Some(DataType::Option(_))) && *declared == DataType::Bool
             }
             IrDataOp::IntToString(operand) => {
-                all(&[*operand], Type::INT) && *declared == Type::STRING
+                all(&[*operand], Type::INT) && *declared == DataType::String
             }
             IrDataOp::FloatToInt(operand) => {
-                all(&[*operand], Type::FLOAT) && *declared == Type::INT
+                all(&[*operand], Type::FLOAT) && *declared == DataType::Int
             }
             IrDataOp::IntToFloat(operand) => {
-                all(&[*operand], Type::INT) && *declared == Type::FLOAT
+                all(&[*operand], Type::INT) && *declared == DataType::Float
             }
             IrDataOp::FieldAccess(object, field) => {
                 match data(*object).and_then(|typ| self.registry.resolve(typ)) {

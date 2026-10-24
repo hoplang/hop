@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use crate::hop::typing::Pattern;
-use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
+use crate::ir::flat_module::{
+    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp,
+};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
@@ -40,46 +42,93 @@ impl<'a> Freshener<'a> {
         }
     }
 
-    pub fn freshen_block(&mut self, block: &FlatBlock) -> FlatBlock {
+    /// Copy the arms of a match, each pattern binding fresh names, and its
+    /// subject.
+    fn freshen_match<B>(
+        &mut self,
+        match_: &IrMatch<B>,
+        freshen_block: impl Fn(&mut Self, &B) -> B,
+    ) -> IrMatch<B> {
+        IrMatch {
+            subject: self.name(match_.subject),
+            arms: match_
+                .arms
+                .iter()
+                .map(|arm| {
+                    let mut pattern = arm.pattern.clone();
+                    pattern.for_each_binding_mut(&mut |binding| {
+                        if let Pattern::Binding(binder) = binding {
+                            *binder = self.fresh_binder(binder);
+                        }
+                    });
+                    IrMatchArm {
+                        pattern,
+                        body: freshen_block(self, &arm.body),
+                    }
+                })
+                .collect(),
+        }
+    }
+
+    pub fn freshen_data_block(&mut self, block: &FlatDataBlock) -> FlatDataBlock {
         let bindings = block
             .bindings
             .iter()
-            .map(|binding| self.freshen_binding(binding))
+            .map(|binding| self.freshen_data_binding(binding))
             .collect();
-        FlatBlock {
+        FlatDataBlock {
             bindings,
             result: self.name(block.result),
         }
     }
 
-    fn freshen_binding(&mut self, binding: &FlatBinding) -> FlatBinding {
+    pub fn freshen_html_block(&mut self, block: &FlatHtmlBlock) -> FlatHtmlBlock {
+        let bindings = block
+            .bindings
+            .iter()
+            .map(|binding| self.freshen_data_binding(binding))
+            .collect();
+        let html = block
+            .html
+            .iter()
+            .map(|binding| self.freshen_html_binding(binding))
+            .collect();
+        FlatHtmlBlock {
+            bindings,
+            html,
+            result: self.name(block.result),
+        }
+    }
+
+    fn freshen_data_binding(&mut self, binding: &FlatDataBinding) -> FlatDataBinding {
         let op = match &binding.op {
-            FlatOp::Match(match_) => FlatOp::Match(IrMatch {
-                subject: self.name(match_.subject),
-                arms: match_
-                    .arms
-                    .iter()
-                    .map(|arm| {
-                        let mut pattern = arm.pattern.clone();
-                        pattern.for_each_binding_mut(&mut |binding| {
-                            if let Pattern::Binding(binder) = binding {
-                                *binder = self.fresh_binder(binder);
-                            }
-                        });
-                        IrMatchArm {
-                            pattern,
-                            body: self.freshen_block(&arm.body),
-                        }
-                    })
-                    .collect(),
-            }),
-            FlatOp::HtmlFor(IrFor { var, array, body }) => {
+            FlatDataOp::Match(match_) => {
+                FlatDataOp::Match(self.freshen_match(match_, Self::freshen_data_block))
+            }
+            op => {
+                let mut op = op.clone();
+                op.for_each_operand_mut(&mut |operand| *operand = self.name(*operand));
+                op
+            }
+        };
+        FlatDataBinding {
+            binder: self.fresh_binder(&binding.binder),
+            op,
+        }
+    }
+
+    pub fn freshen_html_binding(&mut self, binding: &FlatHtmlBinding) -> FlatHtmlBinding {
+        let op = match &binding.op {
+            FlatHtmlOp::Match(match_) => {
+                FlatHtmlOp::Match(self.freshen_match(match_, Self::freshen_html_block))
+            }
+            FlatHtmlOp::For(IrFor { var, array, body }) => {
                 let array = self.name(*array);
                 let var = var.as_ref().map(|binder| self.fresh_binder(binder));
-                FlatOp::HtmlFor(IrFor {
+                FlatHtmlOp::For(IrFor {
                     var,
                     array,
-                    body: self.freshen_block(body),
+                    body: self.freshen_html_block(body),
                 })
             }
             op => {
@@ -88,7 +137,7 @@ impl<'a> Freshener<'a> {
                 op
             }
         };
-        FlatBinding {
+        FlatHtmlBinding {
             binder: self.fresh_binder(&binding.binder),
             op,
         }

@@ -1,19 +1,43 @@
 use std::collections::HashSet;
 
 use crate::hop::typing::Pattern;
-use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
+use crate::ir::flat_module::{
+    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
+};
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::ValueId;
 
-/// A pass that removes the bindings nothing reads.
+/// A pass that removes the bindings nothing reads from every body.
 ///
 /// Every op is pure, so a binding whose name no later binding, nested
 /// block or result reads computes nothing anyone sees, and goes away with
 /// the blocks nested in it. A loop variable or binding of a pattern that
 /// nothing reads any more goes away too, and becomes `_`.
-pub fn eliminate_dead_bindings(block: FlatBlock) -> FlatBlock {
-    eliminate(block, &mut HashSet::new())
+pub fn eliminate_dead_bindings(module: FlatModule) -> FlatModule {
+    let functions = module
+        .functions
+        .into_iter()
+        .map(|function| match function {
+            FlatFunctionDeclaration::Data(function) => {
+                FlatFunctionDeclaration::Data(FlatDataFunction {
+                    body: eliminate_data(function.body, &mut HashSet::new()),
+                    ..function
+                })
+            }
+            FlatFunctionDeclaration::Html(function) => {
+                FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                    body: eliminate_html(function.body, &mut HashSet::new()),
+                    ..function
+                })
+            }
+        })
+        .collect();
+    FlatModule {
+        functions,
+        value_ids: module.value_ids,
+    }
 }
 
 /// Walk the bindings backwards, keeping a binding when its name is live
@@ -21,49 +45,106 @@ pub fn eliminate_dead_bindings(block: FlatBlock) -> FlatBlock {
 /// what comes after, and is shared with nested blocks, since names are
 /// unique. A loop variable or binding of a pattern stays when the block it
 /// scopes over, walked first, reads it.
-fn eliminate(block: FlatBlock, live: &mut HashSet<ValueId>) -> FlatBlock {
+fn eliminate_data(block: FlatDataBlock, live: &mut HashSet<ValueId>) -> FlatDataBlock {
     live.insert(block.result);
-    let mut kept = Vec::with_capacity(block.bindings.len());
-    for binding in block.bindings.into_iter().rev() {
+    FlatDataBlock {
+        bindings: eliminate_data_bindings(block.bindings, live),
+        result: block.result,
+    }
+}
+
+/// Walk the Html backwards and then the values, as `eliminate_data` walks
+/// the bindings of a value.
+fn eliminate_html(block: FlatHtmlBlock, live: &mut HashSet<ValueId>) -> FlatHtmlBlock {
+    live.insert(block.result);
+    let html = eliminate_html_bindings(block.html, live);
+    FlatHtmlBlock {
+        bindings: eliminate_data_bindings(block.bindings, live),
+        html,
+        result: block.result,
+    }
+}
+
+fn eliminate_data_bindings(
+    bindings: Vec<FlatDataBinding>,
+    live: &mut HashSet<ValueId>,
+) -> Vec<FlatDataBinding> {
+    let mut kept = Vec::with_capacity(bindings.len());
+    for binding in bindings.into_iter().rev() {
         if !live.contains(&binding.binder.var) {
             continue;
         }
-        let FlatBinding { binder, op } = binding;
+        let FlatDataBinding { binder, op } = binding;
         let op = match op {
-            FlatOp::Match(IrMatch { subject, arms }) => FlatOp::Match(IrMatch {
-                subject,
-                arms: arms
-                    .into_iter()
-                    .map(|arm| {
-                        let body = eliminate(arm.body, live);
-                        let mut pattern = arm.pattern;
-                        pattern.for_each_binding_mut(&mut |binding| {
-                            if let Pattern::Binding(binder) = binding
-                                && !live.contains(&binder.var)
-                            {
-                                *binding = Pattern::Wildcard;
-                            }
-                        });
-                        IrMatchArm { pattern, body }
-                    })
-                    .collect(),
-            }),
-            FlatOp::HtmlFor(IrFor { var, array, body }) => {
-                let body = eliminate(body, live);
-                let var = var.filter(|binder| live.contains(&binder.var));
-                FlatOp::HtmlFor(IrFor { var, array, body })
+            FlatDataOp::Match(match_) => {
+                FlatDataOp::Match(eliminate_match(match_, live, eliminate_data))
             }
             op => op,
         };
         op.for_each_operand(&mut |operand| {
             live.insert(operand);
         });
-        kept.push(FlatBinding { binder, op });
+        kept.push(FlatDataBinding { binder, op });
     }
     kept.reverse();
-    FlatBlock {
-        bindings: kept,
-        result: block.result,
+    kept
+}
+
+fn eliminate_html_bindings(
+    bindings: Vec<FlatHtmlBinding>,
+    live: &mut HashSet<ValueId>,
+) -> Vec<FlatHtmlBinding> {
+    let mut kept = Vec::with_capacity(bindings.len());
+    for binding in bindings.into_iter().rev() {
+        if !live.contains(&binding.binder.var) {
+            continue;
+        }
+        let FlatHtmlBinding { binder, op } = binding;
+        let op = match op {
+            FlatHtmlOp::Match(match_) => {
+                FlatHtmlOp::Match(eliminate_match(match_, live, eliminate_html))
+            }
+            FlatHtmlOp::For(IrFor { var, array, body }) => {
+                let body = eliminate_html(body, live);
+                let var = var.filter(|binder| live.contains(&binder.var));
+                FlatHtmlOp::For(IrFor { var, array, body })
+            }
+            op => op,
+        };
+        op.for_each_operand(&mut |operand| {
+            live.insert(operand);
+        });
+        kept.push(FlatHtmlBinding { binder, op });
+    }
+    kept.reverse();
+    kept
+}
+
+/// Eliminate in each arm, and make a binding of its pattern a wildcard
+/// when the arm does not read it.
+fn eliminate_match<B>(
+    match_: IrMatch<B>,
+    live: &mut HashSet<ValueId>,
+    eliminate_block: impl Fn(B, &mut HashSet<ValueId>) -> B,
+) -> IrMatch<B> {
+    IrMatch {
+        subject: match_.subject,
+        arms: match_
+            .arms
+            .into_iter()
+            .map(|arm| {
+                let body = eliminate_block(arm.body, live);
+                let mut pattern = arm.pattern;
+                pattern.for_each_binding_mut(&mut |binding| {
+                    if let Pattern::Binding(binder) = binding
+                        && !live.contains(&binder.var)
+                    {
+                        *binding = Pattern::Wildcard;
+                    }
+                });
+                IrMatchArm { pattern, body }
+            })
+            .collect(),
     }
 }
 
@@ -72,9 +153,7 @@ mod tests {
 
     use super::*;
     use crate::hop::typing::{Ty, TypeRegistryBuilder};
-    use crate::ir::flat_module::{
-        FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction, FlatModule,
-    };
+    use crate::ir::flat_module::FlatModule;
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
     use crate::ir::runtime::EvalError;
@@ -82,30 +161,6 @@ mod tests {
     use crate::ir::runtime::value::Value;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
-
-    fn run(module: FlatModule) -> FlatModule {
-        FlatModule {
-            value_ids: module.value_ids,
-            functions: module
-                .functions
-                .into_iter()
-                .map(|function| match function {
-                    FlatFunctionDeclaration::Data(function) => {
-                        FlatFunctionDeclaration::Data(FlatDataFunction {
-                            body: eliminate_dead_bindings(function.body),
-                            ..function
-                        })
-                    }
-                    FlatFunctionDeclaration::Html(function) => {
-                        FlatFunctionDeclaration::Html(FlatHtmlFunction {
-                            body: eliminate_dead_bindings(function.body),
-                            ..function
-                        })
-                    }
-                })
-                .collect(),
-        }
-    }
 
     #[test]
     fn fuzz_random_modules_evaluate_identically_after_elimination() {
@@ -128,7 +183,7 @@ mod tests {
                 })
                 .collect();
 
-            let module = run(module);
+            let module = eliminate_dead_bindings(module);
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit the call depth limit has no output to
@@ -150,7 +205,7 @@ mod tests {
 
     fn check(module: FlatModule, expected: Expect) {
         let before = module.to_string();
-        let after = run(module).to_string();
+        let after = eliminate_dead_bindings(module).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
     }
 

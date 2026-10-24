@@ -73,16 +73,23 @@ pub fn markup_to_writer(
         bound: HashSet::new(),
     };
     for function in &functions {
-        for param in function.parameters() {
-            if let Type::Data(typ) = &param.binder.typ {
-                lowerer.binder_types.insert(param.binder.var, typ.clone());
-            }
-        }
         match function {
             MarkupFunctionDeclaration::Data(function) => {
+                for param in &function.parameters {
+                    lowerer
+                        .binder_types
+                        .insert(param.binder.var, param.binder.typ.clone());
+                }
                 lowerer.analyze_data_block(&function.body);
             }
-            MarkupFunctionDeclaration::Html(function) => lowerer.analyze_html_block(&function.body),
+            MarkupFunctionDeclaration::Html(function) => {
+                for param in &function.parameters {
+                    if let Type::Data(typ) = &param.binder.typ {
+                        lowerer.binder_types.insert(param.binder.var, typ.clone());
+                    }
+                }
+                lowerer.analyze_html_block(&function.body);
+            }
         }
     }
     let page_functions: HashSet<FunctionId> = pages
@@ -196,7 +203,11 @@ impl<'a> Lowerer<'a> {
                 MarkupDataOp::Data(op) => {
                     op.for_each_operand(&mut |operand| self.read(operand, Reader::Value));
                 }
-                MarkupDataOp::Call(_, args) => self.analyze_args(args),
+                MarkupDataOp::Call(_, args) => {
+                    for arg in args {
+                        self.read(*arg, Reader::Value);
+                    }
+                }
                 MarkupDataOp::Match(match_) => {
                     let bound_whole = match_
                         .arms
@@ -407,7 +418,7 @@ impl<'a> Lowerer<'a> {
                 self.lower_bindings(&function.body.bindings, &mut bindings);
                 WriterFunctionDeclaration {
                     function: function.function.clone(),
-                    parameters: function.parameters.clone(),
+                    parameters: decl.parameters(),
                     return_type: Type::Data(function.return_type.clone()),
                     body: WriterFunctionBody::Returns(WriterBlock {
                         bindings,
@@ -431,9 +442,10 @@ impl<'a> Lowerer<'a> {
                     self.aliases.insert(binding.binder.var, alias);
                     continue;
                 }
-                MarkupDataOp::Call(function, args) => {
-                    WriterOp::Call(function.clone(), self.lower_args(args, out))
-                }
+                MarkupDataOp::Call(function, args) => WriterOp::Call(
+                    function.clone(),
+                    args.iter().map(|arg| self.name(*arg)).collect(),
+                ),
                 MarkupDataOp::Data(op) => {
                     let mut op = op.clone();
                     op.for_each_operand_mut(&mut |name| *name = self.name(*name));

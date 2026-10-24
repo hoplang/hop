@@ -1,12 +1,13 @@
 use crate::document::CheapString;
 use crate::hop::typing::{
-    Constructor, DataType, Pattern, PatternField, RecordField, ResolvedType, Ty, Type, TypeRegistry,
+    Constructor, DataType, HtmlType, Pattern, PatternField, RecordField, ResolvedType, Ty, Type,
+    TypeRegistry,
 };
 use crate::html::HtmlElementKind;
 use crate::ir::flat_lint;
 use crate::ir::flat_module::{
-    FlatBinding, FlatBlock, FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction,
-    FlatModule, FlatOp,
+    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
 };
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binder::IrBinder;
@@ -132,7 +133,7 @@ impl FlatModuleBuilder {
             .unwrap();
         let declared = &self.functions[index];
         assert!(declared.body.is_none());
-        let (body, _) = FlatBlockBuilder::build(&self, declared, |t| body_fn(t, declared));
+        let body = FlatBlockBuilder::build(&self, declared, |t| body_fn(t, declared));
         self.functions[index].body = Some(body);
         self
     }
@@ -159,14 +160,22 @@ impl FlatModuleBuilder {
                     function: declared.function,
                     entrypoint: declared.entrypoint,
                     parameters: declared.parameters,
-                    body: declared.body.unwrap(),
+                    body: declared.body.unwrap().into_html(),
                 }),
                 Type::Data(return_type) => FlatFunctionDeclaration::Data(FlatDataFunction {
+                    parameters: declared
+                        .parameters
+                        .into_iter()
+                        .map(|param| {
+                            param.into_data().unwrap_or_else(|| {
+                                panic!("{} returns a value but takes Html", declared.function)
+                            })
+                        })
+                        .collect(),
                     function: declared.function,
                     entrypoint: declared.entrypoint,
-                    parameters: declared.parameters,
                     return_type,
-                    body: declared.body.unwrap(),
+                    body: declared.body.unwrap().into_data(),
                 }),
             })
             .collect();
@@ -185,13 +194,44 @@ pub struct DeclaredFunction {
     pub entrypoint: bool,
     pub parameters: Vec<IrParameter<Type>>,
     pub return_type: Type,
-    pub body: Option<FlatBlock>,
+    body: Option<BuiltBlock>,
+}
+
+/// A block as built, before it is known whether it computes a value or
+/// renders Html.
+struct BuiltBlock {
+    bindings: Vec<FlatDataBinding>,
+    html: Vec<FlatHtmlBinding>,
+    result: ValueId,
+    typ: Type,
+}
+
+impl BuiltBlock {
+    fn into_data(self) -> FlatDataBlock {
+        assert!(
+            self.html.is_empty(),
+            "a block that computes a value binds Html"
+        );
+        FlatDataBlock {
+            bindings: self.bindings,
+            result: self.result,
+        }
+    }
+
+    fn into_html(self) -> FlatHtmlBlock {
+        FlatHtmlBlock {
+            bindings: self.bindings,
+            html: self.html,
+            result: self.result,
+        }
+    }
 }
 
 pub struct FlatBlockBuilder<'a> {
     module: &'a FlatModuleBuilder,
     function: &'a DeclaredFunction,
-    bindings: RefCell<Vec<FlatBinding>>,
+    bindings: RefCell<Vec<FlatDataBinding>>,
+    html: RefCell<Vec<FlatHtmlBinding>>,
 }
 
 impl<'a> FlatBlockBuilder<'a> {
@@ -199,20 +239,23 @@ impl<'a> FlatBlockBuilder<'a> {
         module: &'a FlatModuleBuilder,
         function: &'a DeclaredFunction,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
-    ) -> (FlatBlock, Type) {
+    ) -> BuiltBlock {
         let builder = FlatBlockBuilder {
             module,
             function,
             bindings: RefCell::new(Vec::new()),
+            html: RefCell::new(Vec::new()),
         };
         let result = body_fn(&builder);
-        let typ = builder.typ(result);
-        let bindings = builder.bindings.into_inner();
-        let block = FlatBlock { bindings, result };
-        (block, typ)
+        BuiltBlock {
+            typ: builder.typ(result),
+            bindings: builder.bindings.into_inner(),
+            html: builder.html.into_inner(),
+            result,
+        }
     }
 
-    fn block(&self, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> (FlatBlock, Type) {
+    fn block(&self, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> BuiltBlock {
         Self::build(self.module, self.function, body_fn)
     }
 
@@ -226,10 +269,25 @@ impl<'a> FlatBlockBuilder<'a> {
         Ref::map(self.module.value_types.borrow(), Vec::as_slice)
     }
 
-    fn push(&self, typ: Type, op: FlatOp) -> ValueId {
+    fn push(&self, typ: Type, op: FlatDataOp) -> ValueId {
         let name = self.module.binder(typ.clone());
-        self.bindings.borrow_mut().push(FlatBinding {
+        let Type::Data(typ) = typ else {
+            panic!("an op of a value produces data");
+        };
+        self.bindings.borrow_mut().push(FlatDataBinding {
             binder: IrBinder { var: name, typ },
+            op,
+        });
+        name
+    }
+
+    fn push_html(&self, op: FlatHtmlOp) -> ValueId {
+        let name = self.module.binder(Type::HTML);
+        self.html.borrow_mut().push(FlatHtmlBinding {
+            binder: IrBinder {
+                var: name,
+                typ: HtmlType,
+            },
             op,
         });
         name
@@ -246,20 +304,20 @@ impl<'a> FlatBlockBuilder<'a> {
     pub fn str(&self, s: &str) -> ValueId {
         self.push(
             Type::STRING,
-            FlatOp::Data(IrDataOp::StringLiteral(CheapString::new(s.to_string()))),
+            FlatDataOp::Data(IrDataOp::StringLiteral(CheapString::new(s.to_string()))),
         )
     }
 
     pub fn int(&self, n: i32) -> ValueId {
-        self.push(Type::INT, FlatOp::Data(IrDataOp::IntLiteral(n)))
+        self.push(Type::INT, FlatDataOp::Data(IrDataOp::IntLiteral(n)))
     }
 
     pub fn bool(&self, b: bool) -> ValueId {
-        self.push(Type::BOOL, FlatOp::Data(IrDataOp::BoolLiteral(b)))
+        self.push(Type::BOOL, FlatDataOp::Data(IrDataOp::BoolLiteral(b)))
     }
 
     pub fn float(&self, f: f64) -> ValueId {
-        self.push(Type::FLOAT, FlatOp::Data(IrDataOp::FloatLiteral(f)))
+        self.push(Type::FLOAT, FlatDataOp::Data(IrDataOp::FloatLiteral(f)))
     }
 
     pub fn param(&self, name: &str) -> ValueId {
@@ -273,49 +331,55 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn eq(&self, left: ValueId, right: ValueId) -> ValueId {
-        self.push(Type::BOOL, FlatOp::Data(IrDataOp::Equals(left, right)))
+        self.push(Type::BOOL, FlatDataOp::Data(IrDataOp::Equals(left, right)))
     }
 
     pub fn lt(&self, left: ValueId, right: ValueId) -> ValueId {
-        self.push(Type::BOOL, FlatOp::Data(IrDataOp::LessThan(left, right)))
+        self.push(
+            Type::BOOL,
+            FlatDataOp::Data(IrDataOp::LessThan(left, right)),
+        )
     }
 
     pub fn lte(&self, left: ValueId, right: ValueId) -> ValueId {
         self.push(
             Type::BOOL,
-            FlatOp::Data(IrDataOp::LessThanOrEqual(left, right)),
+            FlatDataOp::Data(IrDataOp::LessThanOrEqual(left, right)),
         )
     }
 
     pub fn add(&self, left: ValueId, right: ValueId) -> ValueId {
         self.push(
             self.typ(left),
-            FlatOp::Data(IrDataOp::NumericAdd(left, right)),
+            FlatDataOp::Data(IrDataOp::NumericAdd(left, right)),
         )
     }
 
     pub fn sub(&self, left: ValueId, right: ValueId) -> ValueId {
         self.push(
             self.typ(left),
-            FlatOp::Data(IrDataOp::NumericSubtract(left, right)),
+            FlatDataOp::Data(IrDataOp::NumericSubtract(left, right)),
         )
     }
 
     pub fn mul(&self, left: ValueId, right: ValueId) -> ValueId {
         self.push(
             self.typ(left),
-            FlatOp::Data(IrDataOp::NumericMultiply(left, right)),
+            FlatDataOp::Data(IrDataOp::NumericMultiply(left, right)),
         )
     }
 
     pub fn not(&self, operand: ValueId) -> ValueId {
-        self.push(Type::BOOL, FlatOp::Data(IrDataOp::BoolNegation(operand)))
+        self.push(
+            Type::BOOL,
+            FlatDataOp::Data(IrDataOp::BoolNegation(operand)),
+        )
     }
 
     pub fn neg(&self, operand: ValueId) -> ValueId {
         self.push(
             self.typ(operand),
-            FlatOp::Data(IrDataOp::NumericNegation(operand)),
+            FlatDataOp::Data(IrDataOp::NumericNegation(operand)),
         )
     }
 
@@ -326,7 +390,7 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         self.push(
             Type::array(element_type),
-            FlatOp::Data(IrDataOp::Array(elements)),
+            FlatDataOp::Data(IrDataOp::Array(elements)),
         )
     }
 
@@ -336,14 +400,14 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         self.push(
             Type::array(element_type),
-            FlatOp::Data(IrDataOp::Array(Vec::new())),
+            FlatDataOp::Data(IrDataOp::Array(Vec::new())),
         )
     }
 
     pub fn array_from_range(&self, start: ValueId, end: ValueId) -> ValueId {
         self.push(
             Type::array(DataType::Int),
-            FlatOp::Data(IrDataOp::ArrayFromRange(start, end)),
+            FlatDataOp::Data(IrDataOp::ArrayFromRange(start, end)),
         )
     }
 
@@ -358,7 +422,7 @@ impl<'a> FlatBlockBuilder<'a> {
             .collect();
         self.push(
             Type::Data(DataType::Tuple(element_types)),
-            FlatOp::Data(IrDataOp::Tuple(elements)),
+            FlatDataOp::Data(IrDataOp::Tuple(elements)),
         )
     }
 
@@ -368,20 +432,20 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         self.push(
             Type::Data(elements[index].clone()),
-            FlatOp::Data(IrDataOp::TupleIndex(tuple, index)),
+            FlatDataOp::Data(IrDataOp::TupleIndex(tuple, index)),
         )
     }
 
     pub fn int_to_string(&self, value: ValueId) -> ValueId {
-        self.push(Type::STRING, FlatOp::Data(IrDataOp::IntToString(value)))
+        self.push(Type::STRING, FlatDataOp::Data(IrDataOp::IntToString(value)))
     }
 
     pub fn float_to_int(&self, value: ValueId) -> ValueId {
-        self.push(Type::INT, FlatOp::Data(IrDataOp::FloatToInt(value)))
+        self.push(Type::INT, FlatDataOp::Data(IrDataOp::FloatToInt(value)))
     }
 
     pub fn int_to_float(&self, value: ValueId) -> ValueId {
-        self.push(Type::FLOAT, FlatOp::Data(IrDataOp::IntToFloat(value)))
+        self.push(Type::FLOAT, FlatDataOp::Data(IrDataOp::IntToFloat(value)))
     }
 
     pub fn record<'f>(
@@ -391,7 +455,7 @@ impl<'a> FlatBlockBuilder<'a> {
     ) -> ValueId {
         self.push(
             typ.into(),
-            FlatOp::Data(IrDataOp::Record(
+            FlatDataOp::Data(IrDataOp::Record(
                 fields
                     .into_iter()
                     .map(|(k, v)| (FieldName::parse(k).unwrap(), v))
@@ -408,7 +472,7 @@ impl<'a> FlatBlockBuilder<'a> {
     ) -> ValueId {
         self.push(
             typ.into(),
-            FlatOp::Data(IrDataOp::Enum(
+            FlatDataOp::Data(IrDataOp::Enum(
                 TypeName::parse(variant_name).unwrap(),
                 field_values
                     .into_iter()
@@ -424,7 +488,7 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         self.push(
             Type::option(inner_type),
-            FlatOp::Data(IrDataOp::OptionSome(inner)),
+            FlatDataOp::Data(IrDataOp::OptionSome(inner)),
         )
     }
 
@@ -432,7 +496,10 @@ impl<'a> FlatBlockBuilder<'a> {
         let Type::Data(inner_type) = inner_type else {
             panic!();
         };
-        self.push(Type::option(inner_type), FlatOp::Data(IrDataOp::OptionNone))
+        self.push(
+            Type::option(inner_type),
+            FlatDataOp::Data(IrDataOp::OptionNone),
+        )
     }
 
     pub fn match_(
@@ -448,7 +515,24 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         arms_fn(&mut arms);
         let MatchExprArms { arms, typ, .. } = arms;
-        self.push(typ.unwrap(), FlatOp::Match(IrMatch { subject, arms }))
+        let typ = typ.unwrap();
+        let arms = arms.into_iter();
+        if typ == Type::HTML {
+            let arms = arms
+                .map(|arm| IrMatchArm {
+                    pattern: arm.pattern,
+                    body: arm.body.into_html(),
+                })
+                .collect();
+            return self.push_html(FlatHtmlOp::Match(IrMatch { subject, arms }));
+        }
+        let arms = arms
+            .map(|arm| IrMatchArm {
+                pattern: arm.pattern,
+                body: arm.body.into_data(),
+            })
+            .collect();
+        self.push(typ, FlatDataOp::Match(IrMatch { subject, arms }))
     }
 
     fn resolve_pat(&self, typ: &Type, pat: Pat, bindings: &mut ArmBindings) -> IrPattern {
@@ -566,43 +650,52 @@ impl<'a> FlatBlockBuilder<'a> {
             .unwrap();
         self.push(
             Type::Data(field.typ.clone()),
-            FlatOp::Data(IrDataOp::FieldAccess(object, field.name.clone())),
+            FlatDataOp::Data(IrDataOp::FieldAccess(object, field.name.clone())),
         )
     }
 
     pub fn string_concat(&self, parts: impl IntoIterator<Item = ValueId>) -> ValueId {
         self.push(
             Type::STRING,
-            FlatOp::Data(IrDataOp::StringConcat(parts.into_iter().collect())),
+            FlatDataOp::Data(IrDataOp::StringConcat(parts.into_iter().collect())),
         )
     }
 
     pub fn array_length(&self, operand: ValueId) -> ValueId {
-        self.push(Type::INT, FlatOp::Data(IrDataOp::ArrayLength(operand)))
+        self.push(Type::INT, FlatDataOp::Data(IrDataOp::ArrayLength(operand)))
     }
 
     pub fn array_is_empty(&self, operand: ValueId) -> ValueId {
-        self.push(Type::BOOL, FlatOp::Data(IrDataOp::ArrayIsEmpty(operand)))
+        self.push(
+            Type::BOOL,
+            FlatDataOp::Data(IrDataOp::ArrayIsEmpty(operand)),
+        )
     }
 
     pub fn string_is_empty(&self, operand: ValueId) -> ValueId {
-        self.push(Type::BOOL, FlatOp::Data(IrDataOp::StringIsEmpty(operand)))
+        self.push(
+            Type::BOOL,
+            FlatDataOp::Data(IrDataOp::StringIsEmpty(operand)),
+        )
     }
 
     pub fn option_is_some(&self, operand: ValueId) -> ValueId {
-        self.push(Type::BOOL, FlatOp::Data(IrDataOp::OptionIsSome(operand)))
+        self.push(
+            Type::BOOL,
+            FlatDataOp::Data(IrDataOp::OptionIsSome(operand)),
+        )
     }
 
     pub fn option_is_none(&self, operand: ValueId) -> ValueId {
-        self.push(Type::BOOL, FlatOp::Data(IrDataOp::OptionIsNone(operand)))
+        self.push(
+            Type::BOOL,
+            FlatDataOp::Data(IrDataOp::OptionIsNone(operand)),
+        )
     }
 
     pub fn text(&self, content: &str) -> ValueId {
         assert!(!content.contains(['<', '{', '}']));
-        self.push(
-            Type::HTML,
-            FlatOp::HtmlText(CheapString::new(content.to_string())),
-        )
+        self.push_html(FlatHtmlOp::Text(CheapString::new(content.to_string())))
     }
 
     pub fn element(
@@ -612,14 +705,11 @@ impl<'a> FlatBlockBuilder<'a> {
         children: ValueId,
     ) -> ValueId {
         let element = HtmlElementKind::parse(tag).unwrap();
-        self.push(
-            Type::HTML,
-            FlatOp::HtmlElement(IrHtmlElement {
-                element,
-                attributes: attributes.into_iter().collect(),
-                children,
-            }),
-        )
+        self.push_html(FlatHtmlOp::Element(IrHtmlElement {
+            element,
+            attributes: attributes.into_iter().collect(),
+            children,
+        }))
     }
 
     pub fn attr_value(&self, name: &str, value: ValueId) -> (AttributeName, IrAttribute) {
@@ -637,11 +727,11 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn escape(&self, expr: ValueId) -> ValueId {
-        self.push(Type::HTML, FlatOp::HtmlEscape(expr))
+        self.push_html(FlatHtmlOp::Escape(expr))
     }
 
     pub fn html_concat(&self, parts: impl IntoIterator<Item = ValueId>) -> ValueId {
-        self.push(Type::HTML, FlatOp::HtmlConcat(parts.into_iter().collect()))
+        self.push_html(FlatHtmlOp::Concat(parts.into_iter().collect()))
     }
 
     pub fn html_for<F>(&self, array: ValueId, body_fn: F) -> ValueId
@@ -653,30 +743,24 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         let typ = *element_type;
         let var = self.module.binder(Type::Data(typ.clone()));
-        let (body, _) = self.block(|t| body_fn(t, var));
-        self.push(
-            Type::HTML,
-            FlatOp::HtmlFor(IrFor {
-                var: Some(IrBinder { var, typ }),
-                array,
-                body,
-            }),
-        )
+        let body = self.block(|t| body_fn(t, var)).into_html();
+        self.push_html(FlatHtmlOp::For(IrFor {
+            var: Some(IrBinder { var, typ }),
+            array,
+            body,
+        }))
     }
 
     pub fn html_for_unbound<F>(&self, array: ValueId, body_fn: F) -> ValueId
     where
         F: FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     {
-        let (body, _) = self.block(body_fn);
-        self.push(
-            Type::HTML,
-            FlatOp::HtmlFor(IrFor {
-                var: None,
-                array,
-                body,
-            }),
-        )
+        let body = self.block(body_fn).into_html();
+        self.push_html(FlatHtmlOp::For(IrFor {
+            var: None,
+            array,
+            body,
+        }))
     }
 
     pub fn call(&self, name: &str, args: impl IntoIterator<Item = ValueId>) -> ValueId {
@@ -686,10 +770,12 @@ impl<'a> FlatBlockBuilder<'a> {
             .iter()
             .find(|callee| callee.function.name.as_str() == name)
             .unwrap();
-        self.push(
-            callee.return_type.clone(),
-            FlatOp::Call(callee.function.clone(), args.into_iter().collect()),
-        )
+        let function = callee.function.clone();
+        let args = args.into_iter().collect();
+        if callee.return_type == Type::HTML {
+            return self.push_html(FlatHtmlOp::Call(function, args));
+        }
+        self.push(callee.return_type.clone(), FlatDataOp::Call(function, args))
     }
 }
 
@@ -727,7 +813,7 @@ impl Pat {
 pub struct MatchExprArms<'a> {
     builder: &'a FlatBlockBuilder<'a>,
     subject_type: Type,
-    arms: Vec<IrMatchArm<FlatBlock>>,
+    arms: Vec<IrMatchArm<BuiltBlock>>,
     typ: Option<Type>,
 }
 
@@ -757,8 +843,8 @@ impl MatchExprArms<'_> {
         let pattern = self
             .builder
             .resolve_pat(&self.subject_type, pat, &mut bindings);
-        let (body, typ) = self.builder.block(|t| body_fn(t, &bindings));
-        self.typ.get_or_insert(typ);
+        let body = self.builder.block(|t| body_fn(t, &bindings));
+        self.typ.get_or_insert(body.typ.clone());
         self.arms.push(IrMatchArm { pattern, body });
     }
 }

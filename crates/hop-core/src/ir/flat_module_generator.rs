@@ -1241,7 +1241,9 @@ impl FlatGenerator<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::flat_module::{FlatBlock, FlatOp};
+    use crate::ir::flat_module::{
+        FlatDataBinding, FlatDataBlock, FlatDataOp, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp,
+    };
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use expect_test::{Expect, expect};
@@ -1255,25 +1257,138 @@ mod tests {
         expected.assert_eq(&format!("{registry}\n{module}"));
     }
 
+    /// A block of either kind, for the walks below to treat alike.
+    #[derive(Clone, Copy)]
+    enum Block<'a> {
+        Data(&'a FlatDataBlock),
+        Html(&'a FlatHtmlBlock),
+    }
+
+    /// A binding of either kind.
+    #[derive(Clone, Copy)]
+    enum Binding<'a> {
+        Data(&'a FlatDataBinding),
+        Html(&'a FlatHtmlBinding),
+    }
+
+    impl<'a> Block<'a> {
+        fn of(function: &'a FlatFunctionDeclaration) -> Self {
+            match function {
+                FlatFunctionDeclaration::Data(function) => Block::Data(&function.body),
+                FlatFunctionDeclaration::Html(function) => Block::Html(&function.body),
+            }
+        }
+
+        fn result(self) -> ValueId {
+            match self {
+                Block::Data(block) => block.result,
+                Block::Html(block) => block.result,
+            }
+        }
+
+        /// The bindings in order, the values of an Html block before its
+        /// Html.
+        fn bindings(self) -> Vec<Binding<'a>> {
+            match self {
+                Block::Data(block) => block.bindings.iter().map(Binding::Data).collect(),
+                Block::Html(block) => block
+                    .bindings
+                    .iter()
+                    .map(Binding::Data)
+                    .chain(block.html.iter().map(Binding::Html))
+                    .collect(),
+            }
+        }
+    }
+
+    impl<'a> Binding<'a> {
+        fn var(self) -> ValueId {
+            match self {
+                Binding::Data(binding) => binding.binder.var,
+                Binding::Html(binding) => binding.binder.var,
+            }
+        }
+
+        fn for_each_operand(self, f: &mut impl FnMut(ValueId)) {
+            match self {
+                Binding::Data(binding) => binding.op.for_each_operand(f),
+                Binding::Html(binding) => binding.op.for_each_operand(f),
+            }
+        }
+
+        /// The kind of the op as the report names it, an op that only Html
+        /// has with the prefix Html.
+        fn kind(self) -> String {
+            let debug = match self {
+                Binding::Data(binding) => format!("{:?}", binding.op),
+                Binding::Html(binding) => format!("{:?}", binding.op),
+            };
+            let kind = debug
+                .trim_start_matches("Data(")
+                .split('(')
+                .next()
+                .unwrap()
+                .trim_end_matches(')');
+            match self {
+                Binding::Html(binding)
+                    if !matches!(binding.op, FlatHtmlOp::Call(..) | FlatHtmlOp::Match(_)) =>
+                {
+                    format!("Html{kind}")
+                }
+                _ => kind.to_string(),
+            }
+        }
+
+        /// Each block the op nests, with the names bound on entering it: the
+        /// names the pattern of an arm binds, or the loop variable.
+        fn nested(self) -> Vec<(Vec<ValueId>, Block<'a>)> {
+            let bound = |pattern: &crate::ir::ir_match::IrPattern| {
+                let mut names = Vec::new();
+                pattern.for_each_binding(&mut |binder| names.push(binder.var));
+                names
+            };
+            match self {
+                Binding::Data(FlatDataBinding {
+                    op: FlatDataOp::Match(match_),
+                    ..
+                }) => match_
+                    .arms
+                    .iter()
+                    .map(|arm| (bound(&arm.pattern), Block::Data(&arm.body)))
+                    .collect(),
+                Binding::Html(FlatHtmlBinding {
+                    op: FlatHtmlOp::Match(match_),
+                    ..
+                }) => match_
+                    .arms
+                    .iter()
+                    .map(|arm| (bound(&arm.pattern), Block::Html(&arm.body)))
+                    .collect(),
+                Binding::Html(FlatHtmlBinding {
+                    op: FlatHtmlOp::For(for_),
+                    ..
+                }) => {
+                    let var = for_.var.iter().map(|binder| binder.var).collect();
+                    vec![(var, Block::Html(&for_.body))]
+                }
+                _ => Vec::new(),
+            }
+        }
+    }
+
     /// Mark the names read on the way to the result of `block`, walking the
     /// bindings backwards as dead binding elimination does. `live` is
     /// shared with nested blocks, since names are unique.
-    fn mark_live(block: &FlatBlock, live: &mut HashSet<ValueId>) {
-        live.insert(block.result);
-        for binding in block.bindings.iter().rev() {
-            if !live.contains(&binding.binder.var) {
+    fn mark_live(block: Block<'_>, live: &mut HashSet<ValueId>) {
+        live.insert(block.result());
+        for binding in block.bindings().into_iter().rev() {
+            if !live.contains(&binding.var()) {
                 continue;
             }
-            match &binding.op {
-                FlatOp::Match(match_) => {
-                    for arm in &match_.arms {
-                        mark_live(&arm.body, live);
-                    }
-                }
-                FlatOp::HtmlFor(for_) => mark_live(&for_.body, live),
-                _ => {}
+            for (_, body) in binding.nested() {
+                mark_live(body, live);
             }
-            binding.op.for_each_operand(&mut |operand| {
+            binding.for_each_operand(&mut |operand| {
                 live.insert(operand);
             });
         }
@@ -1285,71 +1400,45 @@ mod tests {
     /// subject or array does, and a match or loop also when the result of
     /// a nested block does. Gives whether the result of `block` depends on
     /// them. `dynamic` is shared with nested blocks, since names are unique.
-    fn mark_dynamic(block: &FlatBlock, dynamic: &mut HashSet<ValueId>) -> bool {
-        for binding in &block.bindings {
+    fn mark_dynamic(block: Block<'_>, dynamic: &mut HashSet<ValueId>) -> bool {
+        for binding in block.bindings() {
             let mut depends = false;
-            binding.op.for_each_operand(&mut |operand| {
+            binding.for_each_operand(&mut |operand| {
                 depends |= dynamic.contains(&operand);
             });
-            match &binding.op {
-                FlatOp::Match(match_) => {
-                    let subject = depends;
-                    for arm in &match_.arms {
-                        if subject {
-                            arm.pattern.for_each_binding(&mut |binder| {
-                                dynamic.insert(binder.var);
-                            });
-                        }
-                        depends |= mark_dynamic(&arm.body, dynamic);
-                    }
+            let operands = depends;
+            for (bound, body) in binding.nested() {
+                if operands {
+                    dynamic.extend(bound);
                 }
-                FlatOp::HtmlFor(for_) => {
-                    if depends && let Some(var) = &for_.var {
-                        dynamic.insert(var.var);
-                    }
-                    depends |= mark_dynamic(&for_.body, dynamic);
-                }
-                _ => {}
+                depends |= mark_dynamic(body, dynamic);
             }
             if depends {
-                dynamic.insert(binding.binder.var);
+                dynamic.insert(binding.var());
             }
         }
-        dynamic.contains(&block.result)
+        dynamic.contains(&block.result())
     }
 
     /// Count the ops of `block` by kind: every op, the ops that are live,
     /// and the live ops that depend on the parameters.
     fn count_ops(
-        block: &FlatBlock,
+        block: Block<'_>,
         live: &HashSet<ValueId>,
         dynamic: &HashSet<ValueId>,
         counts: &mut BTreeMap<String, [usize; 3]>,
     ) {
-        for binding in &block.bindings {
-            let debug = format!("{:?}", binding.op);
-            let kind = debug
-                .trim_start_matches("Data(")
-                .split('(')
-                .next()
-                .unwrap()
-                .trim_end_matches(')');
-            let column = counts.entry(kind.to_string()).or_default();
+        for binding in block.bindings() {
+            let column = counts.entry(binding.kind()).or_default();
             column[0] += 1;
-            if live.contains(&binding.binder.var) {
+            if live.contains(&binding.var()) {
                 column[1] += 1;
-                if dynamic.contains(&binding.binder.var) {
+                if dynamic.contains(&binding.var()) {
                     column[2] += 1;
                 }
             }
-            match &binding.op {
-                FlatOp::Match(match_) => {
-                    for arm in &match_.arms {
-                        count_ops(&arm.body, live, dynamic, counts);
-                    }
-                }
-                FlatOp::HtmlFor(for_) => count_ops(&for_.body, live, dynamic, counts),
-                _ => {}
+            for (_, body) in binding.nested() {
+                count_ops(body, live, dynamic, counts);
             }
         }
     }
@@ -1358,28 +1447,22 @@ mod tests {
     /// nests, as an operand or as the result of a block, and add the Html
     /// names it binds to `html`.
     fn count_html_references(
-        block: &FlatBlock,
+        block: Block<'_>,
         references: &mut HashMap<ValueId, usize>,
         html: &mut HashSet<ValueId>,
     ) {
-        for binding in &block.bindings {
-            if binding.binder.typ == Type::HTML {
+        for binding in block.bindings() {
+            if let Binding::Html(binding) = binding {
                 html.insert(binding.binder.var);
             }
-            binding.op.for_each_operand(&mut |operand| {
+            binding.for_each_operand(&mut |operand| {
                 *references.entry(operand).or_default() += 1;
             });
-            match &binding.op {
-                FlatOp::Match(match_) => {
-                    for arm in &match_.arms {
-                        count_html_references(&arm.body, references, html);
-                    }
-                }
-                FlatOp::HtmlFor(for_) => count_html_references(&for_.body, references, html),
-                _ => {}
+            for (_, body) in binding.nested() {
+                count_html_references(body, references, html);
             }
         }
-        *references.entry(block.result).or_default() += 1;
+        *references.entry(block.result()).or_default() += 1;
     }
 
     /// Report how often each kind of op occurs in a generated module, what
@@ -1412,26 +1495,19 @@ mod tests {
             }
             let mut live = HashSet::new();
             let mut dynamic = HashSet::new();
-            let bodies: Vec<&FlatBlock> = module
-                .functions
-                .iter()
-                .map(|function| match function {
-                    FlatFunctionDeclaration::Data(function) => &function.body,
-                    FlatFunctionDeclaration::Html(function) => &function.body,
-                })
-                .collect();
+            let bodies: Vec<Block<'_>> = module.functions.iter().map(Block::of).collect();
             for (function, body) in module.functions.iter().zip(&bodies) {
-                mark_live(body, &mut live);
+                mark_live(*body, &mut live);
                 dynamic.extend(function.parameters().iter().map(|param| param.binder.var));
-                mark_dynamic(body, &mut dynamic);
+                mark_dynamic(*body, &mut dynamic);
             }
             for body in &bodies {
-                count_ops(body, &live, &dynamic, &mut counts);
+                count_ops(*body, &live, &dynamic, &mut counts);
             }
             let mut references = HashMap::new();
             let mut html = HashSet::new();
             for body in &bodies {
-                count_html_references(body, &mut references, &mut html);
+                count_html_references(*body, &mut references, &mut html);
             }
             html_bindings += html.len();
             shared_html += html

@@ -1,43 +1,12 @@
-use crate::ir::flat_module::{
-    FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction, FlatModule,
-};
+use crate::ir::flat_module::FlatModule;
 use crate::ir::flat_transform;
 
 /// Optimize the module: inline every call that can be, then in every body
 /// evaluate what is constant and drop the bindings nothing reads.
 pub fn optimize_flat(module: FlatModule) -> FlatModule {
     let module = flat_transform::inline_function_calls(module);
-    let mut value_ids = module.value_ids;
-    let functions = module
-        .functions
-        .into_iter()
-        .map(|function| {
-            let mut optimize = |body| {
-                flat_transform::eliminate_dead_bindings(flat_transform::perform_partial_evaluation(
-                    body,
-                    &mut value_ids,
-                ))
-            };
-            match function {
-                FlatFunctionDeclaration::Data(function) => {
-                    FlatFunctionDeclaration::Data(FlatDataFunction {
-                        body: optimize(function.body),
-                        ..function
-                    })
-                }
-                FlatFunctionDeclaration::Html(function) => {
-                    FlatFunctionDeclaration::Html(FlatHtmlFunction {
-                        body: optimize(function.body),
-                        ..function
-                    })
-                }
-            }
-        })
-        .collect();
-    FlatModule {
-        functions,
-        value_ids,
-    }
+    let module = flat_transform::perform_partial_evaluation(module);
+    flat_transform::eliminate_dead_bindings(module)
 }
 
 #[cfg(test)]

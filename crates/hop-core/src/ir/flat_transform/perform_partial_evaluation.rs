@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
 use crate::document::CheapString;
-use crate::hop::typing::{Constructor, Pattern, Type};
-use crate::ir::flat_module::{FlatBinding, FlatBlock, FlatOp};
+use crate::hop::typing::{Constructor, DataType, Pattern};
+use crate::ir::flat_module::{
+    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
+};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
@@ -10,7 +13,7 @@ use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
-/// A pass that evaluates the constant parts of a block at compile time.
+/// A pass that evaluates the constant parts of every body at compile time.
 ///
 /// - An op whose operands are constants becomes the constant it computes,
 ///   with the backend semantics.
@@ -31,29 +34,58 @@ use crate::symbols::field_name::FieldName;
 ///
 /// One pass in binding order sees every operand's op before the op that
 /// reads it, so nothing is left for a second pass.
-pub fn perform_partial_evaluation(block: FlatBlock, value_ids: &mut ValueIdCounter) -> FlatBlock {
-    let mut evaluator = Evaluator {
+pub fn perform_partial_evaluation(module: FlatModule) -> FlatModule {
+    let FlatModule {
+        functions,
+        mut value_ids,
+    } = module;
+    let functions = functions
+        .into_iter()
+        .map(|function| {
+            let mut evaluator = Evaluator {
+                value_ids: &mut value_ids,
+                values: HashMap::new(),
+                concats: HashMap::new(),
+                renames: HashMap::new(),
+            };
+            match function {
+                FlatFunctionDeclaration::Data(function) => {
+                    FlatFunctionDeclaration::Data(FlatDataFunction {
+                        body: evaluator.data_block(function.body),
+                        ..function
+                    })
+                }
+                FlatFunctionDeclaration::Html(function) => {
+                    FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                        body: evaluator.html_block(function.body),
+                        ..function
+                    })
+                }
+            }
+        })
+        .collect();
+    FlatModule {
+        functions,
         value_ids,
-        ops: HashMap::new(),
-        renames: HashMap::new(),
-    };
-    evaluator.evaluate_block(block)
+    }
 }
 
-/// What a binding folded to.
+/// What a binding of a value folded to.
 enum Folded {
     /// An op, bound to the name as before.
-    Op(FlatOp),
+    Op(IrDataOp),
     /// Another name, which the readers of the binding read instead.
     Name(ValueId),
 }
 
 struct Evaluator<'a> {
     value_ids: &'a mut ValueIdCounter,
-    /// The ops of the bindings kept so far, except those holding blocks,
-    /// for their readers to look at. Names are unique, so one map serves
-    /// every nested block.
-    ops: HashMap<ValueId, FlatOp>,
+    /// The ops of data of the bindings kept so far, for their readers to
+    /// look at. Names are unique, so one map serves every nested block.
+    values: HashMap<ValueId, IrDataOp>,
+    /// The parts of the Html concats kept so far, for the concats that
+    /// read them to take as their own.
+    concats: HashMap<ValueId, Vec<ValueId>>,
     /// The names that turned out to be another name: the bindings that
     /// folded to one, and the names the patterns of selected arms bind, each
     /// with the constructor operand it stands for.
@@ -65,13 +97,29 @@ impl Evaluator<'_> {
         self.renames.get(&name).copied().unwrap_or(name)
     }
 
-    fn evaluate_block(&mut self, block: FlatBlock) -> FlatBlock {
+    fn data_block(&mut self, block: FlatDataBlock) -> FlatDataBlock {
         let mut bindings = Vec::with_capacity(block.bindings.len());
         for binding in block.bindings {
-            self.evaluate_binding(binding, &mut bindings);
+            self.data_binding(binding, &mut bindings);
         }
-        FlatBlock {
+        FlatDataBlock {
             bindings,
+            result: self.resolve(block.result),
+        }
+    }
+
+    fn html_block(&mut self, block: FlatHtmlBlock) -> FlatHtmlBlock {
+        let mut bindings = Vec::with_capacity(block.bindings.len());
+        for binding in block.bindings {
+            self.data_binding(binding, &mut bindings);
+        }
+        let mut html = Vec::with_capacity(block.html.len());
+        for binding in block.html {
+            self.html_binding(binding, &mut bindings, &mut html);
+        }
+        FlatHtmlBlock {
+            bindings,
+            html,
             result: self.resolve(block.result),
         }
     }
@@ -110,32 +158,24 @@ impl Evaluator<'_> {
                 })
                 .collect::<Vec<_>>()
         };
-        let parts = match (constructor, self.ops.get(&name)?) {
-            (Constructor::BoolTrue, FlatOp::Data(IrDataOp::BoolLiteral(value))) => {
-                return Some(*value);
-            }
-            (Constructor::BoolFalse, FlatOp::Data(IrDataOp::BoolLiteral(value))) => {
-                return Some(!*value);
-            }
-            (Constructor::OptionSome, FlatOp::Data(IrDataOp::OptionSome(inner))) => {
-                vec![(&args[0], *inner)]
-            }
-            (Constructor::OptionSome, FlatOp::Data(IrDataOp::OptionNone)) => return Some(false),
-            (Constructor::OptionNone, FlatOp::Data(IrDataOp::OptionSome(_))) => return Some(false),
-            (Constructor::OptionNone, FlatOp::Data(IrDataOp::OptionNone)) => return Some(true),
+        let parts = match (constructor, self.values.get(&name)?) {
+            (Constructor::BoolTrue, IrDataOp::BoolLiteral(value)) => return Some(*value),
+            (Constructor::BoolFalse, IrDataOp::BoolLiteral(value)) => return Some(!*value),
+            (Constructor::OptionSome, IrDataOp::OptionSome(inner)) => vec![(&args[0], *inner)],
+            (Constructor::OptionSome, IrDataOp::OptionNone) => return Some(false),
+            (Constructor::OptionNone, IrDataOp::OptionSome(_)) => return Some(false),
+            (Constructor::OptionNone, IrDataOp::OptionNone) => return Some(true),
             (
                 Constructor::EnumVariant { variant_name, .. },
-                FlatOp::Data(IrDataOp::Enum(op_variant, operands)),
+                IrDataOp::Enum(op_variant, operands),
             ) => {
                 if variant_name != op_variant {
                     return Some(false);
                 }
                 field_parts(operands)
             }
-            (Constructor::Record { .. }, FlatOp::Data(IrDataOp::Record(operands))) => {
-                field_parts(operands)
-            }
-            (Constructor::Tuple, FlatOp::Data(IrDataOp::Tuple(elements))) => {
+            (Constructor::Record { .. }, IrDataOp::Record(operands)) => field_parts(operands),
+            (Constructor::Tuple, IrDataOp::Tuple(elements)) => {
                 args.iter().zip(elements.iter().copied()).collect()
             }
             _ => return None,
@@ -153,111 +193,177 @@ impl Evaluator<'_> {
         sure
     }
 
-    /// Run the arm selected for the match `name`, its bindings joining the
-    /// block the match sits in, and let the readers of `name` read the
-    /// arm's result.
-    fn select_arm(&mut self, name: ValueId, arm: FlatBlock, out: &mut Vec<FlatBinding>) {
-        for binding in arm.bindings {
-            self.evaluate_binding(binding, out);
+    /// The first arm the subject surely matches, with each binding of its
+    /// pattern and the part it binds, unless an arm before it may match as
+    /// well.
+    fn selected_arm<B>(&self, match_: &IrMatch<B>) -> Option<(usize, Vec<(ValueId, ValueId)>)> {
+        for (index, arm) in match_.arms.iter().enumerate() {
+            let mut bound = Vec::new();
+            match self.match_known(&arm.pattern, match_.subject, &mut bound) {
+                Some(true) => return Some((index, bound)),
+                Some(false) => {}
+                None => return None,
+            }
         }
-        let result = self.resolve(arm.result);
-        self.renames.insert(name, result);
+        None
     }
 
-    fn evaluate_binding(&mut self, binding: FlatBinding, out: &mut Vec<FlatBinding>) {
-        let FlatBinding { binder, mut op } = binding;
+    /// Take the selected arm of a match, after letting the readers of the
+    /// names its pattern binds read the parts they bind.
+    fn take_arm<B>(
+        &mut self,
+        match_: IrMatch<B>,
+        index: usize,
+        bound: Vec<(ValueId, ValueId)>,
+    ) -> B {
+        self.renames.extend(bound);
+        match_
+            .arms
+            .into_iter()
+            .nth(index)
+            .expect("the selected arm is one of the arms")
+            .body
+    }
+
+    fn evaluate_arms<B>(
+        &mut self,
+        match_: IrMatch<B>,
+        evaluate_block: impl Fn(&mut Self, B) -> B,
+    ) -> IrMatch<B> {
+        IrMatch {
+            subject: match_.subject,
+            arms: match_
+                .arms
+                .into_iter()
+                .map(|arm| IrMatchArm {
+                    pattern: arm.pattern,
+                    body: evaluate_block(self, arm.body),
+                })
+                .collect(),
+        }
+    }
+
+    fn data_binding(&mut self, binding: FlatDataBinding, out: &mut Vec<FlatDataBinding>) {
+        let FlatDataBinding { binder, mut op } = binding;
+        let name = binder.var;
+        op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
+        match op {
+            FlatDataOp::Match(match_) => {
+                // The selected arm runs in place of the match, its bindings
+                // joining the block the match sits in, and the readers of
+                // the match read the arm's result.
+                if let Some((index, bound)) = self.selected_arm(&match_) {
+                    let arm = self.take_arm(match_, index, bound);
+                    for binding in arm.bindings {
+                        self.data_binding(binding, out);
+                    }
+                    let result = self.resolve(arm.result);
+                    self.renames.insert(name, result);
+                    return;
+                }
+                let match_ = self.evaluate_arms(match_, Self::data_block);
+                out.push(FlatDataBinding {
+                    binder,
+                    op: FlatDataOp::Match(match_),
+                });
+            }
+            FlatDataOp::Data(op) => match self.fold(op, out) {
+                Folded::Name(target) => {
+                    self.renames.insert(name, target);
+                }
+                Folded::Op(op) => {
+                    self.values.insert(name, op.clone());
+                    out.push(FlatDataBinding {
+                        binder,
+                        op: FlatDataOp::Data(op),
+                    });
+                }
+            },
+            op @ FlatDataOp::Call(..) => out.push(FlatDataBinding { binder, op }),
+        }
+    }
+
+    /// The values of a selected arm join the values of the block, so they
+    /// still come before its Html.
+    fn html_binding(
+        &mut self,
+        binding: FlatHtmlBinding,
+        bindings: &mut Vec<FlatDataBinding>,
+        html: &mut Vec<FlatHtmlBinding>,
+    ) {
+        let FlatHtmlBinding { binder, mut op } = binding;
         let name = binder.var;
         op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
         let op = match op {
-            FlatOp::Match(IrMatch { subject, arms }) => {
-                // The first arm the subject surely matches is selected,
-                // unless an arm before it may match as well.
-                let mut selected = None;
-                for (index, arm) in arms.iter().enumerate() {
-                    let mut bound = Vec::new();
-                    match self.match_known(&arm.pattern, subject, &mut bound) {
-                        Some(true) => {
-                            selected = Some((index, bound));
-                            break;
-                        }
-                        Some(false) => {}
-                        None => break,
+            FlatHtmlOp::Match(match_) => {
+                if let Some((index, bound)) = self.selected_arm(&match_) {
+                    let arm = self.take_arm(match_, index, bound);
+                    for binding in arm.bindings {
+                        self.data_binding(binding, bindings);
                     }
-                }
-                if let Some((index, bound)) = selected {
-                    self.renames.extend(bound);
-                    let arm = arms
-                        .into_iter()
-                        .nth(index)
-                        .expect("the selected arm is one of the arms");
-                    self.select_arm(name, arm.body, out);
+                    for binding in arm.html {
+                        self.html_binding(binding, bindings, html);
+                    }
+                    let result = self.resolve(arm.result);
+                    self.renames.insert(name, result);
                     return;
                 }
-                let arms = arms
-                    .into_iter()
-                    .map(|arm| IrMatchArm {
-                        pattern: arm.pattern,
-                        body: self.evaluate_block(arm.body),
-                    })
-                    .collect();
-                out.push(FlatBinding {
-                    binder,
-                    op: FlatOp::Match(IrMatch { subject, arms }),
-                });
-                return;
+                FlatHtmlOp::Match(self.evaluate_arms(match_, Self::html_block))
             }
-
-            FlatOp::HtmlFor(IrFor { var, array, body }) => {
-                let body = self.evaluate_block(body);
-                out.push(FlatBinding {
-                    binder,
-                    op: FlatOp::HtmlFor(IrFor { var, array, body }),
-                });
-                return;
+            FlatHtmlOp::For(IrFor { var, array, body }) => FlatHtmlOp::For(IrFor {
+                var,
+                array,
+                body: self.html_block(body),
+            }),
+            FlatHtmlOp::Concat(parts) => {
+                let mut flattened = Vec::with_capacity(parts.len());
+                for part in parts {
+                    match self.concats.get(&part) {
+                        Some(subparts) => flattened.extend(subparts.iter().copied()),
+                        None => flattened.push(part),
+                    }
+                }
+                if flattened.len() == 1 {
+                    self.renames.insert(name, flattened[0]);
+                    return;
+                }
+                self.concats.insert(name, flattened.clone());
+                FlatHtmlOp::Concat(flattened)
             }
-
             op => op,
         };
-        match self.fold(op, out) {
-            Folded::Name(target) => {
-                self.renames.insert(name, target);
-            }
-            Folded::Op(op) => {
-                self.ops.insert(name, op.clone());
-                out.push(FlatBinding { binder, op });
-            }
-        }
+        html.push(FlatHtmlBinding { binder, op });
     }
 
     /// Fold an op whose operands are resolved. Returns the constant or
     /// name it computes when the operands allow it, and the op unchanged
     /// otherwise.
-    fn fold(&mut self, op: FlatOp, out: &mut Vec<FlatBinding>) -> Folded {
+    fn fold(&mut self, op: IrDataOp, out: &mut Vec<FlatDataBinding>) -> Folded {
         match op {
-            FlatOp::Data(IrDataOp::FieldAccess(record, field)) => match self.ops.get(&record) {
-                Some(FlatOp::Data(IrDataOp::Record(fields))) => Folded::Name(
+            IrDataOp::FieldAccess(record, field) => match self.values.get(&record) {
+                Some(IrDataOp::Record(fields)) => Folded::Name(
                     fields
                         .iter()
                         .find(|(name, _)| *name == field)
                         .map(|(_, value)| *value)
                         .unwrap_or_else(|| panic!("record has no field {}", field.as_str())),
                 ),
-                _ => Folded::Op(FlatOp::Data(IrDataOp::FieldAccess(record, field))),
+                _ => Folded::Op(IrDataOp::FieldAccess(record, field)),
             },
-            FlatOp::Data(IrDataOp::TupleIndex(tuple, index)) => match self.ops.get(&tuple) {
-                Some(FlatOp::Data(IrDataOp::Tuple(elements))) => {
+            IrDataOp::TupleIndex(tuple, index) => match self.values.get(&tuple) {
+                Some(IrDataOp::Tuple(elements)) => {
                     let len = elements.len();
                     Folded::Name(*elements.get(index).unwrap_or_else(|| {
                         panic!("index {index} is out of range for a tuple of {len}")
                     }))
                 }
-                _ => Folded::Op(FlatOp::Data(IrDataOp::TupleIndex(tuple, index))),
+                _ => Folded::Op(IrDataOp::TupleIndex(tuple, index)),
             },
-            FlatOp::Data(IrDataOp::StringConcat(parts)) => {
+            IrDataOp::StringConcat(parts) => {
                 let mut flattened = Vec::with_capacity(parts.len());
                 for part in parts {
-                    match self.ops.get(&part) {
-                        Some(FlatOp::Data(IrDataOp::StringConcat(subparts))) => {
+                    match self.values.get(&part) {
+                        Some(IrDataOp::StringConcat(subparts)) => {
                             flattened.extend(subparts.iter().copied());
                         }
                         _ => flattened.push(part),
@@ -265,8 +371,8 @@ impl Evaluator<'_> {
                 }
                 let mut merged: Vec<ValueId> = Vec::with_capacity(flattened.len());
                 for part in flattened {
-                    let literal = match self.ops.get(&part) {
-                        Some(FlatOp::Data(IrDataOp::StringLiteral(value))) => Some(value.clone()),
+                    let literal = match self.values.get(&part) {
+                        Some(IrDataOp::StringLiteral(value)) => Some(value.clone()),
                         _ => None,
                     };
                     let Some(value) = literal else {
@@ -276,8 +382,8 @@ impl Evaluator<'_> {
                     if value.as_str().is_empty() {
                         continue;
                     }
-                    let previous = merged.last().and_then(|last| match self.ops.get(last) {
-                        Some(FlatOp::Data(IrDataOp::StringLiteral(value))) => Some(value.clone()),
+                    let previous = merged.last().and_then(|last| match self.values.get(last) {
+                        Some(IrDataOp::StringLiteral(value)) => Some(value.clone()),
                         _ => None,
                     });
                     match previous {
@@ -290,15 +396,14 @@ impl Evaluator<'_> {
                             combined.push_str(previous.as_str());
                             combined.push_str(value.as_str());
                             let name = self.value_ids.next();
-                            let op =
-                                FlatOp::Data(IrDataOp::StringLiteral(CheapString::new(combined)));
-                            self.ops.insert(name, op.clone());
-                            out.push(FlatBinding {
+                            let op = IrDataOp::StringLiteral(CheapString::new(combined));
+                            self.values.insert(name, op.clone());
+                            out.push(FlatDataBinding {
                                 binder: IrBinder {
                                     var: name,
-                                    typ: Type::STRING,
+                                    typ: DataType::String,
                                 },
-                                op,
+                                op: FlatDataOp::Data(op),
                             });
                             *merged.last_mut().expect("a previous part exists") = name;
                         }
@@ -306,192 +411,147 @@ impl Evaluator<'_> {
                     }
                 }
                 match merged.len() {
-                    0 => Folded::Op(FlatOp::Data(IrDataOp::StringLiteral(CheapString::new(
-                        String::new(),
-                    )))),
+                    0 => Folded::Op(IrDataOp::StringLiteral(CheapString::new(String::new()))),
                     1 => Folded::Name(merged[0]),
-                    _ => Folded::Op(FlatOp::Data(IrDataOp::StringConcat(merged))),
+                    _ => Folded::Op(IrDataOp::StringConcat(merged)),
                 }
             }
-            FlatOp::Data(data) => {
+            data => {
                 let folded = match &data {
                     IrDataOp::NumericAdd(left, right) => {
-                        match (self.ops.get(left), self.ops.get(right)) {
-                            (
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
-                            ) => Some(IrDataOp::IntLiteral(l.wrapping_add(*r))),
-                            (
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
-                            ) => Some(IrDataOp::FloatLiteral(l + r)),
+                        match (self.values.get(left), self.values.get(right)) {
+                            (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
+                                Some(IrDataOp::IntLiteral(l.wrapping_add(*r)))
+                            }
+                            (Some(IrDataOp::FloatLiteral(l)), Some(IrDataOp::FloatLiteral(r))) => {
+                                Some(IrDataOp::FloatLiteral(l + r))
+                            }
                             _ => None,
                         }
                     }
                     IrDataOp::NumericSubtract(left, right) => {
-                        match (self.ops.get(left), self.ops.get(right)) {
-                            (
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
-                            ) => Some(IrDataOp::IntLiteral(l.wrapping_sub(*r))),
-                            (
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
-                            ) => Some(IrDataOp::FloatLiteral(l - r)),
+                        match (self.values.get(left), self.values.get(right)) {
+                            (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
+                                Some(IrDataOp::IntLiteral(l.wrapping_sub(*r)))
+                            }
+                            (Some(IrDataOp::FloatLiteral(l)), Some(IrDataOp::FloatLiteral(r))) => {
+                                Some(IrDataOp::FloatLiteral(l - r))
+                            }
                             _ => None,
                         }
                     }
                     IrDataOp::NumericMultiply(left, right) => {
-                        match (self.ops.get(left), self.ops.get(right)) {
-                            (
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
-                            ) => Some(IrDataOp::IntLiteral(l.wrapping_mul(*r))),
-                            (
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
-                            ) => Some(IrDataOp::FloatLiteral(l * r)),
+                        match (self.values.get(left), self.values.get(right)) {
+                            (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
+                                Some(IrDataOp::IntLiteral(l.wrapping_mul(*r)))
+                            }
+                            (Some(IrDataOp::FloatLiteral(l)), Some(IrDataOp::FloatLiteral(r))) => {
+                                Some(IrDataOp::FloatLiteral(l * r))
+                            }
                             _ => None,
                         }
                     }
                     IrDataOp::Equals(left, right) => {
-                        match (self.ops.get(left), self.ops.get(right)) {
+                        match (self.values.get(left), self.values.get(right)) {
+                            (Some(IrDataOp::BoolLiteral(l)), Some(IrDataOp::BoolLiteral(r))) => {
+                                Some(IrDataOp::BoolLiteral(l == r))
+                            }
                             (
-                                Some(FlatOp::Data(IrDataOp::BoolLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::BoolLiteral(r))),
-                            ) => Some(IrDataOp::BoolLiteral(l == r)),
-                            (
-                                Some(FlatOp::Data(IrDataOp::StringLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::StringLiteral(r))),
+                                Some(IrDataOp::StringLiteral(l)),
+                                Some(IrDataOp::StringLiteral(r)),
                             ) => Some(IrDataOp::BoolLiteral(l.as_str() == r.as_str())),
-                            (
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
-                            ) => Some(IrDataOp::BoolLiteral(l == r)),
-                            (
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
-                            ) => Some(IrDataOp::BoolLiteral(l == r)),
+                            (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
+                                Some(IrDataOp::BoolLiteral(l == r))
+                            }
+                            (Some(IrDataOp::FloatLiteral(l)), Some(IrDataOp::FloatLiteral(r))) => {
+                                Some(IrDataOp::BoolLiteral(l == r))
+                            }
                             _ => None,
                         }
                     }
                     IrDataOp::LessThan(left, right) => {
-                        match (self.ops.get(left), self.ops.get(right)) {
-                            (
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
-                            ) => Some(IrDataOp::BoolLiteral(l < r)),
-                            (
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
-                            ) => Some(IrDataOp::BoolLiteral(l < r)),
+                        match (self.values.get(left), self.values.get(right)) {
+                            (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
+                                Some(IrDataOp::BoolLiteral(l < r))
+                            }
+                            (Some(IrDataOp::FloatLiteral(l)), Some(IrDataOp::FloatLiteral(r))) => {
+                                Some(IrDataOp::BoolLiteral(l < r))
+                            }
                             _ => None,
                         }
                     }
                     IrDataOp::LessThanOrEqual(left, right) => {
-                        match (self.ops.get(left), self.ops.get(right)) {
-                            (
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::IntLiteral(r))),
-                            ) => Some(IrDataOp::BoolLiteral(l <= r)),
-                            (
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(l))),
-                                Some(FlatOp::Data(IrDataOp::FloatLiteral(r))),
-                            ) => Some(IrDataOp::BoolLiteral(l <= r)),
+                        match (self.values.get(left), self.values.get(right)) {
+                            (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
+                                Some(IrDataOp::BoolLiteral(l <= r))
+                            }
+                            (Some(IrDataOp::FloatLiteral(l)), Some(IrDataOp::FloatLiteral(r))) => {
+                                Some(IrDataOp::BoolLiteral(l <= r))
+                            }
                             _ => None,
                         }
                     }
-                    IrDataOp::NumericNegation(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::IntLiteral(value))) => {
+                    IrDataOp::NumericNegation(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::IntLiteral(value)) => {
                             Some(IrDataOp::IntLiteral(value.wrapping_neg()))
                         }
-                        Some(FlatOp::Data(IrDataOp::FloatLiteral(value))) => {
-                            Some(IrDataOp::FloatLiteral(-value))
-                        }
+                        Some(IrDataOp::FloatLiteral(value)) => Some(IrDataOp::FloatLiteral(-value)),
                         _ => None,
                     },
-                    IrDataOp::BoolNegation(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::BoolLiteral(value))) => {
-                            Some(IrDataOp::BoolLiteral(!value))
-                        }
+                    IrDataOp::BoolNegation(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::BoolLiteral(value)) => Some(IrDataOp::BoolLiteral(!value)),
                         _ => None,
                     },
-                    IrDataOp::IntToString(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::IntLiteral(value))) => {
+                    IrDataOp::IntToString(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::IntLiteral(value)) => {
                             Some(IrDataOp::StringLiteral(CheapString::new(value.to_string())))
                         }
                         _ => None,
                     },
-                    IrDataOp::FloatToInt(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::FloatLiteral(value))) => {
+                    IrDataOp::FloatToInt(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::FloatLiteral(value)) => {
                             Some(IrDataOp::IntLiteral(*value as i32))
                         }
                         _ => None,
                     },
-                    IrDataOp::IntToFloat(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::IntLiteral(value))) => {
+                    IrDataOp::IntToFloat(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::IntLiteral(value)) => {
                             Some(IrDataOp::FloatLiteral(*value as f64))
                         }
                         _ => None,
                     },
-                    IrDataOp::StringIsEmpty(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::StringLiteral(value))) => {
+                    IrDataOp::StringIsEmpty(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::StringLiteral(value)) => {
                             Some(IrDataOp::BoolLiteral(value.as_str().is_empty()))
                         }
                         _ => None,
                     },
-                    IrDataOp::ArrayIsEmpty(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::Array(elements))) => {
+                    IrDataOp::ArrayIsEmpty(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::Array(elements)) => {
                             Some(IrDataOp::BoolLiteral(elements.is_empty()))
                         }
                         _ => None,
                     },
-                    IrDataOp::ArrayLength(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::Array(elements))) => {
+                    IrDataOp::ArrayLength(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::Array(elements)) => {
                             Some(IrDataOp::IntLiteral(elements.len() as i32))
                         }
                         _ => None,
                     },
-                    IrDataOp::OptionIsSome(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::OptionSome(_))) => {
-                            Some(IrDataOp::BoolLiteral(true))
-                        }
-                        Some(FlatOp::Data(IrDataOp::OptionNone)) => {
-                            Some(IrDataOp::BoolLiteral(false))
-                        }
+                    IrDataOp::OptionIsSome(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::OptionSome(_)) => Some(IrDataOp::BoolLiteral(true)),
+                        Some(IrDataOp::OptionNone) => Some(IrDataOp::BoolLiteral(false)),
                         _ => None,
                     },
-                    IrDataOp::OptionIsNone(operand) => match self.ops.get(operand) {
-                        Some(FlatOp::Data(IrDataOp::OptionSome(_))) => {
-                            Some(IrDataOp::BoolLiteral(false))
-                        }
-                        Some(FlatOp::Data(IrDataOp::OptionNone)) => {
-                            Some(IrDataOp::BoolLiteral(true))
-                        }
+                    IrDataOp::OptionIsNone(operand) => match self.values.get(operand) {
+                        Some(IrDataOp::OptionSome(_)) => Some(IrDataOp::BoolLiteral(false)),
+                        Some(IrDataOp::OptionNone) => Some(IrDataOp::BoolLiteral(true)),
                         _ => None,
                     },
                     _ => None,
                 };
-                Folded::Op(FlatOp::Data(folded.unwrap_or(data)))
+                Folded::Op(folded.unwrap_or(data))
             }
-            FlatOp::HtmlConcat(parts) => {
-                let mut flattened = Vec::with_capacity(parts.len());
-                for part in parts {
-                    match self.ops.get(&part) {
-                        Some(FlatOp::HtmlConcat(subparts)) => {
-                            flattened.extend(subparts.iter().copied());
-                        }
-                        _ => flattened.push(part),
-                    }
-                }
-                if flattened.len() == 1 {
-                    Folded::Name(flattened[0])
-                } else {
-                    Folded::Op(FlatOp::HtmlConcat(flattened))
-                }
-            }
-
-            op => Folded::Op(op),
         }
     }
 }
@@ -502,9 +562,7 @@ mod tests {
     use super::*;
     use crate::document::Document;
     use crate::hop::typing::{Ty, TypeRegistryBuilder};
-    use crate::ir::flat_module::{
-        FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction, FlatModule,
-    };
+    use crate::ir::flat_module::FlatModule;
     use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
     use crate::ir::runtime::EvalError;
@@ -516,32 +574,6 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use rand::{SeedableRng, rngs::SmallRng};
-
-    fn run(module: FlatModule) -> FlatModule {
-        let mut value_ids = module.value_ids;
-        let functions = module
-            .functions
-            .into_iter()
-            .map(|function| match function {
-                FlatFunctionDeclaration::Data(function) => {
-                    FlatFunctionDeclaration::Data(FlatDataFunction {
-                        body: perform_partial_evaluation(function.body, &mut value_ids),
-                        ..function
-                    })
-                }
-                FlatFunctionDeclaration::Html(function) => {
-                    FlatFunctionDeclaration::Html(FlatHtmlFunction {
-                        body: perform_partial_evaluation(function.body, &mut value_ids),
-                        ..function
-                    })
-                }
-            })
-            .collect();
-        FlatModule {
-            functions,
-            value_ids,
-        }
-    }
 
     #[test]
     fn fuzz_random_modules_evaluate_identically_after_partial_evaluation() {
@@ -558,7 +590,7 @@ mod tests {
                 })
                 .collect();
 
-            let module = run(module);
+            let module = perform_partial_evaluation(module);
 
             // The pass drops no computation but a selected arm's siblings,
             // which never ran, so the output and whether the call depth
@@ -586,7 +618,7 @@ mod tests {
 
     fn check(module: FlatModule, expected: Expect) {
         let before = module.to_string();
-        let after = run(module).to_string();
+        let after = perform_partial_evaluation(module).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
     }
 

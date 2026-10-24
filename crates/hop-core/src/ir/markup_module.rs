@@ -33,7 +33,7 @@ pub enum MarkupFunctionDeclaration {
 pub struct MarkupDataFunction {
     pub function: IrFunction,
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter<Type>>,
+    pub parameters: Vec<IrParameter<DataType>>,
     pub return_type: DataType,
     pub body: MarkupDataBlock,
 }
@@ -55,10 +55,14 @@ impl MarkupFunctionDeclaration {
         }
     }
 
-    pub fn parameters(&self) -> &[IrParameter<Type>] {
+    /// The parameters, those of a function that returns a value widened to
+    /// Type.
+    pub fn parameters(&self) -> Vec<IrParameter<Type>> {
         match self {
-            MarkupFunctionDeclaration::Data(function) => &function.parameters,
-            MarkupFunctionDeclaration::Html(function) => &function.parameters,
+            MarkupFunctionDeclaration::Data(function) => {
+                function.parameters.iter().map(IrParameter::widen).collect()
+            }
+            MarkupFunctionDeclaration::Html(function) => function.parameters.clone(),
         }
     }
 }
@@ -87,13 +91,17 @@ pub struct MarkupDataBinding {
 #[derive(Debug)]
 pub enum MarkupDataOp {
     Data(IrDataOp),
-    Call(IrFunction, Vec<MarkupCallArg>),
+    /// Invokes a function that returns a value. The arguments follow the
+    /// function's parameters, one for each, and since it takes values only
+    /// they are values.
+    Call(IrFunction, Vec<ValueId>),
     Match(IrMatch<MarkupDataBlock>),
 }
 
-/// An argument of a call, one for each parameter of the function: a value,
-/// or the markup for an Html parameter. The markup reads the names of the
-/// caller, wherever the function renders it.
+/// An argument of a call of a function that returns Html, one for each
+/// parameter of the function: a value, or the markup for an Html parameter.
+/// The markup reads the names of the caller, wherever the function renders
+/// it.
 #[derive(Debug)]
 pub enum MarkupCallArg {
     Data(ValueId),
@@ -159,7 +167,7 @@ impl MarkupDataOp {
             MarkupDataOp::Data(op) => op.to_doc(),
             MarkupDataOp::Call(function, args) => BoxDoc::text(format!("{function}("))
                 .append(BoxDoc::intersperse(
-                    args.iter().map(MarkupCallArg::to_doc),
+                    args.iter().map(|arg| BoxDoc::text(arg.to_string())),
                     BoxDoc::text(", "),
                 ))
                 .append(BoxDoc::text(")")),

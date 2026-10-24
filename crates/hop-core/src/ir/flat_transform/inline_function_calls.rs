@@ -2,12 +2,13 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
 use crate::ir::flat_module::{
-    FlatBinding, FlatBlock, FlatDataFunction, FlatFunctionDeclaration, FlatHtmlFunction,
-    FlatModule, FlatOp,
+    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
 };
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_for::IrFor;
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
@@ -27,12 +28,15 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
 
     let mut graph: DependencyGraph<FunctionId> = DependencyGraph::new();
     for function in &functions {
-        let body = match function {
-            FlatFunctionDeclaration::Data(function) => &function.body,
-            FlatFunctionDeclaration::Html(function) => &function.body,
-        };
         let mut callees = BTreeSet::new();
-        collect_callees(body, &mut callees);
+        match function {
+            FlatFunctionDeclaration::Data(function) => {
+                collect_data_callees(&function.body, &mut callees);
+            }
+            FlatFunctionDeclaration::Html(function) => {
+                collect_html_callees(&function.body, &mut callees);
+            }
+        }
         graph.set_dependencies(function.function().id, callees);
     }
 
@@ -63,18 +67,22 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
         let Some(decl) = decls.remove(&id) else {
             continue;
         };
-        let mut inline =
-            |body| inline_block(body, &decls, &recursive, &mut value_ids, &mut renames);
+        let mut inliner = Inliner {
+            decls: &decls,
+            recursive: &recursive,
+            value_ids: &mut value_ids,
+            renames: &mut renames,
+        };
         let decl = match decl {
             FlatFunctionDeclaration::Data(function) => {
                 FlatFunctionDeclaration::Data(FlatDataFunction {
-                    body: inline(function.body),
+                    body: inliner.data_block(function.body),
                     ..function
                 })
             }
             FlatFunctionDeclaration::Html(function) => {
                 FlatFunctionDeclaration::Html(FlatHtmlFunction {
-                    body: inline(function.body),
+                    body: inliner.html_block(function.body),
                     ..function
                 })
             }
@@ -103,92 +111,193 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
     }
 }
 
-fn collect_callees(block: &FlatBlock, out: &mut BTreeSet<FunctionId>) {
+fn collect_data_callees(block: &FlatDataBlock, out: &mut BTreeSet<FunctionId>) {
     for binding in &block.bindings {
+        collect_data_binding_callees(binding, out);
+    }
+}
+
+fn collect_html_callees(block: &FlatHtmlBlock, out: &mut BTreeSet<FunctionId>) {
+    for binding in &block.bindings {
+        collect_data_binding_callees(binding, out);
+    }
+    for binding in &block.html {
         match &binding.op {
-            FlatOp::Call(function, ..) => {
+            FlatHtmlOp::Call(function, ..) => {
                 out.insert(function.id);
             }
-            FlatOp::Match(match_) => {
+            FlatHtmlOp::Match(match_) => {
                 for arm in &match_.arms {
-                    collect_callees(&arm.body, out);
+                    collect_html_callees(&arm.body, out);
                 }
             }
-            FlatOp::HtmlFor(IrFor { body, .. }) => {
-                collect_callees(body, out);
+            FlatHtmlOp::For(IrFor { body, .. }) => {
+                collect_html_callees(body, out);
             }
             _ => {}
         }
     }
 }
 
-/// Inline the calls of the block, and rewrite its reads through `renames`,
-/// extended with the result of every call it inlines.
-fn inline_block(
-    block: FlatBlock,
-    decls: &HashMap<FunctionId, FlatFunctionDeclaration>,
-    recursive: &HashSet<FunctionId>,
-    value_ids: &mut ValueIdCounter,
-    renames: &mut HashMap<ValueId, ValueId>,
-) -> FlatBlock {
-    let mut bindings = Vec::with_capacity(block.bindings.len());
-    for binding in block.bindings {
-        let FlatBinding { binder, mut op } = binding;
-        op.for_each_operand_mut(&mut |operand| {
-            if let Some(renamed) = renames.get(operand) {
-                *operand = *renamed;
+fn collect_data_binding_callees(binding: &FlatDataBinding, out: &mut BTreeSet<FunctionId>) {
+    match &binding.op {
+        FlatDataOp::Call(function, ..) => {
+            out.insert(function.id);
+        }
+        FlatDataOp::Match(match_) => {
+            for arm in &match_.arms {
+                collect_data_callees(&arm.body, out);
             }
-        });
+        }
+        FlatDataOp::Data(_) => {}
+    }
+}
+
+/// Inlines the calls of the blocks of one body, and rewrites their reads
+/// through `renames`, extended with the result of every call it inlines.
+struct Inliner<'a> {
+    decls: &'a HashMap<FunctionId, FlatFunctionDeclaration>,
+    recursive: &'a HashSet<FunctionId>,
+    value_ids: &'a mut ValueIdCounter,
+    renames: &'a mut HashMap<ValueId, ValueId>,
+}
+
+impl<'a> Inliner<'a> {
+    fn rename(&self, name: ValueId) -> ValueId {
+        self.renames.get(&name).copied().unwrap_or(name)
+    }
+
+    /// The declaration of the callee when the call is inlined, which it is
+    /// unless the callee is recursive or is the function being inlined.
+    fn inlined(&self, function: &IrFunction) -> Option<&'a FlatFunctionDeclaration> {
+        let decls = self.decls;
+        decls
+            .get(&function.id)
+            .filter(|_| !self.recursive.contains(&function.id))
+    }
+
+    /// A freshener that reads each argument of the call for the parameter
+    /// it is passed to.
+    fn freshener(&mut self, decl: &FlatFunctionDeclaration, args: Vec<ValueId>) -> Freshener<'_> {
+        assert_eq!(
+            args.len(),
+            decl.parameters().len(),
+            "call to {} supplies one argument per parameter",
+            decl.function()
+        );
+        let arguments = decl
+            .parameters()
+            .iter()
+            .zip(args)
+            .map(|(param, arg)| (param.binder.var, arg))
+            .collect();
+        Freshener::new(self.value_ids, arguments)
+    }
+
+    fn data_block(&mut self, block: FlatDataBlock) -> FlatDataBlock {
+        let mut bindings = Vec::with_capacity(block.bindings.len());
+        for binding in block.bindings {
+            self.data_binding(binding, &mut bindings);
+        }
+        FlatDataBlock {
+            bindings,
+            result: self.rename(block.result),
+        }
+    }
+
+    /// The values of an inlined Html call join the values of the block, so
+    /// they still come before its Html.
+    fn html_block(&mut self, block: FlatHtmlBlock) -> FlatHtmlBlock {
+        let mut bindings = Vec::with_capacity(block.bindings.len());
+        for binding in block.bindings {
+            self.data_binding(binding, &mut bindings);
+        }
+        let mut html = Vec::with_capacity(block.html.len());
+        for binding in block.html {
+            self.html_binding(binding, &mut bindings, &mut html);
+        }
+        FlatHtmlBlock {
+            bindings,
+            html,
+            result: self.rename(block.result),
+        }
+    }
+
+    fn match_<B>(
+        &mut self,
+        match_: IrMatch<B>,
+        inline_block: impl Fn(&mut Self, B) -> B,
+    ) -> IrMatch<B> {
+        IrMatch {
+            subject: match_.subject,
+            arms: match_
+                .arms
+                .into_iter()
+                .map(|arm| IrMatchArm {
+                    pattern: arm.pattern,
+                    body: inline_block(self, arm.body),
+                })
+                .collect(),
+        }
+    }
+
+    fn data_binding(&mut self, binding: FlatDataBinding, out: &mut Vec<FlatDataBinding>) {
+        let FlatDataBinding { binder, mut op } = binding;
+        op.for_each_operand_mut(&mut |operand| *operand = self.rename(*operand));
         let op = match op {
-            FlatOp::Call(function, args)
-                if decls.contains_key(&function.id) && !recursive.contains(&function.id) =>
-            {
-                let decl = &decls[&function.id];
-                assert_eq!(
-                    args.len(),
-                    decl.parameters().len(),
-                    "call to {} supplies one argument per parameter",
-                    decl.function()
-                );
-                let arguments = decl
-                    .parameters()
-                    .iter()
-                    .zip(args)
-                    .map(|(param, arg)| (param.binder.var, arg))
-                    .collect();
-                let body = match decl {
-                    FlatFunctionDeclaration::Data(decl) => &decl.body,
-                    FlatFunctionDeclaration::Html(decl) => &decl.body,
-                };
-                let body = Freshener::new(value_ids, arguments).freshen_block(body);
-                bindings.extend(body.bindings);
-                // The result is a fresh name or an argument, and neither is
-                // ever renamed, so no read goes through two renames.
-                renames.insert(binder.var, body.result);
-                continue;
-            }
-            FlatOp::Match(IrMatch { subject, arms }) => FlatOp::Match(IrMatch {
-                subject,
-                arms: arms
-                    .into_iter()
-                    .map(|arm| IrMatchArm {
-                        pattern: arm.pattern,
-                        body: inline_block(arm.body, decls, recursive, value_ids, renames),
-                    })
-                    .collect(),
-            }),
-            FlatOp::HtmlFor(IrFor { var, array, body }) => FlatOp::HtmlFor(IrFor {
+            FlatDataOp::Call(function, args) => match self.inlined(&function) {
+                Some(decl) => {
+                    let FlatFunctionDeclaration::Data(callee) = decl else {
+                        panic!("{function} is called for a value but returns Html");
+                    };
+                    let body = self.freshener(decl, args).freshen_data_block(&callee.body);
+                    out.extend(body.bindings);
+                    // The result is a fresh name or an argument, and neither
+                    // is ever renamed, so no read goes through two renames.
+                    self.renames.insert(binder.var, body.result);
+                    return;
+                }
+                None => FlatDataOp::Call(function, args),
+            },
+            FlatDataOp::Match(match_) => FlatDataOp::Match(self.match_(match_, Self::data_block)),
+            op => op,
+        };
+        out.push(FlatDataBinding { binder, op });
+    }
+
+    fn html_binding(
+        &mut self,
+        binding: FlatHtmlBinding,
+        bindings: &mut Vec<FlatDataBinding>,
+        html: &mut Vec<FlatHtmlBinding>,
+    ) {
+        let FlatHtmlBinding { binder, mut op } = binding;
+        op.for_each_operand_mut(&mut |operand| *operand = self.rename(*operand));
+        let op = match op {
+            FlatHtmlOp::Call(function, args) => match self.inlined(&function) {
+                Some(decl) => {
+                    let FlatFunctionDeclaration::Html(callee) = decl else {
+                        panic!("{function} is called for Html but returns a value");
+                    };
+                    let body = self.freshener(decl, args).freshen_html_block(&callee.body);
+                    bindings.extend(body.bindings);
+                    html.extend(body.html);
+                    // The result is a fresh name or an argument, and neither
+                    // is ever renamed, so no read goes through two renames.
+                    self.renames.insert(binder.var, body.result);
+                    return;
+                }
+                None => FlatHtmlOp::Call(function, args),
+            },
+            FlatHtmlOp::Match(match_) => FlatHtmlOp::Match(self.match_(match_, Self::html_block)),
+            FlatHtmlOp::For(IrFor { var, array, body }) => FlatHtmlOp::For(IrFor {
                 var,
                 array,
-                body: inline_block(body, decls, recursive, value_ids, renames),
+                body: self.html_block(body),
             }),
             op => op,
         };
-        bindings.push(FlatBinding { binder, op });
-    }
-    FlatBlock {
-        bindings,
-        result: renames.get(&block.result).copied().unwrap_or(block.result),
+        html.push(FlatHtmlBinding { binder, op });
     }
 }
 

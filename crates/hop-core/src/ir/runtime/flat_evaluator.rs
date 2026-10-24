@@ -4,11 +4,15 @@ use std::rc::Rc;
 use rpds::HashTrieMap;
 
 use crate::ir::document_shell::DocumentShell;
-use crate::ir::flat_module::{FlatBlock, FlatFunctionDeclaration, FlatModule, FlatOp};
+use crate::ir::flat_module::{
+    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBlock, FlatHtmlOp,
+    FlatModule,
+};
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
+use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
@@ -112,59 +116,127 @@ pub fn evaluate_function(
         .iter()
         .find(|decl| decl.function().id == function.id)
         .unwrap();
-    let env = decl
-        .parameters()
-        .iter()
-        .map(|param| param.binder.var)
-        .zip(args)
-        .collect();
-    let body = match decl {
-        FlatFunctionDeclaration::Data(decl) => &decl.body,
-        FlatFunctionDeclaration::Html(decl) => &decl.body,
-    };
-    evaluate_block(body, &env, functions, depth + 1)
+    match decl {
+        FlatFunctionDeclaration::Data(decl) => {
+            let vars = decl.parameters.iter().map(|param| param.binder.var);
+            evaluate_data_block(&decl.body, &vars.zip(args).collect(), functions, depth + 1)
+        }
+        FlatFunctionDeclaration::Html(decl) => {
+            let vars = decl.parameters.iter().map(|param| param.binder.var);
+            evaluate_html_block(&decl.body, &vars.zip(args).collect(), functions, depth + 1)
+        }
+    }
 }
 
 /// Evaluate the bindings in order and produce the result. The block extends
 /// a copy of `env` and leaves `env` as it is, so its bindings are out of
 /// scope again when it returns.
-fn evaluate_block(
-    block: &FlatBlock,
+fn evaluate_data_block(
+    block: &FlatDataBlock,
     env: &HashTrieMap<ValueId, Value>,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
 ) -> Result<Value, EvalError> {
     let mut env = env.clone();
-    for binding in &block.bindings {
-        let value = evaluate_op(&binding.op, &env, functions, depth)?;
+    evaluate_data_bindings(&block.bindings, &mut env, functions, depth)?;
+    Ok(env[&block.result].clone())
+}
+
+/// Evaluate the values and then the Html in order and produce the result,
+/// leaving `env` as it is like `evaluate_data_block`.
+fn evaluate_html_block(
+    block: &FlatHtmlBlock,
+    env: &HashTrieMap<ValueId, Value>,
+    functions: &[FlatFunctionDeclaration],
+    depth: usize,
+) -> Result<Value, EvalError> {
+    let mut env = env.clone();
+    evaluate_data_bindings(&block.bindings, &mut env, functions, depth)?;
+    for binding in &block.html {
+        let value = evaluate_html_op(&binding.op, &env, functions, depth)?;
         env.insert_mut(binding.binder.var, value);
     }
     Ok(env[&block.result].clone())
 }
 
-fn evaluate_op(
-    op: &FlatOp,
+fn evaluate_data_bindings(
+    bindings: &[FlatDataBinding],
+    env: &mut HashTrieMap<ValueId, Value>,
+    functions: &[FlatFunctionDeclaration],
+    depth: usize,
+) -> Result<(), EvalError> {
+    for binding in bindings {
+        let value = match &binding.op {
+            FlatDataOp::Data(op) => evaluate_data_op(op, env)?,
+            FlatDataOp::Call(function, args) => {
+                evaluate_call(function, args, env, functions, depth)?
+            }
+            FlatDataOp::Match(match_) => {
+                let (body, env) = enter_arm(match_, env);
+                evaluate_data_block(body, &env, functions, depth)?
+            }
+        };
+        env.insert_mut(binding.binder.var, value);
+    }
+    Ok(())
+}
+
+fn evaluate_call(
+    function: &IrFunction,
+    args: &[ValueId],
+    env: &HashTrieMap<ValueId, Value>,
+    functions: &[FlatFunctionDeclaration],
+    depth: usize,
+) -> Result<Value, EvalError> {
+    let values = args.iter().map(|arg| env[arg].clone()).collect();
+    evaluate_function(functions, function, values, depth)
+}
+
+/// The body of the first arm the subject matches, with `env` extended by
+/// the names its pattern binds.
+fn enter_arm<'a, B>(
+    match_: &'a IrMatch<B>,
+    env: &HashTrieMap<ValueId, Value>,
+) -> (&'a B, HashTrieMap<ValueId, Value>) {
+    let subject = env[&match_.subject].clone();
+    let (arm, bound) = match_
+        .arms
+        .iter()
+        .find_map(|arm| {
+            let mut bound = Vec::new();
+            subject
+                .matches(&arm.pattern, &mut bound)
+                .then_some((arm, bound))
+        })
+        .unwrap();
+    let mut env = env.clone();
+    for (name, value) in bound {
+        env.insert_mut(name, value);
+    }
+    (&arm.body, env)
+}
+
+fn evaluate_html_op(
+    op: &FlatHtmlOp,
     env: &HashTrieMap<ValueId, Value>,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
 ) -> Result<Value, EvalError> {
     Ok(match op {
-        FlatOp::Data(op) => evaluate_data_op(op, env)?,
+        FlatHtmlOp::Text(content) => Value::Html(vec![HtmlNode::Text(content.to_string())]),
 
-        FlatOp::HtmlText(content) => Value::Html(vec![HtmlNode::Text(content.to_string())]),
-
-        FlatOp::HtmlEscape(string) => {
+        FlatHtmlOp::Escape(string) => {
             Value::Html(vec![HtmlNode::Escape(env[string].clone().unwrap_string())])
         }
 
-        FlatOp::HtmlConcat(parts) => Value::Html(
+        FlatHtmlOp::Concat(parts) => Value::Html(
             parts
                 .iter()
                 .flat_map(|part| env[part].clone().unwrap_html())
                 .collect(),
         ),
 
-        FlatOp::HtmlElement(IrHtmlElement {
+        FlatHtmlOp::Element(IrHtmlElement {
             element,
             attributes,
             children,
@@ -198,31 +270,14 @@ fn evaluate_op(
             }])
         }
 
-        FlatOp::Call(function, args) => {
-            let values = args.iter().map(|arg| env[arg].clone()).collect();
-            evaluate_function(functions, function, values, depth)?
+        FlatHtmlOp::Call(function, args) => evaluate_call(function, args, env, functions, depth)?,
+
+        FlatHtmlOp::Match(match_) => {
+            let (body, env) = enter_arm(match_, env);
+            evaluate_html_block(body, &env, functions, depth)?
         }
 
-        FlatOp::Match(match_) => {
-            let subject = env[&match_.subject].clone();
-            let (arm, bound) = match_
-                .arms
-                .iter()
-                .find_map(|arm| {
-                    let mut bound = Vec::new();
-                    subject
-                        .matches(&arm.pattern, &mut bound)
-                        .then_some((arm, bound))
-                })
-                .unwrap();
-            let mut env = env.clone();
-            for (name, value) in bound {
-                env.insert_mut(name, value);
-            }
-            evaluate_block(&arm.body, &env, functions, depth)?
-        }
-
-        FlatOp::HtmlFor(IrFor { var, array, body }) => {
+        FlatHtmlOp::For(IrFor { var, array, body }) => {
             let items = env[array].clone().unwrap_array();
             let mut nodes = Vec::new();
             for item in items.iter() {
@@ -230,7 +285,7 @@ fn evaluate_op(
                 if let Some(binder) = var {
                     env.insert_mut(binder.var, item.clone());
                 }
-                let result = evaluate_block(body, &env, functions, depth)?;
+                let result = evaluate_html_block(body, &env, functions, depth)?;
                 nodes.extend(result.unwrap_html());
             }
             Value::Html(nodes)

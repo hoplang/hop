@@ -3,7 +3,7 @@ use std::fmt;
 use pretty::BoxDoc;
 
 use crate::document::CheapString;
-use crate::hop::typing::{DataType, Type};
+use crate::hop::typing::{DataType, HtmlType, Type};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
@@ -30,17 +30,16 @@ pub enum FlatFunctionDeclaration {
 }
 
 /// A function whose body computes a value of its return type. No value
-/// depends on Html, so it has no Html parameter, and no block that
-/// produces a value binds Html.
+/// depends on Html, so its parameters take values only.
 #[derive(Debug, Clone)]
 pub struct FlatDataFunction {
     pub function: IrFunction,
     /// Whether the function is called from outside the module, so it is kept
     /// even when nothing in the module calls it.
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter<Type>>,
+    pub parameters: Vec<IrParameter<DataType>>,
     pub return_type: DataType,
-    pub body: FlatBlock,
+    pub body: FlatDataBlock,
 }
 
 /// A function whose body renders markup.
@@ -51,7 +50,7 @@ pub struct FlatHtmlFunction {
     /// even when nothing in the module calls it.
     pub entrypoint: bool,
     pub parameters: Vec<IrParameter<Type>>,
-    pub body: FlatBlock,
+    pub body: FlatHtmlBlock,
 }
 
 impl FlatFunctionDeclaration {
@@ -62,78 +61,95 @@ impl FlatFunctionDeclaration {
         }
     }
 
-    pub fn parameters(&self) -> &[IrParameter<Type>] {
+    /// The parameters, those of a function that returns a value widened to
+    /// Type.
+    pub fn parameters(&self) -> Vec<IrParameter<Type>> {
         match self {
-            FlatFunctionDeclaration::Data(function) => &function.parameters,
-            FlatFunctionDeclaration::Html(function) => &function.parameters,
+            FlatFunctionDeclaration::Data(function) => {
+                function.parameters.iter().map(IrParameter::widen).collect()
+            }
+            FlatFunctionDeclaration::Html(function) => function.parameters.clone(),
         }
     }
 }
 
-/// A block. A binding is in scope for every later binding of the block, for the
-/// blocks nested in them, and for the result.
+/// A block that computes a value. A binding is in scope for every later
+/// binding of the block, for the blocks nested in them, and for the result.
 #[derive(Debug, Clone)]
-pub struct FlatBlock {
-    pub bindings: Vec<FlatBinding>,
+pub struct FlatDataBlock {
+    pub bindings: Vec<FlatDataBinding>,
+    pub result: ValueId,
+}
+
+/// A block that renders Html. No value reads Html, so the values come
+/// before the Html. A binding is in scope for every later binding of the
+/// block, for the blocks nested in them, and for the result.
+#[derive(Debug, Clone)]
+pub struct FlatHtmlBlock {
+    pub bindings: Vec<FlatDataBinding>,
+    pub html: Vec<FlatHtmlBinding>,
     pub result: ValueId,
 }
 
 #[derive(Debug, Clone)]
-pub struct FlatBinding {
-    pub binder: IrBinder<Type>,
-    pub op: FlatOp,
+pub struct FlatDataBinding {
+    pub binder: IrBinder<DataType>,
+    pub op: FlatDataOp,
 }
 
 #[derive(Debug, Clone)]
-pub enum FlatOp {
+pub struct FlatHtmlBinding {
+    pub binder: IrBinder<HtmlType>,
+    pub op: FlatHtmlOp,
+}
+
+#[derive(Debug, Clone)]
+pub enum FlatDataOp {
     Data(IrDataOp),
-    /// Invokes a function and produces its result. The arguments follow
-    /// the function's parameters, one for each.
+    /// Invokes a function that returns a value and produces its result.
+    /// The arguments follow the function's parameters, one for each.
     Call(IrFunction, Vec<ValueId>),
     /// A match with the arms of the source. Each arm is a block that
     /// produces the match's value, and a name its pattern binds is the part
     /// of the subject it binds.
     ///
     /// Matching is exhaustive, a value must match at least one arm.
-    Match(IrMatch<FlatBlock>),
-    /// Text that renders as written, without escaping.
-    HtmlText(CheapString),
-    /// Must name a String. Produces its HTML escaped form as Html.
-    HtmlEscape(ValueId),
-    /// N-ary mappend over Html names. Part order is output order.
-    HtmlConcat(Vec<ValueId>),
-    /// An element whose children are the Html a name holds.
-    HtmlElement(IrHtmlElement<ValueId>),
-    /// A foldMap over the array, concatenating the body's Html once per
-    /// element in order.
-    HtmlFor(IrFor<FlatBlock>),
+    Match(IrMatch<FlatDataBlock>),
 }
 
-impl FlatOp {
+#[derive(Debug, Clone)]
+pub enum FlatHtmlOp {
+    /// Invokes a function that returns Html and produces its result. The
+    /// arguments follow the function's parameters, one for each.
+    Call(IrFunction, Vec<ValueId>),
+    /// A match with the arms of the source, as a match of a value has, whose
+    /// arms render Html.
+    Match(IrMatch<FlatHtmlBlock>),
+    /// Text that renders as written, without escaping.
+    Text(CheapString),
+    /// Must name a String. Produces its HTML escaped form as Html.
+    Escape(ValueId),
+    /// N-ary mappend over Html names. Part order is output order.
+    Concat(Vec<ValueId>),
+    /// An element whose children are the Html a name holds.
+    Element(IrHtmlElement<ValueId>),
+    /// A foldMap over the array, concatenating the body's Html once per
+    /// element in order.
+    For(IrFor<FlatHtmlBlock>),
+}
+
+impl FlatDataOp {
     /// Apply `f` to each name this op reads directly. The names read inside
-    /// the blocks of a Match or a loop are not visited, only the subject or
-    /// the array.
+    /// the blocks of a Match are not visited, only the subject.
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
-            FlatOp::Data(op) => op.for_each_operand(f),
-            FlatOp::HtmlText(_) => {}
-            FlatOp::HtmlEscape(name) => f(*name),
-            FlatOp::HtmlConcat(names) => {
-                for name in names {
-                    f(*name);
-                }
-            }
-            FlatOp::HtmlElement(element) => {
-                element.for_each_attribute_operand(f);
-                f(element.children);
-            }
-            FlatOp::Call(_, args) => {
+            FlatDataOp::Data(op) => op.for_each_operand(f),
+            FlatDataOp::Call(_, args) => {
                 for arg in args {
                     f(*arg);
                 }
             }
-            FlatOp::Match(match_) => f(match_.subject),
-            FlatOp::HtmlFor(for_) => f(for_.array),
+            FlatDataOp::Match(match_) => f(match_.subject),
         }
     }
 
@@ -141,49 +157,132 @@ impl FlatOp {
     /// the same names as `for_each_operand`.
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
-            FlatOp::Data(op) => op.for_each_operand_mut(f),
-            FlatOp::HtmlText(_) => {}
-            FlatOp::HtmlEscape(name) => f(name),
-            FlatOp::HtmlConcat(names) => {
-                for name in names {
-                    f(name);
-                }
-            }
-            FlatOp::HtmlElement(element) => {
-                element.for_each_attribute_operand_mut(f);
-                f(&mut element.children);
-            }
-            FlatOp::Call(_, args) => {
+            FlatDataOp::Data(op) => op.for_each_operand_mut(f),
+            FlatDataOp::Call(_, args) => {
                 for arg in args {
                     f(arg);
                 }
             }
-            FlatOp::Match(match_) => f(&mut match_.subject),
-            FlatOp::HtmlFor(for_) => f(&mut for_.array),
+            FlatDataOp::Match(match_) => f(&mut match_.subject),
         }
     }
 }
 
-impl FlatBlock {
+impl FlatHtmlOp {
+    /// Apply `f` to each name this op reads directly. The names read inside
+    /// the blocks of a Match or a loop are not visited, only the subject or
+    /// the array.
+    pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
+        match self {
+            FlatHtmlOp::Text(_) => {}
+            FlatHtmlOp::Escape(name) => f(*name),
+            FlatHtmlOp::Concat(names) => {
+                for name in names {
+                    f(*name);
+                }
+            }
+            FlatHtmlOp::Element(element) => {
+                element.for_each_attribute_operand(f);
+                f(element.children);
+            }
+            FlatHtmlOp::Call(_, args) => {
+                for arg in args {
+                    f(*arg);
+                }
+            }
+            FlatHtmlOp::Match(match_) => f(match_.subject),
+            FlatHtmlOp::For(for_) => f(for_.array),
+        }
+    }
+
+    /// Apply `f` to each name this op reads directly, to rewrite it. Visits
+    /// the same names as `for_each_operand`.
+    pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
+        match self {
+            FlatHtmlOp::Text(_) => {}
+            FlatHtmlOp::Escape(name) => f(name),
+            FlatHtmlOp::Concat(names) => {
+                for name in names {
+                    f(name);
+                }
+            }
+            FlatHtmlOp::Element(element) => {
+                element.for_each_attribute_operand_mut(f);
+                f(&mut element.children);
+            }
+            FlatHtmlOp::Call(_, args) => {
+                for arg in args {
+                    f(arg);
+                }
+            }
+            FlatHtmlOp::Match(match_) => f(&mut match_.subject),
+            FlatHtmlOp::For(for_) => f(&mut for_.array),
+        }
+    }
+}
+
+impl FlatDataBlock {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::intersperse(
             self.bindings
                 .iter()
-                .map(|binding| {
-                    BoxDoc::text(format!("let {} = ", binding.binder)).append(binding.op.to_doc())
-                })
+                .map(FlatDataBinding::to_doc)
                 .chain(std::iter::once(BoxDoc::text(self.result.to_string()))),
             BoxDoc::line(),
         )
     }
 }
 
-impl FlatOp {
+impl FlatHtmlBlock {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::intersperse(
+            self.bindings
+                .iter()
+                .map(FlatDataBinding::to_doc)
+                .chain(self.html.iter().map(FlatHtmlBinding::to_doc))
+                .chain(std::iter::once(BoxDoc::text(self.result.to_string()))),
+            BoxDoc::line(),
+        )
+    }
+}
+
+impl FlatDataBinding {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text(format!("let {} = ", self.binder)).append(self.op.to_doc())
+    }
+}
+
+impl FlatHtmlBinding {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text(format!("let {} = ", self.binder)).append(self.op.to_doc())
+    }
+}
+
+/// A call as the function and its arguments in parentheses.
+fn call_to_doc<'a>(function: &IrFunction, args: &[ValueId]) -> BoxDoc<'a> {
+    let args = args
+        .iter()
+        .map(|arg| arg.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    BoxDoc::text(format!("{function}({args})"))
+}
+
+impl FlatDataOp {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            FlatOp::Data(op) => op.to_doc(),
-            FlatOp::HtmlText(content) => BoxDoc::text(format!("text({:?})", content.as_str())),
-            FlatOp::HtmlConcat(parts) => {
+            FlatDataOp::Data(op) => op.to_doc(),
+            FlatDataOp::Call(function, args) => call_to_doc(function, args),
+            FlatDataOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
+        }
+    }
+}
+
+impl FlatHtmlOp {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            FlatHtmlOp::Text(content) => BoxDoc::text(format!("text({:?})", content.as_str())),
+            FlatHtmlOp::Concat(parts) => {
                 let parts = parts
                     .iter()
                     .map(ToString::to_string)
@@ -191,22 +290,15 @@ impl FlatOp {
                     .join(", ");
                 BoxDoc::text(format!("concat({parts})"))
             }
-            FlatOp::HtmlEscape(string) => BoxDoc::text(format!("escape({string})")),
-            FlatOp::HtmlElement(element) => {
+            FlatHtmlOp::Escape(string) => BoxDoc::text(format!("escape({string})")),
+            FlatHtmlOp::Element(element) => {
                 BoxDoc::text(format!("element({:?}, ", element.element.as_str()))
                     .append(element.attributes_to_doc())
                     .append(BoxDoc::text(format!(", {})", element.children)))
             }
-            FlatOp::Call(function, args) => {
-                let args = args
-                    .iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!("{function}({args})"))
-            }
-            FlatOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
-            FlatOp::HtmlFor(for_) => for_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
+            FlatHtmlOp::Call(function, args) => call_to_doc(function, args),
+            FlatHtmlOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
+            FlatHtmlOp::For(for_) => for_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
         }
     }
 }
@@ -217,11 +309,13 @@ impl FlatFunctionDeclaration {
             FlatFunctionDeclaration::Data(function) => (
                 function.entrypoint,
                 function.return_type.to_string(),
-                &function.body,
+                function.body.to_doc(),
             ),
-            FlatFunctionDeclaration::Html(function) => {
-                (function.entrypoint, "Html".to_string(), &function.body)
-            }
+            FlatFunctionDeclaration::Html(function) => (
+                function.entrypoint,
+                "Html".to_string(),
+                function.body.to_doc(),
+            ),
         };
         let parameters = self
             .parameters()
@@ -234,7 +328,7 @@ impl FlatFunctionDeclaration {
             "{keyword} {}({parameters}) -> {return_type} {{",
             self.function()
         ))
-        .append(BoxDoc::line().append(body.to_doc()).nest(2))
+        .append(BoxDoc::line().append(body).nest(2))
         .append(BoxDoc::line())
         .append(BoxDoc::text("}"))
     }
