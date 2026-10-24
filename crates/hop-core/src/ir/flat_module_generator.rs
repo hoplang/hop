@@ -265,10 +265,18 @@ fn random_module_inner(
     // a function declared after it.
     let function_names: Vec<String> = (0..g.count(0..=2)).map(|i| format!("C{i}")).collect();
     for name in &function_names {
-        let params: Vec<(String, Ty)> = (0..g.count(0..=8))
-            .map(|i| (format!("p{i}"), g.random_type(2)))
-            .collect();
+        // A function that returns a value has no Html parameter, since no
+        // value depends on Html.
         let return_type = g.random_type(2);
+        let html = matches!(return_type, Ty::Html);
+        let params: Vec<(String, Ty)> = (0..g.count(0..=8))
+            .map(|i| {
+                (
+                    format!("p{i}"),
+                    g.random_type_where(2, NamedTypes::Any, html),
+                )
+            })
+            .collect();
         builder = builder.declare(
             name,
             params.iter().map(|(n, t)| (n.as_str(), t.clone())),
@@ -553,9 +561,13 @@ impl FlatGenerator<'_, '_> {
         // so that the transforms that eliminate dead bindings have some to
         // eliminate. A later op may still read it. The last index is the
         // one an exhausted input never gives, so a minimal module has no
-        // dead binding.
+        // dead binding. A block that produces a value binds no Html.
         if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
-            let typ = Type::from(self.random_type(1));
+            let typ = if *target == Type::HTML {
+                Type::from(self.random_type(1))
+            } else {
+                Type::Data(self.random_data_type(1))
+            };
             self.op(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
         }
         self.op(b, scope, target, depth, MAX_EXPRESSION_DEPTH)
@@ -1449,50 +1461,50 @@ mod tests {
             ));
         }
         expect![[r#"
-            3164 of 65536 input bytes consumed per module on average, at most 37009
+            3653 of 65536 input bytes consumed per module on average, at most 21050
             0 of 100 modules exhaust the input
-            1 of 194 entrypoints hit the recursion limit
-            0 of 194 entrypoints hit the array length limit
-            0 of 1592 Html bindings have more than one reference
+            2 of 203 entrypoints hit the recursion limit
+            0 of 203 entrypoints hit the array length limit
+            0 of 1001 Html bindings have more than one reference
 
             op                  ops/module  % live   % dyn
-            Array                    112.6    94.2    10.1
-            ArrayFromRange             1.3    90.2     0.0
-            ArrayIsEmpty               0.2    94.7    68.4
-            ArrayLength                7.8    98.8    50.0
-            BoolLiteral               34.0    95.3     0.0
-            BoolNegation               0.2    94.1    41.2
-            Call                       3.4    97.0    94.3
-            Enum                      54.4    94.2    13.8
-            Equals                     0.2   100.0    84.2
-            FieldAccess                0.7    90.5    68.9
-            FloatLiteral              30.4    95.9     0.0
-            FloatToInt                 7.3    99.0    81.1
-            HtmlConcat                 3.9    93.3    25.1
-            HtmlElement                3.1    91.9    46.9
-            HtmlEscape                 1.9    90.1    58.6
-            HtmlFor                    2.3    95.6    51.3
-            HtmlText                   3.3    93.1     0.0
-            IntLiteral                32.6    95.9     0.0
-            IntToFloat                11.3    98.0    75.3
-            IntToString                2.8    93.5    63.4
-            LessThan                   0.2    89.5    68.4
-            LessThanOrEqual            0.2   100.0    68.2
-            Match                     53.0    95.7    86.4
-            NumericAdd                20.3    98.8    91.8
-            NumericMultiply           19.5    97.9    90.5
-            NumericNegation           18.9    98.4    80.6
-            NumericSubtract           18.9    98.1    90.8
-            OptionIsNone               0.3    86.2    48.3
-            OptionIsSome               0.2    94.1    64.7
-            OptionNone                71.0    94.6     0.0
-            OptionSome                29.0    94.7    21.8
-            Record                    62.8    92.3    17.0
-            StringConcat               2.8    92.9    65.0
-            StringIsEmpty              0.2    94.1    70.6
-            StringLiteral             36.4    95.5     0.0
-            Tuple                    420.4    95.0    46.6
-            TupleIndex               201.7    94.1    73.0
+            Array                    140.4    93.8     9.3
+            ArrayFromRange             1.0    95.9     0.0
+            ArrayIsEmpty               0.2    90.0    55.0
+            ArrayLength                6.5    98.5    63.2
+            BoolLiteral               38.4    93.9     0.0
+            BoolNegation               0.2   100.0    22.7
+            Call                       1.3    96.2    87.7
+            Enum                      74.5    93.0    12.6
+            Equals                     0.3   100.0    67.7
+            FieldAccess                1.2    95.0    70.2
+            FloatLiteral              40.6    92.8     0.0
+            FloatToInt                 6.3    98.6    69.2
+            HtmlConcat                 2.7    99.6    21.2
+            HtmlElement                1.8   100.0    46.0
+            HtmlEscape                 1.0    99.0    51.5
+            HtmlFor                    1.7    98.8    51.2
+            HtmlText                   1.8   100.0     0.0
+            IntLiteral                43.2    93.8     0.0
+            IntToFloat                10.4    98.9    67.9
+            IntToString                2.4    95.8    56.8
+            LessThan                   0.2    91.7    50.0
+            LessThanOrEqual            0.2   100.0    77.3
+            Match                     66.3    95.7    82.1
+            NumericAdd                17.7    98.6    82.0
+            NumericMultiply           17.2    98.4    78.7
+            NumericNegation           17.2    98.7    69.0
+            NumericSubtract           17.6    99.0    82.9
+            OptionIsNone               0.2   100.0    66.7
+            OptionIsSome               0.3    93.5    51.6
+            OptionNone                95.4    94.2     0.0
+            OptionSome                38.6    94.0    19.3
+            Record                    73.3    94.2    15.2
+            StringConcat               2.5    98.4    60.6
+            StringIsEmpty              0.3    90.9    42.4
+            StringLiteral             45.8    95.6     0.0
+            Tuple                    494.6    94.4    43.6
+            TupleIndex               224.1    94.1    67.0
         "#]]
         .assert_eq(&report);
     }

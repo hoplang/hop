@@ -107,7 +107,8 @@ fn read(name: ValueId, scope: &mut [bool], html: &[bool], function: &IrFunction)
 
 /// Panics unless every binding has the type its op produces from the types
 /// of its operands and every block produces the type its context expects.
-/// A name is read only after it is bound.
+/// A name is read only after it is bound. A function that returns a value
+/// has no Html parameter, and a block that produces a value binds no Html.
 pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
     let mut checker = Checker {
         registry,
@@ -116,6 +117,12 @@ pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
     };
     for function in &module.functions {
         for param in function.parameters() {
+            assert!(
+                matches!(function, FlatFunctionDeclaration::Html(_))
+                    || param.binder.typ != Type::HTML,
+                "{} returns a value but has the Html parameter {param}",
+                function.function()
+            );
             checker.bind(param.binder.var, BoundType::of(&param.binder.typ));
         }
         let (body, return_type) = match function {
@@ -194,6 +201,11 @@ impl<'a> Checker<'a> {
 
     fn block(&mut self, block: &'a FlatBlock, expected: &Type, function: &IrFunction) {
         for binding in &block.bindings {
+            assert!(
+                *expected == Type::HTML || binding.binder.typ != Type::HTML,
+                "{function} binds {} in a block that produces {expected}",
+                binding.binder
+            );
             assert!(
                 self.op(&binding.op, &binding.binder.typ, function),
                 "{function} binds {} to an op that does not produce that type",

@@ -25,8 +25,9 @@ use crate::ir::value_id::{ValueId, ValueIdCounter};
 /// reads is dropped.
 ///
 /// Every binding that is not Html stays a value binding in its block. Html
-/// is never part of another type, so no value but a call reads Html. Panics
-/// if one does all the same.
+/// is never part of another type and a function that returns a value has
+/// no Html parameter, so no value reads Html. Panics if one does all the
+/// same.
 pub fn flat_to_markup(module: FlatModule) -> MarkupModule {
     let mut cx = Converter {
         value_ids: module.value_ids,
@@ -100,9 +101,8 @@ impl Converter {
         MarkupHtmlBlock { bindings, markup }
     }
 
-    /// The result of a block whose result is data, with the bindings of the
-    /// block that are not Html. An Html binding of the block is unfolded
-    /// where a call reads it, or dropped when nothing does.
+    /// The result of a block whose result is data, with its bindings, none
+    /// of which is Html.
     fn data_block(&mut self, block: &FlatBlock) -> MarkupDataBlock {
         for binding in &block.bindings {
             self.bindings.insert(binding.binder.var, binding.clone());
@@ -111,7 +111,6 @@ impl Converter {
             bindings: block
                 .bindings
                 .iter()
-                .filter(|binding| binding.binder.typ != Type::HTML)
                 .map(|binding| self.data_binding(binding))
                 .collect(),
             result: block.result,
@@ -119,27 +118,28 @@ impl Converter {
     }
 
     /// A binding of data. Panics if it has type Html, builds Html, or reads
-    /// Html other than as the argument of a call.
+    /// Html.
     fn data_binding(&mut self, binding: &FlatBinding) -> MarkupDataBinding {
         let Type::Data(typ) = binding.binder.typ.clone() else {
             panic!("{} is a value of type Html", binding.binder.var);
         };
-        if !matches!(binding.op, FlatOp::Call(..)) {
-            binding.op.for_each_operand(&mut |operand| {
-                assert!(
-                    !self.html_parameters.contains(&operand)
-                        && self
-                            .bindings
-                            .get(&operand)
-                            .is_none_or(|b| b.binder.typ != Type::HTML),
-                    "{} reads the Html of {operand} as a value",
-                    binding.binder.var
-                );
-            });
-        }
+        binding.op.for_each_operand(&mut |operand| {
+            assert!(
+                !self.html_parameters.contains(&operand)
+                    && self
+                        .bindings
+                        .get(&operand)
+                        .is_none_or(|b| b.binder.typ != Type::HTML),
+                "{} reads the Html of {operand} as a value",
+                binding.binder.var
+            );
+        });
         let op = match binding.op.clone() {
             FlatOp::Data(op) => MarkupDataOp::Data(op),
-            FlatOp::Call(function, args) => MarkupDataOp::Call(function, self.call_args(args)),
+            FlatOp::Call(function, args) => MarkupDataOp::Call(
+                function,
+                args.into_iter().map(MarkupCallArg::Data).collect(),
+            ),
             FlatOp::Match(IrMatch { subject, arms }) => MarkupDataOp::Match(IrMatch {
                 subject,
                 arms: arms

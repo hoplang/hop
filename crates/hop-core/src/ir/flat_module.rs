@@ -29,7 +29,9 @@ pub enum FlatFunctionDeclaration {
     Html(FlatHtmlFunction),
 }
 
-/// A function whose body computes a value of its return type.
+/// A function whose body computes a value of its return type. No value
+/// depends on Html, so it has no Html parameter, and no block that
+/// produces a value binds Html.
 #[derive(Debug, Clone)]
 pub struct FlatDataFunction {
     pub function: IrFunction,

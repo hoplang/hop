@@ -48,6 +48,12 @@ use super::ir_parameter::IrParameter;
 /// of them in place of the rest. So a function with a rest is compiled once
 /// per such list, a function without one at most once, and a function no
 /// page reaches not at all.
+///
+/// Html is never part of another type, so no value depends on Html, and
+/// the Html in an expression that computes a value is erased. A function
+/// that returns a value has no parameter for Html, a call to it passes no
+/// argument for one, and a let of Html whose body computes a value is its
+/// body.
 pub fn typed_to_flat(
     pages: Vec<TypedPageDeclaration>,
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
@@ -207,6 +213,11 @@ impl<'a> Compiler<'a> {
 
         let mut parameters = Vec::with_capacity(decl.params.len() + shape.len());
         for param in &decl.params {
+            // What the function computes does not depend on Html, so only
+            // the erased parts of its body read the parameter.
+            if decl.return_type != Type::HTML && param.var_type == Type::HTML {
+                continue;
+            }
             let var = self.bind(&param.var_name);
             self.params.insert(param.var_name.clone(), var);
             parameters.push(IrParameter {
@@ -626,9 +637,11 @@ impl<'a> Compiler<'a> {
                 ..
             } => {
                 // The typechecker orders the arguments as the callee
-                // declares its parameters.
+                // declares its parameters. A callee that returns a value has
+                // no parameter for Html, so its Html arguments are erased.
                 let mut compiled_args: Vec<ValueId> = args
                     .iter()
+                    .filter(|(_, value)| typ == Type::HTML || value.typ() != Type::HTML)
                     .map(|(_, value)| self.compile_expr(value))
                     .collect();
                 // The attributes supplied to the callee's rest select the
@@ -682,6 +695,13 @@ impl<'a> Compiler<'a> {
                     }
                 };
                 FlatOp::Call(function, compiled_args)
+            }
+            // A let of Html whose body computes a value is its body, since
+            // only the erased parts of the body read the variable.
+            TypedExpr::Let { value, body, .. }
+                if typ != Type::HTML && value.typ() == Type::HTML =>
+            {
+                return self.compile_expr(body);
             }
             // A let binds nothing. Its variable is the name of its value,
             // in a scope of its own that holds the body.
@@ -1503,6 +1523,137 @@ mod tests {
                 entrypoint fn body@f1() -> Html {
                   let v0: Html = Used@f0()
                   v0
+                }
+                page Test: body@f1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_erase_the_html_of_a_function_that_returns_a_value() {
+        check(
+            indoc! {r#"
+                fn width(icon: Html, n: Int) -> Int {
+                  match n <= 0 {
+                    true => 0,
+                    false => width(icon, n - 1) + 2,
+                  }
+                }
+
+                fn label(icon: Html, name: String) -> String {
+                  let badge = <b>{icon}</b>;
+                  let n = width(badge, 3);
+                  format!("{} {}", name, n.to_string())
+                }
+
+                page Test(name: String) {
+                  fn body() -> Html {
+                    <p>{label(<i>*</i>, name)}</p>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn label@f0(name@v5: String) -> String {
+                  let v6: Int = 3
+                  let v7: Int = width@f1(v6)
+                  let v8: String = " "
+                  let v9: String = v7.to_string()
+                  let v10: String = concat(v5, v8, v9)
+                  v10
+                }
+                fn width@f1(n@v11: Int) -> Int {
+                  let v12: Int = 0
+                  let v13: Bool = v11 <= v12
+                  let v20: Int = match v13 {
+                    true => {
+                      let v14: Int = 0
+                      v14
+                    }
+                    false => {
+                      let v15: Int = 1
+                      let v16: Int = v11 - v15
+                      let v17: Int = width@f1(v16)
+                      let v18: Int = 2
+                      let v19: Int = v17 + v18
+                      v19
+                    }
+                  }
+                  v20
+                }
+                entrypoint fn body@f2(name@v0: String) -> Html {
+                  let v1: String = label@f0(v0)
+                  let v2: Html = escape(v1)
+                  let v3: Html = concat(v2)
+                  let v4: Html = element("p", {}, v3)
+                  v4
+                }
+                page Test: body@f2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_erase_the_html_of_an_arm_that_computes_a_value() {
+        check(
+            indoc! {r#"
+                fn width(icon: Html, n: Int) -> Int {
+                  match n <= 0 {
+                    true => 0,
+                    false => width(icon, n - 1) + 2,
+                  }
+                }
+
+                page Test(flag: Bool) {
+                  fn body() -> Html {
+                    <p>
+                      {match flag {
+                        true => {
+                          let star = <i>*</i>;
+                          width(star, 1).to_string()
+                        },
+                        false => "none",
+                      }}
+                    </p>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn width@f0(n@v9: Int) -> Int {
+                  let v10: Int = 0
+                  let v11: Bool = v9 <= v10
+                  let v18: Int = match v11 {
+                    true => {
+                      let v12: Int = 0
+                      v12
+                    }
+                    false => {
+                      let v13: Int = 1
+                      let v14: Int = v9 - v13
+                      let v15: Int = width@f0(v14)
+                      let v16: Int = 2
+                      let v17: Int = v15 + v16
+                      v17
+                    }
+                  }
+                  v18
+                }
+                entrypoint fn body@f1(flag@v0: Bool) -> Html {
+                  let v5: String = match v0 {
+                    true => {
+                      let v1: Int = 1
+                      let v2: Int = width@f0(v1)
+                      let v3: String = v2.to_string()
+                      v3
+                    }
+                    false => {
+                      let v4: String = "none"
+                      v4
+                    }
+                  }
+                  let v6: Html = escape(v5)
+                  let v7: Html = concat(v6)
+                  let v8: Html = element("p", {}, v7)
+                  v8
                 }
                 page Test: body@f1
             "#]],
