@@ -17974,9 +17974,9 @@ mod tests {
                   let v27: Int = 3
                   let v28: Array[Int] = v24..=v27
                   write("<div>")
-                  for v29: Int in v28 {
-                    let v30: String = v29.to_string()
-                    write_string(v30)
+                  for v33: Int in v28 {
+                    let v34: String = v33.to_string()
+                    write_string(v34)
                     write(",")
                   }
                   write("20</div>")

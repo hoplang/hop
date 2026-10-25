@@ -2,9 +2,7 @@ use crate::hop::typing::{
     DataType, RecordField, ResolvedType, Ty, Type, TypeRegistry, TypeRegistryBuilder,
 };
 use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
-use crate::ir::flat_module_builder::{
-    ArmBindings, DeclaredFunction, FlatBlockBuilder, FlatModuleBuilder, Pat,
-};
+use crate::ir::flat_module_builder::{DeclaredFunction, FlatBlockBuilder, FlatModuleBuilder, Pat};
 use crate::ir::ir_function::IrFunction;
 use crate::ir::runtime::random::random_value;
 use crate::ir::runtime::value::Value;
@@ -92,8 +90,7 @@ const STRING_LITERALS: &[&str] = &[
 ];
 
 /// The names a block may read, in the order they came into scope, each
-/// with whether the path has used it. The block builder knows their
-/// types.
+/// with whether the path has used it.
 #[derive(Default)]
 struct Scope {
     names: Vec<(ValueId, bool)>,
@@ -164,19 +161,9 @@ enum NamedTypes {
 struct FlatGenerator<'a, 'b> {
     u: &'a mut Unstructured<'b>,
     declared_names: Vec<String>,
-    /// The names of the records whose declarations are complete, in the
-    /// order they are declared.
     record_names: Vec<String>,
-    /// The names of the enums whose declarations are complete, in the
-    /// order they are declared.
     enum_names: Vec<String>,
-    /// The records of the module, in the order of `record_names`.
-    records: Vec<Type>,
-}
-
-/// The definition of `typ`, when it is data.
-fn resolve<'t>(registry: &'t TypeRegistry, typ: &'t Type) -> Option<ResolvedType<'t>> {
-    typ.as_data().and_then(|data| registry.resolve(data))
+    records: Vec<DataType>,
 }
 
 /// Generate a random well-typed Flat module.
@@ -200,8 +187,8 @@ fn random_module_inner(
         records: Vec::new(),
     };
 
-    // Name every type before generating any field types, so that a field
-    // can refer to a type declared later or to the one being declared.
+    // Name every type before generating any field types, so that a field can
+    // refer to a type declared later or to the one being declared.
     let record_count = g.count(0..=3);
     let enum_count = g.count(0..=3);
     g.declared_names = (0..record_count)
@@ -211,7 +198,6 @@ fn random_module_inner(
 
     let mut types = TypeRegistryBuilder::new();
 
-    // Generate records and enums in a shuffled interleaved order.
     enum Decl {
         Record(usize),
         Enum(usize),
@@ -261,12 +247,10 @@ fn random_module_inner(
         .collect();
     let mut builder = FlatModuleBuilder::with_registry(types.build());
 
-    // Declare every function before defining any, so that a body can call
-    // a function declared after it.
+    // Declare every function before defining any, so that a body can call a
+    // function declared after it.
     let function_names: Vec<String> = (0..g.count(0..=2)).map(|i| format!("C{i}")).collect();
     for name in &function_names {
-        // A function that returns a value has no Html parameter, since no
-        // value depends on Html.
         let return_type = g.random_type(2);
         let html = matches!(return_type, Ty::Html);
         let params: Vec<(String, Ty)> = (0..g.count(0..=8))
@@ -284,9 +268,6 @@ fn random_module_inner(
         );
     }
 
-    // Generate entrypoint functions, each rendering Html as a page body does.
-    // Their parameters are drawn before any body, like those of the
-    // functions above.
     let entrypoints: Vec<(String, Vec<(String, Ty)>)> = if single_test_entrypoint {
         vec![("Test".to_string(), Vec::new())]
     } else {
@@ -306,7 +287,10 @@ fn random_module_inner(
             for parameter in &declared.parameters {
                 scope.bound(parameter.binder.var);
             }
-            g.block(b, &mut scope, &declared.return_type, MAX_BLOCK_DEPTH)
+            match &declared.return_type {
+                Type::Html(_) => g.html_block(b, &mut scope, MAX_BLOCK_DEPTH),
+                Type::Data(target) => g.data_block(b, &mut scope, target, MAX_BLOCK_DEPTH),
+            }
         });
     }
     for (name, params) in &entrypoints {
@@ -319,15 +303,13 @@ fn random_module_inner(
                 for (n, _) in params {
                     scope.bound(b.param(n));
                 }
-                g.block(b, &mut scope, &Type::HTML, MAX_BLOCK_DEPTH)
+                g.html_block(b, &mut scope, MAX_BLOCK_DEPTH)
             },
         );
     }
     builder.build_with_registry()
 }
 
-/// Random arguments for each entrypoint function of the module, named by its
-/// parameters.
 pub fn random_entrypoint_args(
     module: &FlatModule,
     rng: &mut impl Rng,
@@ -355,13 +337,10 @@ pub fn random_entrypoint_args(
 }
 
 impl FlatGenerator<'_, '_> {
-    /// A choice within `range`, resolving to the lower bound once the
-    /// input is exhausted.
     fn count(&mut self, range: RangeInclusive<usize>) -> usize {
         self.u.int_in_range(range).unwrap()
     }
 
-    /// A choice of index into a nonempty collection of length `len`.
     fn index(&mut self, len: usize) -> usize {
         self.u.choose_index(len).unwrap()
     }
@@ -370,13 +349,11 @@ impl FlatGenerator<'_, '_> {
         self.u.arbitrary().unwrap()
     }
 
-    /// A zigzag-encoded choice in `-magnitude..=magnitude`.
     fn zigzag(&mut self, magnitude: i32) -> i32 {
         let n = self.u.int_in_range(0..=2 * magnitude).unwrap();
         if n % 2 == 0 { -n / 2 } else { n / 2 + 1 }
     }
 
-    /// A random permutation of items.
     fn shuffled<T>(&mut self, mut items: Vec<T>) -> Vec<T> {
         let mut out = Vec::with_capacity(items.len());
         while !items.is_empty() {
@@ -385,26 +362,23 @@ impl FlatGenerator<'_, '_> {
         out
     }
 
-    /// Pairs of `(record, field)` where the field type is the given type.
     fn record_fields_of_type<'s>(
         &'s self,
         b: &FlatBlockBuilder<'s>,
-        target: &'s Type,
-    ) -> impl Iterator<Item = (&'s Type, &'s RecordField)> + 's {
+        target: &'s DataType,
+    ) -> impl Iterator<Item = (&'s DataType, &'s RecordField)> + 's {
         let registry = b.registry();
         self.records.iter().flat_map(move |record| {
-            let Some(ResolvedType::Record { fields, .. }) = resolve(registry, record) else {
+            let Some(ResolvedType::Record { fields, .. }) = registry.resolve(record) else {
                 unreachable!("a record of the module resolves to its declaration")
             };
             fields
                 .iter()
-                .filter(move |field| target.as_data() == Some(&field.typ))
+                .filter(move |field| field.typ == *target)
                 .map(move |field| (record, field))
         })
     }
 
-    /// The functions whose calls produce a value of `target`. An entrypoint is
-    /// never called.
     fn callees<'t>(
         b: &FlatBlockBuilder<'t>,
         target: &'t Type,
@@ -414,42 +388,38 @@ impl FlatGenerator<'_, '_> {
             .filter(move |function| !function.entrypoint && function.return_type == *target)
     }
 
-    /// Nine times in ten, pick a name in scope whose type fits, when there
-    /// is one, with its type.
     fn var_in_scope(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &Scope,
-        fits: impl Fn(&Type) -> bool,
-    ) -> Option<(ValueId, Type)> {
+        fits: impl Fn(&DataType) -> bool,
+    ) -> Option<(ValueId, DataType)> {
         let types = b.value_types();
-        if scope.names_where(&types, &fits).next().is_none() || self.index(10) == 0 {
+        let fits = |typ: &Type| typ.as_data().is_some_and(&fits);
+        if scope.names_where(&types, fits).next().is_none() || self.index(10) == 0 {
             return None;
         }
-        let count = scope.names_where(&types, &fits).count();
+        let count = scope.names_where(&types, fits).count();
         let index = self.index(count);
-        let name = scope.names_where(&types, &fits).nth(index).unwrap();
-        Some((name, types[name.index()].clone()))
+        let name = scope.names_where(&types, fits).nth(index).unwrap();
+        let Type::Data(typ) = &types[name.index()] else {
+            unreachable!()
+        };
+        Some((name, typ.clone()))
     }
 
-    /// A random type, Html included.
     fn random_type(&mut self, depth: usize) -> Ty {
         self.random_type_where(depth, NamedTypes::Any, true)
     }
 
-    /// A random type of data, which can be part of another type.
     fn random_data_type(&mut self, depth: usize) -> DataType {
         self.random_type_where(depth, NamedTypes::Any, false).into()
     }
 
-    /// A random type for a field of the record or enum currently being
-    /// declared.
     fn random_field_type(&mut self, depth: usize) -> Ty {
         self.random_type_where(depth, NamedTypes::Complete, false)
     }
 
-    /// A random type. It is Html only when `html` allows it, and the types
-    /// it is made of never are, since Html is never part of another type.
     fn random_type_where(&mut self, depth: usize, named: NamedTypes, html: bool) -> Ty {
         enum P {
             Scalar,
@@ -501,32 +471,7 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
-    /// Generate the body of one arm of a match, starting from the scope
-    /// as it was `before` the match, and record in `after` what the arm
-    /// uses.
-    fn arm(
-        &mut self,
-        b: &FlatBlockBuilder<'_>,
-        scope: &mut Scope,
-        before: &[bool],
-        after: &mut [bool],
-        bindings: &ArmBindings,
-        binds: &[(String, Type)],
-        target: &Type,
-        depth: usize,
-    ) -> ValueId {
-        scope.restore(before);
-        for (name, _) in binds {
-            scope.bound(bindings.binding(name));
-        }
-        let body = self.block(b, scope, target, depth);
-        scope.join(after);
-        body
-    }
-
-    /// Generate the body of a loop, which may not read the Html values
-    /// bound outside it, and leave the scope as it was.
-    fn loop_body(
+    fn for_loop_body(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
@@ -543,189 +488,170 @@ impl FlatGenerator<'_, '_> {
         if let Some(var) = var {
             scope.bound(var);
         }
-        let body = self.block(b, scope, &Type::HTML, depth);
+        let body = self.html_block(b, scope, depth);
         scope.restore(&before);
         body
     }
 
-    /// Generate the result of a block of the target type, binding what it
-    /// reads before it. The blocks it nests nest at most `depth` deep.
-    fn block(
-        &mut self,
-        b: &FlatBlockBuilder<'_>,
-        scope: &mut Scope,
-        target: &Type,
-        depth: usize,
-    ) -> ValueId {
-        // One block in DEAD_BINDING_ODDS binds a value nothing asked for,
-        // so that the transforms that eliminate dead bindings have some to
-        // eliminate. A later op may still read it. The last index is the
-        // one an exhausted input never gives, so a minimal module has no
-        // dead binding. A block that produces a value binds no Html.
+    fn html_block(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
         if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
-            let typ = if *target == Type::HTML {
-                Type::from(self.random_type(1))
-            } else {
-                Type::Data(self.random_data_type(1))
+            let typ = Type::from(self.random_type(1));
+            match &typ {
+                Type::Html(_) => self.html_op(b, scope, depth, MAX_EXPRESSION_DEPTH),
+                Type::Data(target) => self.data_op(b, scope, target, depth, MAX_EXPRESSION_DEPTH),
             };
-            self.op(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
         }
-        self.op(b, scope, target, depth, MAX_EXPRESSION_DEPTH)
+        self.html_op(b, scope, depth, MAX_EXPRESSION_DEPTH)
     }
 
-    /// A name in scope of type `typ` that may be read, or a literal whose
-    /// parts nest at most `depth` values deep (or deeper if the type
-    /// forces it). An Html value counts as used.
-    fn leaf(
+    fn data_block(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        typ: &Type,
+        target: &DataType,
         depth: usize,
     ) -> ValueId {
-        let candidate = {
-            let types = b.value_types();
-            let count = scope
-                .names_where(&types, |candidate| *candidate == *typ)
-                .count();
-            let index = self.index(count + 1);
-            scope
-                .names_where(&types, |candidate| *candidate == *typ)
-                .nth(index)
-        };
-        let value = match candidate {
+        if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
+            let typ = self.random_data_type(1);
+            self.data_op(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
+        }
+        self.data_op(b, scope, target, depth, MAX_EXPRESSION_DEPTH)
+    }
+
+    fn name_in_scope(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &Scope,
+        typ: &Type,
+    ) -> Option<ValueId> {
+        let types = b.value_types();
+        let count = scope
+            .names_where(&types, |candidate| candidate == typ)
+            .count();
+        let index = self.index(count + 1);
+        scope
+            .names_where(&types, |candidate| candidate == typ)
+            .nth(index)
+    }
+
+    fn html_leaf(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
+        let value = match self.name_in_scope(b, scope, &Type::HTML) {
             Some(name) => name,
             None => {
-                let literal = match typ {
-                    Type::Html(_) => match self.index(3) {
-                        0 => b.html_concat(Vec::new()),
-                        1 => b.text(self.u.choose(TEXTS).unwrap()),
-                        _ => {
-                            let (tag, void) = *self.u.choose(ELEMENTS).unwrap();
-                            let children = if void || depth == 0 {
-                                b.html_concat(Vec::new())
-                            } else {
-                                self.leaf(b, scope, &Type::HTML, depth - 1)
-                            };
-                            b.element(tag, Vec::new(), children)
-                        }
-                    },
-                    Type::Data(DataType::String) => b.str(self.u.choose(STRING_LITERALS).unwrap()),
-                    Type::Data(DataType::Int) => {
-                        if self.count(0..=7) == 0 {
-                            b.int(
-                                *self
-                                    .u
-                                    .choose(&[i32::MIN, i32::MIN + 1, i32::MAX - 1, i32::MAX])
-                                    .unwrap(),
-                            )
+                let literal = match self.index(3) {
+                    0 => b.html_concat(Vec::new()),
+                    1 => b.text(self.u.choose(TEXTS).unwrap()),
+                    _ => {
+                        let (tag, void) = *self.u.choose(ELEMENTS).unwrap();
+                        let children = if void || depth == 0 {
+                            b.html_concat(Vec::new())
                         } else {
-                            b.int(self.zigzag(100))
-                        }
-                    }
-                    Type::Data(DataType::Bool) => b.bool(self.coin()),
-                    Type::Data(DataType::Float) => b.float(*self.u.choose(FLOATS).unwrap()),
-                    Type::Data(DataType::Array(inner)) => {
-                        let len = if depth == 0 { 0 } else { self.count(0..=3) };
-                        let elements: Vec<_> = (0..len)
-                            .map(|_| {
-                                self.leaf(
-                                    b,
-                                    scope,
-                                    &Type::Data((**inner).clone()),
-                                    depth.saturating_sub(1),
-                                )
-                            })
-                            .collect();
-                        if elements.is_empty() {
-                            b.empty_array(Type::Data(inner.as_ref().clone()))
-                        } else {
-                            b.array(elements)
-                        }
-                    }
-                    Type::Data(DataType::Option(inner)) => {
-                        if depth > 0 && self.coin() {
-                            let value = self.leaf(
-                                b,
-                                scope,
-                                &Type::Data((**inner).clone()),
-                                depth.saturating_sub(1),
-                            );
-                            b.some(value)
-                        } else {
-                            b.none(Type::Data(inner.as_ref().clone()))
-                        }
-                    }
-                    Type::Data(data @ DataType::Named { .. }) => match b.registry().resolve(data) {
-                        Some(ResolvedType::Record { fields, .. }) => {
-                            let fields = self.shuffled(fields.iter().collect());
-                            let mut values = Vec::new();
-                            for field in fields {
-                                let ty = Type::Data(field.typ.clone());
-                                values.push((
-                                    field.name.as_str(),
-                                    self.leaf(b, scope, &ty, depth.saturating_sub(1)),
-                                ));
-                            }
-                            b.record(typ.clone(), values)
-                        }
-                        Some(ResolvedType::Enum { variants, .. }) => {
-                            let variant = self.u.choose(variants).unwrap();
-                            let fields = self.shuffled(variant.fields.iter().collect());
-                            let mut values = Vec::new();
-                            for field in fields {
-                                let ty = Type::Data(field.typ.clone());
-                                values.push((
-                                    field.name.as_str(),
-                                    self.leaf(b, scope, &ty, depth.saturating_sub(1)),
-                                ));
-                            }
-                            b.enum_variant_with_fields(typ.clone(), variant.name.as_str(), values)
-                        }
-                        _ => unreachable!("named type must be a generated record or enum"),
-                    },
-                    Type::Data(DataType::Tuple(elements)) => {
-                        let values: Vec<_> = elements
-                            .iter()
-                            .map(|element| {
-                                self.leaf(
-                                    b,
-                                    scope,
-                                    &Type::Data(element.clone()),
-                                    depth.saturating_sub(1),
-                                )
-                            })
-                            .collect();
-                        b.tuple(values)
+                            self.html_leaf(b, scope, depth - 1)
+                        };
+                        b.element(tag, Vec::new(), children)
                     }
                 };
                 scope.bound(literal)
             }
         };
-        if *typ == Type::HTML {
-            scope.used(value);
-        }
+        scope.used(value);
         value
     }
 
-    /// A pattern that binds a name of type `typ`, added to `binds` under a
-    /// name numbered by its position among the names bound so far.
-    fn bind(binds: &mut Vec<(String, Type)>, typ: &Type) -> Pat {
-        let name = format!("x{}", binds.len());
-        binds.push((name.clone(), typ.clone()));
-        Pat::Bind(name)
+    fn data_leaf(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        typ: &DataType,
+        depth: usize,
+    ) -> ValueId {
+        if let Some(name) = self.name_in_scope(b, scope, &Type::Data(typ.clone())) {
+            return name;
+        }
+        let literal = match typ {
+            DataType::String => b.str(self.u.choose(STRING_LITERALS).unwrap()),
+            DataType::Int => {
+                if self.count(0..=7) == 0 {
+                    b.int(
+                        *self
+                            .u
+                            .choose(&[i32::MIN, i32::MIN + 1, i32::MAX - 1, i32::MAX])
+                            .unwrap(),
+                    )
+                } else {
+                    b.int(self.zigzag(100))
+                }
+            }
+            DataType::Bool => b.bool(self.coin()),
+            DataType::Float => b.float(*self.u.choose(FLOATS).unwrap()),
+            DataType::Array(inner) => {
+                let len = if depth == 0 { 0 } else { self.count(0..=3) };
+                let elements: Vec<_> = (0..len)
+                    .map(|_| self.data_leaf(b, scope, inner, depth.saturating_sub(1)))
+                    .collect();
+                if elements.is_empty() {
+                    b.empty_array(Type::Data((**inner).clone()))
+                } else {
+                    b.array(elements)
+                }
+            }
+            DataType::Option(inner) => {
+                if depth > 0 && self.coin() {
+                    let value = self.data_leaf(b, scope, inner, depth.saturating_sub(1));
+                    b.some(value)
+                } else {
+                    b.none(Type::Data((**inner).clone()))
+                }
+            }
+            DataType::Named { .. } => match b.registry().resolve(typ) {
+                Some(ResolvedType::Record { fields, .. }) => {
+                    let fields = self.shuffled(fields.iter().collect());
+                    let mut values = Vec::new();
+                    for field in fields {
+                        values.push((
+                            field.name.as_str(),
+                            self.data_leaf(b, scope, &field.typ, depth.saturating_sub(1)),
+                        ));
+                    }
+                    b.record(Type::Data(typ.clone()), values)
+                }
+                Some(ResolvedType::Enum { variants, .. }) => {
+                    let variant = self.u.choose(variants).unwrap();
+                    let fields = self.shuffled(variant.fields.iter().collect());
+                    let mut values = Vec::new();
+                    for field in fields {
+                        values.push((
+                            field.name.as_str(),
+                            self.data_leaf(b, scope, &field.typ, depth.saturating_sub(1)),
+                        ));
+                    }
+                    b.enum_variant_with_fields(
+                        Type::Data(typ.clone()),
+                        variant.name.as_str(),
+                        values,
+                    )
+                }
+                _ => unreachable!("named type must be a generated record or enum"),
+            },
+            DataType::Tuple(elements) => {
+                let values: Vec<_> = elements
+                    .iter()
+                    .map(|element| self.data_leaf(b, scope, element, depth.saturating_sub(1)))
+                    .collect();
+                b.tuple(values)
+            }
+        };
+        scope.bound(literal)
     }
 
-    /// One pattern per constructor of `typ` with wildcard parts, which
-    /// together match every value.
-    fn constructors(b: &FlatBlockBuilder<'_>, typ: &Type) -> Vec<Pat> {
+    fn constructors(b: &FlatBlockBuilder<'_>, typ: &DataType) -> Vec<Pat> {
         match typ {
-            Type::Data(DataType::Bool) => vec![Pat::True, Pat::False],
-            Type::Data(DataType::Option(_)) => vec![Pat::some(Pat::Wildcard), Pat::None],
-            Type::Data(DataType::Tuple(elements)) => {
+            DataType::Bool => vec![Pat::True, Pat::False],
+            DataType::Option(_) => vec![Pat::some(Pat::Wildcard), Pat::None],
+            DataType::Tuple(elements) => {
                 vec![Pat::Tuple(elements.iter().map(|_| Pat::Wildcard).collect())]
             }
-            Type::Data(DataType::Named { .. }) => match resolve(b.registry(), typ) {
+            DataType::Named { .. } => match b.registry().resolve(typ) {
                 Some(ResolvedType::Record { .. }) => vec![Pat::Record(Vec::new())],
                 Some(ResolvedType::Enum { variants, .. }) => variants
                     .iter()
@@ -737,42 +663,35 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
-    /// A random pattern for values of `typ` that tests at most `depth`
-    /// constructors on any path from its root, with the names it binds and
-    /// their types added to `binds`. A pattern of depth zero matches every
-    /// value.
     fn pattern(
         &mut self,
         b: &FlatBlockBuilder<'_>,
-        typ: &Type,
+        typ: &DataType,
         depth: usize,
-        binds: &mut Vec<(String, Type)>,
+        binds: &mut Vec<(String, DataType)>,
     ) -> Pat {
         if depth > 0 && self.index(3) > 0 {
             match typ {
-                Type::Data(DataType::Bool) => {
+                DataType::Bool => {
                     return if self.coin() { Pat::True } else { Pat::False };
                 }
-                Type::Data(DataType::Option(inner)) => {
+                DataType::Option(inner) => {
                     return if self.coin() {
-                        let inner = Type::Data((**inner).clone());
-                        Pat::some(self.pattern(b, &inner, depth - 1, binds))
+                        Pat::some(self.pattern(b, inner, depth - 1, binds))
                     } else {
                         Pat::None
                     };
                 }
-                Type::Data(DataType::Tuple(elements)) => {
+                DataType::Tuple(elements) => {
                     return Pat::Tuple(
                         elements
                             .iter()
-                            .map(|element| {
-                                self.pattern(b, &Type::Data(element.clone()), depth - 1, binds)
-                            })
+                            .map(|element| self.pattern(b, element, depth - 1, binds))
                             .collect(),
                     );
                 }
-                Type::Data(DataType::Named { .. }) => {
-                    let (variant, fields) = match resolve(b.registry(), typ) {
+                DataType::Named { .. } => {
+                    let (variant, fields) = match b.registry().resolve(typ) {
                         Some(ResolvedType::Record { fields, .. }) => (None, fields),
                         Some(ResolvedType::Enum { variants, .. }) => {
                             let variant = self.u.choose(variants).unwrap();
@@ -783,8 +702,7 @@ impl FlatGenerator<'_, '_> {
                     let fields = fields
                         .iter()
                         .map(|field| {
-                            let pattern =
-                                self.pattern(b, &Type::Data(field.typ.clone()), depth - 1, binds);
+                            let pattern = self.pattern(b, &field.typ, depth - 1, binds);
                             (field.name.as_str().to_string(), pattern)
                         })
                         .collect();
@@ -799,29 +717,120 @@ impl FlatGenerator<'_, '_> {
         if self.coin() {
             return Pat::Wildcard;
         }
-        Self::bind(binds, typ)
+        let name = format!("x{}", binds.len());
+        binds.push((name.clone(), typ.clone()));
+        Pat::Bind(name)
     }
 
-    /// A value of the target type for an op or a block to read: two times
-    /// in three an op of its own bound in the block `b` builds while the
-    /// expression may still nest, with its operands taken from what is in
-    /// scope, else a name in scope or a literal. The blocks it nests nest
-    /// at most `depth` deep and the ops at most `nesting` deep. An Html
-    /// value counts as used.
-    fn op(
+    fn html_op(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        target: &Type,
         depth: usize,
         nesting: usize,
     ) -> ValueId {
         if nesting == 0 || self.index(4) == 0 {
-            return self.leaf(b, scope, target, MAX_LITERAL_DEPTH);
+            return self.html_leaf(b, scope, MAX_LITERAL_DEPTH);
+        }
+        enum P {
+            Text,
+            Escape,
+            Element,
+            Concat,
+            Call,
+            Match,
+            ForArray,
+            ForRange,
+        }
+        let mut productions = vec![P::Text, P::Escape, P::Element, P::Concat];
+        if Self::callees(b, &Type::HTML).next().is_some() {
+            productions.push(P::Call);
+        }
+        if depth > 0 {
+            productions.extend([P::Match, P::ForArray, P::ForRange]);
+        }
+        let value = match self.u.choose(&productions).unwrap() {
+            P::Text => b.text(self.u.choose(TEXTS).unwrap()),
+            P::Escape => {
+                let operand = self.data_op(b, scope, &DataType::String, depth, nesting - 1);
+                b.escape(operand)
+            }
+            P::Element => {
+                let (tag, void) = *self.u.choose(ELEMENTS).unwrap();
+                let mut attributes = Vec::new();
+                for name in ["class", "id", "data-x"] {
+                    if self.coin() {
+                        let value = self.data_op(b, scope, &DataType::String, depth, nesting - 1);
+                        attributes.push(b.attr_value(name, value));
+                    }
+                }
+                if self.coin() {
+                    let present = self.data_op(b, scope, &DataType::Bool, depth, nesting - 1);
+                    attributes.push(b.attr_presence("disabled", present));
+                }
+                let children = if void {
+                    b.html_concat(Vec::new())
+                } else {
+                    self.html_op(b, scope, depth, nesting - 1)
+                };
+                b.element(tag, attributes, children)
+            }
+            P::Concat => {
+                let parts: Vec<_> = (0..self.count(0..=4))
+                    .map(|_| self.html_op(b, scope, depth, nesting - 1))
+                    .collect();
+                b.html_concat(parts)
+            }
+            P::Call => self.call(b, scope, &Type::HTML, depth, nesting),
+            P::Match => self.match_(b, scope, &Type::HTML, depth, nesting),
+            P::ForArray => {
+                let var = self.var_in_scope(b, scope, |ty| matches!(ty, DataType::Array(_)));
+                let array = match var {
+                    Some((array, _)) => array,
+                    None => {
+                        let array_ty = DataType::Array(Box::new(self.random_data_type(1)));
+                        self.data_op(b, scope, &array_ty, depth, nesting - 1)
+                    }
+                };
+                b.html_for(array, |b, var| {
+                    self.for_loop_body(b, scope, Some(var), depth - 1)
+                })
+            }
+            P::ForRange => {
+                let start = b.int(self.zigzag(3));
+                scope.bound(start);
+                let end = b.int(self.zigzag(3));
+                scope.bound(end);
+                let array = b.array_from_range(start, end);
+                scope.bound(array);
+                if self.coin() {
+                    b.html_for(array, |b, var| {
+                        self.for_loop_body(b, scope, Some(var), depth - 1)
+                    })
+                } else {
+                    b.html_for_unbound(array, |b| self.for_loop_body(b, scope, None, depth - 1))
+                }
+            }
+        };
+        scope.bound(value);
+        scope.used(value);
+        value
+    }
+
+    fn data_op(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        target: &DataType,
+        depth: usize,
+        nesting: usize,
+    ) -> ValueId {
+        if nesting == 0 || self.index(4) == 0 {
+            return self.data_leaf(b, scope, target, MAX_LITERAL_DEPTH);
         }
         enum P {
             FieldAccess,
-            MatchPattern,
+            Match,
             Eq,
             Lt,
             Lte,
@@ -841,22 +850,15 @@ impl FlatGenerator<'_, '_> {
             Add,
             Sub,
             Mul,
-            HtmlEscape,
-            HtmlElement,
-            HtmlText,
-            HtmlConcat,
-            HtmlForArray,
-            HtmlForRange,
             Call,
         }
+        let typ = Type::Data(target.clone());
         let mut productions: Vec<P> = Vec::new();
         if self.record_fields_of_type(b, target).next().is_some() {
             productions.push(P::FieldAccess);
         }
-        if *target != Type::HTML {
-            productions.push(P::TupleIndex);
-        }
-        if *target == Type::BOOL {
+        productions.push(P::TupleIndex);
+        if *target == DataType::Bool {
             productions.extend([
                 P::Eq,
                 P::Lt,
@@ -868,7 +870,7 @@ impl FlatGenerator<'_, '_> {
                 P::ArrayIsEmpty,
             ]);
         }
-        if *target == Type::INT {
+        if *target == DataType::Int {
             productions.extend([
                 P::ArrayLength,
                 P::Neg,
@@ -878,32 +880,24 @@ impl FlatGenerator<'_, '_> {
                 P::FloatToInt,
             ]);
         }
-        if *target == Type::FLOAT {
+        if *target == DataType::Float {
             productions.extend([P::Neg, P::Add, P::Sub, P::Mul, P::IntToFloat]);
         }
-        if matches!(target.as_data(), Some(DataType::Array(element)) if **element == DataType::Int)
-        {
+        if matches!(target, DataType::Array(element) if **element == DataType::Int) {
             productions.push(P::ArrayFromRange);
         }
-        if *target == Type::STRING {
+        if *target == DataType::String {
             productions.extend([P::Concat, P::IntToString]);
         }
-        if *target == Type::HTML {
-            productions.extend([P::HtmlText, P::HtmlEscape, P::HtmlElement, P::HtmlConcat]);
-        }
-        if Self::callees(b, target).next().is_some() {
+        if Self::callees(b, &typ).next().is_some() {
             productions.push(P::Call);
         }
-        // Only an op that may still nest a block is one that nests one.
         if depth > 0 {
-            productions.push(P::MatchPattern);
-            if *target == Type::HTML {
-                productions.extend([P::HtmlForArray, P::HtmlForRange]);
-            }
+            productions.push(P::Match);
         }
         let value = match self.u.choose(&productions).unwrap() {
             P::FieldAccess => {
-                let record_fields: Vec<(Type, String)> = self
+                let record_fields: Vec<(DataType, String)> = self
                     .record_fields_of_type(b, target)
                     .map(|(record, field)| (record.clone(), field.name.as_str().to_string()))
                     .collect();
@@ -921,103 +915,109 @@ impl FlatGenerator<'_, '_> {
                     }
                     None => {
                         let (record, field) = self.u.choose(&record_fields).unwrap().clone();
-                        let object = self.op(b, scope, &record, depth, nesting - 1);
+                        let object = self.data_op(b, scope, &record, depth, nesting - 1);
                         b.field_access(object, &field)
                     }
                 }
             }
             P::Eq => {
                 let ty = match self.index(4) {
-                    0 => Type::INT,
-                    1 => Type::STRING,
-                    2 => Type::BOOL,
-                    _ => Type::FLOAT,
+                    0 => DataType::Int,
+                    1 => DataType::String,
+                    2 => DataType::Bool,
+                    _ => DataType::Float,
                 };
-                let left = self.op(b, scope, &ty, depth, nesting - 1);
-                let right = self.op(b, scope, &ty, depth, nesting - 1);
+                let left = self.data_op(b, scope, &ty, depth, nesting - 1);
+                let right = self.data_op(b, scope, &ty, depth, nesting - 1);
                 b.eq(left, right)
             }
             P::Lt => {
-                let ty = if self.coin() { Type::INT } else { Type::FLOAT };
-                let left = self.op(b, scope, &ty, depth, nesting - 1);
-                let right = self.op(b, scope, &ty, depth, nesting - 1);
+                let ty = if self.coin() {
+                    DataType::Int
+                } else {
+                    DataType::Float
+                };
+                let left = self.data_op(b, scope, &ty, depth, nesting - 1);
+                let right = self.data_op(b, scope, &ty, depth, nesting - 1);
                 b.lt(left, right)
             }
             P::Lte => {
-                let ty = if self.coin() { Type::INT } else { Type::FLOAT };
-                let left = self.op(b, scope, &ty, depth, nesting - 1);
-                let right = self.op(b, scope, &ty, depth, nesting - 1);
+                let ty = if self.coin() {
+                    DataType::Int
+                } else {
+                    DataType::Float
+                };
+                let left = self.data_op(b, scope, &ty, depth, nesting - 1);
+                let right = self.data_op(b, scope, &ty, depth, nesting - 1);
                 b.lte(left, right)
             }
             P::Not => {
-                let operand = self.op(b, scope, &Type::BOOL, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &DataType::Bool, depth, nesting - 1);
                 b.not(operand)
             }
             P::Concat => {
                 let parts: Vec<_> = (0..self.count(0..=4))
-                    .map(|_| self.op(b, scope, &Type::STRING, depth, nesting - 1))
+                    .map(|_| self.data_op(b, scope, &DataType::String, depth, nesting - 1))
                     .collect();
                 b.string_concat(parts)
             }
             P::IntToString => {
-                let operand = self.op(b, scope, &Type::INT, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &DataType::Int, depth, nesting - 1);
                 b.int_to_string(operand)
             }
             P::FloatToInt => {
-                let operand = self.op(b, scope, &Type::FLOAT, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &DataType::Float, depth, nesting - 1);
                 b.float_to_int(operand)
             }
             P::IntToFloat => {
-                let operand = self.op(b, scope, &Type::INT, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &DataType::Int, depth, nesting - 1);
                 b.int_to_float(operand)
             }
             P::OptionIsNone => {
                 let operand = self
-                    .var_in_scope(b, scope, |ty| matches!(ty, Type::Data(DataType::Option(_))))
+                    .var_in_scope(b, scope, |ty| matches!(ty, DataType::Option(_)))
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
-                        let option_ty = Type::option(self.random_data_type(1));
-                        self.op(b, scope, &option_ty, depth, nesting - 1)
+                        let option_ty = DataType::Option(Box::new(self.random_data_type(1)));
+                        self.data_op(b, scope, &option_ty, depth, nesting - 1)
                     });
                 b.option_is_none(operand)
             }
             P::OptionIsSome => {
                 let operand = self
-                    .var_in_scope(b, scope, |ty| matches!(ty, Type::Data(DataType::Option(_))))
+                    .var_in_scope(b, scope, |ty| matches!(ty, DataType::Option(_)))
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
-                        let option_ty = Type::option(self.random_data_type(1));
-                        self.op(b, scope, &option_ty, depth, nesting - 1)
+                        let option_ty = DataType::Option(Box::new(self.random_data_type(1)));
+                        self.data_op(b, scope, &option_ty, depth, nesting - 1)
                     });
                 b.option_is_some(operand)
             }
             P::StringIsEmpty => {
-                let operand = self.op(b, scope, &Type::STRING, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &DataType::String, depth, nesting - 1);
                 b.string_is_empty(operand)
             }
             P::ArrayIsEmpty => {
                 let operand = self
-                    .var_in_scope(b, scope, |ty| matches!(ty, Type::Data(DataType::Array(_))))
+                    .var_in_scope(b, scope, |ty| matches!(ty, DataType::Array(_)))
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
-                        let array_ty = Type::array(self.random_data_type(1));
-                        self.op(b, scope, &array_ty, depth, nesting - 1)
+                        let array_ty = DataType::Array(Box::new(self.random_data_type(1)));
+                        self.data_op(b, scope, &array_ty, depth, nesting - 1)
                     });
                 b.array_is_empty(operand)
             }
             P::ArrayLength => {
                 let operand = self
-                    .var_in_scope(b, scope, |ty| matches!(ty, Type::Data(DataType::Array(_))))
+                    .var_in_scope(b, scope, |ty| matches!(ty, DataType::Array(_)))
                     .map(|(var, _)| var)
                     .unwrap_or_else(|| {
-                        let array_ty = Type::array(self.random_data_type(1));
-                        self.op(b, scope, &array_ty, depth, nesting - 1)
+                        let array_ty = DataType::Array(Box::new(self.random_data_type(1)));
+                        self.data_op(b, scope, &array_ty, depth, nesting - 1)
                     });
                 b.array_length(operand)
             }
             P::ArrayFromRange => {
-                // Literal bounds only, generated arithmetic can produce huge
-                // Int values, which would make evaluation iterate forever.
                 let start = b.int(self.zigzag(3));
                 scope.bound(start);
                 let end = b.int(self.zigzag(3));
@@ -1025,19 +1025,18 @@ impl FlatGenerator<'_, '_> {
                 b.array_from_range(start, end)
             }
             P::TupleIndex => {
-                let Type::Data(target_data) = target else {
-                    unreachable!("a tuple holds data, so it is indexed only for data")
-                };
-                let var = self.var_in_scope(b, scope,
-                    |ty| matches!(ty, Type::Data(DataType::Tuple(elements)) if elements.contains(target_data)),
+                let var = self.var_in_scope(
+                    b,
+                    scope,
+                    |ty| matches!(ty, DataType::Tuple(elements) if elements.contains(target)),
                 );
                 match var {
                     Some((tuple, tuple_ty)) => {
-                        let Type::Data(DataType::Tuple(elements)) = tuple_ty else {
+                        let DataType::Tuple(elements) = tuple_ty else {
                             unreachable!("the variable has a tuple type")
                         };
                         let indices: Vec<usize> = (0..elements.len())
-                            .filter(|&index| elements[index] == *target_data)
+                            .filter(|&index| elements[index] == *target)
                             .collect();
                         b.tuple_index(tuple, *self.u.choose(&indices).unwrap())
                     }
@@ -1047,194 +1046,137 @@ impl FlatGenerator<'_, '_> {
                         let elements = (0..arity)
                             .map(|i| {
                                 if i == index {
-                                    target_data.clone()
+                                    target.clone()
                                 } else {
                                     self.random_data_type(1)
                                 }
                             })
                             .collect();
-                        let tuple = self.op(
-                            b,
-                            scope,
-                            &Type::Data(DataType::Tuple(elements)),
-                            depth,
-                            nesting - 1,
-                        );
+                        let tuple =
+                            self.data_op(b, scope, &DataType::Tuple(elements), depth, nesting - 1);
                         b.tuple_index(tuple, index)
                     }
                 }
             }
-            P::MatchPattern => {
-                let var = self.var_in_scope(b, scope, |ty| {
-                    matches!(
-                        ty,
-                        Type::Data(
-                            DataType::Bool
-                                | DataType::Option(_)
-                                | DataType::Tuple(_)
-                                | DataType::Named { .. }
-                        )
-                    )
-                });
-                let (subject, subject_ty) = match var {
-                    Some(pair) => pair,
-                    None => {
-                        let named = self.declared_names.len();
-                        let subject_ty: Type = match self.index(3 + named) {
-                            0 => Ty::Bool,
-                            1 => Ty::option(self.random_type_where(1, NamedTypes::Any, false)),
-                            2 => Ty::tuple(
-                                (0..self.count(1..=3))
-                                    .map(|_| self.random_type_where(1, NamedTypes::Any, false)),
-                            ),
-                            i => Ty::named(&self.declared_names[i - 3]),
-                        }
-                        .into();
-                        (
-                            self.op(b, scope, &subject_ty, depth, nesting - 1),
-                            subject_ty,
-                        )
-                    }
-                };
-                let mut pats: Vec<(Pat, Vec<(String, Type)>)> = (0..self.count(0..=2))
-                    .map(|_| {
-                        let mut binds = Vec::new();
-                        let pat = self.pattern(b, &subject_ty, 2, &mut binds);
-                        (pat, binds)
-                    })
-                    .collect();
-                // The last arms make the match exhaustive, whether or not
-                // the arms before them are: one arm per constructor of the
-                // subject type, or one arm that matches every value.
-                if self.coin() {
-                    let constructors = Self::constructors(b, &subject_ty);
-                    pats.extend(constructors.into_iter().map(|pat| (pat, Vec::new())));
-                } else {
-                    let mut binds = Vec::new();
-                    let pat = self.pattern(b, &subject_ty, 0, &mut binds);
-                    pats.push((pat, binds));
-                }
-                let before = scope.snapshot();
-                let mut after = before.clone();
-                let result = b.match_(subject, |m| {
-                    for (pat, binds) in pats {
-                        m.arm(pat, |b, bindings| {
-                            self.arm(
-                                b,
-                                scope,
-                                &before,
-                                &mut after,
-                                bindings,
-                                &binds,
-                                target,
-                                depth - 1,
-                            )
-                        });
-                    }
-                });
-                scope.restore(&after);
-                result
-            }
+            P::Match => self.match_(b, scope, &typ, depth, nesting),
             P::Neg => {
-                let operand = self.op(b, scope, target, depth, nesting - 1);
+                let operand = self.data_op(b, scope, target, depth, nesting - 1);
                 b.neg(operand)
             }
             P::Add => {
-                let left = self.op(b, scope, target, depth, nesting - 1);
-                let right = self.op(b, scope, target, depth, nesting - 1);
+                let left = self.data_op(b, scope, target, depth, nesting - 1);
+                let right = self.data_op(b, scope, target, depth, nesting - 1);
                 b.add(left, right)
             }
             P::Sub => {
-                let left = self.op(b, scope, target, depth, nesting - 1);
-                let right = self.op(b, scope, target, depth, nesting - 1);
+                let left = self.data_op(b, scope, target, depth, nesting - 1);
+                let right = self.data_op(b, scope, target, depth, nesting - 1);
                 b.sub(left, right)
             }
             P::Mul => {
-                let left = self.op(b, scope, target, depth, nesting - 1);
-                let right = self.op(b, scope, target, depth, nesting - 1);
+                let left = self.data_op(b, scope, target, depth, nesting - 1);
+                let right = self.data_op(b, scope, target, depth, nesting - 1);
                 b.mul(left, right)
             }
-            P::HtmlText => b.text(self.u.choose(TEXTS).unwrap()),
-            P::HtmlEscape => {
-                let operand = self.op(b, scope, &Type::STRING, depth, nesting - 1);
-                b.escape(operand)
-            }
-            P::HtmlElement => {
-                let (tag, void) = *self.u.choose(ELEMENTS).unwrap();
-                // Attribute names are unique within an element, so each
-                // candidate is included at most once.
-                let mut attributes = Vec::new();
-                for name in ["class", "id", "data-x"] {
-                    if self.coin() {
-                        let value = self.op(b, scope, &Type::STRING, depth, nesting - 1);
-                        attributes.push(b.attr_value(name, value));
-                    }
+            P::Call => self.call(b, scope, &typ, depth, nesting),
+        };
+        scope.bound(value)
+    }
+
+    fn call(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        target: &Type,
+        depth: usize,
+        nesting: usize,
+    ) -> ValueId {
+        let callees: Vec<_> = Self::callees(b, target).collect();
+        let callee = *self.u.choose(&callees).unwrap();
+        let args: Vec<_> = callee
+            .parameters
+            .iter()
+            .map(|parameter| match &parameter.binder.typ {
+                Type::Html(_) => self.html_op(b, scope, depth, nesting - 1),
+                Type::Data(target) => self.data_op(b, scope, target, depth, nesting - 1),
+            })
+            .collect();
+        b.call(callee.function.name.as_str(), args)
+    }
+
+    fn match_(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        target: &Type,
+        depth: usize,
+        nesting: usize,
+    ) -> ValueId {
+        let var = self.var_in_scope(b, scope, |ty| {
+            matches!(
+                ty,
+                DataType::Bool | DataType::Option(_) | DataType::Tuple(_) | DataType::Named { .. }
+            )
+        });
+        let (subject, subject_ty) = match var {
+            Some(pair) => pair,
+            None => {
+                let named = self.declared_names.len();
+                let subject_ty: DataType = match self.index(3 + named) {
+                    0 => Ty::Bool,
+                    1 => Ty::option(self.random_type_where(1, NamedTypes::Any, false)),
+                    2 => Ty::tuple(
+                        (0..self.count(1..=3))
+                            .map(|_| self.random_type_where(1, NamedTypes::Any, false)),
+                    ),
+                    i => Ty::named(&self.declared_names[i - 3]),
                 }
-                if self.coin() {
-                    let present = self.op(b, scope, &Type::BOOL, depth, nesting - 1);
-                    attributes.push(b.attr_presence("disabled", present));
-                }
-                let children = if void {
-                    // The element reads its children, so they never come
-                    // into scope.
-                    b.html_concat(Vec::new())
-                } else {
-                    self.op(b, scope, &Type::HTML, depth, nesting - 1)
-                };
-                b.element(tag, attributes, children)
-            }
-            P::HtmlConcat => {
-                let parts: Vec<_> = (0..self.count(0..=4))
-                    .map(|_| self.op(b, scope, &Type::HTML, depth, nesting - 1))
-                    .collect();
-                b.html_concat(parts)
-            }
-            P::HtmlForArray => {
-                let var =
-                    self.var_in_scope(b, scope, |ty| matches!(ty, Type::Data(DataType::Array(_))));
-                let array = match var {
-                    Some((array, _)) => array,
-                    None => {
-                        let array_ty = Type::array(self.random_data_type(1));
-                        self.op(b, scope, &array_ty, depth, nesting - 1)
-                    }
-                };
-                b.html_for(array, |b, var| {
-                    self.loop_body(b, scope, Some(var), depth - 1)
-                })
-            }
-            P::HtmlForRange => {
-                // Literal bounds only, as for an array from a range.
-                let start = b.int(self.zigzag(3));
-                scope.bound(start);
-                let end = b.int(self.zigzag(3));
-                scope.bound(end);
-                let array = b.array_from_range(start, end);
-                scope.bound(array);
-                if self.coin() {
-                    b.html_for(array, |b, var| {
-                        self.loop_body(b, scope, Some(var), depth - 1)
-                    })
-                } else {
-                    b.html_for_unbound(array, |b| self.loop_body(b, scope, None, depth - 1))
-                }
-            }
-            P::Call => {
-                let callees: Vec<_> = Self::callees(b, target).collect();
-                let callee = *self.u.choose(&callees).unwrap();
-                let args: Vec<_> = callee
-                    .parameters
-                    .iter()
-                    .map(|parameter| self.op(b, scope, &parameter.binder.typ, depth, nesting - 1))
-                    .collect();
-                b.call(callee.function.name.as_str(), args)
+                .into();
+                (
+                    self.data_op(b, scope, &subject_ty, depth, nesting - 1),
+                    subject_ty,
+                )
             }
         };
-        scope.bound(value);
-        if *target == Type::HTML {
-            scope.used(value);
+        let mut pats: Vec<(Pat, Vec<(String, DataType)>)> = (0..self.count(0..=2))
+            .map(|_| {
+                let mut binds = Vec::new();
+                let pat = self.pattern(b, &subject_ty, 2, &mut binds);
+                (pat, binds)
+            })
+            .collect();
+        // The last arms make the match exhaustive, whether or not the arms
+        // before them are: one arm per constructor of the subject type, or
+        // one arm that matches every value.
+        if self.coin() {
+            let constructors = Self::constructors(b, &subject_ty);
+            pats.extend(constructors.into_iter().map(|pat| (pat, Vec::new())));
+        } else {
+            let mut binds = Vec::new();
+            let pat = self.pattern(b, &subject_ty, 0, &mut binds);
+            pats.push((pat, binds));
         }
-        value
+        let before = scope.snapshot();
+        let mut after = before.clone();
+        let result = b.match_(subject, |m| {
+            for (pat, binds) in pats {
+                m.arm(pat, |b, bindings| {
+                    let depth = depth - 1;
+                    scope.restore(&before);
+                    for (name, _) in binds {
+                        scope.bound(bindings.binding(&name));
+                    }
+                    let body = match target {
+                        Type::Html(_) => self.html_block(b, scope, depth),
+                        Type::Data(target) => self.data_block(b, scope, target, depth),
+                    };
+                    scope.join(&mut after);
+                    body
+                });
+            }
+        });
+        scope.restore(&after);
+        result
     }
 }
 
@@ -1257,14 +1199,12 @@ mod tests {
         expected.assert_eq(&format!("{registry}\n{module}"));
     }
 
-    /// A block of either kind, for the walks below to treat alike.
     #[derive(Clone, Copy)]
     enum Block<'a> {
         Data(&'a FlatDataBlock),
         Html(&'a FlatHtmlBlock),
     }
 
-    /// A binding of either kind.
     #[derive(Clone, Copy)]
     enum Binding<'a> {
         Data(&'a FlatDataBinding),
@@ -1286,8 +1226,6 @@ mod tests {
             }
         }
 
-        /// The bindings in order, the values of an Html block before its
-        /// Html.
         fn bindings(self) -> Vec<Binding<'a>> {
             match self {
                 Block::Data(block) => block.bindings.iter().map(Binding::Data).collect(),
@@ -1316,8 +1254,6 @@ mod tests {
             }
         }
 
-        /// The kind of the op as the report names it, an op that only Html
-        /// has with the prefix Html.
         fn kind(self) -> String {
             let debug = match self {
                 Binding::Data(binding) => format!("{:?}", binding.op),
@@ -1339,8 +1275,6 @@ mod tests {
             }
         }
 
-        /// Each block the op nests, with the names bound on entering it: the
-        /// names the pattern of an arm binds, or the loop variable.
         fn nested(self) -> Vec<(Vec<ValueId>, Block<'a>)> {
             let bound = |pattern: &crate::ir::ir_match::IrPattern| {
                 let mut names = Vec::new();
@@ -1376,9 +1310,6 @@ mod tests {
         }
     }
 
-    /// Mark the names read on the way to the result of `block`, walking the
-    /// bindings backwards as dead binding elimination does. `live` is
-    /// shared with nested blocks, since names are unique.
     fn mark_live(block: Block<'_>, live: &mut HashSet<ValueId>) {
         live.insert(block.result());
         for binding in block.bindings().into_iter().rev() {
@@ -1394,12 +1325,6 @@ mod tests {
         }
     }
 
-    /// Mark the names whose values depend on the parameters, walking the
-    /// bindings forwards from the parameters. A binding depends on them
-    /// when an operand does, a pattern binding or loop variable when the
-    /// subject or array does, and a match or loop also when the result of
-    /// a nested block does. Gives whether the result of `block` depends on
-    /// them. `dynamic` is shared with nested blocks, since names are unique.
     fn mark_dynamic(block: Block<'_>, dynamic: &mut HashSet<ValueId>) -> bool {
         for binding in block.bindings() {
             let mut depends = false;
@@ -1420,8 +1345,6 @@ mod tests {
         dynamic.contains(&block.result())
     }
 
-    /// Count the ops of `block` by kind: every op, the ops that are live,
-    /// and the live ops that depend on the parameters.
     fn count_ops(
         block: Block<'_>,
         live: &HashSet<ValueId>,
@@ -1443,9 +1366,6 @@ mod tests {
         }
     }
 
-    /// Count the references to each name in `block` and the blocks it
-    /// nests, as an operand or as the result of a block, and add the Html
-    /// names it binds to `html`.
     fn count_html_references(
         block: Block<'_>,
         references: &mut HashMap<ValueId, usize>,
@@ -1465,18 +1385,13 @@ mod tests {
         *references.entry(block.result()).or_default() += 1;
     }
 
-    /// Report how often each kind of op occurs in a generated module, what
-    /// share of those is live, that is read on the way to the result, what
-    /// share is live and depends on the parameters, and how many
-    /// entrypoints hit the limits of the evaluator. Every input is as long
-    /// as the longest arbtest gives.
     #[test]
     fn should_report_generator_stats() {
         const SAMPLES: usize = 100;
         const INPUT_LEN: usize = 65_536;
         let mut rng = SmallRng::seed_from_u64(0);
         let mut counts = BTreeMap::new();
-        let (mut entrypoints, mut diverged, mut too_long) = (0, 0, 0);
+        let (mut entrypoints, mut diverged, mut array_len_limit) = (0, 0, 0);
         let (mut consumed, mut most_consumed, mut exhausted) = (0, 0, 0);
         let (mut html_bindings, mut shared_html) = (0, 0);
         for _ in 0..SAMPLES {
@@ -1491,7 +1406,8 @@ mod tests {
                 entrypoints += 1;
                 let result = evaluate_entrypoint(&module, &function, args);
                 diverged += matches!(result, Err(EvalError::RecursionLimit { .. })) as usize;
-                too_long += matches!(result, Err(EvalError::ArrayLengthLimit { .. })) as usize;
+                array_len_limit +=
+                    matches!(result, Err(EvalError::ArrayLengthLimit { .. })) as usize;
             }
             let mut live = HashSet::new();
             let mut dynamic = HashSet::new();
@@ -1519,7 +1435,7 @@ mod tests {
             "{} of {INPUT_LEN} input bytes consumed per module on average, at most {most_consumed}\n\
              {exhausted} of {SAMPLES} modules exhaust the input\n\
              {diverged} of {entrypoints} entrypoints hit the recursion limit\n\
-             {too_long} of {entrypoints} entrypoints hit the array length limit\n\
+             {array_len_limit} of {entrypoints} entrypoints hit the array length limit\n\
              {shared_html} of {html_bindings} Html bindings have more than one reference\n\n\
              {:<20}{:>10}{:>8}{:>8}\n",
             consumed / SAMPLES,
