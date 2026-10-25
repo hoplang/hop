@@ -16,8 +16,9 @@ use super::ir_parameter::IrParameter;
 ///
 /// The form the backends consume. A body is a sequence of statements that write
 /// to the ambient buffer, with the values they need bound by lets along the
-/// way. Html is written rather than held, except where a value needs it, and
-/// then an HtmlLiteral renders it into a buffer of its own.
+/// way. Html is written rather than held, except where a call passes it or it
+/// is read more than once, and then an HtmlLiteral renders it into a buffer
+/// of its own.
 ///
 /// Every name is bound once in the module, by a parameter, a let, a loop or
 /// an arm of a match, so a name identifies its binding.

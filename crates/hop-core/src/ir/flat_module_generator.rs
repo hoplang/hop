@@ -89,31 +89,22 @@ const STRING_LITERALS: &[&str] = &[
     "cr\rtab\t",
 ];
 
-/// The names a block may read, in the order they came into scope, each
-/// with whether the path has used it.
+/// The names a block may read, in the order they came into scope.
 #[derive(Default)]
 struct Scope {
-    names: Vec<(ValueId, bool)>,
+    names: Vec<ValueId>,
 }
 
 impl Scope {
     /// Record that `value` is bound in the block being generated, and
     /// give it back.
     fn bound(&mut self, value: ValueId) -> ValueId {
-        self.names.push((value, false));
+        self.names.push(value);
         value
     }
 
-    /// Record that the path uses the Html value `value`, which it may not
-    /// read again.
-    fn used(&mut self, value: ValueId) {
-        if let Some((_, used)) = self.names.iter_mut().rev().find(|(name, _)| *name == value) {
-            *used = true;
-        }
-    }
-
-    /// The names in scope the path may still read whose type fits, in
-    /// the order they came into scope.
+    /// The names in scope whose type fits, in the order they came into
+    /// scope.
     fn names_where<'a>(
         &'a self,
         types: &'a [Type],
@@ -121,30 +112,19 @@ impl Scope {
     ) -> impl Iterator<Item = ValueId> + 'a {
         self.names
             .iter()
-            .filter(move |(name, used)| !used && fits(&types[name.index()]))
-            .map(|(name, _)| *name)
+            .copied()
+            .filter(move |name| fits(&types[name.index()]))
     }
 
-    /// Which names the path has used, to come back to at a fork.
-    fn snapshot(&self) -> Vec<bool> {
-        self.names.iter().map(|(_, used)| *used).collect()
+    /// How many names are in scope, to come back to when a nested block
+    /// ends.
+    fn snapshot(&self) -> usize {
+        self.names.len()
     }
 
-    /// Forget the names bound since `snapshot` was taken and take its
-    /// record of which names are used.
-    fn restore(&mut self, snapshot: &[bool]) {
-        self.names.truncate(snapshot.len());
-        for ((_, used), saved) in self.names.iter_mut().zip(snapshot) {
-            *used = *saved;
-        }
-    }
-
-    /// Add the names this path has used to `joined`, which the paths of a
-    /// fork share, so that after the fork a name used on any path is used.
-    fn join(&self, joined: &mut [bool]) {
-        for ((_, used), joined) in self.names.iter().zip(joined) {
-            *joined |= *used;
-        }
+    /// Forget the names bound since `snapshot` was taken.
+    fn restore(&mut self, snapshot: usize) {
+        self.names.truncate(snapshot);
     }
 }
 
@@ -479,17 +459,11 @@ impl FlatGenerator<'_, '_> {
         depth: usize,
     ) -> ValueId {
         let before = scope.snapshot();
-        {
-            let types = b.value_types();
-            for (name, used) in &mut scope.names {
-                *used |= types[name.index()] == Type::HTML;
-            }
-        }
         if let Some(var) = var {
             scope.bound(var);
         }
         let body = self.html_block(b, scope, depth);
-        scope.restore(&before);
+        scope.restore(before);
         body
     }
 
@@ -535,7 +509,7 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn html_leaf(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
-        let value = match self.name_in_scope(b, scope, &Type::HTML) {
+        match self.name_in_scope(b, scope, &Type::HTML) {
             Some(name) => name,
             None => {
                 let literal = match self.index(3) {
@@ -553,9 +527,7 @@ impl FlatGenerator<'_, '_> {
                 };
                 scope.bound(literal)
             }
-        };
-        scope.used(value);
-        value
+        }
     }
 
     fn data_leaf(
@@ -812,9 +784,7 @@ impl FlatGenerator<'_, '_> {
                 }
             }
         };
-        scope.bound(value);
-        scope.used(value);
-        value
+        scope.bound(value)
     }
 
     fn data_op(
@@ -1157,12 +1127,10 @@ impl FlatGenerator<'_, '_> {
             pats.push((pat, binds));
         }
         let before = scope.snapshot();
-        let mut after = before.clone();
-        let result = b.match_(subject, |m| {
+        b.match_(subject, |m| {
             for (pat, binds) in pats {
                 m.arm(pat, |b, bindings| {
                     let depth = depth - 1;
-                    scope.restore(&before);
                     for (name, _) in binds {
                         scope.bound(bindings.binding(&name));
                     }
@@ -1170,13 +1138,11 @@ impl FlatGenerator<'_, '_> {
                         Type::Html(_) => self.html_block(b, scope, depth),
                         Type::Data(target) => self.data_block(b, scope, target, depth),
                     };
-                    scope.join(&mut after);
+                    scope.restore(before);
                     body
                 });
             }
-        });
-        scope.restore(&after);
-        result
+        })
     }
 }
 
@@ -1453,50 +1419,50 @@ mod tests {
             ));
         }
         expect![[r#"
-            3653 of 65536 input bytes consumed per module on average, at most 21050
+            3515 of 65536 input bytes consumed per module on average, at most 21050
             0 of 100 modules exhaust the input
             2 of 203 entrypoints hit the recursion limit
             0 of 203 entrypoints hit the array length limit
-            0 of 1001 Html bindings have more than one reference
+            26 of 839 Html bindings have more than one reference
 
             op                  ops/module  % live   % dyn
-            Array                    140.4    93.8     9.3
-            ArrayFromRange             1.0    95.9     0.0
-            ArrayIsEmpty               0.2    90.0    55.0
-            ArrayLength                6.5    98.5    63.2
-            BoolLiteral               38.4    93.9     0.0
+            Array                    126.8    94.2    10.1
+            ArrayFromRange             0.9    96.6     0.0
+            ArrayIsEmpty               0.2    95.0    55.0
+            ArrayLength                6.6    98.6    61.9
+            BoolLiteral               39.2    94.9     0.0
             BoolNegation               0.2   100.0    22.7
-            Call                       1.3    96.2    87.7
-            Enum                      74.5    93.0    12.6
-            Equals                     0.3   100.0    67.7
-            FieldAccess                1.2    95.0    70.2
-            FloatLiteral              40.6    92.8     0.0
-            FloatToInt                 6.3    98.6    69.2
-            HtmlConcat                 2.7    99.6    21.2
-            HtmlElement                1.8   100.0    46.0
-            HtmlEscape                 1.0    99.0    51.5
-            HtmlFor                    1.7    98.8    51.2
-            HtmlText                   1.8   100.0     0.0
-            IntLiteral                43.2    93.8     0.0
-            IntToFloat                10.4    98.9    67.9
-            IntToString                2.4    95.8    56.8
-            LessThan                   0.2    91.7    50.0
-            LessThanOrEqual            0.2   100.0    77.3
-            Match                     66.3    95.7    82.1
-            NumericAdd                17.7    98.6    82.0
-            NumericMultiply           17.2    98.4    78.7
-            NumericNegation           17.2    98.7    69.0
-            NumericSubtract           17.6    99.0    82.9
-            OptionIsNone               0.2   100.0    66.7
-            OptionIsSome               0.3    93.5    51.6
-            OptionNone                95.4    94.2     0.0
-            OptionSome                38.6    94.0    19.3
-            Record                    73.3    94.2    15.2
-            StringConcat               2.5    98.4    60.6
-            StringIsEmpty              0.3    90.9    42.4
-            StringLiteral             45.8    95.6     0.0
-            Tuple                    494.6    94.4    43.6
-            TupleIndex               224.1    94.1    67.0
+            Call                       1.2    95.8    83.1
+            Enum                      62.0    91.9    13.5
+            Equals                     0.3   100.0    77.8
+            FieldAccess                1.0    97.0    73.7
+            FloatLiteral              38.7    94.7     0.0
+            FloatToInt                 6.6    98.6    70.1
+            HtmlConcat                 2.1    99.5    23.4
+            HtmlElement                1.6   100.0    50.0
+            HtmlEscape                 0.7    98.6    50.0
+            HtmlFor                    1.5   100.0    59.7
+            HtmlText                   1.4   100.0     0.0
+            IntLiteral                39.9    93.8     0.0
+            IntToFloat                11.1    98.9    67.2
+            IntToString                2.0    95.1    60.3
+            LessThan                   0.3    90.0    56.7
+            LessThanOrEqual            0.2   100.0    78.3
+            Match                     64.2    95.8    83.1
+            NumericAdd                18.8    98.8    81.2
+            NumericMultiply           18.7    98.6    77.7
+            NumericNegation           18.4    98.8    69.2
+            NumericSubtract           18.6    99.0    82.2
+            OptionIsNone               0.2   100.0    54.5
+            OptionIsSome               0.3    92.9    57.1
+            OptionNone                88.4    94.4     0.0
+            OptionSome                37.0    94.0    20.1
+            Record                    64.4    94.6    16.2
+            StringConcat               2.1    97.2    58.7
+            StringIsEmpty              0.3    88.2    47.1
+            StringLiteral             41.7    95.9     0.0
+            Tuple                    467.6    94.8    46.6
+            TupleIndex               215.4    93.9    68.9
         "#]]
         .assert_eq(&report);
     }

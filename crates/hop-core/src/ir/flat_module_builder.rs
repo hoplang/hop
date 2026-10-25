@@ -184,7 +184,6 @@ impl FlatModuleBuilder {
             value_ids: self.value_ids.into_inner(),
         };
         flat_lint::assert_well_typed(&module, &registry);
-        flat_lint::assert_html_affine(&module);
         (module, registry)
     }
 }

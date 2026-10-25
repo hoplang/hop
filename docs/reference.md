@@ -360,37 +360,6 @@ fn double(x: Int) -> Int {
 }
 ```
 
-A variable bound to an `Html` value is used at most once on every path through
-its scope. Using it a second time is a compile error:
-
-```hop
-let star = <b>*</b>;
-<p>{star}{star}</p> // error: Html value star is used more than once
-```
-
-Each arm of a [match expression](#match-expressions) is a path of its own, so
-every arm can use the variable once:
-
-```hop
-let flag = true;
-let star = <b>*</b>;
-match flag {
-  true => <p>{star}</p>,
-  false => <i>{star}</i>,
-}
-```
-
-The body of a [for expression](#for-expressions) evaluates once for each
-element, so a use in the body of a variable bound outside the `for` expression
-is a compile error:
-
-```hop
-let star = <b>*</b>;
-for _ in 1..=3 {
-  star // error: Html value star is bound outside the loop it is used in
-}
-```
-
 <a id="parenthesized-expressions"></a>
 
 ### Parenthesized expressions

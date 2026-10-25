@@ -8,7 +8,7 @@ use super::typecheck_call::{Argument, CallArguments, Callee, NamedArgument, type
 use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join};
 use super::typecheck_markup::typecheck_markup;
 use super::typecheck_match::typecheck_match;
-use super::variable_scope::{HtmlMisuse, VariableScope};
+use super::variable_scope::VariableScope;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
@@ -66,16 +66,6 @@ pub fn typecheck_expr(
                     use_range: parsed_expr.range().clone(),
                     definition_range: entry.range.clone(),
                 });
-                if typ == Type::HTML
-                    && let Err(misuse) = var_env.use_html(var_name)
-                {
-                    let name = var_name.clone();
-                    let kind = match misuse {
-                        HtmlMisuse::Again => TypeErrorKind::HtmlUsedAgain { name },
-                        HtmlMisuse::InLoop => TypeErrorKind::HtmlUsedInLoop { name },
-                    };
-                    errors.push(TypeError::new(kind, parsed_expr.range().clone()));
-                }
                 Some(TypedExpr::Var {
                     value: var_name.clone(),
                     typ,
@@ -1182,7 +1172,6 @@ pub fn typecheck_expr(
             } else {
                 false
             };
-            var_env.enter_loop();
             let typed_body = typecheck_expr(
                 body,
                 Some(&Type::HTML),
@@ -1195,7 +1184,6 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             );
-            var_env.exit_loop();
             if pushed {
                 let (name, entry) = var_env.pop();
                 if !entry.accessed {

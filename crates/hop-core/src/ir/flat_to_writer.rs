@@ -30,12 +30,13 @@ use crate::symbols::type_name::TypeName;
 ///
 /// Values stay lets, in their order. Html is written where it is read, as a
 /// part of a concat, the children of an element, the result of a block or
-/// the argument of a call for an Html parameter, so Html read twice is
-/// written twice and Html that nothing reads is not written at all. The
-/// Html a call passes for an Html parameter renders into a buffer of its
-/// own as an HtmlLiteral, which the function writes wherever it reads the
-/// parameter. Html that only writes an Html parameter passes the buffer of
-/// that parameter on. A string constant or concat that only escapes and
+/// the argument of a call for an Html parameter, and Html that nothing
+/// reads is not written at all. Html read more than once, or from a loop
+/// body it is bound outside of, renders once into a buffer of its own as an
+/// HtmlLiteral at the start of its block, and every read writes the buffer.
+/// The Html a call passes for an Html parameter renders into a buffer of
+/// its own as well, which the function writes wherever it reads the
+/// parameter. Html that only writes a buffer passes that buffer on. A string constant or concat that only escapes and
 /// attribute values read is escaped now, part by part, and a bool constant
 /// that only presences read settles whether its attributes render.
 ///
@@ -51,9 +52,9 @@ use crate::symbols::type_name::TypeName;
 /// its constructor, which is not bound at all when only matches read it and
 /// none of their arms binds it as a whole.
 ///
-/// An arm that several leaves select is lowered once for each of them, and
-/// Html written twice is lowered twice. Every copy after the first binds
-/// fresh names, so that the module binds every name once.
+/// An arm that several leaves select is lowered once for each of them.
+/// Every copy after the first binds fresh names, so that the module binds
+/// every name once.
 ///
 /// The Flat IR has no pages, so the pages come beside the module, each
 /// pointing at the entrypoint functions that render it. Those functions are
@@ -77,6 +78,10 @@ pub fn flat_to_writer(
         bindings: HashMap::new(),
         html: HashMap::new(),
         html_parameters: HashSet::new(),
+        loops: 0,
+        html_loops: HashMap::new(),
+        html_reads: HashMap::new(),
+        buffered: HashSet::new(),
         binder_types: HashMap::new(),
         readers: HashMap::new(),
         aliases: HashMap::new(),
@@ -195,6 +200,15 @@ struct Lowerer<'a> {
     /// The Html parameters of every function. Html is never part of another
     /// type, so these are the only names of Html that no binding binds.
     html_parameters: HashSet<ValueId>,
+    /// The number of loop bodies around the block being analyzed.
+    loops: usize,
+    /// The number of loop bodies around each Html binding.
+    html_loops: HashMap<ValueId, usize>,
+    /// The number of reads of each Html binding analyzed so far.
+    html_reads: HashMap<ValueId, usize>,
+    /// The Html bindings read more than once or from a loop body they are
+    /// bound outside of, which render into a buffer of their own.
+    buffered: HashSet<ValueId>,
     /// The type of each parameter, loop variable and binding of a pattern
     /// of data, which no value binding binds.
     binder_types: HashMap<ValueId, DataType>,
@@ -213,6 +227,19 @@ struct Lowerer<'a> {
 impl<'a> Lowerer<'a> {
     fn read(&mut self, name: ValueId, reader: Reader) {
         self.readers.entry(name).or_default().push(reader);
+    }
+
+    /// Record a read of Html. A name of an Html parameter is a buffer
+    /// already.
+    fn read_html(&mut self, name: ValueId) {
+        let Some(&loops) = self.html_loops.get(&name) else {
+            return;
+        };
+        let reads = self.html_reads.entry(name).or_default();
+        *reads += 1;
+        if *reads > 1 || self.loops > loops {
+            self.buffered.insert(name);
+        }
     }
 
     /// Whether the name is Html.
@@ -280,13 +307,24 @@ impl<'a> Lowerer<'a> {
     fn analyze_html_block(&mut self, block: &'a FlatHtmlBlock) {
         for binding in &block.html {
             self.html.insert(binding.binder.var, binding);
+            self.html_loops.insert(binding.binder.var, self.loops);
         }
         self.analyze_bindings(&block.bindings);
         for binding in &block.html {
             match &binding.op {
-                FlatHtmlOp::Text(_) | FlatHtmlOp::Concat(_) => {}
+                FlatHtmlOp::Text(_) => {}
+                FlatHtmlOp::Concat(parts) => {
+                    for part in parts {
+                        self.read_html(*part);
+                    }
+                }
                 FlatHtmlOp::Escape(string) => self.read(*string, Reader::Escaped),
-                FlatHtmlOp::Element(IrHtmlElement { attributes, .. }) => {
+                FlatHtmlOp::Element(IrHtmlElement {
+                    attributes,
+                    children,
+                    ..
+                }) => {
+                    self.read_html(*children);
                     for attribute in attributes.values() {
                         match attribute {
                             IrAttribute::Value(value) => {
@@ -310,17 +348,22 @@ impl<'a> Lowerer<'a> {
                         self.analyze_binder(binder);
                     }
                     self.read(*array, Reader::Value);
+                    self.loops += 1;
                     self.analyze_html_block(body);
+                    self.loops -= 1;
                 }
                 FlatHtmlOp::Call(_, args) => {
                     for arg in args {
-                        if !self.is_html(*arg) {
+                        if self.is_html(*arg) {
+                            self.read_html(*arg);
+                        } else {
                             self.read(*arg, Reader::Value);
                         }
                     }
                 }
             }
         }
+        self.read_html(block.result);
     }
 
     /// Record the types of the names a pattern binds.
@@ -485,7 +528,7 @@ impl<'a> Lowerer<'a> {
 
     /// The names a call passes. The Html for an Html parameter renders into
     /// a buffer, bound by a let appended to `lets`, except Html that only
-    /// writes an Html parameter, which passes that parameter's buffer.
+    /// writes a buffer, which passes that buffer on.
     fn lower_args(&mut self, args: &[ValueId], lets: &mut Vec<WriterBinding>) -> Vec<ValueId> {
         let mut names = Vec::new();
         for arg in args {
@@ -810,11 +853,23 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    /// Write a block: the lets of its values, then its result.
+    /// Write a block: the lets of its values, then the buffers of its
+    /// buffered Html, then its result.
     fn write_block(&mut self, block: &'a FlatHtmlBlock, out: &mut Vec<WriterStmt>) {
         let mut lets = Vec::new();
         self.lower_bindings(&block.bindings, &mut lets);
         out.extend(lets.into_iter().map(WriterStmt::Let));
+        for binding in &block.html {
+            if self.buffered.contains(&binding.binder.var) {
+                let mut body = Vec::new();
+                self.write_op(&binding.op, &mut body);
+                out.push(WriterStmt::Let(WriterBinding {
+                    name: self.bind(binding.binder.var),
+                    typ: Type::HTML,
+                    op: WriterOp::HtmlLiteral(body),
+                }));
+            }
+        }
         self.write_html(block.result, out);
     }
 
@@ -841,10 +896,10 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Write the Html that `html` names: the buffer of an Html parameter,
-    /// or the writes of the op of its binding.
+    /// Write the Html that `html` names: the buffer of an Html parameter or
+    /// of buffered Html, or the writes of the op of its binding.
     fn write_html(&mut self, html: ValueId, out: &mut Vec<WriterStmt>) {
-        if self.html_parameters.contains(&html) {
+        if self.html_parameters.contains(&html) || self.buffered.contains(&html) {
             out.push(WriterStmt::WriteHtml(self.name(html)));
             return;
         }
@@ -852,7 +907,12 @@ impl<'a> Lowerer<'a> {
             .html
             .get(&html)
             .unwrap_or_else(|| panic!("{html} is read as Html but is not Html"));
-        match &binding.op {
+        self.write_op(&binding.op, out);
+    }
+
+    /// Write the Html that an op produces.
+    fn write_op(&mut self, op: &'a FlatHtmlOp, out: &mut Vec<WriterStmt>) {
+        match op {
             FlatHtmlOp::Text(text) => write(out, text.as_str()),
 
             FlatHtmlOp::Escape(string) => self.write_escaped(*string, out),
@@ -1865,7 +1925,7 @@ mod tests {
     }
 
     #[test]
-    fn writes_html_read_in_two_arms_once_in_each() {
+    fn buffers_html_read_in_two_arms() {
         check_module(
             FlatModuleBuilder::new()
                 .entrypoint(
@@ -1915,33 +1975,27 @@ mod tests {
 
                 -- writer --
                 page Greeting(name@v0: Option[String], formal@v1: Bool) {
+                  let v6: Html = html {
+                    match v0 {
+                      Some(v10: String) => {
+                        write("<b>")
+                        write_string(v10)
+                        write("</b>")
+                      }
+                      None => {
+                        write("anonymous")
+                      }
+                    }
+                  }
                   match v1 {
                     true => {
                       write("<p>")
-                      match v0 {
-                        Some(v10: String) => {
-                          write("<b>")
-                          write_string(v10)
-                          write("</b>")
-                        }
-                        None => {
-                          write("anonymous")
-                        }
-                      }
+                      write_html(v6)
                       write("</p>")
                     }
                     false => {
                       write("<i>")
-                      match v0 {
-                        Some(v11: String) => {
-                          write("<b>")
-                          write_string(v11)
-                          write("</b>")
-                        }
-                        None => {
-                          write("anonymous")
-                        }
-                      }
+                      write_html(v6)
                       write("</i>")
                     }
                   }
@@ -1998,6 +2052,63 @@ mod tests {
                     write("\">x</li>")
                   }
                   write("</ul>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn buffers_html_read_twice_or_from_a_loop_it_is_bound_outside_of() {
+        check_module(
+            FlatModuleBuilder::new()
+                .entrypoint(
+                    "Marks",
+                    [("items", Ty::array(Ty::String)), ("name", Ty::String)],
+                    Ty::Html,
+                    |t| {
+                        let twice = t.element("b", [], t.escape(t.param("name")));
+                        let looped = t.element("i", [], t.text("*"));
+                        let once = t.text("once");
+                        t.html_concat(vec![
+                            twice,
+                            twice,
+                            t.html_for(t.param("items"), |_, _| looped),
+                            once,
+                        ])
+                    },
+                )
+                .build_with_registry(),
+            expect![[r#"
+                -- flat --
+                entrypoint fn Marks@f0(items@v0: Array[String], name@v1: String) -> Html {
+                  let v2: Html = escape(v1)
+                  let v3: Html = element("b", {}, v2)
+                  let v4: Html = text("*")
+                  let v5: Html = element("i", {}, v4)
+                  let v6: Html = text("once")
+                  let v8: Html = for _ in v0 {
+                    v5
+                  }
+                  let v9: Html = concat(v3, v3, v8, v6)
+                  v9
+                }
+
+                -- writer --
+                page Marks(items@v0: Array[String], name@v1: String) {
+                  let v3: Html = html {
+                    write("<b>")
+                    write_string(v1)
+                    write("</b>")
+                  }
+                  let v5: Html = html {
+                    write("<i>*</i>")
+                  }
+                  write_html(v3)
+                  write_html(v3)
+                  for _ in v0 {
+                    write_html(v5)
+                  }
+                  write("once")
                 }
             "#]],
         );

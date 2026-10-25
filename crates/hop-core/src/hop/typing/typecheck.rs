@@ -12342,8 +12342,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_children_used_twice() {
-        reject(
+    fn accepts_html_used_twice() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn Repeat(children: Html) -> Html {
@@ -12356,200 +12356,48 @@ mod tests {
                     </div>
                   </>
                 }
-                page Test() {
-                  fn body() -> Html {
-                    <Repeat>
-                      <span>
-                        hi
-                      </span>
-                    </Repeat>
-                  }
-                }
             "#},
             expect![[r#"
-                error: Html value children is used more than once
-                  --> main.hop (line 7, col 8)
-                 6 |     <div class="second">
-                 7 |       {children}
-                   |        ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_html_used_in_a_loop_it_is_bound_outside_of() {
-        reject(
-            indoc! {r#"
                 -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    let star = <b>*</b>;
-                    for _ in 1..=3 {
-                      star
-                    }
-                  }
+                fn Repeat(children: Html) -> Html {
+                  concat(
+                    element(
+                      tag: "div",
+                      attrs: [class: escape("first")],
+                      children: concat(children),
+                    ),
+                    element(
+                      tag: "div",
+                      attrs: [class: escape("second")],
+                      children: concat(children),
+                    ),
+                  )
                 }
-            "#},
-            expect![[r#"
-                error: Html value star is bound outside the loop it is used in
-                  --> main.hop (line 5, col 7)
-                4 |     for _ in 1..=3 {
-                5 |       star
-                  |       ^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_html_from_a_call_used_twice() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Countdown(n: Int) -> Html {
-                  match n > 0 {
-                    true => {
-                      <>
-                        <b>
-                          {n.to_string()}
-                        </b>
-                        <Countdown n={n - 1}/>
-                      </>
-                    },
-                    false => <>go</>,
-                  }
-                }
-                page Test() {
-                  fn body() -> Html {
-                    let count = <Countdown n={2}/>;
-                    <p>
-                      {count}
-                      {count}
-                    </p>
-                  }
-                }
-            "#},
-            expect![[r#"
-                error: Html value count is used more than once
-                  --> main.hop (line 19, col 8)
-                18 |       {count}
-                19 |       {count}
-                   |        ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_html_from_a_loop_used_twice() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    let stars = for _ in 1..=2 {
-                      <b>*</b>
-                    };
-                    <p>
-                      {stars}
-                      {stars}
-                    </p>
-                  }
-                }
-            "#},
-            expect![[r#"
-                error: Html value stars is used more than once
-                  --> main.hop (line 8, col 8)
-                 7 |       {stars}
-                 8 |       {stars}
-                   |        ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_html_from_a_match_used_twice() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                page Test() {
-                  fn body() -> Html {
-                    for flag in [true, false] {
-                      let mark = match flag {
-                        true => <b>yes</b>,
-                        false => <i>no</i>,
-                      };
-                      <p>
-                        {mark}
-                        {mark}
-                      </p>
-                    }
-                  }
-                }
-            "#},
-            expect![[r#"
-                error: Html value mark is used more than once
-                  --> main.hop (line 10, col 10)
-                 9 |         {mark}
-                10 |         {mark}
-                   |          ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_html_used_after_a_match_that_uses_it_in_one_arm() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Pick(flag: Bool, children: Html) -> Html {
-                  <>
-                    {match flag {
-                      true => children,
-                      false => <></>,
-                    }}
-                    {children}
-                  </>
-                }
-            "#},
-            expect![[r#"
-                error: Html value children is used more than once
-                  --> main.hop (line 7, col 6)
-                6 |     }}
-                7 |     {children}
-                  |      ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_html_used_once_in_each_arm_and_built_in_a_loop() {
+    fn accepts_html_used_in_a_loop_it_is_bound_outside_of() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Pick(flag: Bool, children: Html) -> Html {
-                  match flag {
-                    true => <b>{children}</b>,
-                    false => <i>{children}</i>,
-                  }
-                }
                 fn Stars(count: Int) -> Html {
+                  let star = <b>*</b>;
                   for _ in 1..=count {
-                    let star = <b>*</b>;
                     star
                   }
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Pick(flag: Bool, children: Html) -> Html {
-                  match flag {
-                    true => element(tag: "b", attrs: [], children: concat(children)),
-                    false => element(tag: "i", attrs: [], children: concat(children)),
-                  }
-                }
-
                 fn Stars(count: Int) -> Html {
-                  for _ in 1..=count {
-                    let star = element(tag: "b", attrs: [], children: concat(text("*"))) in star
+                  let star = element(
+                    tag: "b",
+                    attrs: [],
+                    children: concat(text("*")),
+                  ) in for _ in 1..=count {
+                    star
                   }
                 }
             "#]],

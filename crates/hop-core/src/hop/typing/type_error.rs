@@ -272,12 +272,6 @@ pub enum TypeErrorKind {
     #[error("Variable {name} is already defined")]
     VariableAlreadyDefined { name: VarName },
 
-    #[error("Html value {name} is used more than once")]
-    HtmlUsedAgain { name: VarName },
-
-    #[error("Html value {name} is bound outside the loop it is used in")]
-    HtmlUsedInLoop { name: VarName },
-
     #[error("Variable {name} is bound more than once in the pattern")]
     DuplicatePatternBinding { name: VarName },
 
