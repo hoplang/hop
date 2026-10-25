@@ -5,7 +5,7 @@ use crate::ir::flat_module::FlatModule;
 use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::flat_evaluator;
 use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
-use crate::ir::{flat_to_markup, markup_to_writer, optimize_flat};
+use crate::ir::{flat_to_writer, optimize_flat};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
 use crate::program::Program;
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -212,9 +212,8 @@ fn check_with_asset_path_rewriter(
     let unoptimized_eval = execute_evaluator(&unoptimized_flat, &pages);
     let optimized_eval = execute_evaluator(&optimized_flat, &pages);
 
-    let unoptimized_module =
-        markup_to_writer(flat_to_markup(unoptimized_flat), registry, &pages, None);
-    let optimized_module = markup_to_writer(flat_to_markup(optimized_flat), registry, &pages, None);
+    let unoptimized_module = flat_to_writer(unoptimized_flat, registry, &pages, None);
+    let optimized_module = flat_to_writer(optimized_flat, registry, &pages, None);
 
     let unoptimized_ir = unoptimized_module.to_string();
     let optimized_ir = optimized_module.to_string();
@@ -372,12 +371,7 @@ mod tests {
                 Err(EvalError::RecursionLimit { .. }) => return Ok(()),
                 Err(e) => panic!("Evaluator failed:\n{e}\n\nFlat:\n{flat}"),
             };
-            let module = markup_to_writer(
-                flat_to_markup(optimize_flat(module)),
-                &registry,
-                &pages,
-                None,
-            );
+            let module = flat_to_writer(optimize_flat(module), &registry, &pages, None);
             let ir = module.to_string();
             let ts_code = TsTranspiler::new().transpile_module(&module, &registry);
             if let Err(e) = typecheck_typescript(&ts_code) {
@@ -415,12 +409,7 @@ mod tests {
                 Err(EvalError::RecursionLimit { .. }) => return Ok(()),
                 Err(e) => panic!("Evaluator failed:\n{e}\n\nFlat:\n{flat}"),
             };
-            let module = markup_to_writer(
-                flat_to_markup(optimize_flat(module)),
-                &registry,
-                &pages,
-                None,
-            );
+            let module = flat_to_writer(optimize_flat(module), &registry, &pages, None);
             let ir = module.to_string();
             let rust_code = RustTranspiler::new().transpile_module(&module, &registry);
             let rust_output = execute_rust(&rust_code).unwrap_or_else(|e| {

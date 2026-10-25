@@ -117,7 +117,7 @@ impl<'a> Freshener<'a> {
         }
     }
 
-    pub fn freshen_html_binding(&mut self, binding: &FlatHtmlBinding) -> FlatHtmlBinding {
+    fn freshen_html_binding(&mut self, binding: &FlatHtmlBinding) -> FlatHtmlBinding {
         let op = match &binding.op {
             FlatHtmlOp::Match(match_) => {
                 FlatHtmlOp::Match(self.freshen_match(match_, Self::freshen_html_block))

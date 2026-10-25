@@ -19,7 +19,7 @@ mod typed_pattern;
 mod variable_scope;
 
 pub use compile_match::CaseVar;
-pub use compile_match::{Decision, compile_decision_tree};
+pub use compile_match::{Decision, FieldBinding, Variable, compile_decision_tree};
 pub use export::Export;
 pub use r#type::{ComparableType, DataType, EquatableType, HtmlType, NumericType, Type};
 pub use type_error::TypeError;

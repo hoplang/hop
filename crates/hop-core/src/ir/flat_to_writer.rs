@@ -1,10 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::hop::typing::{
-    CaseVar, DataType, Decision, Pattern, Type, TypeRegistry, compile_decision_tree,
+    CaseVar, DataType, Decision, FieldBinding, Pattern, Type, TypeRegistry, Variable,
+    compile_decision_tree,
 };
 use crate::html::write_escaped_html;
 use crate::ir::document_shell::DocumentShell;
+use crate::ir::flat_module::{
+    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBinding,
+    FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
+};
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
@@ -14,10 +19,6 @@ use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::markup_module::{
-    MarkupCallArg, MarkupDataBinding, MarkupDataBlock, MarkupDataOp, MarkupFunctionDeclaration,
-    MarkupHtmlBlock, MarkupHtmlFunction, MarkupModule, MarkupNode,
-};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::ir::writer_module::{
     WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterModule,
@@ -25,16 +26,22 @@ use crate::ir::writer_module::{
 };
 use crate::symbols::type_name::TypeName;
 
-/// Lower a Markup module to the Writer.
+/// Lower a Flat module to the Writer.
 ///
-/// Values stay lets, in their order. Markup is written where it sits.
-/// The markup a call passes for an Html parameter renders into a buffer of
-/// its own as an HtmlLiteral, which the function writes wherever it renders
-/// the parameter's slot. Markup that is only the slot of an Html parameter
-/// passes the buffer of that parameter on. A string constant or concat that
-/// only escapes and attribute values read is escaped now, part by part, and
-/// a bool constant that only presences read settles whether its attributes
-/// render.
+/// Values stay lets, in their order. Html is written where it is read, as a
+/// part of a concat, the children of an element, the result of a block or
+/// the argument of a call for an Html parameter, so Html read twice is
+/// written twice and Html that nothing reads is not written at all. The
+/// Html a call passes for an Html parameter renders into a buffer of its
+/// own as an HtmlLiteral, which the function writes wherever it reads the
+/// parameter. Html that only writes an Html parameter passes the buffer of
+/// that parameter on. A string constant or concat that only escapes and
+/// attribute values read is escaped now, part by part, and a bool constant
+/// that only presences read settles whether its attributes render.
+///
+/// Html is never part of another type and a function that returns a value
+/// has no Html parameter, so no value reads Html. Panics if one does all the
+/// same.
 ///
 /// A match compiles to a decision tree. A switch of the tree becomes a
 /// Writer switch on the part of the subject it tests, a record or tuple the
@@ -42,24 +49,25 @@ use crate::symbols::type_name::TypeName;
 /// becomes the arm it selects, reading the parts its pattern binds. A record
 /// or tuple the module constructs is taken apart by reading the operands of
 /// its constructor, which is not bound at all when only matches read it and
-/// none of their arms binds it as a whole. An arm
-/// that several leaves select is lowered once for each of them, and every
-/// copy after the first binds fresh names, so that the module binds every
-/// name once.
+/// none of their arms binds it as a whole.
 ///
-/// The Markup IR has no pages, so the pages come beside the module, each
+/// An arm that several leaves select is lowered once for each of them, and
+/// Html written twice is lowered twice. Every copy after the first binds
+/// fresh names, so that the module binds every name once.
+///
+/// The Flat IR has no pages, so the pages come beside the module, each
 /// pointing at the entrypoint functions that render it. Those functions are
 /// only ever called by the page, so they are not lowered as functions but
 /// written into the page. With a shell, a page writes a whole document, the
 /// shell around its head and its body. Without one, a page writes its head
 /// and its body alone.
-pub fn markup_to_writer(
-    module: MarkupModule,
+pub fn flat_to_writer(
+    module: FlatModule,
     registry: &TypeRegistry,
     pages: &[IrPage],
     shell: Option<&DocumentShell>,
 ) -> WriterModule {
-    let MarkupModule {
+    let FlatModule {
         functions,
         value_ids,
     } = module;
@@ -67,14 +75,25 @@ pub fn markup_to_writer(
         registry,
         value_ids,
         bindings: HashMap::new(),
+        html: HashMap::new(),
+        html_parameters: HashSet::new(),
         binder_types: HashMap::new(),
         readers: HashMap::new(),
         aliases: HashMap::new(),
         bound: HashSet::new(),
     };
     for function in &functions {
+        if let FlatFunctionDeclaration::Html(function) = function {
+            for param in &function.parameters {
+                if param.binder.typ == Type::HTML {
+                    lowerer.html_parameters.insert(param.binder.var);
+                }
+            }
+        }
+    }
+    for function in &functions {
         match function {
-            MarkupFunctionDeclaration::Data(function) => {
+            FlatFunctionDeclaration::Data(function) => {
                 for param in &function.parameters {
                     lowerer
                         .binder_types
@@ -82,7 +101,7 @@ pub fn markup_to_writer(
                 }
                 lowerer.analyze_data_block(&function.body);
             }
-            MarkupFunctionDeclaration::Html(function) => {
+            FlatFunctionDeclaration::Html(function) => {
                 for param in &function.parameters {
                     if let Type::Data(typ) = &param.binder.typ {
                         lowerer.binder_types.insert(param.binder.var, typ.clone());
@@ -100,11 +119,11 @@ pub fn markup_to_writer(
     let (page_functions, functions): (Vec<_>, Vec<_>) = functions
         .iter()
         .partition(|decl| page_functions.contains(&decl.function().id));
-    let mut page_functions: HashMap<FunctionId, &MarkupHtmlFunction> = page_functions
+    let mut page_functions: HashMap<FunctionId, &FlatHtmlFunction> = page_functions
         .into_iter()
         .map(|decl| match decl {
-            MarkupFunctionDeclaration::Html(function) => (function.function.id, function),
-            MarkupFunctionDeclaration::Data(function) => {
+            FlatFunctionDeclaration::Html(function) => (function.function.id, function),
+            FlatFunctionDeclaration::Data(function) => {
                 panic!("the page function {} returns a value", function.function)
             }
         })
@@ -169,7 +188,13 @@ struct Lowerer<'a> {
     value_ids: ValueIdCounter,
     /// Every value binding of the module, by name and by the fresh name of
     /// each copy of it. Names are unique, so one map serves every block.
-    bindings: HashMap<ValueId, &'a MarkupDataBinding>,
+    bindings: HashMap<ValueId, &'a FlatDataBinding>,
+    /// Every Html binding of the module, by name, to write it where it is
+    /// read.
+    html: HashMap<ValueId, &'a FlatHtmlBinding>,
+    /// The Html parameters of every function. Html is never part of another
+    /// type, so these are the only names of Html that no binding binds.
+    html_parameters: HashSet<ValueId>,
     /// The type of each parameter, loop variable and binding of a pattern
     /// of data, which no value binding binds.
     binder_types: HashMap<ValueId, DataType>,
@@ -180,8 +205,8 @@ struct Lowerer<'a> {
     /// of a pattern binds in the leaf lowered last, and the parameter of the
     /// page's body for a parameter of its head.
     aliases: HashMap<ValueId, ValueId>,
-    /// The names of the lets and loops lowered so far, so that a copy of an
-    /// arm binds fresh ones.
+    /// The names of the lets and loops lowered so far, so that a copy binds
+    /// fresh ones.
     bound: HashSet<ValueId>,
 }
 
@@ -190,34 +215,52 @@ impl<'a> Lowerer<'a> {
         self.readers.entry(name).or_default().push(reader);
     }
 
-    /// Record the bindings and what they read.
-    fn analyze_bindings(&mut self, bindings: &'a [MarkupDataBinding]) {
+    /// Whether the name is Html.
+    fn is_html(&self, name: ValueId) -> bool {
+        self.html_parameters.contains(&name) || self.html.contains_key(&name)
+    }
+
+    /// Record that a match reads its subject, as a whole or taken apart.
+    fn read_subject<B>(&mut self, match_: &IrMatch<B>) {
+        let bound_whole = match_
+            .arms
+            .iter()
+            .any(|arm| matches!(arm.pattern, Pattern::Binding(_)));
+        let reader = if bound_whole {
+            Reader::Value
+        } else {
+            Reader::TakenApart
+        };
+        self.read(match_.subject, reader);
+    }
+
+    /// Record the bindings and what they read. Panics if one reads Html.
+    fn analyze_bindings(&mut self, bindings: &'a [FlatDataBinding]) {
         for binding in bindings {
+            binding.op.for_each_operand(&mut |operand| {
+                assert!(
+                    !self.is_html(operand),
+                    "{} reads the Html of {operand} as a value",
+                    binding.binder.var
+                );
+            });
             self.bindings.insert(binding.binder.var, binding);
             match &binding.op {
-                MarkupDataOp::Data(IrDataOp::StringConcat(parts)) => {
+                FlatDataOp::Data(IrDataOp::StringConcat(parts)) => {
                     for part in parts {
                         self.read(*part, Reader::ConcatPart(binding.binder.var));
                     }
                 }
-                MarkupDataOp::Data(op) => {
+                FlatDataOp::Data(op) => {
                     op.for_each_operand(&mut |operand| self.read(operand, Reader::Value));
                 }
-                MarkupDataOp::Call(_, args) => {
+                FlatDataOp::Call(_, args) => {
                     for arg in args {
                         self.read(*arg, Reader::Value);
                     }
                 }
-                MarkupDataOp::Match(match_) => {
-                    let bound_whole = match_
-                        .arms
-                        .iter()
-                        .any(|arm| matches!(arm.pattern, Pattern::Binding(_)));
-                    if bound_whole {
-                        self.read(match_.subject, Reader::Value);
-                    } else {
-                        self.read(match_.subject, Reader::TakenApart);
-                    }
+                FlatDataOp::Match(match_) => {
+                    self.read_subject(match_);
                     for arm in &match_.arms {
                         self.analyze_pattern(&arm.pattern);
                         self.analyze_data_block(&arm.body);
@@ -227,26 +270,23 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn analyze_data_block(&mut self, block: &'a MarkupDataBlock) {
+    fn analyze_data_block(&mut self, block: &'a FlatDataBlock) {
         self.analyze_bindings(&block.bindings);
         self.read(block.result, Reader::Value);
     }
 
-    fn analyze_html_block(&mut self, block: &'a MarkupHtmlBlock) {
+    /// Record the bindings of the block and what they read. Its Html is
+    /// recorded first, so that a value that reads it is found.
+    fn analyze_html_block(&mut self, block: &'a FlatHtmlBlock) {
+        for binding in &block.html {
+            self.html.insert(binding.binder.var, binding);
+        }
         self.analyze_bindings(&block.bindings);
-        self.analyze_markup(&block.markup);
-    }
-
-    fn analyze_markup(&mut self, markup: &'a [MarkupNode]) {
-        for node in markup {
-            match node {
-                MarkupNode::Text(_) | MarkupNode::Slot(_) => {}
-                MarkupNode::Escape(string) => self.read(*string, Reader::Escaped),
-                MarkupNode::Element(IrHtmlElement {
-                    attributes,
-                    children,
-                    ..
-                }) => {
+        for binding in &block.html {
+            match &binding.op {
+                FlatHtmlOp::Text(_) | FlatHtmlOp::Concat(_) => {}
+                FlatHtmlOp::Escape(string) => self.read(*string, Reader::Escaped),
+                FlatHtmlOp::Element(IrHtmlElement { attributes, .. }) => {
                     for attribute in attributes.values() {
                         match attribute {
                             IrAttribute::Value(value) => {
@@ -257,38 +297,28 @@ impl<'a> Lowerer<'a> {
                             }
                         }
                     }
-                    self.analyze_markup(children);
                 }
-                MarkupNode::Match(match_) => {
-                    let bound_whole = match_
-                        .arms
-                        .iter()
-                        .any(|arm| matches!(arm.pattern, Pattern::Binding(_)));
-                    if bound_whole {
-                        self.read(match_.subject, Reader::Value);
-                    } else {
-                        self.read(match_.subject, Reader::TakenApart);
-                    }
+                FlatHtmlOp::Match(match_) => {
+                    self.read_subject(match_);
                     for arm in &match_.arms {
                         self.analyze_pattern(&arm.pattern);
                         self.analyze_html_block(&arm.body);
                     }
                 }
-                MarkupNode::For(IrFor { var, array, body }) => {
-                    self.analyze_loop_var(var.as_ref());
+                FlatHtmlOp::For(IrFor { var, array, body }) => {
+                    if let Some(binder) = var {
+                        self.analyze_binder(binder);
+                    }
                     self.read(*array, Reader::Value);
                     self.analyze_html_block(body);
                 }
-                MarkupNode::Call(_, args) => self.analyze_args(args),
-            }
-        }
-    }
-
-    fn analyze_args(&mut self, args: &'a [MarkupCallArg]) {
-        for arg in args {
-            match arg {
-                MarkupCallArg::Data(value) => self.read(*value, Reader::Value),
-                MarkupCallArg::Html(markup) => self.analyze_markup(markup),
+                FlatHtmlOp::Call(_, args) => {
+                    for arg in args {
+                        if !self.is_html(*arg) {
+                            self.read(*arg, Reader::Value);
+                        }
+                    }
+                }
             }
         }
     }
@@ -296,13 +326,6 @@ impl<'a> Lowerer<'a> {
     /// Record the types of the names a pattern binds.
     fn analyze_pattern(&mut self, pattern: &IrPattern) {
         pattern.for_each_binding(&mut |binder| self.analyze_binder(binder));
-    }
-
-    /// Record the type of a loop variable.
-    fn analyze_loop_var(&mut self, var: Option<&IrBinder<DataType>>) {
-        if let Some(binder) = var {
-            self.analyze_binder(binder);
-        }
     }
 
     /// Record the type of a name a loop or a pattern binds.
@@ -321,17 +344,17 @@ impl<'a> Lowerer<'a> {
             return false;
         };
         match binding.op {
-            MarkupDataOp::Data(IrDataOp::StringLiteral(_) | IrDataOp::StringConcat(_)) => {
+            FlatDataOp::Data(IrDataOp::StringLiteral(_) | IrDataOp::StringConcat(_)) => {
                 readers.iter().all(|reader| match reader {
                     Reader::Escaped => true,
                     Reader::ConcatPart(concat) => self.folded(*concat),
                     Reader::Presence | Reader::TakenApart | Reader::Value => false,
                 })
             }
-            MarkupDataOp::Data(IrDataOp::BoolLiteral(_)) => readers
+            FlatDataOp::Data(IrDataOp::BoolLiteral(_)) => readers
                 .iter()
                 .all(|reader| matches!(reader, Reader::Presence)),
-            MarkupDataOp::Data(IrDataOp::Tuple(_) | IrDataOp::Record(..)) => readers
+            FlatDataOp::Data(IrDataOp::Tuple(_) | IrDataOp::Record(..)) => readers
                 .iter()
                 .all(|reader| matches!(reader, Reader::TakenApart)),
             _ => false,
@@ -363,8 +386,8 @@ impl<'a> Lowerer<'a> {
     fn lower_page(
         &mut self,
         name: TypeName,
-        head: Option<&'a MarkupHtmlFunction>,
-        body: &'a MarkupHtmlFunction,
+        head: Option<&'a FlatHtmlFunction>,
+        body: &'a FlatHtmlFunction,
         shell: Option<&DocumentShell>,
     ) -> WriterPageDeclaration {
         let head = head.map(|head| {
@@ -399,11 +422,11 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Lower a function declaration, choosing the calling convention from
-    /// its kind. Markup compiles to destination passing, a value to an
+    /// its kind. Html compiles to destination passing, a value to an
     /// ordinary value returning function.
-    fn lower_function(&mut self, decl: &'a MarkupFunctionDeclaration) -> WriterFunctionDeclaration {
+    fn lower_function(&mut self, decl: &'a FlatFunctionDeclaration) -> WriterFunctionDeclaration {
         match decl {
-            MarkupFunctionDeclaration::Html(function) => {
+            FlatFunctionDeclaration::Html(function) => {
                 let mut statements = Vec::new();
                 self.write_block(&function.body, &mut statements);
                 WriterFunctionDeclaration {
@@ -413,7 +436,7 @@ impl<'a> Lowerer<'a> {
                     body: WriterFunctionBody::Writes(statements),
                 }
             }
-            MarkupFunctionDeclaration::Data(function) => {
+            FlatFunctionDeclaration::Data(function) => {
                 let mut bindings = Vec::new();
                 self.lower_bindings(&function.body.bindings, &mut bindings);
                 WriterFunctionDeclaration {
@@ -431,22 +454,22 @@ impl<'a> Lowerer<'a> {
 
     /// Lower the bindings to lets, folding the results of matches into their
     /// readers and leaving out the bindings folded where they are read.
-    fn lower_bindings(&mut self, bindings: &'a [MarkupDataBinding], out: &mut Vec<WriterBinding>) {
+    fn lower_bindings(&mut self, bindings: &'a [FlatDataBinding], out: &mut Vec<WriterBinding>) {
         for binding in bindings {
             if self.folded(binding.binder.var) {
                 continue;
             }
             let op = match &binding.op {
-                MarkupDataOp::Match(match_) => {
+                FlatDataOp::Match(match_) => {
                     let alias = self.lower_data_match(match_, &binding.binder.typ, out);
                     self.aliases.insert(binding.binder.var, alias);
                     continue;
                 }
-                MarkupDataOp::Call(function, args) => WriterOp::Call(
+                FlatDataOp::Call(function, args) => WriterOp::Call(
                     function.clone(),
                     args.iter().map(|arg| self.name(*arg)).collect(),
                 ),
-                MarkupDataOp::Data(op) => {
+                FlatDataOp::Data(op) => {
                     let mut op = op.clone();
                     op.for_each_operand_mut(&mut |name| *name = self.name(*name));
                     WriterOp::Data(op)
@@ -460,46 +483,45 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// The names a call passes. The markup for an Html parameter renders
-    /// into a buffer, bound by a let appended to `lets`, except the slot of
-    /// an Html parameter alone, which passes that parameter's buffer.
-    fn lower_args(
-        &mut self,
-        args: &'a [MarkupCallArg],
-        lets: &mut Vec<WriterBinding>,
-    ) -> Vec<ValueId> {
+    /// The names a call passes. The Html for an Html parameter renders into
+    /// a buffer, bound by a let appended to `lets`, except Html that only
+    /// writes an Html parameter, which passes that parameter's buffer.
+    fn lower_args(&mut self, args: &[ValueId], lets: &mut Vec<WriterBinding>) -> Vec<ValueId> {
         let mut names = Vec::new();
         for arg in args {
-            let name = match arg {
-                MarkupCallArg::Data(value) => self.name(*value),
-                MarkupCallArg::Html(markup) => match markup.as_slice() {
-                    [MarkupNode::Slot(parameter)] => self.name(*parameter),
-                    _ => {
-                        let mut body = Vec::new();
-                        self.write_markup(markup, &mut body);
-                        let name = self.value_ids.next();
-                        lets.push(WriterBinding {
-                            name,
-                            typ: Type::HTML,
-                            op: WriterOp::HtmlLiteral(body),
-                        });
-                        name
-                    }
-                },
+            if !self.is_html(*arg) {
+                names.push(self.name(*arg));
+                continue;
+            }
+            let mut body = Vec::new();
+            self.write_html(*arg, &mut body);
+            let name = if let [WriterStmt::WriteHtml(parameter)] = body.as_slice() {
+                *parameter
+            } else {
+                let name = self.value_ids.next();
+                lets.push(WriterBinding {
+                    name,
+                    typ: Type::HTML,
+                    op: WriterOp::HtmlLiteral(body),
+                });
+                name
             };
             names.push(name);
         }
         names
     }
 
-    /// The name of the result of a value match of type `typ`, with the lets
-    /// that compute it appended to `lets`.
-    fn lower_data_match(
-        &mut self,
-        match_: &'a IrMatch<MarkupDataBlock>,
-        typ: &DataType,
-        lets: &mut Vec<WriterBinding>,
-    ) -> ValueId {
+    /// The decision tree of a match, the case variables its leaves use and
+    /// the parts of the subject bound before the tree, which is the subject
+    /// itself.
+    fn compile_match<B>(
+        &self,
+        match_: &IrMatch<B>,
+    ) -> (
+        Decision<IrBinder<DataType>>,
+        HashSet<CaseVar>,
+        HashMap<CaseVar, ValueId>,
+    ) {
         let patterns: Vec<_> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
         let subject_type = match self.bindings.get(&match_.subject) {
             Some(binding) => binding.binder.typ.clone(),
@@ -508,7 +530,103 @@ impl<'a> Lowerer<'a> {
         let decision = compile_decision_tree(self.registry, &patterns, subject_type);
         let mut used = HashSet::new();
         decision.collect_used(&mut used);
-        let mut parts = HashMap::from([(CaseVar(0), self.name(match_.subject))]);
+        let parts = HashMap::from([(CaseVar(0), self.name(match_.subject))]);
+        (decision, used, parts)
+    }
+
+    /// Bind the fields of a record that a switch of the tree takes apart
+    /// and that are in `used`, with the lets that read them appended to
+    /// `lets`. A record the module constructs is taken apart through the
+    /// operands of its constructor.
+    fn take_apart_record(
+        &mut self,
+        record: ValueId,
+        fields: &[FieldBinding],
+        used: &HashSet<CaseVar>,
+        parts: &mut HashMap<CaseVar, ValueId>,
+        lets: &mut Vec<WriterBinding>,
+    ) {
+        let constructed = match self.bindings.get(&record).copied() {
+            Some(FlatDataBinding {
+                op: FlatDataOp::Data(IrDataOp::Record(operands)),
+                ..
+            }) => Some(operands),
+            _ => None,
+        };
+        for field in fields {
+            if !used.contains(&field.var.id) {
+                continue;
+            }
+            let part = match constructed {
+                Some(constructed) => {
+                    let (_, value) = constructed
+                        .iter()
+                        .find(|(name, _)| *name == field.field_name)
+                        .expect("a record has the fields of its type");
+                    self.name(*value)
+                }
+                None => {
+                    let name = self.value_ids.next();
+                    lets.push(WriterBinding {
+                        name,
+                        typ: Type::Data(field.var.typ.clone()),
+                        op: WriterOp::Data(IrDataOp::FieldAccess(record, field.field_name.clone())),
+                    });
+                    name
+                }
+            };
+            parts.insert(field.var.id, part);
+        }
+    }
+
+    /// Bind the elements of a tuple that a switch of the tree takes apart
+    /// and that are in `used`, with the lets that read them appended to
+    /// `lets`. A tuple the module constructs is taken apart through the
+    /// operands of its constructor.
+    fn take_apart_tuple(
+        &mut self,
+        tuple: ValueId,
+        elements: &[Variable],
+        used: &HashSet<CaseVar>,
+        parts: &mut HashMap<CaseVar, ValueId>,
+        lets: &mut Vec<WriterBinding>,
+    ) {
+        let constructed = match self.bindings.get(&tuple).copied() {
+            Some(FlatDataBinding {
+                op: FlatDataOp::Data(IrDataOp::Tuple(operands)),
+                ..
+            }) => Some(operands),
+            _ => None,
+        };
+        for (index, element) in elements.iter().enumerate() {
+            if !used.contains(&element.id) {
+                continue;
+            }
+            let part = match constructed {
+                Some(constructed) => self.name(constructed[index]),
+                None => {
+                    let name = self.value_ids.next();
+                    lets.push(WriterBinding {
+                        name,
+                        typ: Type::Data(element.typ.clone()),
+                        op: WriterOp::Data(IrDataOp::TupleIndex(tuple, index)),
+                    });
+                    name
+                }
+            };
+            parts.insert(element.id, part);
+        }
+    }
+
+    /// The name of the result of a value match of type `typ`, with the lets
+    /// that compute it appended to `lets`.
+    fn lower_data_match(
+        &mut self,
+        match_: &'a IrMatch<FlatDataBlock>,
+        typ: &DataType,
+        lets: &mut Vec<WriterBinding>,
+    ) -> ValueId {
+        let (decision, used, mut parts) = self.compile_match(match_);
         self.lower_data_decision(&decision, &match_.arms, typ, &used, &mut parts, lets)
     }
 
@@ -520,7 +638,7 @@ impl<'a> Lowerer<'a> {
     fn lower_data_decision(
         &mut self,
         decision: &Decision<IrBinder<DataType>>,
-        arms: &'a [IrMatchArm<MarkupDataBlock>],
+        arms: &'a [IrMatchArm<FlatDataBlock>],
         typ: &DataType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
@@ -539,74 +657,13 @@ impl<'a> Lowerer<'a> {
 
             Decision::SwitchRecord { variable, case } => {
                 let record = parts[&variable.id];
-                // A record the module constructs is taken apart through the
-                // operands of its constructor.
-                let fields = match self.bindings.get(&record).copied() {
-                    Some(MarkupDataBinding {
-                        op: MarkupDataOp::Data(IrDataOp::Record(fields)),
-                        ..
-                    }) => Some(fields),
-                    _ => None,
-                };
-                for binding in &case.bindings {
-                    if !used.contains(&binding.var.id) {
-                        continue;
-                    }
-                    let part = match fields {
-                        Some(fields) => {
-                            let (_, value) = fields
-                                .iter()
-                                .find(|(field, _)| *field == binding.field_name)
-                                .expect("a record has the fields of its type");
-                            self.name(*value)
-                        }
-                        None => {
-                            let name = self.value_ids.next();
-                            lets.push(WriterBinding {
-                                name,
-                                typ: Type::Data(binding.var.typ.clone()),
-                                op: WriterOp::Data(IrDataOp::FieldAccess(
-                                    record,
-                                    binding.field_name.clone(),
-                                )),
-                            });
-                            name
-                        }
-                    };
-                    parts.insert(binding.var.id, part);
-                }
+                self.take_apart_record(record, &case.bindings, used, parts, lets);
                 return self.lower_data_decision(&case.body, arms, typ, used, parts, lets);
             }
 
             Decision::SwitchTuple { variable, case } => {
                 let tuple = parts[&variable.id];
-                // A tuple the module constructs is taken apart through the
-                // operands of its constructor.
-                let elements = match self.bindings.get(&tuple).copied() {
-                    Some(MarkupDataBinding {
-                        op: MarkupDataOp::Data(IrDataOp::Tuple(elements)),
-                        ..
-                    }) => Some(elements),
-                    _ => None,
-                };
-                for (index, element) in case.elements.iter().enumerate() {
-                    if !used.contains(&element.id) {
-                        continue;
-                    }
-                    let part = match elements {
-                        Some(elements) => self.name(elements[index]),
-                        None => {
-                            let name = self.value_ids.next();
-                            lets.push(WriterBinding {
-                                name,
-                                typ: Type::Data(element.typ.clone()),
-                                op: WriterOp::Data(IrDataOp::TupleIndex(tuple, index)),
-                            });
-                            name
-                        }
-                    };
-                    parts.insert(element.id, part);
-                }
+                self.take_apart_tuple(tuple, &case.elements, used, parts, lets);
                 return self.lower_data_decision(&case.body, arms, typ, used, parts, lets);
             }
 
@@ -753,12 +810,12 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    /// Write a block: the lets of its bindings, then its markup.
-    fn write_block(&mut self, block: &'a MarkupHtmlBlock, out: &mut Vec<WriterStmt>) {
+    /// Write a block: the lets of its values, then its result.
+    fn write_block(&mut self, block: &'a FlatHtmlBlock, out: &mut Vec<WriterStmt>) {
         let mut lets = Vec::new();
         self.lower_bindings(&block.bindings, &mut lets);
         out.extend(lets.into_iter().map(WriterStmt::Let));
-        self.write_markup(&block.markup, out);
+        self.write_html(block.result, out);
     }
 
     /// Write a String name escaped. A folded constant is escaped now, and a
@@ -770,12 +827,12 @@ impl<'a> Lowerer<'a> {
             return;
         }
         match &self.bindings[&name].op {
-            MarkupDataOp::Data(IrDataOp::StringLiteral(value)) => {
+            FlatDataOp::Data(IrDataOp::StringLiteral(value)) => {
                 let mut content = String::new();
                 write_escaped_html(value.as_str(), &mut content);
                 write(out, &content);
             }
-            MarkupDataOp::Data(IrDataOp::StringConcat(parts)) => {
+            FlatDataOp::Data(IrDataOp::StringConcat(parts)) => {
                 for part in parts {
                     self.write_escaped(*part, out);
                 }
@@ -784,119 +841,120 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn write_markup(&mut self, markup: &'a [MarkupNode], out: &mut Vec<WriterStmt>) {
-        for node in markup {
-            match node {
-                MarkupNode::Text(text) => write(out, text.as_str()),
+    /// Write the Html that `html` names: the buffer of an Html parameter,
+    /// or the writes of the op of its binding.
+    fn write_html(&mut self, html: ValueId, out: &mut Vec<WriterStmt>) {
+        if self.html_parameters.contains(&html) {
+            out.push(WriterStmt::WriteHtml(self.name(html)));
+            return;
+        }
+        let binding = *self
+            .html
+            .get(&html)
+            .unwrap_or_else(|| panic!("{html} is read as Html but is not Html"));
+        match &binding.op {
+            FlatHtmlOp::Text(text) => write(out, text.as_str()),
 
-                MarkupNode::Escape(string) => self.write_escaped(*string, out),
+            FlatHtmlOp::Escape(string) => self.write_escaped(*string, out),
 
-                MarkupNode::Element(IrHtmlElement {
-                    element,
-                    attributes,
-                    children,
-                }) => {
-                    // The element's writes merge among themselves first, so
-                    // a constant write grows across an element boundary only
-                    // where the whole element fits.
-                    let mut unit = Vec::new();
-                    write(&mut unit, &format!("<{}", element.as_str()));
-                    for (name, attribute) in attributes {
-                        match attribute {
-                            IrAttribute::Value(value) => {
-                                write(&mut unit, &format!(" {}=\"", name.as_str()));
-                                self.write_escaped(*value, &mut unit);
-                                write(&mut unit, "\"");
-                            }
-                            // A folded condition settles now whether the
-                            // attribute renders.
-                            IrAttribute::Presence(present) => {
-                                if self.folded(*present) {
-                                    match &self.bindings[present].op {
-                                        MarkupDataOp::Data(IrDataOp::BoolLiteral(true)) => {
-                                            write(&mut unit, &format!(" {}", name.as_str()));
-                                        }
-                                        MarkupDataOp::Data(IrDataOp::BoolLiteral(false)) => {}
-                                        op => unreachable!(
-                                            "a folded presence is a constant, not {op:?}"
-                                        ),
-                                    }
-                                } else {
-                                    let mut true_body = Vec::new();
-                                    write(&mut true_body, &format!(" {}", name.as_str()));
-                                    unit.push(WriterStmt::Match(IrSwitch::Bool {
-                                        subject: self.name(*present),
-                                        true_body,
-                                        false_body: Vec::new(),
-                                    }));
-                                }
-                            }
-                        }
-                    }
-                    write(&mut unit, ">");
-                    if !element.is_void() {
-                        self.write_markup(children, &mut unit);
-                        write(&mut unit, &format!("</{}>", element.as_str()));
-                    }
-                    for statement in unit {
-                        match statement {
-                            WriterStmt::Write(content) => write(out, &content),
-                            statement => out.push(statement),
-                        }
-                    }
+            FlatHtmlOp::Concat(parts) => {
+                for part in parts {
+                    self.write_html(*part, out);
                 }
+            }
 
-                MarkupNode::Match(match_) => {
-                    let patterns: Vec<_> =
-                        match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
-                    let subject_type = match self.bindings.get(&match_.subject) {
-                        Some(binding) => binding.binder.typ.clone(),
-                        None => self.binder_types[&match_.subject].clone(),
-                    };
-                    let decision = compile_decision_tree(self.registry, &patterns, subject_type);
-                    let mut used = HashSet::new();
-                    decision.collect_used(&mut used);
-                    let mut parts = HashMap::from([(CaseVar(0), self.name(match_.subject))]);
-                    self.write_decision(&decision, &match_.arms, &used, &mut parts, out);
-                }
+            FlatHtmlOp::Element(element) => self.write_element(element, out),
 
-                MarkupNode::For(IrFor { var, array, body }) => {
-                    let array = self.name(*array);
-                    let var = var.as_ref().map(|var| IrBinder {
-                        var: self.bind(var.var),
-                        typ: var.typ.clone(),
-                    });
-                    let mut statements = Vec::new();
-                    self.write_block(body, &mut statements);
-                    out.push(WriterStmt::HtmlFor(IrFor {
-                        var,
-                        array,
-                        body: statements,
-                    }));
-                }
+            FlatHtmlOp::Match(match_) => {
+                let (decision, used, mut parts) = self.compile_match(match_);
+                self.write_decision(&decision, &match_.arms, &used, &mut parts, out);
+            }
 
-                MarkupNode::Call(function, args) => {
-                    let mut lets = Vec::new();
-                    let args = self.lower_args(args, &mut lets);
-                    out.extend(lets.into_iter().map(WriterStmt::Let));
-                    out.push(WriterStmt::WriteFunction(function.clone(), args));
-                }
+            FlatHtmlOp::For(IrFor { var, array, body }) => {
+                let array = self.name(*array);
+                let var = var.as_ref().map(|var| IrBinder {
+                    var: self.bind(var.var),
+                    typ: var.typ.clone(),
+                });
+                let mut statements = Vec::new();
+                self.write_block(body, &mut statements);
+                out.push(WriterStmt::HtmlFor(IrFor {
+                    var,
+                    array,
+                    body: statements,
+                }));
+            }
 
-                MarkupNode::Slot(parameter) => {
-                    out.push(WriterStmt::WriteHtml(self.name(*parameter)));
-                }
+            FlatHtmlOp::Call(function, args) => {
+                let mut lets = Vec::new();
+                let args = self.lower_args(args, &mut lets);
+                out.extend(lets.into_iter().map(WriterStmt::Let));
+                out.push(WriterStmt::WriteFunction(function.clone(), args));
             }
         }
     }
 
-    /// Write the markup a decision tree selects from the arms. `parts`
-    /// holds the name of the part of the subject each case variable bound
-    /// so far stands for. A case variable that is not in `used` is not
-    /// bound.
+    fn write_element(&mut self, element: &'a IrHtmlElement<ValueId>, out: &mut Vec<WriterStmt>) {
+        let IrHtmlElement {
+            element,
+            attributes,
+            children,
+        } = element;
+        // The element's writes merge among themselves first, so a constant
+        // write grows across an element boundary only where the whole
+        // element fits.
+        let mut unit = Vec::new();
+        write(&mut unit, &format!("<{}", element.as_str()));
+        for (name, attribute) in attributes {
+            match attribute {
+                IrAttribute::Value(value) => {
+                    write(&mut unit, &format!(" {}=\"", name.as_str()));
+                    self.write_escaped(*value, &mut unit);
+                    write(&mut unit, "\"");
+                }
+                // A folded condition settles now whether the attribute
+                // renders.
+                IrAttribute::Presence(present) => {
+                    if self.folded(*present) {
+                        match &self.bindings[present].op {
+                            FlatDataOp::Data(IrDataOp::BoolLiteral(true)) => {
+                                write(&mut unit, &format!(" {}", name.as_str()));
+                            }
+                            FlatDataOp::Data(IrDataOp::BoolLiteral(false)) => {}
+                            op => unreachable!("a folded presence is a constant, not {op:?}"),
+                        }
+                    } else {
+                        let mut true_body = Vec::new();
+                        write(&mut true_body, &format!(" {}", name.as_str()));
+                        unit.push(WriterStmt::Match(IrSwitch::Bool {
+                            subject: self.name(*present),
+                            true_body,
+                            false_body: Vec::new(),
+                        }));
+                    }
+                }
+            }
+        }
+        write(&mut unit, ">");
+        if !element.is_void() {
+            self.write_html(*children, &mut unit);
+            write(&mut unit, &format!("</{}>", element.as_str()));
+        }
+        for statement in unit {
+            match statement {
+                WriterStmt::Write(content) => write(out, &content),
+                statement => out.push(statement),
+            }
+        }
+    }
+
+    /// Write the Html a decision tree selects from the arms. `parts` holds
+    /// the name of the part of the subject each case variable bound so far
+    /// stands for. A case variable that is not in `used` is not bound.
     fn write_decision(
         &mut self,
         decision: &Decision<IrBinder<DataType>>,
-        arms: &'a [IrMatchArm<MarkupHtmlBlock>],
+        arms: &'a [IrMatchArm<FlatHtmlBlock>],
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         out: &mut Vec<WriterStmt>,
@@ -913,74 +971,17 @@ impl<'a> Lowerer<'a> {
 
             Decision::SwitchRecord { variable, case } => {
                 let record = parts[&variable.id];
-                // A record the module constructs is taken apart through the
-                // operands of its constructor.
-                let fields = match self.bindings.get(&record).copied() {
-                    Some(MarkupDataBinding {
-                        op: MarkupDataOp::Data(IrDataOp::Record(fields)),
-                        ..
-                    }) => Some(fields),
-                    _ => None,
-                };
-                for binding in &case.bindings {
-                    if !used.contains(&binding.var.id) {
-                        continue;
-                    }
-                    let part = match fields {
-                        Some(fields) => {
-                            let (_, value) = fields
-                                .iter()
-                                .find(|(field, _)| *field == binding.field_name)
-                                .expect("a record has the fields of its type");
-                            self.name(*value)
-                        }
-                        None => {
-                            let name = self.value_ids.next();
-                            out.push(WriterStmt::Let(WriterBinding {
-                                name,
-                                typ: Type::Data(binding.var.typ.clone()),
-                                op: WriterOp::Data(IrDataOp::FieldAccess(
-                                    record,
-                                    binding.field_name.clone(),
-                                )),
-                            }));
-                            name
-                        }
-                    };
-                    parts.insert(binding.var.id, part);
-                }
+                let mut lets = Vec::new();
+                self.take_apart_record(record, &case.bindings, used, parts, &mut lets);
+                out.extend(lets.into_iter().map(WriterStmt::Let));
                 return self.write_decision(&case.body, arms, used, parts, out);
             }
 
             Decision::SwitchTuple { variable, case } => {
                 let tuple = parts[&variable.id];
-                // A tuple the module constructs is taken apart through the
-                // operands of its constructor.
-                let elements = match self.bindings.get(&tuple).copied() {
-                    Some(MarkupDataBinding {
-                        op: MarkupDataOp::Data(IrDataOp::Tuple(elements)),
-                        ..
-                    }) => Some(elements),
-                    _ => None,
-                };
-                for (index, element) in case.elements.iter().enumerate() {
-                    if !used.contains(&element.id) {
-                        continue;
-                    }
-                    let part = match elements {
-                        Some(elements) => self.name(elements[index]),
-                        None => {
-                            let name = self.value_ids.next();
-                            out.push(WriterStmt::Let(WriterBinding {
-                                name,
-                                typ: Type::Data(element.typ.clone()),
-                                op: WriterOp::Data(IrDataOp::TupleIndex(tuple, index)),
-                            }));
-                            name
-                        }
-                    };
-                    parts.insert(element.id, part);
-                }
+                let mut lets = Vec::new();
+                self.take_apart_tuple(tuple, &case.elements, used, parts, &mut lets);
+                out.extend(lets.into_iter().map(WriterStmt::Let));
                 return self.write_decision(&case.body, arms, used, parts, out);
             }
 
@@ -1055,8 +1056,9 @@ impl<'a> Lowerer<'a> {
 mod tests {
     use super::*;
     use crate::document::Document;
+    use crate::hop::typing::Ty;
+    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
     use crate::ir::flat_module_generator::random_module;
-    use crate::ir::flat_to_markup::flat_to_markup;
     use crate::ir::ir_parameter::IrParameter;
     use crate::ir::optimize_flat;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
@@ -1065,8 +1067,8 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    /// Prints the optimized module as Markup and as the Writer IR that
-    /// Markup lowers to.
+    /// Prints the optimized module as Flat and as the Writer IR that Flat
+    /// lowers to.
     fn check(source: &str, shell: Option<&DocumentShell>, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();
         let mut program = Program::new();
@@ -1078,10 +1080,20 @@ mod tests {
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let (flat, pages) =
             orchestrate_flat(program.typed_modules(), OrchestrateOptions::default());
-        let module = flat_to_markup(optimize_flat(flat));
-        let markup = module.to_string();
-        let writer = markup_to_writer(module, program.type_registry(), &pages, shell).to_string();
-        expected.assert_eq(&format!("-- markup --\n{markup}\n-- writer --\n{writer}"));
+        let flat = optimize_flat(flat);
+        let before = flat.to_string();
+        let writer = flat_to_writer(flat, program.type_registry(), &pages, shell).to_string();
+        expected.assert_eq(&format!("-- flat --\n{before}\n-- writer --\n{writer}"));
+    }
+
+    /// Prints the optimized module as Flat and as the Writer IR that Flat
+    /// lowers to, with a page for each entrypoint.
+    fn check_module((module, registry): (FlatModule, TypeRegistry), expected: Expect) {
+        let pages = IrPage::for_entrypoints(&module);
+        let flat = optimize_flat(module);
+        let before = flat.to_string();
+        let writer = flat_to_writer(flat, &registry, &pages, None).to_string();
+        expected.assert_eq(&format!("-- flat --\n{before}\n-- writer --\n{writer}"));
     }
 
     #[test]
@@ -1099,12 +1111,16 @@ mod tests {
             "#},
             Some(&DocumentShell::new(None, None)),
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn head@f0(title@v0: String) -> Html {
-                  element("title", {}, [escape(v0)])
+                  let v1: Html = escape(v0)
+                  let v3: Html = element("title", {}, v1)
+                  v3
                 }
                 entrypoint fn body@f1(title@v4: String) -> Html {
-                  element("h1", {}, [escape(v4)])
+                  let v5: Html = escape(v4)
+                  let v7: Html = element("h1", {}, v5)
+                  v7
                 }
 
                 -- writer --
@@ -1136,22 +1152,15 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn body@f0(id@v0: String, flag@v1: Bool) -> Html {
                   let v2: String = "a<b"
                   let v3: Bool = true
                   let v4: Bool = false
-
-                  element(
-                    "div",
-                    {class: v2, id: v0},
-                    [
-                      element(
-                        "input",
-                        {disabled: v3, required: v4, checked: v1},
-                      ),
-                    ],
-                  )
+                  let v5: Html = concat()
+                  let v6: Html = element("input", {disabled: v3, required: v4, checked: v1}, v5)
+                  let v8: Html = element("div", {class: v2, id: v0}, v6)
+                  v8
                 }
 
                 -- writer --
@@ -1188,19 +1197,18 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn body@f0(items@v0: Array[String]) -> Html {
-                  element(
-                    "ul",
-                    {},
-                    [
-                      text("before"),
-                      for v2: String in v0 {
-                        element("li", {}, [escape(v2)])
-                      },
-                      text("after"),
-                    ],
-                  )
+                  let v1: Html = text("before")
+                  let v6: Html = for v2: String in v0 {
+                    let v3: Html = escape(v2)
+                    let v5: Html = element("li", {}, v3)
+                    v5
+                  }
+                  let v7: Html = text("after")
+                  let v8: Html = concat(v1, v6, v7)
+                  let v9: Html = element("ul", {}, v8)
+                  v9
                 }
 
                 -- writer --
@@ -1232,10 +1240,14 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn body@f0() -> Html {
-                  element("p", {}, [text("Hello")])
-                  element("p", {}, [text("World")])
+                  let v0: Html = text("Hello")
+                  let v2: Html = element("p", {}, v0)
+                  let v3: Html = text("World")
+                  let v5: Html = element("p", {}, v3)
+                  let v6: Html = concat(v2, v5)
+                  v6
                 }
 
                 -- writer --
@@ -1262,17 +1274,15 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn body@f0() -> Html {
-                  element(
-                    "p",
-                    {},
-                    [
-                      text("aaaaaaaaaaaaaaaaaaaaaaaaa"),
-                      element("b", {}, [text("bbbbbbbbbbbbbbbbbbbbbbbbb")]),
-                      text("ccccccccccccccccccccccccc"),
-                    ],
-                  )
+                  let v0: Html = text("aaaaaaaaaaaaaaaaaaaaaaaaa")
+                  let v1: Html = text("bbbbbbbbbbbbbbbbbbbbbbbbb")
+                  let v3: Html = element("b", {}, v1)
+                  let v4: Html = text("ccccccccccccccccccccccccc")
+                  let v5: Html = concat(v0, v3, v4)
+                  let v6: Html = element("p", {}, v5)
+                  v6
                 }
 
                 -- writer --
@@ -1297,13 +1307,14 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn body@f0(name@v0: String) -> Html {
                   let v1: String = "a<"
                   let v3: String = ">b"
                   let v4: String = concat(v1, v0, v3)
-
-                  element("p", {title: v4}, [])
+                  let v5: Html = concat()
+                  let v6: Html = element("p", {title: v4}, v5)
+                  v6
                 }
 
                 -- writer --
@@ -1331,20 +1342,23 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn body@f0(signed_in@v0: Bool, nickname@v1: Option[String]) -> Html {
                   let v2: (Bool, Option[String]) = (v0, v1)
-
-                  match v2 {
+                  let v11: Html = match v2 {
                     (true, Some(v3: String)) => {
                       let v4: String = "member"
-
-                      element("p", {class: v4}, [escape(v3)])
+                      let v5: Html = escape(v3)
+                      let v7: Html = element("p", {class: v4}, v5)
+                      v7
                     }
                     _ => {
-                      element("p", {}, [text("guest")])
+                      let v8: Html = text("guest")
+                      let v10: Html = element("p", {}, v8)
+                      v10
                     }
                   }
+                  v11
                 }
 
                 -- writer --
@@ -1371,14 +1385,15 @@ mod tests {
         );
     }
 
-    /// Each entrypoint is lowered as a page.
+    /// Each entrypoint is lowered as a page. The lowering also finds no
+    /// Html held in a value, whether the module is optimized or not.
     #[test]
     fn fuzz_random_modules_lower_to_writer_binding_every_name_once() {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let pages = IrPage::for_entrypoints(&module);
             for flat in [module.clone(), optimize_flat(module)] {
-                let writer = markup_to_writer(flat_to_markup(flat), &registry, &pages, None);
+                let writer = flat_to_writer(flat, &registry, &pages, None);
                 assert_eq!(name_bound_twice(&writer), None, "bound twice in\n{writer}");
             }
             Ok(())
@@ -1519,7 +1534,7 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn body@f0(signed_in@v0: Bool, nickname@v1: Option[String], count@v2: Int) -> Html {
                   let v3: (Bool, Option[String]) = (v0, v1)
                   let v6: String = match v3 {
@@ -1532,37 +1547,33 @@ mod tests {
                     }
                   }
                   let v10: (Bool, Option[String]) = (v0, v1)
-
-                  element(
-                    "div",
-                    {},
-                    [
-                      element("p", {}, [escape(v6)]),
-                      match v10 {
-                        (true, Some(v11: String)) => {
-                          element("p", {}, [escape(v11)])
-                        }
-                        _ => {
-                          let v15: String = v2.to_string()
-                          let v17: Int = 1
-                          let v18: Array[Int] = v17..=v2
-
-                          element(
-                            "p",
-                            {},
-                            [
-                              escape(v15),
-                              for v19: Int in v18 {
-                                let v20: String = v19.to_string()
-
-                                element("b", {}, [escape(v20)])
-                              },
-                            ],
-                          )
-                        }
-                      },
-                    ],
-                  )
+                  let v7: Html = escape(v6)
+                  let v9: Html = element("p", {}, v7)
+                  let v27: Html = match v10 {
+                    (true, Some(v11: String)) => {
+                      let v12: Html = escape(v11)
+                      let v14: Html = element("p", {}, v12)
+                      v14
+                    }
+                    _ => {
+                      let v15: String = v2.to_string()
+                      let v17: Int = 1
+                      let v18: Array[Int] = v17..=v2
+                      let v16: Html = escape(v15)
+                      let v24: Html = for v19: Int in v18 {
+                        let v20: String = v19.to_string()
+                        let v21: Html = escape(v20)
+                        let v23: Html = element("b", {}, v21)
+                        v23
+                      }
+                      let v25: Html = concat(v16, v24)
+                      let v26: Html = element("p", {}, v25)
+                      v26
+                    }
+                  }
+                  let v28: Html = concat(v9, v27)
+                  let v29: Html = element("div", {}, v28)
+                  v29
                 }
 
                 -- writer --
@@ -1659,19 +1670,26 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn body@f0(session@v0: Session) -> Html {
-                  match v0 {
+                  let v12: Html = match v0 {
                     Session::SignedIn {user: User {name@v1: String, admin: true}} => {
-                      element("b", {}, [escape(v1)])
+                      let v2: Html = escape(v1)
+                      let v4: Html = element("b", {}, v2)
+                      v4
                     }
                     Session::SignedIn {user: User {name@v5: String, admin: false}} => {
-                      element("i", {}, [escape(v5)])
+                      let v6: Html = escape(v5)
+                      let v8: Html = element("i", {}, v6)
+                      v8
                     }
                     Session::Guest => {
-                      element("p", {}, [text("guest")])
+                      let v9: Html = text("guest")
+                      let v11: Html = element("p", {}, v9)
+                      v11
                     }
                   }
+                  v12
                 }
 
                 -- writer --
@@ -1720,7 +1738,7 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 entrypoint fn body@f0(count@v0: Option[Int], exact@v1: Bool) -> Html {
                   let v2: (Option[Int], Bool) = (v0, v1)
                   let v7: String = match v2 {
@@ -1737,8 +1755,9 @@ mod tests {
                       v6
                     }
                   }
-
-                  element("p", {}, [escape(v7)])
+                  let v8: Html = escape(v7)
+                  let v10: Html = element("p", {}, v8)
+                  v10
                 }
 
                 -- writer --
@@ -1789,27 +1808,30 @@ mod tests {
             "#},
             None,
             expect![[r#"
-                -- markup --
+                -- flat --
                 fn Nest@f0(depth@v7: Int, children@v8: Html) -> Html {
                   let v9: Int = 0
                   let v10: Bool = v9 < v7
-
-                  match v10 {
+                  let v17: Html = match v10 {
                     true => {
                       let v11: Int = 1
                       let v12: Int = v7 - v11
-
-                      element("div", {}, [Nest@f0(v12, [slot(v8)])])
+                      let v14: Html = Nest@f0(v12, v8)
+                      let v16: Html = element("div", {}, v14)
+                      v16
                     }
                     false => {
-                      slot(v8)
+                      v8
                     }
                   }
+                  v17
                 }
                 entrypoint fn body@f1(name@v0: String) -> Html {
                   let v1: Int = 2
-
-                  Nest@f0(v1, [element("b", {}, [escape(v0)])])
+                  let v2: Html = escape(v0)
+                  let v4: Html = element("b", {}, v2)
+                  let v6: Html = Nest@f0(v1, v4)
+                  v6
                 }
 
                 -- writer --
@@ -1837,6 +1859,187 @@ mod tests {
                     write("</b>")
                   }
                   write_function Nest@f0(v1, v18)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn writes_html_read_in_two_arms_once_in_each() {
+        check_module(
+            FlatModuleBuilder::new()
+                .entrypoint(
+                    "Greeting",
+                    [("name", Ty::option(Ty::String)), ("formal", Ty::Bool)],
+                    Ty::Html,
+                    |t| {
+                        let greeting = t.match_(t.param("name"), |m| {
+                            m.arm(Pat::some(Pat::bind("n")), |t, arm| {
+                                t.element("b", [], t.escape(arm.binding("n")))
+                            });
+                            m.arm(Pat::None, |t, _| t.text("anonymous"));
+                        });
+                        t.match_(t.param("formal"), |m| {
+                            m.arm(Pat::True, |t, _| t.element("p", [], greeting));
+                            m.arm(Pat::False, |t, _| t.element("i", [], greeting));
+                        })
+                    },
+                )
+                .build_with_registry(),
+            expect![[r#"
+                -- flat --
+                entrypoint fn Greeting@f0(name@v0: Option[String], formal@v1: Bool) -> Html {
+                  let v6: Html = match v0 {
+                    Some(v2: String) => {
+                      let v3: Html = escape(v2)
+                      let v4: Html = element("b", {}, v3)
+                      v4
+                    }
+                    None => {
+                      let v5: Html = text("anonymous")
+                      v5
+                    }
+                  }
+                  let v9: Html = match v1 {
+                    true => {
+                      let v7: Html = element("p", {}, v6)
+                      v7
+                    }
+                    false => {
+                      let v8: Html = element("i", {}, v6)
+                      v8
+                    }
+                  }
+                  v9
+                }
+
+                -- writer --
+                page Greeting(name@v0: Option[String], formal@v1: Bool) {
+                  match v1 {
+                    true => {
+                      write("<p>")
+                      match v0 {
+                        Some(v10: String) => {
+                          write("<b>")
+                          write_string(v10)
+                          write("</b>")
+                        }
+                        None => {
+                          write("anonymous")
+                        }
+                      }
+                      write("</p>")
+                    }
+                    false => {
+                      write("<i>")
+                      match v0 {
+                        Some(v11: String) => {
+                          write("<b>")
+                          write_string(v11)
+                          write("</b>")
+                        }
+                        None => {
+                          write("anonymous")
+                        }
+                      }
+                      write("</i>")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn keeps_a_value_outside_the_loop_that_writes_it_and_drops_html_nothing_reads() {
+        check_module(
+            FlatModuleBuilder::new()
+                .entrypoint(
+                    "Items",
+                    [("items", Ty::array(Ty::String)), ("n", Ty::Int)],
+                    Ty::Html,
+                    |t| {
+                        let _unused = t.text("never");
+                        let data_x = t.int_to_string(t.add(t.param("n"), t.int(1)));
+                        t.element(
+                            "ul",
+                            [],
+                            t.html_for(t.param("items"), |t, _| {
+                                t.element("li", [t.attr_value("data-x", data_x)], t.text("x"))
+                            }),
+                        )
+                    },
+                )
+                .build_with_registry(),
+            expect![[r#"
+                -- flat --
+                entrypoint fn Items@f0(items@v0: Array[String], n@v1: Int) -> Html {
+                  let v3: Int = 1
+                  let v4: Int = v1 + v3
+                  let v5: String = v4.to_string()
+                  let v9: Html = for _ in v0 {
+                    let v7: Html = text("x")
+                    let v8: Html = element("li", {data-x: v5}, v7)
+                    v8
+                  }
+                  let v10: Html = element("ul", {}, v9)
+                  v10
+                }
+
+                -- writer --
+                page Items(items@v0: Array[String], n@v1: Int) {
+                  let v3: Int = 1
+                  let v4: Int = v1 + v3
+                  let v5: String = v4.to_string()
+                  write("<ul>")
+                  for _ in v0 {
+                    write("<li data-x=\"")
+                    write_string(v5)
+                    write("\">x</li>")
+                  }
+                  write("</ul>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn writes_the_children_of_inlined_calls_in_place() {
+        check_module(
+            FlatModuleBuilder::new()
+                .function("Badge", [("label", Ty::String)], Ty::Html, |t| {
+                    t.element("span", [], t.escape(t.param("label")))
+                })
+                .function("Wrap", [("content", Ty::Html)], Ty::Html, |t| {
+                    t.element("div", [], t.param("content"))
+                })
+                .entrypoint("Test", [("label", Ty::String)], Ty::Html, |t| {
+                    t.call(
+                        "Wrap",
+                        [t.html_concat(vec![
+                            t.call("Badge", vec![t.param("label")]),
+                            t.element("b", vec![], t.html_concat(vec![])),
+                        ])],
+                    )
+                })
+                .build_with_registry(),
+            expect![[r#"
+                -- flat --
+                entrypoint fn Test@f2(label@v5: String) -> Html {
+                  let v11: Html = escape(v5)
+                  let v12: Html = element("span", {}, v11)
+                  let v7: Html = concat()
+                  let v8: Html = element("b", {}, v7)
+                  let v9: Html = concat(v12, v8)
+                  let v13: Html = element("div", {}, v9)
+                  v13
+                }
+
+                -- writer --
+                page Test(label@v5: String) {
+                  write("<div><span>")
+                  write_string(v5)
+                  write("</span><b></b></div>")
                 }
             "#]],
         );

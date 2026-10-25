@@ -12,9 +12,7 @@ use crate::hop::parsing::{ParseError, ParsedModule, parse};
 use crate::hop::typing::{Export, TypeError, TypeRegistry, TypedModule, typecheck};
 use crate::hover_annotation::HoverAnnotation;
 use crate::ir;
-use crate::ir::{
-    DocumentShell, TailwindInjection, Transpiler, flat_to_markup, markup_to_writer, optimize_flat,
-};
+use crate::ir::{DocumentShell, TailwindInjection, Transpiler, flat_to_writer, optimize_flat};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
 use crate::root_contained_file_path::RootContainedFilePath;
 use std::collections::{BTreeSet, HashMap};
@@ -247,12 +245,7 @@ impl Program {
         } else {
             optimize_flat(flat)
         };
-        let module = markup_to_writer(
-            flat_to_markup(flat),
-            &self.type_registry,
-            &pages,
-            Some(&shell),
-        );
+        let module = flat_to_writer(flat, &self.type_registry, &pages, Some(&shell));
 
         match target {
             TargetLanguage::Typescript => {

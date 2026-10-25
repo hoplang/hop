@@ -1825,7 +1825,7 @@ impl Transpiler for RustTranspiler {
 mod tests {
     use super::*;
     use crate::document::Document;
-    use crate::ir::{flat_to_markup, markup_to_writer};
+    use crate::ir::flat_to_writer;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::program::Program;
     use crate::root_contained_file_path::RootContainedFilePath;
@@ -1847,7 +1847,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let module = markup_to_writer(flat_to_markup(flat), program.type_registry(), &pages, None);
+        let module = flat_to_writer(flat, program.type_registry(), &pages, None);
         let output = RustTranspiler::new().transpile_module(&module, program.type_registry());
         expected.assert_eq(&output);
     }
