@@ -14,11 +14,11 @@ coverage TEST:
 
 # run fuzz tests
 fuzz:
-	ARBTEST_BUDGET_MS=20000 cargo test -p hop-core fuzz_
+	ARBTEST_BUDGET_MS=20000 cargo test --profile fuzz -p hop-core fuzz_
 
 # run fuzz tests that shell out to bun/tsc/rustc
 fuzz-transpilers:
-	ARBTEST_BUDGET_MS=20000 cargo test -p hop-core fuzz_transpile -- --ignored
+	ARBTEST_BUDGET_MS=20000 cargo test --profile fuzz -p hop-core fuzz_transpile -- --ignored
 
 [working-directory(grammar_dir)]
 build-grammar:
@@ -27,7 +27,7 @@ build-grammar:
 	cc -shared -fPIC -O2 -I{{grammar_dir}}/src {{grammar_dir}}/src/parser.c -o {{helix_runtime}}/grammars/hop.so
 
 fuzz-tree-sitter:
-	ARBTEST_BUDGET_MS=20000 cargo test -p hop-core fuzz_tree_sitter -- --ignored
+	ARBTEST_BUDGET_MS=20000 cargo test --profile fuzz -p hop-core fuzz_tree_sitter -- --ignored
 
 test-grammar: build-grammar
 	tree-sitter test --grammar-path {{grammar_dir}}

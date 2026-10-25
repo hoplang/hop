@@ -9,7 +9,8 @@ members = [
 ]
 resolver = "2"
 
-# arbtest refills a 64 KiB input buffer before every fuzz run, which at
-# opt-level 0 takes most of the fuzz budget.
-[profile.dev.package.arbtest]
+[profile.fuzz]
+inherits = "dev"
 opt-level = 3
+debug-assertions = true
+overflow-checks = true
