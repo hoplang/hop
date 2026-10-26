@@ -58,7 +58,7 @@ const SCALARS: &[Ty] = &[Ty::Int, Ty::String, Ty::Bool, Ty::Float];
 const ELEMENTS: &[(&str, bool)] = &[
     ("div", false),
     ("span", false),
-    ("p", false),
+    ("b", false),
     ("my-widget", false),
     ("br", true),
     ("input", true),
