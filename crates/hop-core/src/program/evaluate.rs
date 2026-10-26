@@ -72,11 +72,15 @@ impl Program {
                 page: page_name.to_string(),
                 param: param.to_string(),
             },
-            EvalError::RecursionLimit { function, limit } => EvaluatePageError::RecursionLimit {
+            EvalError::CallDepthLimit { function, limit } => EvaluatePageError::CallDepthLimit {
                 function: function.name.as_str().to_string(),
                 limit,
             },
             EvalError::ArrayLengthLimit { limit } => EvaluatePageError::ArrayLengthLimit { limit },
+            EvalError::StringLengthLimit { limit } => {
+                EvaluatePageError::StringLengthLimit { limit }
+            }
+            EvalError::OpCountLimit { limit } => EvaluatePageError::OpCountLimit { limit },
         })
     }
 

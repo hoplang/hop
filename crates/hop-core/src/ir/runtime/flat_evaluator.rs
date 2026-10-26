@@ -17,19 +17,25 @@ use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::html_node::{HtmlAttribute, HtmlNode, write_html};
-use crate::ir::runtime::value::{MAX_ARRAY_LENGTH, Value};
+use crate::ir::runtime::value::{MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value};
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 
 /// The most function frames that may be active at once. A call that would
-/// open one more fails with a recursion limit error, so a function that
-/// never stops calling itself reports an error instead of overflowing the
-/// stack.
+/// open one more fails with a call depth limit error.
 pub const MAX_CALL_DEPTH: usize = 12;
+
+/// The most ops one evaluation of a function from outside may evaluate,
+/// data and Html alike.
+pub const MAX_OP_COUNT: usize = 5_000;
 
 const ARRAY_LENGTH_LIMIT_ERROR: EvalError = EvalError::ArrayLengthLimit {
     limit: MAX_ARRAY_LENGTH,
+};
+
+const STRING_LENGTH_LIMIT_ERROR: EvalError = EvalError::StringLengthLimit {
+    limit: MAX_STRING_LENGTH,
 };
 
 /// Evaluate a page from the entrypoint functions it points at, each called with
@@ -94,20 +100,21 @@ pub fn evaluate_entrypoint(
             })?;
         values.push(value);
     }
-    evaluate_function(&module.functions, function, values, 0)
+    evaluate_function(&module.functions, function, values, 0, &mut 0)
 }
 
 /// Evaluate a function on its arguments, one for each parameter in the
 /// order they are declared, with `depth` function frames already active. A
 /// call from outside any function has depth zero.
-pub fn evaluate_function(
+fn evaluate_function(
     functions: &[FlatFunctionDeclaration],
     function: &IrFunction,
     args: Vec<Value>,
     depth: usize,
+    op_count: &mut usize,
 ) -> Result<Value, EvalError> {
     if depth >= MAX_CALL_DEPTH {
-        return Err(EvalError::RecursionLimit {
+        return Err(EvalError::CallDepthLimit {
             function: function.clone(),
             limit: MAX_CALL_DEPTH,
         });
@@ -119,11 +126,23 @@ pub fn evaluate_function(
     match decl {
         FlatFunctionDeclaration::Data(decl) => {
             let vars = decl.parameters.iter().map(|param| param.binder.var);
-            evaluate_data_block(&decl.body, &vars.zip(args).collect(), functions, depth + 1)
+            evaluate_data_block(
+                &decl.body,
+                &vars.zip(args).collect(),
+                functions,
+                depth + 1,
+                op_count,
+            )
         }
         FlatFunctionDeclaration::Html(decl) => {
             let vars = decl.parameters.iter().map(|param| param.binder.var);
-            evaluate_html_block(&decl.body, &vars.zip(args).collect(), functions, depth + 1)
+            evaluate_html_block(
+                &decl.body,
+                &vars.zip(args).collect(),
+                functions,
+                depth + 1,
+                op_count,
+            )
         }
     }
 }
@@ -136,9 +155,10 @@ fn evaluate_data_block(
     env: &HashTrieMap<ValueId, Value>,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
+    op_count: &mut usize,
 ) -> Result<Value, EvalError> {
     let mut env = env.clone();
-    evaluate_data_bindings(&block.bindings, &mut env, functions, depth)?;
+    evaluate_data_bindings(&block.bindings, &mut env, functions, depth, op_count)?;
     Ok(env[&block.result].clone())
 }
 
@@ -149,11 +169,12 @@ fn evaluate_html_block(
     env: &HashTrieMap<ValueId, Value>,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
+    op_count: &mut usize,
 ) -> Result<Value, EvalError> {
     let mut env = env.clone();
-    evaluate_data_bindings(&block.bindings, &mut env, functions, depth)?;
+    evaluate_data_bindings(&block.bindings, &mut env, functions, depth, op_count)?;
     for binding in &block.html {
-        let value = evaluate_html_op(&binding.op, &env, functions, depth)?;
+        let value = evaluate_html_op(&binding.op, &env, functions, depth, op_count)?;
         env.insert_mut(binding.binder.var, value);
     }
     Ok(env[&block.result].clone())
@@ -164,16 +185,23 @@ fn evaluate_data_bindings(
     env: &mut HashTrieMap<ValueId, Value>,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
+    op_count: &mut usize,
 ) -> Result<(), EvalError> {
     for binding in bindings {
+        *op_count += 1;
+        if *op_count > MAX_OP_COUNT {
+            return Err(EvalError::OpCountLimit {
+                limit: MAX_OP_COUNT,
+            });
+        }
         let value = match &binding.op {
             FlatDataOp::Data(op) => evaluate_data_op(op, env)?,
             FlatDataOp::Call(function, args) => {
-                evaluate_call(function, args, env, functions, depth)?
+                evaluate_call(function, args, env, functions, depth, op_count)?
             }
             FlatDataOp::Match(match_) => {
                 let (body, env) = enter_arm(match_, env);
-                evaluate_data_block(body, &env, functions, depth)?
+                evaluate_data_block(body, &env, functions, depth, op_count)?
             }
         };
         env.insert_mut(binding.binder.var, value);
@@ -187,9 +215,10 @@ fn evaluate_call(
     env: &HashTrieMap<ValueId, Value>,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
+    op_count: &mut usize,
 ) -> Result<Value, EvalError> {
     let values = args.iter().map(|arg| env[arg].clone()).collect();
-    evaluate_function(functions, function, values, depth)
+    evaluate_function(functions, function, values, depth, op_count)
 }
 
 /// The body of the first arm the subject matches, with `env` extended by
@@ -221,7 +250,14 @@ fn evaluate_html_op(
     env: &HashTrieMap<ValueId, Value>,
     functions: &[FlatFunctionDeclaration],
     depth: usize,
+    op_count: &mut usize,
 ) -> Result<Value, EvalError> {
+    *op_count += 1;
+    if *op_count > MAX_OP_COUNT {
+        return Err(EvalError::OpCountLimit {
+            limit: MAX_OP_COUNT,
+        });
+    }
     Ok(match op {
         FlatHtmlOp::Text(content) => Value::Html(vec![HtmlNode::Text(content.to_string())]),
 
@@ -270,11 +306,13 @@ fn evaluate_html_op(
             }])
         }
 
-        FlatHtmlOp::Call(function, args) => evaluate_call(function, args, env, functions, depth)?,
+        FlatHtmlOp::Call(function, args) => {
+            evaluate_call(function, args, env, functions, depth, op_count)?
+        }
 
         FlatHtmlOp::Match(match_) => {
             let (body, env) = enter_arm(match_, env);
-            evaluate_html_block(body, &env, functions, depth)?
+            evaluate_html_block(body, &env, functions, depth, op_count)?
         }
 
         FlatHtmlOp::For(IrFor { var, array, body }) => {
@@ -285,7 +323,7 @@ fn evaluate_html_op(
                 if let Some(binder) = var {
                     env.insert_mut(binder.var, item.clone());
                 }
-                let result = evaluate_html_block(body, &env, functions, depth)?;
+                let result = evaluate_html_block(body, &env, functions, depth, op_count)?;
                 nodes.extend(result.unwrap_html());
             }
             Value::Html(nodes)
@@ -327,12 +365,13 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
         ),
         IrDataOp::OptionSome(inner) => Value::Option(Some(Rc::new(env[inner].clone()))),
         IrDataOp::OptionNone => Value::Option(None),
-        IrDataOp::StringConcat(parts) => Value::String(
-            parts
-                .iter()
-                .map(|part| env[part].clone().unwrap_string())
-                .collect(),
-        ),
+        IrDataOp::StringConcat(parts) => {
+            let length: usize = parts.iter().map(|part| env[part].as_str().len()).sum();
+            if length > MAX_STRING_LENGTH {
+                return Err(STRING_LENGTH_LIMIT_ERROR);
+            }
+            Value::String(parts.iter().map(|part| env[part].as_str()).collect())
+        }
         IrDataOp::NumericAdd(left, right) => match env[left].clone() {
             Value::Int(left) => Value::Int(left.wrapping_add(env[right].clone().unwrap_int())),
             left => Value::Float(left.unwrap_float() + env[right].clone().unwrap_float()),
@@ -414,7 +453,12 @@ mod tests {
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
             for (function, args) in random_entrypoint_args(&module, &mut rng, &registry) {
                 match evaluate_entrypoint(&module, &function, args) {
-                    Ok(_) | Err(EvalError::RecursionLimit { .. }) => {}
+                    Ok(_)
+                    | Err(
+                        EvalError::CallDepthLimit { .. }
+                        | EvalError::StringLengthLimit { .. }
+                        | EvalError::OpCountLimit { .. },
+                    ) => {}
                     Err(error) => panic!("{error}"),
                 }
             }
@@ -920,19 +964,6 @@ mod tests {
     }
 
     #[test]
-    fn should_evaluate_a_function_on_its_own() {
-        let (module, types) = FlatModuleBuilder::new()
-            .function("Double", [("n", Ty::Int)], Ty::Int, |t| {
-                t.add(t.param("n"), t.param("n"))
-            })
-            .build_with_registry();
-        let v = ValueBuilder::new(&types);
-        let args = vec![v.int(21)];
-        let result = evaluate_function(&module.functions, module.functions[0].function(), args, 0);
-        assert_eq!(result.unwrap(), v.int(42));
-    }
-
-    #[test]
     fn should_evaluate_a_recursive_function() {
         check(
             FlatModuleBuilder::new()
@@ -1046,6 +1077,47 @@ mod tests {
         assert_eq!(
             result.unwrap_err().to_string(),
             "An array exceeded the array length limit of 10000000"
+        );
+    }
+
+    #[test]
+    fn should_error_when_a_string_is_too_long() {
+        let module = FlatModuleBuilder::new()
+            .entrypoint("Test", [], Ty::Html, |t| {
+                let mut string = t.str("x");
+                for _ in 0..24 {
+                    string = t.string_concat([string, string]);
+                }
+                t.escape(string)
+            })
+            .build();
+        let result = evaluate_entrypoint(&module, module.functions[0].function(), HashMap::new());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "A string exceeded the string length limit of 10000000 bytes"
+        );
+    }
+
+    #[test]
+    fn should_error_when_a_function_calls_itself_in_each_element_of_a_loop() {
+        let module = FlatModuleBuilder::new()
+            .function("Tree", [("n", Ty::Int)], Ty::Html, |t| {
+                let n = t.param("n");
+                let deeper = t.lt(n, t.int(10));
+                t.match_(deeper, |m| {
+                    m.arm(Pat::True, |t, _| {
+                        let three = t.array_from_range(t.int(1), t.int(3));
+                        t.html_for_unbound(three, |t| t.call("Tree", [t.add(n, t.int(1))]))
+                    });
+                    m.arm(Pat::False, |t, _| t.text("leaf"));
+                })
+            })
+            .entrypoint("Test", [], Ty::Html, |t| t.call("Tree", [t.int(0)]))
+            .build();
+        let result = evaluate_entrypoint(&module, module.functions[1].function(), HashMap::new());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "An evaluation exceeded the op count limit of 5000"
         );
     }
 

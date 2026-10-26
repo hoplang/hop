@@ -604,9 +604,12 @@ mod tests {
                         "entrypoint {function}\n-- before --\n{before_module}\n-- after --\n{module}"
                     ),
                     (
-                        Err(EvalError::RecursionLimit { .. }),
-                        Err(EvalError::RecursionLimit { .. }),
+                        Err(EvalError::CallDepthLimit { .. }),
+                        Err(EvalError::CallDepthLimit { .. }),
                     ) => {}
+                    // The pass evaluates ops ahead of time, so the module may
+                    // stay under the op count limit after it.
+                    (Err(EvalError::OpCountLimit { .. }), _) => {}
                     (before, after) => panic!(
                         "entrypoint {function}: before {before:?}, after {after:?}\n-- before --\n{before_module}\n-- after --\n{module}"
                     ),

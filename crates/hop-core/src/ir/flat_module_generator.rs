@@ -1337,9 +1337,16 @@ mod tests {
         const INPUT_LEN: usize = 65_536;
         let mut rng = SmallRng::seed_from_u64(0);
         let mut counts = BTreeMap::new();
-        let (mut entrypoints, mut diverged, mut array_len_limit) = (0, 0, 0);
-        let (mut consumed, mut most_consumed, mut exhausted) = (0, 0, 0);
-        let (mut html_bindings, mut shared_html) = (0, 0);
+        let mut entrypoints = 0;
+        let mut call_depth_limit = 0;
+        let mut array_len_limit = 0;
+        let mut string_len_limit = 0;
+        let mut op_count_limit = 0;
+        let mut consumed = 0;
+        let mut most_consumed = 0;
+        let mut exhausted = 0;
+        let mut html_bindings = 0;
+        let mut shared_html = 0;
         for _ in 0..SAMPLES {
             let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
             let mut u = Unstructured::new(&bytes);
@@ -1351,9 +1358,13 @@ mod tests {
             for (function, args) in random_entrypoint_args(&module, &mut rng, &registry) {
                 entrypoints += 1;
                 let result = evaluate_entrypoint(&module, &function, args);
-                diverged += matches!(result, Err(EvalError::RecursionLimit { .. })) as usize;
+                call_depth_limit +=
+                    matches!(result, Err(EvalError::CallDepthLimit { .. })) as usize;
                 array_len_limit +=
                     matches!(result, Err(EvalError::ArrayLengthLimit { .. })) as usize;
+                string_len_limit +=
+                    matches!(result, Err(EvalError::StringLengthLimit { .. })) as usize;
+                op_count_limit += matches!(result, Err(EvalError::OpCountLimit { .. })) as usize;
             }
             let mut live = HashSet::new();
             let mut dynamic = HashSet::new();
@@ -1380,8 +1391,10 @@ mod tests {
         let mut report = format!(
             "{} of {INPUT_LEN} input bytes consumed per module on average, at most {most_consumed}\n\
              {exhausted} of {SAMPLES} modules exhaust the input\n\
-             {diverged} of {entrypoints} entrypoints hit the recursion limit\n\
+             {call_depth_limit} of {entrypoints} entrypoints hit the call depth limit\n\
              {array_len_limit} of {entrypoints} entrypoints hit the array length limit\n\
+             {string_len_limit} of {entrypoints} entrypoints hit the string length limit\n\
+             {op_count_limit} of {entrypoints} entrypoints hit the op count limit\n\
              {shared_html} of {html_bindings} Html bindings have more than one reference\n\n\
              {:<20}{:>10}{:>8}{:>8}\n",
             consumed / SAMPLES,
@@ -1401,8 +1414,10 @@ mod tests {
         expect![[r#"
             3515 of 65536 input bytes consumed per module on average, at most 21050
             0 of 100 modules exhaust the input
-            2 of 203 entrypoints hit the recursion limit
+            2 of 203 entrypoints hit the call depth limit
             0 of 203 entrypoints hit the array length limit
+            0 of 203 entrypoints hit the string length limit
+            0 of 203 entrypoints hit the op count limit
             26 of 839 Html bindings have more than one reference
 
             op                  ops/module  % live   % dyn

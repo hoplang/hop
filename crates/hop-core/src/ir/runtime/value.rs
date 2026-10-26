@@ -9,6 +9,9 @@ use crate::symbols::{field_name::FieldName, type_name::TypeName};
 
 pub const MAX_ARRAY_LENGTH: usize = 10_000_000;
 
+/// The most bytes a String may hold.
+pub const MAX_STRING_LENGTH: usize = 10_000_000;
+
 /// Runtime value for the evaluator.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -27,6 +30,14 @@ pub enum Value {
 impl Value {
     /// Panics if the value is not a String.
     pub fn unwrap_string(self) -> String {
+        match self {
+            Value::String(s) => s,
+            _ => panic!("Expected a String value, found {self:?}"),
+        }
+    }
+
+    /// Panics if the value is not a String.
+    pub fn as_str(&self) -> &str {
         match self {
             Value::String(s) => s,
             _ => panic!("Expected a String value, found {self:?}"),

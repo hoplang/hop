@@ -13,7 +13,11 @@ pub enum EvalError {
         param: AttributeName,
     },
     #[error("Function '{function}' exceeded the call depth limit of {limit}")]
-    RecursionLimit { function: IrFunction, limit: usize },
+    CallDepthLimit { function: IrFunction, limit: usize },
     #[error("An array exceeded the array length limit of {limit}")]
     ArrayLengthLimit { limit: usize },
+    #[error("A string exceeded the string length limit of {limit} bytes")]
+    StringLengthLimit { limit: usize },
+    #[error("An evaluation exceeded the op count limit of {limit}")]
+    OpCountLimit { limit: usize },
 }

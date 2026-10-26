@@ -37,7 +37,9 @@ mod tests {
                         .map(Value::into_markup)
                     {
                         Ok(output) => Some(output),
-                        Err(EvalError::RecursionLimit { .. }) => None,
+                        Err(EvalError::CallDepthLimit { .. } | EvalError::OpCountLimit { .. }) => {
+                            None
+                        }
                         Err(error) => panic!("{error}"),
                     }
                 })
@@ -47,8 +49,8 @@ mod tests {
             flat_lint::assert_well_typed(&module, &registry);
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
-                // An entrypoint that hit the call depth limit has no output to
-                // preserve, and the passes may drop the diverging call.
+                // An entrypoint that hit the call depth limit or the op count limit
+                // has no output to preserve, and the passes may drop the diverging call.
                 let Some(before) = before else {
                     continue;
                 };

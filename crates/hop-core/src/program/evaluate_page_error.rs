@@ -19,8 +19,14 @@ pub enum EvaluatePageError {
     MissingParameter { page: String, param: String },
 
     #[error("Function '{function}' exceeded the call depth limit of {limit}")]
-    RecursionLimit { function: String, limit: usize },
+    CallDepthLimit { function: String, limit: usize },
 
     #[error("An array exceeded the array length limit of {limit}")]
     ArrayLengthLimit { limit: usize },
+
+    #[error("A string exceeded the string length limit of {limit} bytes")]
+    StringLengthLimit { limit: usize },
+
+    #[error("An evaluation exceeded the op count limit of {limit}")]
+    OpCountLimit { limit: usize },
 }
