@@ -89,22 +89,17 @@ const STRING_LITERALS: &[&str] = &[
     "cr\rtab\t",
 ];
 
-/// The names a block may read, in the order they came into scope.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Scope {
     names: Vec<ValueId>,
 }
 
 impl Scope {
-    /// Record that `value` is bound in the block being generated, and
-    /// give it back.
-    fn bound(&mut self, value: ValueId) -> ValueId {
+    fn push(&mut self, value: ValueId) -> ValueId {
         self.names.push(value);
         value
     }
 
-    /// The names in scope whose type fits, in the order they came into
-    /// scope.
     fn names_where<'a>(
         &'a self,
         types: &'a [Type],
@@ -114,17 +109,6 @@ impl Scope {
             .iter()
             .copied()
             .filter(move |name| fits(&types[name.index()]))
-    }
-
-    /// How many names are in scope, to come back to when a nested block
-    /// ends.
-    fn snapshot(&self) -> usize {
-        self.names.len()
-    }
-
-    /// Forget the names bound since `snapshot` was taken.
-    fn restore(&mut self, snapshot: usize) {
-        self.names.truncate(snapshot);
     }
 }
 
@@ -265,7 +249,7 @@ fn random_module_inner(
         builder = builder.define(name, |b, declared| {
             let mut scope = Scope::default();
             for parameter in &declared.parameters {
-                scope.bound(parameter.binder.var);
+                scope.push(parameter.binder.var);
             }
             match &declared.return_type {
                 Type::Html(_) => g.html_block(b, &mut scope, MAX_BLOCK_DEPTH),
@@ -281,7 +265,7 @@ fn random_module_inner(
             |b| {
                 let mut scope = Scope::default();
                 for (n, _) in params {
-                    scope.bound(b.param(n));
+                    scope.push(b.param(n));
                 }
                 g.html_block(b, &mut scope, MAX_BLOCK_DEPTH)
             },
@@ -454,17 +438,15 @@ impl FlatGenerator<'_, '_> {
     fn for_loop_body(
         &mut self,
         b: &FlatBlockBuilder<'_>,
-        scope: &mut Scope,
+        scope: &Scope,
         var: Option<ValueId>,
         depth: usize,
     ) -> ValueId {
-        let before = scope.snapshot();
+        let mut scope = scope.clone();
         if let Some(var) = var {
-            scope.bound(var);
+            scope.push(var);
         }
-        let body = self.html_block(b, scope, depth);
-        scope.restore(before);
-        body
+        self.html_block(b, &mut scope, depth)
     }
 
     fn html_block(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
@@ -525,7 +507,7 @@ impl FlatGenerator<'_, '_> {
                         b.element(tag, Vec::new(), children)
                     }
                 };
-                scope.bound(literal)
+                scope.push(literal)
             }
         }
     }
@@ -613,7 +595,7 @@ impl FlatGenerator<'_, '_> {
                 b.tuple(values)
             }
         };
-        scope.bound(literal)
+        scope.push(literal)
     }
 
     fn constructors(b: &FlatBlockBuilder<'_>, typ: &DataType) -> Vec<Pat> {
@@ -770,11 +752,11 @@ impl FlatGenerator<'_, '_> {
             }
             P::ForRange => {
                 let start = b.int(self.zigzag(3));
-                scope.bound(start);
+                scope.push(start);
                 let end = b.int(self.zigzag(3));
-                scope.bound(end);
+                scope.push(end);
                 let array = b.array_from_range(start, end);
-                scope.bound(array);
+                scope.push(array);
                 if self.coin() {
                     b.html_for(array, |b, var| {
                         self.for_loop_body(b, scope, Some(var), depth - 1)
@@ -784,7 +766,7 @@ impl FlatGenerator<'_, '_> {
                 }
             }
         };
-        scope.bound(value)
+        scope.push(value)
     }
 
     fn data_op(
@@ -989,9 +971,9 @@ impl FlatGenerator<'_, '_> {
             }
             P::ArrayFromRange => {
                 let start = b.int(self.zigzag(3));
-                scope.bound(start);
+                scope.push(start);
                 let end = b.int(self.zigzag(3));
-                scope.bound(end);
+                scope.push(end);
                 b.array_from_range(start, end)
             }
             P::TupleIndex => {
@@ -1050,7 +1032,7 @@ impl FlatGenerator<'_, '_> {
             }
             P::Call => self.call(b, scope, &typ, depth, nesting),
         };
-        scope.bound(value)
+        scope.push(value)
     }
 
     fn call(
@@ -1126,20 +1108,18 @@ impl FlatGenerator<'_, '_> {
             let pat = self.pattern(b, &subject_ty, 0, &mut binds);
             pats.push((pat, binds));
         }
-        let before = scope.snapshot();
         b.match_(subject, |m| {
             for (pat, binds) in pats {
                 m.arm(pat, |b, bindings| {
                     let depth = depth - 1;
+                    let mut scope = scope.clone();
                     for (name, _) in binds {
-                        scope.bound(bindings.binding(&name));
+                        scope.push(bindings.binding(&name));
                     }
-                    let body = match target {
-                        Type::Html(_) => self.html_block(b, scope, depth),
-                        Type::Data(target) => self.data_block(b, scope, target, depth),
-                    };
-                    scope.restore(before);
-                    body
+                    match target {
+                        Type::Html(_) => self.html_block(b, &mut scope, depth),
+                        Type::Data(target) => self.data_block(b, &mut scope, target, depth),
+                    }
                 });
             }
         })
