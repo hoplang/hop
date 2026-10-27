@@ -354,7 +354,7 @@ fn evaluate_html_op(
 
 fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<Value, EvalError> {
     Ok(match op {
-        IrDataOp::StringLiteral(value) => Value::String(value.to_string()),
+        IrDataOp::StringLiteral(value) => Value::String(value.as_str().into()),
         IrDataOp::IntLiteral(value) => Value::Int(*value),
         IrDataOp::FloatLiteral(value) => Value::Float(*value),
         IrDataOp::BoolLiteral(value) => Value::Bool(*value),
@@ -391,7 +391,13 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
             if length > MAX_STRING_LENGTH {
                 return Err(STRING_LENGTH_LIMIT_ERROR);
             }
-            Value::String(parts.iter().map(|part| env[part].as_str()).collect())
+            Value::String(
+                parts
+                    .iter()
+                    .map(|part| env[part].as_str())
+                    .collect::<String>()
+                    .into(),
+            )
         }
         IrDataOp::NumericAdd(left, right) => match &env[left] {
             Value::Int(left) => Value::Int(left.wrapping_add(env[right].as_int())),
@@ -409,7 +415,7 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
             let right = &env[right];
             match &env[left] {
                 Value::Bool(left) => Value::Bool(*left == right.as_bool()),
-                Value::String(left) => Value::Bool(left == right.as_str()),
+                Value::String(left) => Value::Bool(**left == *right.as_str()),
                 Value::Int(left) => Value::Bool(*left == right.as_int()),
                 left => Value::Bool(left.as_float() == right.as_float()),
             }
@@ -436,7 +442,7 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
         IrDataOp::StringIsEmpty(operand) => Value::Bool(env[operand].as_str().is_empty()),
         IrDataOp::OptionIsSome(operand) => Value::Bool(env[operand].as_option().is_some()),
         IrDataOp::OptionIsNone(operand) => Value::Bool(env[operand].as_option().is_none()),
-        IrDataOp::IntToString(operand) => Value::String(env[operand].as_int().to_string()),
+        IrDataOp::IntToString(operand) => Value::String(env[operand].as_int().to_string().into()),
         IrDataOp::FloatToInt(operand) => Value::Int(env[operand].as_float() as i32),
         IrDataOp::IntToFloat(operand) => Value::Float(env[operand].as_int() as f64),
     })

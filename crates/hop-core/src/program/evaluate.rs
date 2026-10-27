@@ -204,7 +204,7 @@ mod tests {
         let mut args = HashMap::new();
         args.insert(
             AttributeName::parse("name").unwrap(),
-            ir::runtime::value::Value::String("Alice".to_string()),
+            ir::runtime::value::Value::String("Alice".into()),
         );
 
         let main_module = RootContainedFilePath::new("main.hop").unwrap();

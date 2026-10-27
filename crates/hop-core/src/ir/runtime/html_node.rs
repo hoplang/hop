@@ -16,7 +16,7 @@ pub enum HtmlNode {
     Text(String),
 
     /// A string that renders escaped. What a HtmlEscape evaluates to.
-    Escape(String),
+    Escape(Rc<str>),
 
     /// An element with the attributes that render, in the order they
     /// render.
@@ -34,13 +34,14 @@ pub enum HtmlNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct HtmlAttribute {
     pub name: AttributeName,
-    pub value: Option<String>,
+    pub value: Option<Rc<str>>,
 }
 
 impl Html {
     pub fn new(node: HtmlNode) -> Self {
         let size = match &node {
-            HtmlNode::Text(text) | HtmlNode::Escape(text) => text.len().max(1),
+            HtmlNode::Text(text) => text.len().max(1),
+            HtmlNode::Escape(text) => text.len().max(1),
             HtmlNode::Element {
                 attributes,
                 children,
@@ -49,7 +50,7 @@ impl Html {
                 let values: usize = attributes
                     .iter()
                     .filter_map(|attribute| attribute.value.as_ref())
-                    .map(String::len)
+                    .map(|value| value.len())
                     .sum();
                 1 + values + children.size
             }

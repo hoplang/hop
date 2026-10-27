@@ -18,7 +18,7 @@ pub const MAX_HTML_SIZE: usize = 10_000_000;
 /// Runtime value for the evaluator.
 #[derive(Debug, Clone)]
 pub enum Value {
-    String(String),
+    String(Rc<str>),
     Html(Html),
     Bool(bool),
     Int(i32),
@@ -32,7 +32,7 @@ pub enum Value {
 
 impl Value {
     /// Panics if the value is not a String.
-    pub fn unwrap_string(self) -> String {
+    pub fn unwrap_string(self) -> Rc<str> {
         match self {
             Value::String(s) => s,
             _ => panic!("Expected a String value, found {self:?}"),

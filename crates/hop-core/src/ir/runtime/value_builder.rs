@@ -14,7 +14,7 @@ impl<'a> ValueBuilder<'a> {
     }
 
     pub fn str(&self, s: &str) -> Value {
-        Value::String(s.to_string())
+        Value::String(s.into())
     }
 
     pub fn int(&self, n: i32) -> Value {

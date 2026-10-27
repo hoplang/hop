@@ -16,7 +16,7 @@ const MAX_DEPTH: usize = 8;
 /// Generate a random string matching the given regex pattern.
 fn random_string_from_pattern(rng: &mut impl Rng, pattern: &str) -> Value {
     match rand_regex::Regex::compile(pattern, 100) {
-        Ok(regex) => Value::String(rng.sample::<String, _>(&regex)),
+        Ok(regex) => Value::String(rng.sample::<String, _>(&regex).into()),
         // Fall back to word list if the regex is invalid (should be caught by type checker)
         Err(_) => random_word(rng),
     }
@@ -24,7 +24,7 @@ fn random_string_from_pattern(rng: &mut impl Rng, pattern: &str) -> Value {
 
 fn random_word(rng: &mut impl Rng) -> Value {
     const WORDS: &[&str] = &["foo", "bar", "baz"];
-    Value::String(WORDS[rng.random_range(0..WORDS.len())].to_string())
+    Value::String(WORDS[rng.random_range(0..WORDS.len())].into())
 }
 
 /// Whether a value of the given type can be constructed without expanding
