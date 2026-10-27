@@ -19,7 +19,7 @@ const MAX_BLOCK_DEPTH: usize = 6;
 
 /// How deep the ops of an expression nest, an op reading the result of
 /// another op as an operand.
-const MAX_EXPRESSION_DEPTH: usize = 30;
+const MAX_EXPRESSION_DEPTH: usize = 10;
 
 /// How deep the values of a literal nest before they start to converge.
 const MAX_LITERAL_DEPTH: usize = 5;
@@ -62,6 +62,7 @@ const ELEMENTS: &[(&str, bool)] = &[
     ("div", false),
     ("span", false),
     ("b", false),
+    ("section", false),
     ("my-widget", false),
     ("br", true),
     ("input", true),
@@ -205,7 +206,7 @@ fn random_module_inner(
         match decl {
             Decl::Record(i) => {
                 let name = format!("R{i}");
-                let fields = (0..g.count(0..=4))
+                let fields = (0..g.count(0..=3))
                     .map(|j| (format!("f{j}"), g.random_field_type(2)))
                     .collect::<Vec<_>>();
                 types = types.record(&name, fields.iter().map(|(f, t)| (f.as_str(), t.clone())));
@@ -246,8 +247,12 @@ fn random_module_inner(
     // function declared after it.
     let function_names: Vec<String> = (0..g.count(0..=2)).map(|i| format!("C{i}")).collect();
     for name in &function_names {
-        let return_type = g.random_type(2);
-        let html = matches!(return_type, Ty::Html);
+        let html = g.coin();
+        let return_type = if html {
+            Ty::Html
+        } else {
+            g.random_type_where(2, NamedTypes::Any, false)
+        };
         let params: Vec<(String, Ty)> = (0..g.count(0..=8))
             .map(|i| {
                 (
@@ -791,11 +796,10 @@ impl FlatGenerator<'_, '_> {
         depth: usize,
         nesting: usize,
     ) -> ValueId {
-        if nesting == 0 || self.index(4) == 0 {
+        if nesting == 0 || self.index(6) == 0 {
             return self.html_leaf(b, scope, MAX_LITERAL_DEPTH);
         }
         enum P {
-            Text,
             Escape,
             Element,
             Concat,
@@ -804,7 +808,7 @@ impl FlatGenerator<'_, '_> {
             ForArray,
             ForRange,
         }
-        let mut productions = vec![P::Text, P::Escape, P::Element, P::Concat];
+        let mut productions = vec![P::Escape, P::Element, P::Concat];
         if Self::callees(b, &Type::HTML).next().is_some() {
             productions.push(P::Call);
         }
@@ -812,7 +816,6 @@ impl FlatGenerator<'_, '_> {
             productions.extend([P::Match, P::ForArray, P::ForRange]);
         }
         let value = match self.u.choose(&productions).unwrap() {
-            P::Text => b.text(self.u.choose(TEXTS).unwrap()),
             P::Escape => {
                 let operand = self.data_op(b, scope, &DataType::String, depth, nesting - 1);
                 b.escape(operand)
@@ -830,10 +833,14 @@ impl FlatGenerator<'_, '_> {
                     let present = self.data_op(b, scope, &DataType::Bool, depth, nesting - 1);
                     attributes.push(b.attr_presence("disabled", present));
                 }
-                let children = if void {
-                    b.html_concat(Vec::new())
+                let count = if void { 0 } else { self.count(0..=4) };
+                let mut children: Vec<_> = (0..count)
+                    .map(|_| self.html_op(b, scope, depth, nesting - 1))
+                    .collect();
+                let children = if children.len() == 1 {
+                    children.pop().unwrap()
                 } else {
-                    self.html_op(b, scope, depth, nesting - 1)
+                    b.html_concat(children)
                 };
                 b.element(tag, attributes, children)
             }
@@ -1016,7 +1023,7 @@ impl FlatGenerator<'_, '_> {
                 b.not(operand)
             }
             P::Concat => {
-                let parts: Vec<_> = (0..self.count(0..=4))
+                let parts: Vec<_> = (0..self.count(0..=3))
                     .map(|_| self.data_op(b, scope, &DataType::String, depth, nesting - 1))
                     .collect();
                 b.string_concat(parts)
@@ -1493,8 +1500,16 @@ mod tests {
                 mark_dynamic(*body, &mut dynamic);
                 match_stats.count_block(*body);
             }
+            let mut module_counts = BTreeMap::new();
             for body in &bodies {
-                count_ops(*body, &live, &dynamic, &mut counts);
+                count_ops(*body, &live, &dynamic, &mut module_counts);
+            }
+            for (kind, [generated, live, dynamic]) in module_counts {
+                let column: &mut [usize; 4] = counts.entry(kind).or_default();
+                column[0] += generated;
+                column[1] += 1;
+                column[2] += live;
+                column[3] += dynamic;
             }
             let mut references = HashMap::new();
             let mut html = HashSet::new();
@@ -1525,72 +1540,74 @@ mod tests {
              {shared_html} of {html_bindings} Html bindings have more than one reference\n\
              {:.1} arms per match on average, at least {fewest_arms} and at most {most_arms}\n\
              {binding_arms} of {arms} match arms bind names\n\n\
-             {:<20}{:>10}{:>8}{:>8}\n",
+             {:<20}{:>10}{:>8}{:>8}{:>8}\n",
             consumed / SAMPLES,
             arms as f64 / arm_counts.len() as f64,
             "op",
             "ops/module",
+            "% mods",
             "% live",
             "% dyn"
         );
-        for (kind, [generated, live, dynamic]) in counts {
+        for (kind, [generated, modules, live, dynamic]) in counts {
             let per_module = generated as f64 / SAMPLES as f64;
+            let modules = 100.0 * modules as f64 / SAMPLES as f64;
             let live = 100.0 * live as f64 / generated as f64;
             let dynamic = 100.0 * dynamic as f64 / generated as f64;
             report.push_str(&format!(
-                "{kind:<20}{per_module:>10.1}{live:>8.1}{dynamic:>8.1}\n"
+                "{kind:<20}{per_module:>10.1}{modules:>8.1}{live:>8.1}{dynamic:>8.1}\n"
             ));
         }
         expect![[r#"
-            4665 of 65536 input bytes consumed per module on average, at most 65536
-            1 of 100 modules exhaust the input
-            2 of 203 entrypoints hit the call depth limit
-            0 of 203 entrypoints hit the array length limit
-            0 of 203 entrypoints hit the string length limit
-            1 of 203 entrypoints hit the Html size limit
-            1 of 203 entrypoints hit the op count limit
-            25 of 772 Html bindings have more than one reference
-            2.7 arms per match on average, at least 2 and at most 12
-            8355 of 18662 match arms bind names
+            8386 of 65536 input bytes consumed per module on average, at most 65536
+            3 of 100 modules exhaust the input
+            3 of 197 entrypoints hit the call depth limit
+            0 of 197 entrypoints hit the array length limit
+            0 of 197 entrypoints hit the string length limit
+            0 of 197 entrypoints hit the Html size limit
+            3 of 197 entrypoints hit the op count limit
+            3283 of 20192 Html bindings have more than one reference
+            2.4 arms per match on average, at least 2 and at most 13
+            11503 of 29486 match arms bind names
 
-            op                  ops/module  % live   % dyn
-            Array                    169.6    93.0    11.1
-            ArrayFromRange             1.0    91.7     0.0
-            ArrayIsEmpty               0.3   100.0    51.9
-            ArrayLength                5.1    87.5    50.7
-            BoolLiteral               57.5    94.0     0.0
-            BoolNegation               0.2    90.5    47.6
-            Call                       2.2   100.0    84.6
-            Enum                     101.8    93.1    20.5
-            Equals                     0.2    81.0    61.9
-            FieldAccess                2.1    96.7    82.7
-            FloatLiteral              50.9    93.7     0.0
-            FloatToInt                 5.6    88.9    66.7
-            HtmlConcat                 1.9    99.5    23.8
-            HtmlElement                1.3    99.2    51.5
-            HtmlEscape                 0.8    98.8    58.5
-            HtmlFor                    1.6   100.0    65.8
-            HtmlText                   1.2   100.0     0.0
-            IntLiteral                44.1    93.6     0.0
-            IntToFloat                 9.7    90.3    64.3
-            IntToString                1.9    90.1    50.0
-            LessThan                   0.1    86.7    66.7
-            LessThanOrEqual            0.1   100.0    80.0
-            Match                     69.6    94.0    83.4
-            NumericAdd                15.0    86.4    75.3
-            NumericMultiply           15.1    87.7    77.6
-            NumericNegation           14.5    87.9    67.8
-            NumericSubtract           15.2    88.2    76.8
-            OptionIsNone               0.2    95.2    47.6
-            OptionIsSome               0.3    96.4    75.0
-            OptionNone               129.7    93.8     0.0
-            OptionSome                51.1    93.7    24.6
-            Record                    95.6    94.7    21.5
-            StringConcat               1.9    91.7    58.3
-            StringIsEmpty              0.3    96.2    57.7
-            StringLiteral             51.9    94.5     0.0
-            Tuple                    710.1    94.0    53.8
-            TupleIndex               316.2    92.4    74.8
+            op                  ops/module  % mods  % live   % dyn
+            Array                    218.8    88.0    96.5    15.8
+            ArrayFromRange             6.0    69.0    98.7     0.0
+            ArrayIsEmpty               2.2    37.0    98.1    37.0
+            ArrayLength               22.1    73.0    98.6    45.6
+            BoolLiteral               62.7    86.0    95.6     0.0
+            BoolNegation               2.4    34.0    99.6    54.1
+            Call                      33.8    47.0    99.8    93.9
+            Enum                     116.2    64.0    95.4    19.8
+            Equals                     2.2    35.0    98.2    70.1
+            FieldAccess                8.3    36.0    98.8    90.0
+            FloatLiteral              62.7    88.0    96.4     0.0
+            FloatToInt                22.3    72.0    98.4    54.2
+            HtmlConcat                72.8    86.0    99.9    55.9
+            HtmlElement               40.2    71.0    99.9    80.1
+            HtmlEscape                39.7    80.0    99.9    57.6
+            HtmlFor                   12.0    76.0    99.7    69.3
+            HtmlText                   1.4    54.0   100.0     0.0
+            IntLiteral                73.3    89.0    97.4     0.0
+            IntToFloat                22.4    61.0    98.1    51.6
+            IntToString               35.8    76.0    99.8    49.6
+            LessThan                   2.0    39.0    99.0    60.1
+            LessThanOrEqual            2.5    41.0    98.4    61.4
+            Match                    123.9    91.0    97.3    80.8
+            NumericAdd                45.3    69.0    98.0    65.3
+            NumericMultiply           43.8    71.0    98.1    66.7
+            NumericNegation           45.2    71.0    98.1    53.7
+            NumericSubtract           44.3    70.0    97.9    66.3
+            OptionIsNone               2.0    43.0    99.0    56.9
+            OptionIsSome               2.3    39.0    99.6    60.5
+            OptionNone               157.6    87.0    96.5     0.0
+            OptionSome                68.0    85.0    95.9    27.8
+            Record                   102.7    66.0    97.3    29.0
+            StringConcat              35.9    65.0    99.7    52.2
+            StringIsEmpty              2.2    41.0    99.1    52.4
+            StringLiteral             65.5    87.0    97.0     0.0
+            Tuple                    906.8    91.0    96.7    50.1
+            TupleIndex               545.6    89.0    96.7    71.3
         "#]]
         .assert_eq(&report);
     }
@@ -1618,40 +1635,63 @@ mod tests {
             expect![[r#"
                 enum E0 {
                   W0,
+                  W1 { f0: (Array[String], Float, Option[E1]) },
                 }
 
                 enum E1 {
-                  W0 { f0: (Array[E1], Bool, Array[Int]), f1: (Float, Int, R0) },
+                  W0,
+                  W1 { f0: () },
                 }
 
                 record R0 {
-                  f0: Array[Array[Bool]],
-                  f1: R1,
+                  f0: Bool,
+                  f1: Array[()],
+                  f2: (Float, Int, R1),
                 }
 
-                record R1 {}
-
-                entrypoint fn V0@f0(p0@v0: (Option[E0], (E1, Int, Bool)), p1@v1: E1) -> Html {
-                  let v2: String = "`${x}`"
-                  let v3: Html = escape(v2)
-                  v3
+                record R1 {
+                  f0: ((), Option[R1]),
+                  f1: (Option[E1], Float),
                 }
-                entrypoint fn V1@f1(p0@v4: Array[E0], p1@v5: R1, p2@v6: Array[(Bool, E1)]) -> Html {
-                  let v7: Int = -1
-                  let v8: Int = -3
-                  let v9: Array[Int] = v7..=v8
-                  let v18: Html = for v10: Int in v9 {
-                    let v11: Int = 1
-                    let v12: Int = -1
-                    let v13: Array[Int] = v11..=v12
-                    let v17: Html = for v14: Int in v13 {
-                      let v15: Html = concat()
-                      let v16: Html = element("input", {}, v15)
-                      v16
+
+                fn C0@f0(p0@v0: Option[()], p1@v1: ((Bool, E1),), p2@v2: E0, p3@v3: Html, p4@v4: Bool, p5@v5: Array[R1]) -> Html {
+                  let v9: Int = -2
+                  let v10: Int = 1
+                  let v11: Array[Int] = v9..=v10
+                  let v21: Html = for v12: Int in v11 {
+                    let v20: Html = for v13: R1 in v5 {
+                      let v19: Html = match v0 {
+                        Some(()) => {
+                          let v14: Html = text("back\\slash")
+                          v14
+                        }
+                        None => {
+                          let v17: String = match v0 {
+                            Some(()) => {
+                              let v15: String = ""
+                              v15
+                            }
+                            None => {
+                              let v16: String = ""
+                              v16
+                            }
+                          }
+                          let v18: Html = escape(v17)
+                          v18
+                        }
+                      }
+                      v19
                     }
-                    v17
+                    v20
                   }
-                  v18
+                  v21
+                }
+                fn C1@f1(p0@v6: Html, p1@v7: (E0, Array[E0], (R1,)), p2@v8: Array[Option[R0]]) -> Html {
+                  v6
+                }
+                entrypoint fn V0@f2() -> Html {
+                  let v22: Html = concat()
+                  v22
                 }
             "#]],
         );
@@ -1674,83 +1714,68 @@ mod tests {
                 }
 
                 entrypoint fn V0@f0(p0@v0: Bool, p1@v1: Int) -> Html {
-                  let v2: Html = concat()
-                  v2
-                }
-                entrypoint fn V1@f1() -> Html {
-                  let v3: Bool = true
-                  let v4: Option[Bool] = Some(v3)
-                  let v5: Option[Option[Bool]] = Some(v4)
-                  let v51: Html = match v5 {
-                    Some(Some(v6: Bool)) => {
-                      let v47: Html = match v6 {
-                        false => {
-                          let v7: Html = text("")
-                          let v8: Html = concat(v7, v7)
-                          v8
-                        }
-                        v9: Bool => {
-                          let v10: String = "`${x}`"
-                          let v11: Array[Option[Int]] = []
-                          let v12: Int = v11.len()
-                          let v13: String = v12.to_string()
-                          let v41: (((String, Array[E1]), E0, Option[E1]), E1) = match v5 {
-                            Some(Some(v14: Bool)) => {
-                              let v15: E1 = W1
-                              let v16: Array[E1] = [v15, v15]
-                              let v17: (String, Array[E1]) = (v10, v16)
-                              let v18: Float = 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-                              let v19: E0 = W0 {f0: v18}
-                              let v20: Option[E1] = Some(v15)
-                              let v21: ((String, Array[E1]), E0, Option[E1]) = (v17, v19, v20)
-                              let v22: (((String, Array[E1]), E0, Option[E1]), E1) = (v21, v15)
-                              v22
-                            }
-                            Some(None) => {
-                              let v23: Array[E1] = []
-                              let v24: (String, Array[E1]) = (v10, v23)
-                              let v25: Float = 0
-                              let v26: E0 = W0 {f0: v25}
-                              let v27: Option[E1] = None
-                              let v28: ((String, Array[E1]), E0, Option[E1]) = (v24, v26, v27)
-                              let v29: Option[Option[Float]] = None
-                              let v30: E1 = W0 {f0: v29, f1: v12}
-                              let v31: (((String, Array[E1]), E0, Option[E1]), E1) = (v28, v30)
-                              v31
-                            }
-                            None => {
-                              let v32: Array[E1] = []
-                              let v33: (String, Array[E1]) = (v10, v32)
-                              let v34: Float = 0
-                              let v35: E0 = W0 {f0: v34}
-                              let v36: Option[E1] = None
-                              let v37: ((String, Array[E1]), E0, Option[E1]) = (v33, v35, v36)
-                              let v38: Option[Option[Float]] = None
-                              let v39: E1 = W0 {f0: v38, f1: v12}
-                              let v40: (((String, Array[E1]), E0, Option[E1]), E1) = (v37, v39)
-                              v40
-                            }
-                          }
-                          let v42: ((String, Array[E1]), E0, Option[E1]) = v41.0
-                          let v43: (String, Array[E1]) = v42.0
-                          let v44: String = v43.0
-                          let v45: String = concat(v10, v13, v44, v10)
-                          let v46: Html = escape(v45)
-                          v46
-                        }
-                      }
-                      v47
+                  let v2: Float = 0.2
+                  let v7: Int = match v0 {
+                    true => {
+                      v1
                     }
-                    Some(None) => {
-                      let v48: Html = concat()
-                      v48
-                    }
-                    v49: Option[Option[Bool]] => {
-                      let v50: Html = concat()
-                      v50
+                    _ => {
+                      let v3: String = "`${x}`"
+                      let v4: Int = -56
+                      let v5: (String, Int) = (v3, v4)
+                      let v6: Int = v5.1
+                      v6
                     }
                   }
-                  v51
+                  let v8: Float = v7.to_float()
+                  let v14: Float = match v0 {
+                    false => {
+                      let v9: Float = 0.5
+                      let v10: Float = v9 * v2
+                      let v11: Float = v10 + v9
+                      v11
+                    }
+                    true => {
+                      let v12: Float = 1.5
+                      let v13: Float = -v12
+                      v13
+                    }
+                  }
+                  let v15: Float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005
+                  let v16: Float = v8 + v15
+                  let v17: Float = v14 - v16
+                  let v18: Float = -v17
+                  let v19: Float = v15 + v8
+                  let v20: Float = -v19
+                  let v21: Float = v14 + v20
+                  let v22: Float = v18 * v21
+                  let v23: Float = v8 - v22
+                  let v24: Float = v2 - v23
+                  let v25: Int = v24.to_int()
+                  let v31: (Array[E0],) = match v0 {
+                    true => {
+                      let v26: E0 = W0 {f0: v2}
+                      let v27: Array[E0] = [v26]
+                      let v28: (Array[E0],) = (v27,)
+                      v28
+                    }
+                    _ => {
+                      let v29: Array[E0] = []
+                      let v30: (Array[E0],) = (v29,)
+                      v30
+                    }
+                  }
+                  let v32: Array[E0] = v31.0
+                  let v33: Int = v32.len()
+                  let v34: Int = v33 + v1
+                  let v35: Int = v25 * v34
+                  let v36: String = v35.to_string()
+                  let v37: Html = escape(v36)
+                  v37
+                }
+                entrypoint fn V1@f1() -> Html {
+                  let v38: Html = concat()
+                  v38
                 }
             "#]],
         );
