@@ -39,6 +39,8 @@ mod test_module_builder;
 mod type_registry_builder;
 
 #[cfg(test)]
+pub use compile_match::compile_arms;
+#[cfg(test)]
 pub use type_registry::RecordField;
 #[cfg(test)]
 pub use type_registry_builder::{Ty, TypeRegistryBuilder};

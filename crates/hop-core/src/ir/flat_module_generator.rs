@@ -1129,9 +1129,11 @@ impl FlatGenerator<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hop::typing::compile_arms;
     use crate::ir::flat_module::{
         FlatDataBinding, FlatDataBlock, FlatDataOp, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp,
     };
+    use crate::ir::ir_match::IrMatch;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use expect_test::{Expect, expect};
@@ -1221,10 +1223,12 @@ mod tests {
             }
         }
 
-        fn nested(self) -> Vec<(Vec<ValueId>, Block<'a>)> {
+        fn nested(self) -> Vec<(Vec<(ValueId, DataType)>, Block<'a>)> {
             let bound = |pattern: &crate::ir::ir_match::IrPattern| {
                 let mut names = Vec::new();
-                pattern.for_each_binding(&mut |binder| names.push(binder.var));
+                pattern.for_each_binding(&mut |binder| {
+                    names.push((binder.var, binder.typ.clone()));
+                });
                 names
             };
             match self {
@@ -1248,7 +1252,11 @@ mod tests {
                     op: FlatHtmlOp::For(for_),
                     ..
                 }) => {
-                    let var = for_.var.iter().map(|binder| binder.var).collect();
+                    let var = for_
+                        .var
+                        .iter()
+                        .map(|binder| (binder.var, binder.typ.clone()))
+                        .collect();
                     vec![(var, Block::Html(&for_.body))]
                 }
                 _ => Vec::new(),
@@ -1280,7 +1288,7 @@ mod tests {
             let operands = depends;
             for (bound, body) in binding.nested() {
                 if operands {
-                    dynamic.extend(bound);
+                    dynamic.extend(bound.into_iter().map(|(var, _)| var));
                 }
                 depends |= mark_dynamic(body, dynamic);
             }
@@ -1331,6 +1339,72 @@ mod tests {
         *references.entry(block.result()).or_default() += 1;
     }
 
+    #[derive(Default)]
+    struct MatchStats {
+        arm_counts: Vec<usize>,
+        shadowed: usize,
+        single_outcome: usize,
+        binding_arms: usize,
+    }
+
+    impl MatchStats {
+        fn count_match<B>(
+            &mut self,
+            match_: &IrMatch<B>,
+            types: &HashMap<ValueId, DataType>,
+            registry: &TypeRegistry,
+        ) {
+            let patterns: Vec<_> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
+            let (_, reachable, missing) =
+                compile_arms(registry, &patterns, types[&match_.subject].clone());
+            assert!(missing.is_empty(), "generated matches must be exhaustive");
+            self.arm_counts.push(patterns.len());
+            // An arm can occur in several leaves of the decision tree. Count
+            // it once, and only test whether earlier arms shadow it, regardless
+            // of whether execution ever reaches this match or its subject varies.
+            let reachable = reachable.into_iter().collect::<HashSet<_>>().len();
+            self.shadowed += patterns.len() - reachable;
+            self.single_outcome += (reachable == 1) as usize;
+            for pattern in &patterns {
+                let mut binds = false;
+                pattern.for_each_binding(&mut |_| binds = true);
+                self.binding_arms += binds as usize;
+            }
+        }
+
+        fn count_block(
+            &mut self,
+            block: Block<'_>,
+            types: &mut HashMap<ValueId, DataType>,
+            registry: &TypeRegistry,
+        ) {
+            for binding in block.bindings() {
+                if let Binding::Data(binding) = binding {
+                    types.insert(binding.binder.var, binding.binder.typ.clone());
+                }
+                match binding {
+                    Binding::Data(FlatDataBinding {
+                        op: FlatDataOp::Match(m),
+                        ..
+                    }) => {
+                        self.count_match(m, types, registry);
+                    }
+                    Binding::Html(FlatHtmlBinding {
+                        op: FlatHtmlOp::Match(m),
+                        ..
+                    }) => {
+                        self.count_match(m, types, registry);
+                    }
+                    _ => {}
+                }
+                for (bound, body) in binding.nested() {
+                    types.extend(bound);
+                    self.count_block(body, types, registry);
+                }
+            }
+        }
+    }
+
     #[test]
     fn should_report_generator_stats() {
         const SAMPLES: usize = 100;
@@ -1347,6 +1421,7 @@ mod tests {
         let mut exhausted = 0;
         let mut html_bindings = 0;
         let mut shared_html = 0;
+        let mut match_stats = MatchStats::default();
         for _ in 0..SAMPLES {
             let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
             let mut u = Unstructured::new(&bytes);
@@ -1373,6 +1448,15 @@ mod tests {
                 mark_live(*body, &mut live);
                 dynamic.extend(function.parameters().iter().map(|param| param.binder.var));
                 mark_dynamic(*body, &mut dynamic);
+                let mut types = function
+                    .parameters()
+                    .into_iter()
+                    .filter_map(|param| match param.binder.typ {
+                        Type::Data(typ) => Some((param.binder.var, typ)),
+                        Type::Html(_) => None,
+                    })
+                    .collect();
+                match_stats.count_block(*body, &mut types, &registry);
             }
             for body in &bodies {
                 count_ops(*body, &live, &dynamic, &mut counts);
@@ -1388,6 +1472,15 @@ mod tests {
                 .filter(|name| references.get(name).copied().unwrap_or(0) > 1)
                 .count();
         }
+        let MatchStats {
+            arm_counts,
+            shadowed,
+            single_outcome,
+            binding_arms,
+        } = match_stats;
+        let arms: usize = arm_counts.iter().sum();
+        let fewest_arms = arm_counts.iter().min().unwrap();
+        let most_arms = arm_counts.iter().max().unwrap();
         let mut report = format!(
             "{} of {INPUT_LEN} input bytes consumed per module on average, at most {most_consumed}\n\
              {exhausted} of {SAMPLES} modules exhaust the input\n\
@@ -1395,9 +1488,15 @@ mod tests {
              {array_len_limit} of {entrypoints} entrypoints hit the array length limit\n\
              {string_len_limit} of {entrypoints} entrypoints hit the string length limit\n\
              {op_count_limit} of {entrypoints} entrypoints hit the op count limit\n\
-             {shared_html} of {html_bindings} Html bindings have more than one reference\n\n\
+             {shared_html} of {html_bindings} Html bindings have more than one reference\n\
+             {:.1} arms per match on average, at least {fewest_arms} and at most {most_arms}\n\
+             {shadowed} of {arms} match arms are shadowed by previous arms\n\
+             {:.1}% of matches always take the same arm\n\
+             {binding_arms} of {arms} match arms bind names\n\n\
              {:<20}{:>10}{:>8}{:>8}\n",
             consumed / SAMPLES,
+            arms as f64 / arm_counts.len() as f64,
+            100.0 * single_outcome as f64 / arm_counts.len() as f64,
             "op",
             "ops/module",
             "% live",
@@ -1419,6 +1518,10 @@ mod tests {
             0 of 203 entrypoints hit the string length limit
             0 of 203 entrypoints hit the op count limit
             26 of 839 Html bindings have more than one reference
+            2.3 arms per match on average, at least 1 and at most 5
+            5611 of 14605 match arms are shadowed by previous arms
+            63.3% of matches always take the same arm
+            4226 of 14605 match arms bind names
 
             op                  ops/module  % live   % dyn
             Array                    126.8    94.2    10.1
