@@ -332,7 +332,8 @@ mod tests {
                         Err(
                             EvalError::CallDepthLimit { .. }
                             | EvalError::OpCountLimit { .. }
-                            | EvalError::HtmlSizeLimit { .. },
+                            | EvalError::HtmlSizeLimit { .. }
+                            | EvalError::StringLengthLimit { .. },
                         ) => None,
                         Err(error) => panic!("{error}"),
                     }

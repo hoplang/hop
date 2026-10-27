@@ -610,6 +610,10 @@ mod tests {
                     | (
                         Err(EvalError::HtmlSizeLimit { .. }),
                         Err(EvalError::HtmlSizeLimit { .. }),
+                    )
+                    | (
+                        Err(EvalError::StringLengthLimit { .. }),
+                        Err(EvalError::StringLengthLimit { .. }),
                     ) => {}
                     // The pass evaluates ops ahead of time, so the module may
                     // stay under the op count limit after it.

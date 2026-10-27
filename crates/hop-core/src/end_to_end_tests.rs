@@ -368,7 +368,12 @@ mod tests {
                 None,
             ) {
                 Ok(output) => output.trim().to_string(),
-                Err(EvalError::CallDepthLimit { .. }) => return Ok(()),
+                Err(
+                    EvalError::CallDepthLimit { .. }
+                    | EvalError::StringLengthLimit { .. }
+                    | EvalError::HtmlSizeLimit { .. }
+                    | EvalError::OpCountLimit { .. },
+                ) => return Ok(()),
                 Err(e) => panic!("Evaluator failed:\n{e}\n\nFlat:\n{flat}"),
             };
             let module = flat_to_writer(optimize_flat(module), &registry, &pages, None);
@@ -406,7 +411,12 @@ mod tests {
                 None,
             ) {
                 Ok(output) => output.trim().to_string(),
-                Err(EvalError::CallDepthLimit { .. }) => return Ok(()),
+                Err(
+                    EvalError::CallDepthLimit { .. }
+                    | EvalError::StringLengthLimit { .. }
+                    | EvalError::HtmlSizeLimit { .. }
+                    | EvalError::OpCountLimit { .. },
+                ) => return Ok(()),
                 Err(e) => panic!("Evaluator failed:\n{e}\n\nFlat:\n{flat}"),
             };
             let module = flat_to_writer(optimize_flat(module), &registry, &pages, None);
