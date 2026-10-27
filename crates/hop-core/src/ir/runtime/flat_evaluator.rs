@@ -17,7 +17,7 @@ use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::html_node::{Html, HtmlAttribute, HtmlNode};
-use crate::ir::runtime::value::{MAX_ARRAY_LENGTH, MAX_HTML_SIZE, MAX_STRING_LENGTH, Value};
+use crate::ir::runtime::value::{MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value};
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
@@ -37,23 +37,6 @@ const ARRAY_LENGTH_LIMIT_ERROR: EvalError = EvalError::ArrayLengthLimit {
 const STRING_LENGTH_LIMIT_ERROR: EvalError = EvalError::StringLengthLimit {
     limit: MAX_STRING_LENGTH,
 };
-
-/// Fails unless Html of this size is within the Html size limit.
-fn check_html_size(size: usize) -> Result<(), EvalError> {
-    if size > MAX_HTML_SIZE {
-        return Err(EvalError::HtmlSizeLimit {
-            limit: MAX_HTML_SIZE,
-        });
-    }
-    Ok(())
-}
-
-/// The node as an Html value, unless it exceeds the Html size limit.
-fn html(node: HtmlNode) -> Result<Value, EvalError> {
-    let html = Html::new(node);
-    check_html_size(html.size())?;
-    Ok(Value::Html(html))
-}
 
 /// Evaluate a page from the entrypoint functions it points at, each called with
 /// the arguments named by the page's parameters. With a shell, the page
@@ -276,16 +259,18 @@ fn evaluate_html_op(
         });
     }
     Ok(match op {
-        FlatHtmlOp::Text(content) => html(HtmlNode::Text(content.to_string()))?,
+        FlatHtmlOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.to_string()))?),
 
-        FlatHtmlOp::Escape(string) => html(HtmlNode::Escape(env[string].clone().unwrap_string()))?,
+        FlatHtmlOp::Escape(string) => Value::Html(Html::new(HtmlNode::Escape(
+            env[string].clone().unwrap_string(),
+        ))?),
 
-        FlatHtmlOp::Concat(parts) => html(HtmlNode::Concat(
+        FlatHtmlOp::Concat(parts) => Value::Html(Html::new(HtmlNode::Concat(
             parts
                 .iter()
                 .map(|part| env[part].clone().unwrap_html())
                 .collect(),
-        ))?,
+        ))?),
 
         FlatHtmlOp::Element(IrHtmlElement {
             element,
@@ -314,11 +299,11 @@ fn evaluate_html_op(
             } else {
                 env[children].clone().unwrap_html()
             };
-            html(HtmlNode::Element {
+            Value::Html(Html::new(HtmlNode::Element {
                 element: element.clone(),
                 attributes: rendered,
                 children,
-            })?
+            })?)
         }
 
         FlatHtmlOp::Call(function, args) => {
@@ -331,23 +316,16 @@ fn evaluate_html_op(
         }
 
         FlatHtmlOp::For(IrFor { var, array, body }) => {
-            let items = env[array].as_array();
-            // The size is checked as the parts arrive, so that a loop over
-            // a long array stops at the limit.
             let mut parts = Vec::new();
-            let mut size = 1;
-            for item in items {
+            for item in env[array].as_array() {
                 let mut env = env.clone();
                 if let Some(binder) = var {
                     env.insert_mut(binder.var, item.clone());
                 }
                 let part = evaluate_html_block(body, &env, functions, depth, op_count)?;
-                let part = part.unwrap_html();
-                size += part.size();
-                check_html_size(size)?;
-                parts.push(part);
+                parts.push(part.unwrap_html());
             }
-            html(HtmlNode::Concat(parts))?
+            Value::Html(Html::new(HtmlNode::Concat(parts))?)
         }
     })
 }

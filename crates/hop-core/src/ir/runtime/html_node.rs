@@ -1,7 +1,11 @@
 use std::rc::Rc;
 
 use crate::html::{HtmlElementKind, write_escaped_html};
+use crate::ir::runtime::eval_error::EvalError;
 use crate::symbols::attribute_name::AttributeName;
+
+/// The largest size an Html value may have.
+pub const MAX_HTML_SIZE: usize = 10_000_000;
 
 #[derive(Debug, Clone)]
 pub struct Html {
@@ -38,7 +42,8 @@ pub struct HtmlAttribute {
 }
 
 impl Html {
-    pub fn new(node: HtmlNode) -> Self {
+    /// The node as Html, unless it exceeds the Html size limit.
+    pub fn new(node: HtmlNode) -> Result<Self, EvalError> {
         let size = match &node {
             HtmlNode::Text(text) => text.len().max(1),
             HtmlNode::Escape(text) => text.len().max(1),
@@ -56,18 +61,22 @@ impl Html {
             }
             HtmlNode::Concat(parts) => 1 + parts.iter().map(|part| part.size).sum::<usize>(),
         };
-        Html {
+        if size > MAX_HTML_SIZE {
+            return Err(EvalError::HtmlSizeLimit {
+                limit: MAX_HTML_SIZE,
+            });
+        }
+        Ok(Html {
             node: Rc::new(node),
             size,
-        }
+        })
     }
 
     pub fn empty() -> Self {
-        Html::new(HtmlNode::Concat(Vec::new()))
-    }
-
-    pub fn size(&self) -> usize {
-        self.size
+        Html {
+            node: Rc::new(HtmlNode::Concat(Vec::new())),
+            size: 1,
+        }
     }
 
     pub fn write(&self, out: &mut String) {

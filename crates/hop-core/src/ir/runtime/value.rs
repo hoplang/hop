@@ -12,9 +12,6 @@ pub const MAX_ARRAY_LENGTH: usize = 10_000_000;
 /// The most bytes a String may hold.
 pub const MAX_STRING_LENGTH: usize = 10_000_000;
 
-/// The largest size an Html value may have.
-pub const MAX_HTML_SIZE: usize = 10_000_000;
-
 /// Runtime value for the evaluator.
 #[derive(Debug, Clone)]
 pub enum Value {

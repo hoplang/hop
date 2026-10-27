@@ -87,11 +87,14 @@ pub fn random_value(
         Type::Data(data) => {
             random_value_at_depth(rng, data, examples, registry, 0, &mut Vec::new())
         }
-        Type::Html(_) => Value::Html(Html::new(HtmlNode::Element {
-            element: HtmlElementKind::Span,
-            attributes: Vec::new(),
-            children: Html::new(HtmlNode::Text("sample".to_string())),
-        })),
+        Type::Html(_) => Value::Html(
+            Html::new(HtmlNode::Element {
+                element: HtmlElementKind::Span,
+                attributes: Vec::new(),
+                children: Html::new(HtmlNode::Text("sample".to_string())).unwrap(),
+            })
+            .unwrap(),
+        ),
     }
 }
 
