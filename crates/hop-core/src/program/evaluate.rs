@@ -80,6 +80,7 @@ impl Program {
             EvalError::StringLengthLimit { limit } => {
                 EvaluatePageError::StringLengthLimit { limit }
             }
+            EvalError::HtmlSizeLimit { limit } => EvaluatePageError::HtmlSizeLimit { limit },
             EvalError::OpCountLimit { limit } => EvaluatePageError::OpCountLimit { limit },
         })
     }

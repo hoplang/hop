@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::hop::typing::{Constructor, Pattern};
 use crate::ir::ir_match::IrPattern;
 use crate::ir::runtime::bounded_vec::BoundedVec;
-use crate::ir::runtime::html_node::HtmlNode;
+use crate::ir::runtime::html_node::Html;
 use crate::ir::value_id::ValueId;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
 
@@ -12,11 +12,14 @@ pub const MAX_ARRAY_LENGTH: usize = 10_000_000;
 /// The most bytes a String may hold.
 pub const MAX_STRING_LENGTH: usize = 10_000_000;
 
+/// The largest size an Html value may have.
+pub const MAX_HTML_SIZE: usize = 10_000_000;
+
 /// Runtime value for the evaluator.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Value {
     String(String),
-    Html(Vec<HtmlNode>),
+    Html(Html),
     Bool(bool),
     Int(i32),
     Float(f64),
@@ -45,9 +48,9 @@ impl Value {
     }
 
     /// Panics if the value is not Html.
-    pub fn unwrap_html(self) -> Vec<HtmlNode> {
+    pub fn unwrap_html(self) -> Html {
         match self {
-            Value::Html(nodes) => nodes,
+            Value::Html(html) => html,
             _ => panic!("Expected Html value, found {self:?}"),
         }
     }
@@ -56,7 +59,7 @@ impl Value {
     #[cfg(test)]
     pub fn into_markup(self) -> String {
         let mut markup = String::new();
-        crate::ir::runtime::html_node::write_html(&self.unwrap_html(), &mut markup);
+        self.unwrap_html().write(&mut markup);
         markup
     }
 

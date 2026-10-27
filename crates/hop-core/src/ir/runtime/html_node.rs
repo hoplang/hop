@@ -1,8 +1,16 @@
+use std::rc::Rc;
+
 use crate::html::{HtmlElementKind, write_escaped_html};
 use crate::symbols::attribute_name::AttributeName;
 
+#[derive(Debug, Clone)]
+pub struct Html {
+    node: Rc<HtmlNode>,
+    size: usize,
+}
+
 /// A node of an evaluated Html value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum HtmlNode {
     /// Text that renders as written. What a HtmlText evaluates to.
     Text(String),
@@ -15,8 +23,10 @@ pub enum HtmlNode {
     Element {
         element: HtmlElementKind,
         attributes: Vec<HtmlAttribute>,
-        children: Vec<HtmlNode>,
+        children: Html,
     },
+
+    Concat(Vec<Html>),
 }
 
 /// An attribute that renders. The value is unescaped and escapes when
@@ -27,10 +37,40 @@ pub struct HtmlAttribute {
     pub value: Option<String>,
 }
 
-/// Write nodes as markup, byte for byte what the writer IR produces.
-pub fn write_html(nodes: &[HtmlNode], out: &mut String) {
-    for node in nodes {
-        match node {
+impl Html {
+    pub fn new(node: HtmlNode) -> Self {
+        let size = match &node {
+            HtmlNode::Text(text) | HtmlNode::Escape(text) => text.len().max(1),
+            HtmlNode::Element {
+                attributes,
+                children,
+                ..
+            } => {
+                let values: usize = attributes
+                    .iter()
+                    .filter_map(|attribute| attribute.value.as_ref())
+                    .map(String::len)
+                    .sum();
+                1 + values + children.size
+            }
+            HtmlNode::Concat(parts) => 1 + parts.iter().map(|part| part.size).sum::<usize>(),
+        };
+        Html {
+            node: Rc::new(node),
+            size,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Html::new(HtmlNode::Concat(Vec::new()))
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn write(&self, out: &mut String) {
+        match &*self.node {
             HtmlNode::Text(content) => out.push_str(content),
             HtmlNode::Escape(text) => write_escaped_html(text, out),
             HtmlNode::Element {
@@ -51,10 +91,15 @@ pub fn write_html(nodes: &[HtmlNode], out: &mut String) {
                 }
                 out.push('>');
                 if !element.is_void() {
-                    write_html(children, out);
+                    children.write(out);
                     out.push_str("</");
                     out.push_str(element.as_str());
                     out.push('>');
+                }
+            }
+            HtmlNode::Concat(parts) => {
+                for part in parts {
+                    part.write(out);
                 }
             }
         }

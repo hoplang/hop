@@ -16,8 +16,8 @@ use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::html_node::{HtmlAttribute, HtmlNode, write_html};
-use crate::ir::runtime::value::{MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value};
+use crate::ir::runtime::html_node::{Html, HtmlAttribute, HtmlNode};
+use crate::ir::runtime::value::{MAX_ARRAY_LENGTH, MAX_HTML_SIZE, MAX_STRING_LENGTH, Value};
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
@@ -38,6 +38,23 @@ const STRING_LENGTH_LIMIT_ERROR: EvalError = EvalError::StringLengthLimit {
     limit: MAX_STRING_LENGTH,
 };
 
+/// Fails unless Html of this size is within the Html size limit.
+fn check_html_size(size: usize) -> Result<(), EvalError> {
+    if size > MAX_HTML_SIZE {
+        return Err(EvalError::HtmlSizeLimit {
+            limit: MAX_HTML_SIZE,
+        });
+    }
+    Ok(())
+}
+
+/// The node as an Html value, unless it exceeds the Html size limit.
+fn html(node: HtmlNode) -> Result<Value, EvalError> {
+    let html = Html::new(node);
+    check_html_size(html.size())?;
+    Ok(Value::Html(html))
+}
+
 /// Evaluate a page from the entrypoint functions it points at, each called with
 /// the arguments named by the page's parameters. With a shell, the page
 /// renders as a whole document, the shell around its head and its body.
@@ -57,7 +74,7 @@ pub fn evaluate_page(
 
     let head = match &page.head {
         Some(head) => evaluate_entrypoint(module, head, args.clone())?.unwrap_html(),
-        None => Vec::new(),
+        None => Html::empty(),
     };
     let body = evaluate_entrypoint(module, &page.body, args)?.unwrap_html();
 
@@ -65,14 +82,14 @@ pub fn evaluate_page(
     match shell {
         Some(shell) => {
             html.push_str(shell.before_head);
-            write_html(&head, &mut html);
+            head.write(&mut html);
             html.push_str(&shell.after_head);
-            write_html(&body, &mut html);
+            body.write(&mut html);
             html.push_str(shell.after_body);
         }
         None => {
-            write_html(&head, &mut html);
-            write_html(&body, &mut html);
+            head.write(&mut html);
+            body.write(&mut html);
         }
     }
     Ok(html)
@@ -259,18 +276,16 @@ fn evaluate_html_op(
         });
     }
     Ok(match op {
-        FlatHtmlOp::Text(content) => Value::Html(vec![HtmlNode::Text(content.to_string())]),
+        FlatHtmlOp::Text(content) => html(HtmlNode::Text(content.to_string()))?,
 
-        FlatHtmlOp::Escape(string) => {
-            Value::Html(vec![HtmlNode::Escape(env[string].clone().unwrap_string())])
-        }
+        FlatHtmlOp::Escape(string) => html(HtmlNode::Escape(env[string].clone().unwrap_string()))?,
 
-        FlatHtmlOp::Concat(parts) => Value::Html(
+        FlatHtmlOp::Concat(parts) => html(HtmlNode::Concat(
             parts
                 .iter()
-                .flat_map(|part| env[part].clone().unwrap_html())
+                .map(|part| env[part].clone().unwrap_html())
                 .collect(),
-        ),
+        ))?,
 
         FlatHtmlOp::Element(IrHtmlElement {
             element,
@@ -295,15 +310,15 @@ fn evaluate_html_op(
                 }
             }
             let children = if element.is_void() {
-                Vec::new()
+                Html::empty()
             } else {
                 env[children].clone().unwrap_html()
             };
-            Value::Html(vec![HtmlNode::Element {
+            html(HtmlNode::Element {
                 element: element.clone(),
                 attributes: rendered,
                 children,
-            }])
+            })?
         }
 
         FlatHtmlOp::Call(function, args) => {
@@ -317,16 +332,22 @@ fn evaluate_html_op(
 
         FlatHtmlOp::For(IrFor { var, array, body }) => {
             let items = env[array].clone().unwrap_array();
-            let mut nodes = Vec::new();
+            // The size is checked as the parts arrive, so that a loop over
+            // a long array stops at the limit.
+            let mut parts = Vec::new();
+            let mut size = 1;
             for item in items.iter() {
                 let mut env = env.clone();
                 if let Some(binder) = var {
                     env.insert_mut(binder.var, item.clone());
                 }
-                let result = evaluate_html_block(body, &env, functions, depth, op_count)?;
-                nodes.extend(result.unwrap_html());
+                let part = evaluate_html_block(body, &env, functions, depth, op_count)?;
+                let part = part.unwrap_html();
+                size += part.size();
+                check_html_size(size)?;
+                parts.push(part);
             }
-            Value::Html(nodes)
+            html(HtmlNode::Concat(parts))?
         }
     })
 }
@@ -457,6 +478,7 @@ mod tests {
                     | Err(
                         EvalError::CallDepthLimit { .. }
                         | EvalError::StringLengthLimit { .. }
+                        | EvalError::HtmlSizeLimit { .. }
                         | EvalError::OpCountLimit { .. },
                     ) => {}
                     Err(error) => panic!("{error}"),
@@ -1095,6 +1117,24 @@ mod tests {
         assert_eq!(
             result.unwrap_err().to_string(),
             "A string exceeded the string length limit of 10000000 bytes"
+        );
+    }
+
+    #[test]
+    fn should_error_when_html_is_too_large() {
+        let module = FlatModuleBuilder::new()
+            .entrypoint("Test", [], Ty::Html, |t| {
+                let mut html = t.text("x");
+                for _ in 0..24 {
+                    html = t.html_concat(vec![html, html]);
+                }
+                html
+            })
+            .build();
+        let result = evaluate_entrypoint(&module, module.functions[0].function(), HashMap::new());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "An Html value exceeded the Html size limit of 10000000"
         );
     }
 

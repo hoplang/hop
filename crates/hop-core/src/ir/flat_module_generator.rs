@@ -24,6 +24,9 @@ const MAX_EXPRESSION_DEPTH: usize = 30;
 /// How deep the values of a literal nest before they start to converge.
 const MAX_LITERAL_DEPTH: usize = 5;
 
+/// How deep the patterns of a match nest.
+const MAX_PATTERN_DEPTH: usize = 2;
+
 /// One block in this many binds a value nothing asked for.
 const DEAD_BINDING_ODDS: usize = 64;
 
@@ -120,6 +123,34 @@ enum NamedTypes {
     Any,
     /// Only names whose declarations are already complete.
     Complete,
+}
+
+/// The pattern of an arm and the names it binds.
+type Arm = (Pat, Vec<String>);
+
+/// A constructor of a pattern, which takes the patterns of its fields.
+enum Ctor {
+    True,
+    False,
+    None,
+    Some,
+    Tuple,
+    Record,
+    Variant(String),
+}
+
+impl Ctor {
+    fn apply(&self, fields: Vec<(String, Pat)>) -> Pat {
+        match self {
+            Ctor::True => Pat::True,
+            Ctor::False => Pat::False,
+            Ctor::None => Pat::None,
+            Ctor::Some => Pat::some(fields.into_iter().next().unwrap().1),
+            Ctor::Tuple => Pat::Tuple(fields.into_iter().map(|(_, pat)| pat).collect()),
+            Ctor::Record => Pat::Record(fields),
+            Ctor::Variant(name) => Pat::Variant(name.clone(), fields),
+        }
+    }
 }
 
 struct FlatGenerator<'a, 'b> {
@@ -598,82 +629,159 @@ impl FlatGenerator<'_, '_> {
         scope.push(literal)
     }
 
-    fn constructors(b: &FlatBlockBuilder<'_>, typ: &DataType) -> Vec<Pat> {
+    fn constructors(
+        registry: &TypeRegistry,
+        typ: &DataType,
+    ) -> Vec<(Ctor, Vec<(String, DataType)>)> {
+        let fields = |fields: &[RecordField]| {
+            fields
+                .iter()
+                .map(|field| (field.name.as_str().to_string(), field.typ.clone()))
+                .collect()
+        };
         match typ {
-            DataType::Bool => vec![Pat::True, Pat::False],
-            DataType::Option(_) => vec![Pat::some(Pat::Wildcard), Pat::None],
-            DataType::Tuple(elements) => {
-                vec![Pat::Tuple(elements.iter().map(|_| Pat::Wildcard).collect())]
-            }
-            DataType::Named { .. } => match b.registry().resolve(typ) {
-                Some(ResolvedType::Record { .. }) => vec![Pat::Record(Vec::new())],
+            DataType::Bool => vec![(Ctor::True, Vec::new()), (Ctor::False, Vec::new())],
+            DataType::Option(inner) => vec![
+                (Ctor::None, Vec::new()),
+                (Ctor::Some, vec![("0".to_string(), (**inner).clone())]),
+            ],
+            DataType::Tuple(elements) => vec![(
+                Ctor::Tuple,
+                elements
+                    .iter()
+                    .enumerate()
+                    .map(|(i, element)| (i.to_string(), element.clone()))
+                    .collect(),
+            )],
+            DataType::Named { .. } => match registry.resolve(typ) {
+                Some(ResolvedType::Record { fields: fs, .. }) => vec![(Ctor::Record, fields(fs))],
                 Some(ResolvedType::Enum { variants, .. }) => variants
                     .iter()
-                    .map(|variant| Pat::Variant(variant.name.as_str().to_string(), Vec::new()))
+                    .map(|variant| {
+                        let name = variant.name.as_str().to_string();
+                        (Ctor::Variant(name), fields(&variant.fields))
+                    })
                     .collect(),
                 _ => unreachable!("a named type is a declared record or enum"),
             },
-            _ => unreachable!("a match subject is a bool, an option, a tuple or a named type"),
+            _ => Vec::new(),
         }
     }
 
-    fn pattern(
+    fn can_branch(registry: &TypeRegistry, typ: &DataType, depth: usize) -> bool {
+        if depth == 0 {
+            return false;
+        }
+        let ctors = Self::constructors(registry, typ);
+        ctors.len() > 1
+            || ctors
+                .iter()
+                .flat_map(|(_, fields)| fields)
+                .any(|(_, field)| Self::can_branch(registry, field, depth - 1))
+    }
+
+    fn partition(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         typ: &DataType,
         depth: usize,
-        binds: &mut Vec<(String, DataType)>,
-    ) -> Pat {
-        if depth > 0 && self.index(3) > 0 {
-            match typ {
-                DataType::Bool => {
-                    return if self.coin() { Pat::True } else { Pat::False };
-                }
-                DataType::Option(inner) => {
-                    return if self.coin() {
-                        Pat::some(self.pattern(b, inner, depth - 1, binds))
-                    } else {
-                        Pat::None
-                    };
-                }
-                DataType::Tuple(elements) => {
-                    return Pat::Tuple(
-                        elements
-                            .iter()
-                            .map(|element| self.pattern(b, element, depth - 1, binds))
-                            .collect(),
-                    );
-                }
-                DataType::Named { .. } => {
-                    let (variant, fields) = match b.registry().resolve(typ) {
-                        Some(ResolvedType::Record { fields, .. }) => (None, fields),
-                        Some(ResolvedType::Enum { variants, .. }) => {
-                            let variant = self.u.choose(variants).unwrap();
-                            (Some(variant.name.as_str().to_string()), &variant.fields[..])
-                        }
-                        _ => unreachable!("a named type is a declared record or enum"),
-                    };
-                    let fields = fields
-                        .iter()
-                        .map(|field| {
-                            let pattern = self.pattern(b, &field.typ, depth - 1, binds);
-                            (field.name.as_str().to_string(), pattern)
+        forced: bool,
+        next_bind: &mut usize,
+    ) -> Vec<Arm> {
+        let ctors = Self::constructors(b.registry(), typ);
+        if !forced && (depth == 0 || ctors.is_empty() || self.index(3) == 0) {
+            return vec![self.leaf(next_bind)];
+        }
+        let single = ctors.len() == 1;
+        // Arms of different constructors match disjoint values, so they can
+        // go in any order. Sometimes the last constructors share one arm,
+        // which matches every value the arms before it do not. At least one
+        // constructor keeps arms of its own, so a partition that branched
+        // still does.
+        let ctors = self.shuffled(ctors);
+        let listed = if ctors.len() > 1 && self.index(4) == 0 {
+            self.count(1..=ctors.len() - 1)
+        } else {
+            ctors.len()
+        };
+        let mut arms = Vec::new();
+        for (ctor, fields) in &ctors[..listed] {
+            // A type with one constructor branches in one of its fields.
+            let forced_field = if forced && single {
+                let branching: Vec<usize> = (0..fields.len())
+                    .filter(|&i| Self::can_branch(b.registry(), &fields[i].1, depth - 1))
+                    .collect();
+                Some(*self.u.choose(&branching).unwrap())
+            } else {
+                None
+            };
+            // Rows in lexicographic order of the arms of their fields, so
+            // that every row matches some value no earlier row matches.
+            let mut rows: Vec<(Vec<(String, Pat)>, Vec<String>)> = vec![(Vec::new(), Vec::new())];
+            for (i, (name, field)) in fields.iter().enumerate() {
+                let field_arms =
+                    self.partition(b, field, depth - 1, forced_field == Some(i), next_bind);
+                rows = rows
+                    .into_iter()
+                    .flat_map(|(pats, binds)| {
+                        field_arms.iter().map(move |(pat, field_binds)| {
+                            let mut pats = pats.clone();
+                            pats.push((name.clone(), pat.clone()));
+                            let binds = binds.iter().chain(field_binds).cloned().collect();
+                            (pats, binds)
                         })
-                        .collect();
-                    return match variant {
-                        Some(variant) => Pat::Variant(variant, fields),
-                        None => Pat::Record(fields),
-                    };
-                }
-                _ => {}
+                    })
+                    .collect();
             }
+            arms.extend(
+                rows.into_iter()
+                    .map(|(pats, binds)| (ctor.apply(pats), binds)),
+            );
         }
+        if listed < ctors.len() {
+            arms.push(self.leaf(next_bind));
+        }
+        arms
+    }
+
+    /// An arm that matches every value, which binds it or not.
+    fn leaf(&mut self, next_bind: &mut usize) -> Arm {
         if self.coin() {
-            return Pat::Wildcard;
+            return (Pat::Wildcard, Vec::new());
         }
-        let name = format!("x{}", binds.len());
-        binds.push((name.clone(), typ.clone()));
-        Pat::Bind(name)
+        let name = format!("x{next_bind}");
+        *next_bind += 1;
+        (Pat::bind(&name), vec![name])
+    }
+
+    fn branching_type(&mut self, registry: &TypeRegistry) -> DataType {
+        let named: Vec<DataType> = self
+            .declared_names
+            .iter()
+            .map(|name| DataType::from(Ty::named(name)))
+            .filter(|typ| Self::can_branch(registry, typ, MAX_PATTERN_DEPTH))
+            .collect();
+        let base: DataType = match self.index(2 + named.len()) {
+            0 => Ty::Bool.into(),
+            1 => Ty::option(self.random_type_where(1, NamedTypes::Any, false)).into(),
+            i => return named[i - 2].clone(),
+        };
+        if self.coin() {
+            return base;
+        }
+        // A bool or an option still branches one level down, in a tuple.
+        let arity = self.count(1..=3);
+        let index = self.index(arity);
+        let elements = (0..arity)
+            .map(|i| {
+                if i == index {
+                    base.clone()
+                } else {
+                    self.random_data_type(1)
+                }
+            })
+            .collect();
+        DataType::Tuple(elements)
     }
 
     fn html_op(
@@ -1064,56 +1172,27 @@ impl FlatGenerator<'_, '_> {
         depth: usize,
         nesting: usize,
     ) -> ValueId {
+        let registry = b.registry();
         let var = self.var_in_scope(b, scope, |ty| {
-            matches!(
-                ty,
-                DataType::Bool | DataType::Option(_) | DataType::Tuple(_) | DataType::Named { .. }
-            )
+            Self::can_branch(registry, ty, MAX_PATTERN_DEPTH)
         });
         let (subject, subject_ty) = match var {
             Some(pair) => pair,
             None => {
-                let named = self.declared_names.len();
-                let subject_ty: DataType = match self.index(3 + named) {
-                    0 => Ty::Bool,
-                    1 => Ty::option(self.random_type_where(1, NamedTypes::Any, false)),
-                    2 => Ty::tuple(
-                        (0..self.count(1..=3))
-                            .map(|_| self.random_type_where(1, NamedTypes::Any, false)),
-                    ),
-                    i => Ty::named(&self.declared_names[i - 3]),
-                }
-                .into();
+                let subject_ty = self.branching_type(registry);
                 (
                     self.data_op(b, scope, &subject_ty, depth, nesting - 1),
                     subject_ty,
                 )
             }
         };
-        let mut pats: Vec<(Pat, Vec<(String, DataType)>)> = (0..self.count(0..=2))
-            .map(|_| {
-                let mut binds = Vec::new();
-                let pat = self.pattern(b, &subject_ty, 2, &mut binds);
-                (pat, binds)
-            })
-            .collect();
-        // The last arms make the match exhaustive, whether or not the arms
-        // before them are: one arm per constructor of the subject type, or
-        // one arm that matches every value.
-        if self.coin() {
-            let constructors = Self::constructors(b, &subject_ty);
-            pats.extend(constructors.into_iter().map(|pat| (pat, Vec::new())));
-        } else {
-            let mut binds = Vec::new();
-            let pat = self.pattern(b, &subject_ty, 0, &mut binds);
-            pats.push((pat, binds));
-        }
+        let arms = self.partition(b, &subject_ty, MAX_PATTERN_DEPTH, true, &mut 0);
         b.match_(subject, |m| {
-            for (pat, binds) in pats {
+            for (pat, binds) in arms {
                 m.arm(pat, |b, bindings| {
                     let depth = depth - 1;
                     let mut scope = scope.clone();
-                    for (name, _) in binds {
+                    for name in binds {
                         scope.push(bindings.binding(&name));
                     }
                     match target {
@@ -1129,11 +1208,9 @@ impl FlatGenerator<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::typing::compile_arms;
     use crate::ir::flat_module::{
         FlatDataBinding, FlatDataBlock, FlatDataOp, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp,
     };
-    use crate::ir::ir_match::IrMatch;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use expect_test::{Expect, expect};
@@ -1223,12 +1300,10 @@ mod tests {
             }
         }
 
-        fn nested(self) -> Vec<(Vec<(ValueId, DataType)>, Block<'a>)> {
+        fn nested(self) -> Vec<(Vec<ValueId>, Block<'a>)> {
             let bound = |pattern: &crate::ir::ir_match::IrPattern| {
                 let mut names = Vec::new();
-                pattern.for_each_binding(&mut |binder| {
-                    names.push((binder.var, binder.typ.clone()));
-                });
+                pattern.for_each_binding(&mut |binder| names.push(binder.var));
                 names
             };
             match self {
@@ -1252,11 +1327,7 @@ mod tests {
                     op: FlatHtmlOp::For(for_),
                     ..
                 }) => {
-                    let var = for_
-                        .var
-                        .iter()
-                        .map(|binder| (binder.var, binder.typ.clone()))
-                        .collect();
+                    let var = for_.var.iter().map(|binder| binder.var).collect();
                     vec![(var, Block::Html(&for_.body))]
                 }
                 _ => Vec::new(),
@@ -1288,7 +1359,7 @@ mod tests {
             let operands = depends;
             for (bound, body) in binding.nested() {
                 if operands {
-                    dynamic.extend(bound.into_iter().map(|(var, _)| var));
+                    dynamic.extend(bound);
                 }
                 depends |= mark_dynamic(body, dynamic);
             }
@@ -1342,64 +1413,34 @@ mod tests {
     #[derive(Default)]
     struct MatchStats {
         arm_counts: Vec<usize>,
-        shadowed: usize,
-        single_outcome: usize,
         binding_arms: usize,
     }
 
     impl MatchStats {
-        fn count_match<B>(
-            &mut self,
-            match_: &IrMatch<B>,
-            types: &HashMap<ValueId, DataType>,
-            registry: &TypeRegistry,
-        ) {
-            let patterns: Vec<_> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
-            let (_, reachable, missing) =
-                compile_arms(registry, &patterns, types[&match_.subject].clone());
-            assert!(missing.is_empty(), "generated matches must be exhaustive");
-            self.arm_counts.push(patterns.len());
-            // An arm can occur in several leaves of the decision tree. Count
-            // it once, and only test whether earlier arms shadow it, regardless
-            // of whether execution ever reaches this match or its subject varies.
-            let reachable = reachable.into_iter().collect::<HashSet<_>>().len();
-            self.shadowed += patterns.len() - reachable;
-            self.single_outcome += (reachable == 1) as usize;
-            for pattern in &patterns {
-                let mut binds = false;
-                pattern.for_each_binding(&mut |_| binds = true);
-                self.binding_arms += binds as usize;
-            }
-        }
-
-        fn count_block(
-            &mut self,
-            block: Block<'_>,
-            types: &mut HashMap<ValueId, DataType>,
-            registry: &TypeRegistry,
-        ) {
+        fn count_block(&mut self, block: Block<'_>) {
             for binding in block.bindings() {
-                if let Binding::Data(binding) = binding {
-                    types.insert(binding.binder.var, binding.binder.typ.clone());
-                }
-                match binding {
+                let arms = match binding {
                     Binding::Data(FlatDataBinding {
                         op: FlatDataOp::Match(m),
                         ..
-                    }) => {
-                        self.count_match(m, types, registry);
-                    }
+                    }) => m.arms.iter().map(|arm| &arm.pattern).collect(),
                     Binding::Html(FlatHtmlBinding {
                         op: FlatHtmlOp::Match(m),
                         ..
-                    }) => {
-                        self.count_match(m, types, registry);
-                    }
-                    _ => {}
+                    }) => m.arms.iter().map(|arm| &arm.pattern).collect(),
+                    _ => Vec::new(),
+                };
+                if !arms.is_empty() {
+                    assert!(arms.len() > 1, "generated matches branch");
+                    self.arm_counts.push(arms.len());
                 }
-                for (bound, body) in binding.nested() {
-                    types.extend(bound);
-                    self.count_block(body, types, registry);
+                for pattern in arms {
+                    let mut binds = false;
+                    pattern.for_each_binding(&mut |_| binds = true);
+                    self.binding_arms += binds as usize;
+                }
+                for (_, body) in binding.nested() {
+                    self.count_block(body);
                 }
             }
         }
@@ -1415,6 +1456,7 @@ mod tests {
         let mut call_depth_limit = 0;
         let mut array_len_limit = 0;
         let mut string_len_limit = 0;
+        let mut html_size_limit = 0;
         let mut op_count_limit = 0;
         let mut consumed = 0;
         let mut most_consumed = 0;
@@ -1439,6 +1481,7 @@ mod tests {
                     matches!(result, Err(EvalError::ArrayLengthLimit { .. })) as usize;
                 string_len_limit +=
                     matches!(result, Err(EvalError::StringLengthLimit { .. })) as usize;
+                html_size_limit += matches!(result, Err(EvalError::HtmlSizeLimit { .. })) as usize;
                 op_count_limit += matches!(result, Err(EvalError::OpCountLimit { .. })) as usize;
             }
             let mut live = HashSet::new();
@@ -1448,15 +1491,7 @@ mod tests {
                 mark_live(*body, &mut live);
                 dynamic.extend(function.parameters().iter().map(|param| param.binder.var));
                 mark_dynamic(*body, &mut dynamic);
-                let mut types = function
-                    .parameters()
-                    .into_iter()
-                    .filter_map(|param| match param.binder.typ {
-                        Type::Data(typ) => Some((param.binder.var, typ)),
-                        Type::Html(_) => None,
-                    })
-                    .collect();
-                match_stats.count_block(*body, &mut types, &registry);
+                match_stats.count_block(*body);
             }
             for body in &bodies {
                 count_ops(*body, &live, &dynamic, &mut counts);
@@ -1474,8 +1509,6 @@ mod tests {
         }
         let MatchStats {
             arm_counts,
-            shadowed,
-            single_outcome,
             binding_arms,
         } = match_stats;
         let arms: usize = arm_counts.iter().sum();
@@ -1487,16 +1520,14 @@ mod tests {
              {call_depth_limit} of {entrypoints} entrypoints hit the call depth limit\n\
              {array_len_limit} of {entrypoints} entrypoints hit the array length limit\n\
              {string_len_limit} of {entrypoints} entrypoints hit the string length limit\n\
+             {html_size_limit} of {entrypoints} entrypoints hit the Html size limit\n\
              {op_count_limit} of {entrypoints} entrypoints hit the op count limit\n\
              {shared_html} of {html_bindings} Html bindings have more than one reference\n\
              {:.1} arms per match on average, at least {fewest_arms} and at most {most_arms}\n\
-             {shadowed} of {arms} match arms are shadowed by previous arms\n\
-             {:.1}% of matches always take the same arm\n\
              {binding_arms} of {arms} match arms bind names\n\n\
              {:<20}{:>10}{:>8}{:>8}\n",
             consumed / SAMPLES,
             arms as f64 / arm_counts.len() as f64,
-            100.0 * single_outcome as f64 / arm_counts.len() as f64,
             "op",
             "ops/module",
             "% live",
@@ -1511,56 +1542,55 @@ mod tests {
             ));
         }
         expect![[r#"
-            3515 of 65536 input bytes consumed per module on average, at most 21050
-            0 of 100 modules exhaust the input
+            4665 of 65536 input bytes consumed per module on average, at most 65536
+            1 of 100 modules exhaust the input
             2 of 203 entrypoints hit the call depth limit
             0 of 203 entrypoints hit the array length limit
             0 of 203 entrypoints hit the string length limit
-            0 of 203 entrypoints hit the op count limit
-            26 of 839 Html bindings have more than one reference
-            2.3 arms per match on average, at least 1 and at most 5
-            5611 of 14605 match arms are shadowed by previous arms
-            63.3% of matches always take the same arm
-            4226 of 14605 match arms bind names
+            1 of 203 entrypoints hit the Html size limit
+            1 of 203 entrypoints hit the op count limit
+            25 of 772 Html bindings have more than one reference
+            2.7 arms per match on average, at least 2 and at most 12
+            8355 of 18662 match arms bind names
 
             op                  ops/module  % live   % dyn
-            Array                    126.8    94.2    10.1
-            ArrayFromRange             0.9    96.6     0.0
-            ArrayIsEmpty               0.2    95.0    55.0
-            ArrayLength                6.6    98.6    61.9
-            BoolLiteral               39.2    94.9     0.0
-            BoolNegation               0.2   100.0    22.7
-            Call                       1.2    95.8    83.1
-            Enum                      62.0    91.9    13.5
-            Equals                     0.3   100.0    77.8
-            FieldAccess                1.0    97.0    73.7
-            FloatLiteral              38.7    94.7     0.0
-            FloatToInt                 6.6    98.6    70.1
-            HtmlConcat                 2.1    99.5    23.4
-            HtmlElement                1.6   100.0    50.0
-            HtmlEscape                 0.7    98.6    50.0
-            HtmlFor                    1.5   100.0    59.7
-            HtmlText                   1.4   100.0     0.0
-            IntLiteral                39.9    93.8     0.0
-            IntToFloat                11.1    98.9    67.2
-            IntToString                2.0    95.1    60.3
-            LessThan                   0.3    90.0    56.7
-            LessThanOrEqual            0.2   100.0    78.3
-            Match                     64.2    95.8    83.1
-            NumericAdd                18.8    98.8    81.2
-            NumericMultiply           18.7    98.6    77.7
-            NumericNegation           18.4    98.8    69.2
-            NumericSubtract           18.6    99.0    82.2
-            OptionIsNone               0.2   100.0    54.5
-            OptionIsSome               0.3    92.9    57.1
-            OptionNone                88.4    94.4     0.0
-            OptionSome                37.0    94.0    20.1
-            Record                    64.4    94.6    16.2
-            StringConcat               2.1    97.2    58.7
-            StringIsEmpty              0.3    88.2    47.1
-            StringLiteral             41.7    95.9     0.0
-            Tuple                    467.6    94.8    46.6
-            TupleIndex               215.4    93.9    68.9
+            Array                    169.6    93.0    11.1
+            ArrayFromRange             1.0    91.7     0.0
+            ArrayIsEmpty               0.3   100.0    51.9
+            ArrayLength                5.1    87.5    50.7
+            BoolLiteral               57.5    94.0     0.0
+            BoolNegation               0.2    90.5    47.6
+            Call                       2.2   100.0    84.6
+            Enum                     101.8    93.1    20.5
+            Equals                     0.2    81.0    61.9
+            FieldAccess                2.1    96.7    82.7
+            FloatLiteral              50.9    93.7     0.0
+            FloatToInt                 5.6    88.9    66.7
+            HtmlConcat                 1.9    99.5    23.8
+            HtmlElement                1.3    99.2    51.5
+            HtmlEscape                 0.8    98.8    58.5
+            HtmlFor                    1.6   100.0    65.8
+            HtmlText                   1.2   100.0     0.0
+            IntLiteral                44.1    93.6     0.0
+            IntToFloat                 9.7    90.3    64.3
+            IntToString                1.9    90.1    50.0
+            LessThan                   0.1    86.7    66.7
+            LessThanOrEqual            0.1   100.0    80.0
+            Match                     69.6    94.0    83.4
+            NumericAdd                15.0    86.4    75.3
+            NumericMultiply           15.1    87.7    77.6
+            NumericNegation           14.5    87.9    67.8
+            NumericSubtract           15.2    88.2    76.8
+            OptionIsNone               0.2    95.2    47.6
+            OptionIsSome               0.3    96.4    75.0
+            OptionNone               129.7    93.8     0.0
+            OptionSome                51.1    93.7    24.6
+            Record                    95.6    94.7    21.5
+            StringConcat               1.9    91.7    58.3
+            StringIsEmpty              0.3    96.2    57.7
+            StringLiteral             51.9    94.5     0.0
+            Tuple                    710.1    94.0    53.8
+            TupleIndex               316.2    92.4    74.8
         "#]]
         .assert_eq(&report);
     }
@@ -1648,40 +1678,79 @@ mod tests {
                   v2
                 }
                 entrypoint fn V1@f1() -> Html {
-                  let v3: String = "back\\slash"
-                  let v4: Bool = true
-                  let v5: Int = -86
-                  let v6: Option[Float] = None
-                  let v7: Option[Option[Float]] = Some(v6)
-                  let v8: E1 = W0 {f1: v5, f0: v7}
-                  let v9: (String, Bool, E1) = (v3, v4, v8)
-                  let v10: Option[Int] = None
-                  let v11: (Bool, E1) = (v4, v8)
-                  let v12: ((String, Bool, E1), Option[Int], (Bool, E1)) = (v9, v10, v11)
-                  let v13: (String, Bool, E1) = v12.0
-                  let v14: Bool = v13.1
-                  let v23: Html = match v14 {
-                    true => {
-                      let v15: Html = text("&amp;")
-                      v15
-                    }
-                    true => {
-                      let v16: Int = -1
-                      let v17: Int = 0
-                      let v18: Array[Int] = v16..=v17
-                      let v20: Html = for _ in v18 {
-                        let v19: Html = concat()
-                        v19
+                  let v3: Bool = true
+                  let v4: Option[Bool] = Some(v3)
+                  let v5: Option[Option[Bool]] = Some(v4)
+                  let v51: Html = match v5 {
+                    Some(Some(v6: Bool)) => {
+                      let v47: Html = match v6 {
+                        false => {
+                          let v7: Html = text("")
+                          let v8: Html = concat(v7, v7)
+                          v8
+                        }
+                        v9: Bool => {
+                          let v10: String = "`${x}`"
+                          let v11: Array[Option[Int]] = []
+                          let v12: Int = v11.len()
+                          let v13: String = v12.to_string()
+                          let v41: (((String, Array[E1]), E0, Option[E1]), E1) = match v5 {
+                            Some(Some(v14: Bool)) => {
+                              let v15: E1 = W1
+                              let v16: Array[E1] = [v15, v15]
+                              let v17: (String, Array[E1]) = (v10, v16)
+                              let v18: Float = 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+                              let v19: E0 = W0 {f0: v18}
+                              let v20: Option[E1] = Some(v15)
+                              let v21: ((String, Array[E1]), E0, Option[E1]) = (v17, v19, v20)
+                              let v22: (((String, Array[E1]), E0, Option[E1]), E1) = (v21, v15)
+                              v22
+                            }
+                            Some(None) => {
+                              let v23: Array[E1] = []
+                              let v24: (String, Array[E1]) = (v10, v23)
+                              let v25: Float = 0
+                              let v26: E0 = W0 {f0: v25}
+                              let v27: Option[E1] = None
+                              let v28: ((String, Array[E1]), E0, Option[E1]) = (v24, v26, v27)
+                              let v29: Option[Option[Float]] = None
+                              let v30: E1 = W0 {f0: v29, f1: v12}
+                              let v31: (((String, Array[E1]), E0, Option[E1]), E1) = (v28, v30)
+                              v31
+                            }
+                            None => {
+                              let v32: Array[E1] = []
+                              let v33: (String, Array[E1]) = (v10, v32)
+                              let v34: Float = 0
+                              let v35: E0 = W0 {f0: v34}
+                              let v36: Option[E1] = None
+                              let v37: ((String, Array[E1]), E0, Option[E1]) = (v33, v35, v36)
+                              let v38: Option[Option[Float]] = None
+                              let v39: E1 = W0 {f0: v38, f1: v12}
+                              let v40: (((String, Array[E1]), E0, Option[E1]), E1) = (v37, v39)
+                              v40
+                            }
+                          }
+                          let v42: ((String, Array[E1]), E0, Option[E1]) = v41.0
+                          let v43: (String, Array[E1]) = v42.0
+                          let v44: String = v43.0
+                          let v45: String = concat(v10, v13, v44, v10)
+                          let v46: Html = escape(v45)
+                          v46
+                        }
                       }
-                      v20
+                      v47
                     }
-                    false => {
-                      let v21: Html = concat()
-                      let v22: Html = element("input", {}, v21)
-                      v22
+                    Some(None) => {
+                      let v48: Html = concat()
+                      v48
+                    }
+                    v49: Option[Option[Bool]] => {
+                      let v50: Html = concat()
+                      v50
                     }
                   }
-                  v23
+                  v51
                 }
             "#]],
         );

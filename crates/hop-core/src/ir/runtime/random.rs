@@ -1,5 +1,5 @@
 use super::bounded_vec::BoundedVec;
-use super::html_node::HtmlNode;
+use super::html_node::{Html, HtmlNode};
 use super::value::{MAX_ARRAY_LENGTH, Value};
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::typing::{DataType, EnumVariant, ResolvedType, Type, TypeRegistry};
@@ -87,11 +87,11 @@ pub fn random_value(
         Type::Data(data) => {
             random_value_at_depth(rng, data, examples, registry, 0, &mut Vec::new())
         }
-        Type::Html(_) => Value::Html(vec![HtmlNode::Element {
+        Type::Html(_) => Value::Html(Html::new(HtmlNode::Element {
             element: HtmlElementKind::Span,
             attributes: Vec::new(),
-            children: vec![HtmlNode::Text("sample".to_string())],
-        }]),
+            children: Html::new(HtmlNode::Text("sample".to_string())),
+        })),
     }
 }
 

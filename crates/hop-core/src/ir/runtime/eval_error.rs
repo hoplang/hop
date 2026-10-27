@@ -18,6 +18,8 @@ pub enum EvalError {
     ArrayLengthLimit { limit: usize },
     #[error("A string exceeded the string length limit of {limit} bytes")]
     StringLengthLimit { limit: usize },
+    #[error("An Html value exceeded the Html size limit of {limit}")]
+    HtmlSizeLimit { limit: usize },
     #[error("An evaluation exceeded the op count limit of {limit}")]
     OpCountLimit { limit: usize },
 }

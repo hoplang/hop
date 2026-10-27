@@ -329,9 +329,11 @@ mod tests {
                         .map(Value::into_markup)
                     {
                         Ok(output) => Some(output),
-                        Err(EvalError::CallDepthLimit { .. } | EvalError::OpCountLimit { .. }) => {
-                            None
-                        }
+                        Err(
+                            EvalError::CallDepthLimit { .. }
+                            | EvalError::OpCountLimit { .. }
+                            | EvalError::HtmlSizeLimit { .. },
+                        ) => None,
                         Err(error) => panic!("{error}"),
                     }
                 })
@@ -340,8 +342,7 @@ mod tests {
             let module = inline_function_calls(module);
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
-                // An entrypoint that hit the call depth limit or the op count limit
-                // has no output to preserve, and inlining removes frames from the count.
+                // An entrypoint that hit a limit has no output to preserve.
                 let Some(before) = before else {
                     continue;
                 };

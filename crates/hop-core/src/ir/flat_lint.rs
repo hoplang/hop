@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::hop::typing::{
-    Constructor, DataType, Pattern, RecordField, ResolvedType, Type, TypeRegistry,
+    Constructor, DataType, Pattern, RecordField, ResolvedType, Type, TypeRegistry, compile_arms,
 };
 use crate::ir::flat_module::{
     FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBlock, FlatHtmlOp,
@@ -10,14 +10,16 @@ use crate::ir::flat_module::{
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::IrAttribute;
-use crate::ir::ir_match::IrPattern;
+use crate::ir::ir_match::{IrMatch, IrPattern};
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 
 /// Panics unless every binding has the type its op produces from the types
 /// of its operands and every block produces the type its context expects.
-/// A name is read only after it is bound.
+/// A name is read only after it is bound. Every value of a match subject's
+/// type matches some arm, and each arm matches some value that no arm
+/// before it matches.
 pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
     let mut checker = Checker {
         registry,
@@ -176,6 +178,7 @@ impl<'a> Checker<'a> {
                     self.pattern(&arm.pattern, subject);
                     self.data_block(&arm.body, declared, function);
                 }
+                self.arms(match_, function);
                 true
             }
         }
@@ -195,6 +198,7 @@ impl<'a> Checker<'a> {
                     self.pattern(&arm.pattern, subject);
                     self.html_block(&arm.body, function);
                 }
+                self.arms(match_, function);
                 true
             }
             FlatHtmlOp::Text(_) => true,
@@ -351,6 +355,31 @@ impl<'a> Checker<'a> {
             })
     }
 
+    /// Panics unless every value of the subject's type matches some arm and
+    /// each arm matches some value that no arm before it matches.
+    fn arms<B>(&self, match_: &IrMatch<B>, function: &IrFunction) {
+        let Some(subject) = self.data(match_.subject) else {
+            return;
+        };
+        let patterns: Vec<IrPattern> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
+        let (_, reachable, missing) = compile_arms(self.registry, &patterns, subject.clone());
+        if let Some(pattern) = missing.first() {
+            panic!(
+                "{function} has a match on a {subject} where no arm matches {}",
+                pattern.to_doc().pretty(80)
+            );
+        }
+        if let Some(pattern) = (0..patterns.len())
+            .find(|index| !reachable.contains(index))
+            .map(|index| &patterns[index])
+        {
+            panic!(
+                "{function} has a match on a {subject} where the arms before {} match every value it matches",
+                pattern.to_doc().pretty(80)
+            );
+        }
+    }
+
     fn pattern(&mut self, pattern: &'a IrPattern, typ: BoundType<'a>) {
         match (pattern, typ) {
             (Pattern::Wildcard, _) => {}
@@ -430,7 +459,7 @@ impl<'a> Checker<'a> {
 #[cfg(test)]
 mod tests {
     use crate::hop::typing::Ty;
-    use crate::ir::flat_module_builder::FlatModuleBuilder;
+    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
 
     #[test]
     #[should_panic]
@@ -459,6 +488,31 @@ mod tests {
                 t.escape(t.int_to_string(t.param("n")))
             })
             .entrypoint("Test", [], Ty::Html, |t| t.call("show", [t.str("one")]))
+            .build();
+    }
+
+    #[test]
+    #[should_panic]
+    fn should_reject_a_match_where_no_arm_matches_some_value() {
+        FlatModuleBuilder::new()
+            .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
+                t.match_(t.param("flag"), |m| {
+                    m.arm(Pat::True, |t, _| t.text("yes"));
+                })
+            })
+            .build();
+    }
+
+    #[test]
+    #[should_panic]
+    fn should_reject_a_match_with_a_shadowed_arm() {
+        FlatModuleBuilder::new()
+            .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
+                t.match_(t.param("flag"), |m| {
+                    m.arm(Pat::Wildcard, |t, _| t.text("any"));
+                    m.arm(Pat::False, |t, _| t.text("no"));
+                })
+            })
             .build();
     }
 }

@@ -177,9 +177,11 @@ mod tests {
                         .map(Value::into_markup)
                     {
                         Ok(output) => Some(output),
-                        Err(EvalError::CallDepthLimit { .. } | EvalError::OpCountLimit { .. }) => {
-                            None
-                        }
+                        Err(
+                            EvalError::CallDepthLimit { .. }
+                            | EvalError::OpCountLimit { .. }
+                            | EvalError::HtmlSizeLimit { .. },
+                        ) => None,
                         Err(error) => panic!("{error}"),
                     }
                 })
@@ -188,8 +190,7 @@ mod tests {
             let module = eliminate_dead_bindings(module);
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
-                // An entrypoint that hit the call depth limit or the op count limit
-                // has no output to preserve, and the pass may drop the diverging call.
+                // An entrypoint that hit a limit has no output to preserve.
                 let Some(before) = before else {
                     continue;
                 };
