@@ -244,7 +244,7 @@ fn enter_arm<'a, B>(
     match_: &'a IrMatch<B>,
     env: &HashTrieMap<ValueId, Value>,
 ) -> (&'a B, HashTrieMap<ValueId, Value>) {
-    let subject = env[&match_.subject].clone();
+    let subject = &env[&match_.subject];
     let (arm, bound) = match_
         .arms
         .iter()
@@ -300,7 +300,7 @@ fn evaluate_html_op(
                         value: Some(env[value].clone().unwrap_string()),
                     }),
                     IrAttribute::Presence(present) => {
-                        if env[present].clone().unwrap_bool() {
+                        if env[present].as_bool() {
                             rendered.push(HtmlAttribute {
                                 name: name.clone(),
                                 value: None,
@@ -331,12 +331,12 @@ fn evaluate_html_op(
         }
 
         FlatHtmlOp::For(IrFor { var, array, body }) => {
-            let items = env[array].clone().unwrap_array();
+            let items = env[array].as_array();
             // The size is checked as the parts arrive, so that a loop over
             // a long array stops at the limit.
             let mut parts = Vec::new();
             let mut size = 1;
-            for item in items.iter() {
+            for item in items {
                 let mut env = env.clone();
                 if let Some(binder) = var {
                     env.insert_mut(binder.var, item.clone());
@@ -359,11 +359,11 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
         IrDataOp::FloatLiteral(value) => Value::Float(*value),
         IrDataOp::BoolLiteral(value) => Value::Bool(*value),
         IrDataOp::FieldAccess(record, field) => {
-            let record = env[record].clone().unwrap_record();
+            let record = env[record].as_record();
             let (_, value) = record.iter().find(|(name, _)| name == field).unwrap();
             value.clone()
         }
-        IrDataOp::TupleIndex(tuple, index) => env[tuple].clone().unwrap_tuple()[*index].clone(),
+        IrDataOp::TupleIndex(tuple, index) => env[tuple].as_tuple()[*index].clone(),
         IrDataOp::Array(elements) => Value::Array(Rc::new(
             BoundedVec::new(elements.iter().map(|e| env[e].clone()))
                 .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
@@ -393,66 +393,52 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
             }
             Value::String(parts.iter().map(|part| env[part].as_str()).collect())
         }
-        IrDataOp::NumericAdd(left, right) => match env[left].clone() {
-            Value::Int(left) => Value::Int(left.wrapping_add(env[right].clone().unwrap_int())),
-            left => Value::Float(left.unwrap_float() + env[right].clone().unwrap_float()),
+        IrDataOp::NumericAdd(left, right) => match &env[left] {
+            Value::Int(left) => Value::Int(left.wrapping_add(env[right].as_int())),
+            left => Value::Float(left.as_float() + env[right].as_float()),
         },
-        IrDataOp::NumericSubtract(left, right) => match env[left].clone() {
-            Value::Int(left) => Value::Int(left.wrapping_sub(env[right].clone().unwrap_int())),
-            left => Value::Float(left.unwrap_float() - env[right].clone().unwrap_float()),
+        IrDataOp::NumericSubtract(left, right) => match &env[left] {
+            Value::Int(left) => Value::Int(left.wrapping_sub(env[right].as_int())),
+            left => Value::Float(left.as_float() - env[right].as_float()),
         },
-        IrDataOp::NumericMultiply(left, right) => match env[left].clone() {
-            Value::Int(left) => Value::Int(left.wrapping_mul(env[right].clone().unwrap_int())),
-            left => Value::Float(left.unwrap_float() * env[right].clone().unwrap_float()),
+        IrDataOp::NumericMultiply(left, right) => match &env[left] {
+            Value::Int(left) => Value::Int(left.wrapping_mul(env[right].as_int())),
+            left => Value::Float(left.as_float() * env[right].as_float()),
         },
         IrDataOp::Equals(left, right) => {
-            let right = env[right].clone();
-            match env[left].clone() {
-                Value::Bool(left) => Value::Bool(left == right.unwrap_bool()),
-                Value::String(left) => Value::Bool(left == right.unwrap_string()),
-                Value::Int(left) => Value::Bool(left == right.unwrap_int()),
-                left => Value::Bool(left.unwrap_float() == right.unwrap_float()),
+            let right = &env[right];
+            match &env[left] {
+                Value::Bool(left) => Value::Bool(*left == right.as_bool()),
+                Value::String(left) => Value::Bool(left == right.as_str()),
+                Value::Int(left) => Value::Bool(*left == right.as_int()),
+                left => Value::Bool(left.as_float() == right.as_float()),
             }
         }
-        IrDataOp::LessThan(left, right) => match env[left].clone() {
-            Value::Int(left) => Value::Bool(left < env[right].clone().unwrap_int()),
-            left => Value::Bool(left.unwrap_float() < env[right].clone().unwrap_float()),
+        IrDataOp::LessThan(left, right) => match &env[left] {
+            Value::Int(left) => Value::Bool(*left < env[right].as_int()),
+            left => Value::Bool(left.as_float() < env[right].as_float()),
         },
-        IrDataOp::LessThanOrEqual(left, right) => match env[left].clone() {
-            Value::Int(left) => Value::Bool(left <= env[right].clone().unwrap_int()),
-            left => Value::Bool(left.unwrap_float() <= env[right].clone().unwrap_float()),
+        IrDataOp::LessThanOrEqual(left, right) => match &env[left] {
+            Value::Int(left) => Value::Bool(*left <= env[right].as_int()),
+            left => Value::Bool(left.as_float() <= env[right].as_float()),
         },
         IrDataOp::ArrayFromRange(left, right) => Value::Array(Rc::new(
-            BoundedVec::new(
-                (env[left].clone().unwrap_int()..=env[right].clone().unwrap_int()).map(Value::Int),
-            )
-            .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
+            BoundedVec::new((env[left].as_int()..=env[right].as_int()).map(Value::Int))
+                .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
         )),
-        IrDataOp::NumericNegation(operand) => match env[operand].clone() {
+        IrDataOp::NumericNegation(operand) => match &env[operand] {
             Value::Int(value) => Value::Int(value.wrapping_neg()),
-            operand => Value::Float(-operand.unwrap_float()),
+            operand => Value::Float(-operand.as_float()),
         },
-        IrDataOp::BoolNegation(operand) => Value::Bool(!env[operand].clone().unwrap_bool()),
-        IrDataOp::ArrayLength(operand) => {
-            Value::Int(env[operand].clone().unwrap_array().len() as i32)
-        }
-        IrDataOp::ArrayIsEmpty(operand) => {
-            Value::Bool(env[operand].clone().unwrap_array().is_empty())
-        }
-        IrDataOp::StringIsEmpty(operand) => {
-            Value::Bool(env[operand].clone().unwrap_string().is_empty())
-        }
-        IrDataOp::OptionIsSome(operand) => {
-            Value::Bool(env[operand].clone().unwrap_option().is_some())
-        }
-        IrDataOp::OptionIsNone(operand) => {
-            Value::Bool(env[operand].clone().unwrap_option().is_none())
-        }
-        IrDataOp::IntToString(operand) => {
-            Value::String(env[operand].clone().unwrap_int().to_string())
-        }
-        IrDataOp::FloatToInt(operand) => Value::Int(env[operand].clone().unwrap_float() as i32),
-        IrDataOp::IntToFloat(operand) => Value::Float(env[operand].clone().unwrap_int() as f64),
+        IrDataOp::BoolNegation(operand) => Value::Bool(!env[operand].as_bool()),
+        IrDataOp::ArrayLength(operand) => Value::Int(env[operand].as_array().len() as i32),
+        IrDataOp::ArrayIsEmpty(operand) => Value::Bool(env[operand].as_array().is_empty()),
+        IrDataOp::StringIsEmpty(operand) => Value::Bool(env[operand].as_str().is_empty()),
+        IrDataOp::OptionIsSome(operand) => Value::Bool(env[operand].as_option().is_some()),
+        IrDataOp::OptionIsNone(operand) => Value::Bool(env[operand].as_option().is_none()),
+        IrDataOp::IntToString(operand) => Value::String(env[operand].as_int().to_string()),
+        IrDataOp::FloatToInt(operand) => Value::Int(env[operand].as_float() as i32),
+        IrDataOp::IntToFloat(operand) => Value::Float(env[operand].as_int() as f64),
     })
 }
 

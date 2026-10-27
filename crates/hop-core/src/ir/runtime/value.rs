@@ -64,31 +64,31 @@ impl Value {
     }
 
     /// Panics if the value is not a Bool.
-    pub fn unwrap_bool(self) -> bool {
+    pub fn as_bool(&self) -> bool {
         match self {
-            Value::Bool(b) => b,
+            Value::Bool(b) => *b,
             _ => panic!("Expected a Bool value, found {self:?}"),
         }
     }
 
     /// Panics if the value is not an Int.
-    pub fn unwrap_int(self) -> i32 {
+    pub fn as_int(&self) -> i32 {
         match self {
-            Value::Int(i) => i,
+            Value::Int(i) => *i,
             _ => panic!("Expected an Int value, found {self:?}"),
         }
     }
 
     /// Panics if the value is not a Float.
-    pub fn unwrap_float(self) -> f64 {
+    pub fn as_float(&self) -> f64 {
         match self {
-            Value::Float(f) => f,
+            Value::Float(f) => *f,
             _ => panic!("Expected a Float value, found {self:?}"),
         }
     }
 
     /// Panics if the value is not an Array.
-    pub fn unwrap_array(self) -> Rc<BoundedVec<Value, MAX_ARRAY_LENGTH>> {
+    pub fn as_array(&self) -> &[Value] {
         match self {
             Value::Array(arr) => arr,
             _ => panic!("Expected an Array value, found {self:?}"),
@@ -96,7 +96,7 @@ impl Value {
     }
 
     /// Panics if the value is not a Tuple.
-    pub fn unwrap_tuple(self) -> Rc<[Value]> {
+    pub fn as_tuple(&self) -> &[Value] {
         match self {
             Value::Tuple(elements) => elements,
             _ => panic!("Expected a Tuple value, found {self:?}"),
@@ -104,7 +104,7 @@ impl Value {
     }
 
     /// Panics if the value is not a Record.
-    pub fn unwrap_record(self) -> Rc<[(FieldName, Value)]> {
+    pub fn as_record(&self) -> &[(FieldName, Value)] {
         match self {
             Value::Record(rec) => rec,
             _ => panic!("Expected a Record value, found {self:?}"),
@@ -112,9 +112,9 @@ impl Value {
     }
 
     /// Panics if the value is not an Option.
-    pub fn unwrap_option(self) -> Option<Rc<Value>> {
+    pub fn as_option(&self) -> Option<&Value> {
         match self {
-            Value::Option(opt) => opt,
+            Value::Option(opt) => opt.as_deref(),
             _ => panic!("Expected an Option value, found {self:?}"),
         }
     }
