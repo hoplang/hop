@@ -1,6 +1,6 @@
 mod document_shell;
-pub mod flat_module;
 mod flat_optimizer;
+pub mod flat_program;
 mod flat_to_writer;
 mod flat_transform;
 mod function_id;
@@ -15,14 +15,14 @@ pub mod ir_parameter;
 mod ir_switch;
 mod typed_to_flat;
 mod value_id;
-pub mod writer_module;
+pub mod writer_program;
 
 #[cfg(test)]
 pub mod flat_lint;
 #[cfg(test)]
-pub mod flat_module_builder;
+pub mod flat_program_builder;
 #[cfg(test)]
-pub mod flat_module_generator;
+pub mod flat_program_generator;
 
 pub mod runtime;
 pub mod transpile;

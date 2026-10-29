@@ -12,7 +12,7 @@ use crate::symbols::type_name::TypeName;
 
 use super::ir_parameter::IrParameter;
 
-/// A Writer module.
+/// A Writer program.
 ///
 /// The form the backends consume. A body is a sequence of statements that write
 /// to the ambient buffer, with the values they need bound by lets along the
@@ -20,10 +20,10 @@ use super::ir_parameter::IrParameter;
 /// is read more than once, and then an HtmlLiteral renders it into a buffer
 /// of its own.
 ///
-/// Every name is bound once in the module, by a parameter, a let, a loop or
+/// Every name is bound once in the program, by a parameter, a let, a loop or
 /// an arm of a match, so a name identifies its binding.
 #[derive(Debug)]
-pub struct WriterModule {
+pub struct WriterProgram {
     pub pages: Vec<WriterPageDeclaration>,
     pub functions: Vec<WriterFunctionDeclaration>,
 }
@@ -221,7 +221,7 @@ impl fmt::Display for WriterPageDeclaration {
     }
 }
 
-impl fmt::Display for WriterModule {
+impl fmt::Display for WriterProgram {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for function in &self.functions {
             write!(f, "{function}")?;

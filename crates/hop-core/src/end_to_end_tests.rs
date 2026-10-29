@@ -1,15 +1,15 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::Document;
 use crate::document_annotator::DocumentAnnotator;
-use crate::ir::flat_module::FlatModule;
+use crate::ir::flat_program::FlatProgram;
 use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::flat_evaluator;
 use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
 use crate::ir::{flat_to_writer, optimize_flat};
 use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
-use crate::program::Program;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
+use crate::session::Session;
 use crate::symbols::type_name::TypeName;
 use expect_test::Expect;
 use indoc::formatdoc;
@@ -153,9 +153,9 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn execute_evaluator(module: &FlatModule, pages: &[IrPage]) -> Result<String, String> {
+fn execute_evaluator(flat: &FlatProgram, pages: &[IrPage]) -> Result<String, String> {
     let page_name = TypeName::parse("Test").unwrap();
-    flat_evaluator::evaluate_page(module, pages, &page_name, HashMap::new(), None)
+    flat_evaluator::evaluate_page(flat, pages, &page_name, HashMap::new(), None)
         .map_err(|e| format!("Evaluator failed: {}", e))
 }
 
@@ -170,7 +170,7 @@ fn check_with_asset_path_rewriter(
     expected: Expect,
 ) {
     let archive = Archive::from(archive);
-    let mut program = Program::new();
+    let mut session = Session::new();
     let mut modules = 0;
     for file in archive.iter() {
         assert!(
@@ -180,12 +180,12 @@ fn check_with_asset_path_rewriter(
         );
         let document_id = RootContainedFilePath::new(&file.name).unwrap();
         let document = Document::new(document_id.clone(), file.content.clone());
-        program.update_hop_document(&document_id, document);
+        session.update_hop_document(&document_id, document);
         modules += 1;
     }
     assert!(modules > 0, "archive declares no modules");
 
-    let diagnostics = program.diagnostics();
+    let diagnostics = session.diagnostics();
     if !diagnostics.is_empty() {
         let rendered = DocumentAnnotator::new()
             .with_severity_label()
@@ -196,8 +196,8 @@ fn check_with_asset_path_rewriter(
         panic!("Diagnostics found");
     }
 
-    let typed_modules = program.typed_modules().clone();
-    let registry = program.type_registry();
+    let typed_modules = session.typed_modules().clone();
+    let registry = session.type_registry();
 
     let (unoptimized_flat, pages) = orchestrate_flat(
         &typed_modules,
@@ -208,22 +208,22 @@ fn check_with_asset_path_rewriter(
     );
     let optimized_flat = optimize_flat(unoptimized_flat.clone());
 
-    // Evaluate the Flat modules before lowering consumes them.
+    // Evaluate the Flat programs before lowering consumes them.
     let unoptimized_eval = execute_evaluator(&unoptimized_flat, &pages);
     let optimized_eval = execute_evaluator(&optimized_flat, &pages);
 
-    let unoptimized_module = flat_to_writer(unoptimized_flat, registry, &pages, None);
-    let optimized_module = flat_to_writer(optimized_flat, registry, &pages, None);
+    let unoptimized_program = flat_to_writer(unoptimized_flat, registry, &pages, None);
+    let optimized_program = flat_to_writer(optimized_flat, registry, &pages, None);
 
-    let unoptimized_ir = unoptimized_module.to_string();
-    let optimized_ir = optimized_module.to_string();
+    let unoptimized_ir = unoptimized_program.to_string();
+    let optimized_ir = optimized_program.to_string();
 
     let mut output = format!(
         "-- ir (unoptimized) --\n{}-- ir (optimized) --\n{}-- expected output --\n{}\n",
         unoptimized_ir, optimized_ir, expected_output
     );
 
-    // Test evaluator on the unoptimized Flat module
+    // Test evaluator on the unoptimized Flat program
     let eval_output = match unoptimized_eval {
         Ok(out) => out,
         Err(e) => panic!(
@@ -238,7 +238,7 @@ fn check_with_asset_path_rewriter(
     );
     output.push_str("-- eval (unoptimized) --\nOK\n");
 
-    // Test evaluator on the optimized Flat module
+    // Test evaluator on the optimized Flat program
     let eval_output = match optimized_eval {
         Ok(out) => out,
         Err(e) => panic!(
@@ -255,7 +255,7 @@ fn check_with_asset_path_rewriter(
 
     // Test unoptimized version
     let mut ts_transpiler = TsTranspiler::new();
-    let ts_code = ts_transpiler.transpile_module(&unoptimized_module, registry);
+    let ts_code = ts_transpiler.transpile_program(&unoptimized_program, registry);
     if let Err(e) = typecheck_typescript(&ts_code) {
         panic!(
             "TypeScript typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -277,7 +277,7 @@ fn check_with_asset_path_rewriter(
     output.push_str("-- ts (unoptimized) --\nOK\n");
 
     let mut rust_transpiler = RustTranspiler::new();
-    let rust_code = rust_transpiler.transpile_module(&unoptimized_module, registry);
+    let rust_code = rust_transpiler.transpile_program(&unoptimized_program, registry);
     if let Err(e) = typecheck_rust(&rust_code) {
         panic!(
             "Rust typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -299,7 +299,7 @@ fn check_with_asset_path_rewriter(
     output.push_str("-- rust (unoptimized) --\nOK\n");
 
     // Test optimized version
-    let ts_code = ts_transpiler.transpile_module(&optimized_module, registry);
+    let ts_code = ts_transpiler.transpile_program(&optimized_program, registry);
     if let Err(e) = typecheck_typescript(&ts_code) {
         panic!(
             "TypeScript typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -320,7 +320,7 @@ fn check_with_asset_path_rewriter(
     );
     output.push_str("-- ts (optimized) --\nOK\n");
 
-    let rust_code = rust_transpiler.transpile_module(&optimized_module, registry);
+    let rust_code = rust_transpiler.transpile_program(&optimized_program, registry);
     if let Err(e) = typecheck_rust(&rust_code) {
         panic!(
             "Rust typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -347,7 +347,7 @@ fn check_with_asset_path_rewriter(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::flat_module_generator::random_module_with_test_view;
+    use crate::ir::flat_program_generator::random_program_with_test_view;
     use crate::ir::runtime::EvalError;
     use expect_test::expect;
     use indoc::indoc;
@@ -356,12 +356,12 @@ mod tests {
     #[ignore]
     fn fuzz_transpile_ts_renders_identically() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_module_with_test_view(u);
-            let flat = module.to_string();
-            let pages = IrPage::for_entrypoints(&module);
+            let (program, registry) = random_program_with_test_view(u);
+            let flat = program.to_string();
+            let pages = IrPage::for_entrypoints(&program);
             let page_name = TypeName::parse("Test").unwrap();
             let expected = match flat_evaluator::evaluate_page(
-                &module,
+                &program,
                 &pages,
                 &page_name,
                 HashMap::new(),
@@ -376,9 +376,9 @@ mod tests {
                 ) => return Ok(()),
                 Err(e) => panic!("Evaluator failed:\n{e}\n\nFlat:\n{flat}"),
             };
-            let module = flat_to_writer(optimize_flat(module), &registry, &pages, None);
-            let ir = module.to_string();
-            let ts_code = TsTranspiler::new().transpile_module(&module, &registry);
+            let program = flat_to_writer(optimize_flat(program), &registry, &pages, None);
+            let ir = program.to_string();
+            let ts_code = TsTranspiler::new().transpile_program(&program, &registry);
             if let Err(e) = typecheck_typescript(&ts_code) {
                 panic!(
                     "TypeScript typecheck failed:\n{e}\n\nFlat:\n{flat}\nIR:\n{ir}\nCode:\n{ts_code}"
@@ -399,12 +399,12 @@ mod tests {
     #[ignore]
     fn fuzz_transpile_rust_renders_identically() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_module_with_test_view(u);
-            let flat = module.to_string();
-            let pages = IrPage::for_entrypoints(&module);
+            let (program, registry) = random_program_with_test_view(u);
+            let flat = program.to_string();
+            let pages = IrPage::for_entrypoints(&program);
             let page_name = TypeName::parse("Test").unwrap();
             let expected = match flat_evaluator::evaluate_page(
-                &module,
+                &program,
                 &pages,
                 &page_name,
                 HashMap::new(),
@@ -419,9 +419,9 @@ mod tests {
                 ) => return Ok(()),
                 Err(e) => panic!("Evaluator failed:\n{e}\n\nFlat:\n{flat}"),
             };
-            let module = flat_to_writer(optimize_flat(module), &registry, &pages, None);
-            let ir = module.to_string();
-            let rust_code = RustTranspiler::new().transpile_module(&module, &registry);
+            let program = flat_to_writer(optimize_flat(program), &registry, &pages, None);
+            let ir = program.to_string();
+            let rust_code = RustTranspiler::new().transpile_program(&program, &registry);
             let rust_output = execute_rust(&rust_code).unwrap_or_else(|e| {
                 panic!("Rust failed:\n{e}\n\nFlat:\n{flat}\nIR:\n{ir}\nCode:\n{rust_code}")
             });

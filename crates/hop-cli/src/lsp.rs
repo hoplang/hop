@@ -1,7 +1,7 @@
 use crate::project::Project;
 use hop_core::{
-    DiagnosticSeverity, Document, DocumentPosition, DocumentRange, PositionEncoding, Program,
-    RootContainedFilePath,
+    DiagnosticSeverity, Document, DocumentPosition, DocumentRange, PositionEncoding,
+    RootContainedFilePath, Session,
 };
 use std::collections::HashMap;
 use tokio::sync::mpsc;
@@ -56,11 +56,11 @@ pub async fn execute() {
 // LSP uses UTF-16 encoding by default for position character offsets.
 // Returns None if the document is unknown or the position is outside it.
 fn lsp_pos_to_doc_pos(
-    program: &Program,
+    session: &Session,
     document_id: &RootContainedFilePath,
     lsp_pos: ls_types::Position,
 ) -> Option<DocumentPosition> {
-    program.position(
+    session.position(
         document_id,
         PositionEncoding::Utf16,
         lsp_pos.line as usize,
@@ -85,7 +85,7 @@ fn doc_range_to_lsp_range(range: DocumentRange) -> ls_types::Range {
 
 pub struct HopLanguageServer {
     client_tx: mpsc::Sender<ClientMessage>,
-    program: RwLock<Program>,
+    session: RwLock<Session>,
     project: OnceCell<Project>,
 }
 
@@ -93,7 +93,7 @@ impl HopLanguageServer {
     pub fn new(client_tx: mpsc::Sender<ClientMessage>) -> Self {
         Self {
             client_tx,
-            program: RwLock::new(Program::new()),
+            session: RwLock::new(Session::new()),
             project: OnceCell::new(),
         }
     }
@@ -115,8 +115,8 @@ impl HopLanguageServer {
         let Some(document_id) = Self::uri_to_document_id(uri, project) else {
             return;
         };
-        let program = self.program.read().await;
-        let lsp_diagnostics: Vec<ls_types::Diagnostic> = program
+        let session = self.session.read().await;
+        let lsp_diagnostics: Vec<ls_types::Diagnostic> = session
             .document_diagnostics(&document_id)
             .into_iter()
             .map(|d| ls_types::Diagnostic {
@@ -203,7 +203,7 @@ impl LanguageServer for HopLanguageServer {
                     .filter(|document_id| document_id.extension() == Some("hop"))
                     .collect();
                 {
-                    let mut server = self.program.write().await;
+                    let mut server = self.session.write().await;
                     for document_id in &document_ids {
                         if let Ok(document) = project.load_document(document_id) {
                             server.update_hop_document(document_id, document);
@@ -233,7 +233,7 @@ impl LanguageServer for HopLanguageServer {
             if let Some(change) = params.content_changes.into_iter().next() {
                 let changed_modules: Vec<RootContainedFilePath>;
                 {
-                    let mut server = self.program.write().await;
+                    let mut server = self.session.write().await;
                     changed_modules = server.update_hop_document(
                         &document_id,
                         Document::new(document_id.clone(), change.text),
@@ -255,11 +255,11 @@ impl LanguageServer for HopLanguageServer {
                 return Ok(None);
             };
 
-            let program = self.program.read().await;
-            let Some(position) = lsp_pos_to_doc_pos(&program, &document_id, position) else {
+            let session = self.session.read().await;
+            let Some(position) = lsp_pos_to_doc_pos(&session, &document_id, position) else {
                 return Ok(None);
             };
-            Ok(program
+            Ok(session
                 .hover_info(&position)
                 .map(|(range, message)| ls_types::Hover {
                     contents: ls_types::HoverContents::Scalar(ls_types::MarkedString::String(
@@ -283,12 +283,12 @@ impl LanguageServer for HopLanguageServer {
                 return Ok(None);
             };
 
-            let program = self.program.read().await;
-            let Some(position) = lsp_pos_to_doc_pos(&program, &document_id, position) else {
+            let session = self.session.read().await;
+            let Some(position) = lsp_pos_to_doc_pos(&session, &document_id, position) else {
                 return Ok(None);
             };
 
-            Ok(program.definition_location(&position).map(|range| {
+            Ok(session.definition_location(&position).map(|range| {
                 ls_types::GotoDefinitionResponse::Scalar(ls_types::Location {
                     uri: Self::document_id_to_uri(range.document_id(), project),
                     range: doc_range_to_lsp_range(range),
@@ -310,12 +310,12 @@ impl LanguageServer for HopLanguageServer {
                 return Ok(None);
             };
 
-            let program = self.program.read().await;
-            let Some(position) = lsp_pos_to_doc_pos(&program, &document_id, position) else {
+            let session = self.session.read().await;
+            let Some(position) = lsp_pos_to_doc_pos(&session, &document_id, position) else {
                 return Ok(None);
             };
 
-            Ok(program
+            Ok(session
                 .renameable_symbol(&position)
                 .map(|(range, placeholder)| {
                     ls_types::PrepareRenameResponse::RangeWithPlaceholder {
@@ -340,7 +340,7 @@ impl LanguageServer for HopLanguageServer {
                 return Ok(None);
             };
 
-            let server = self.program.read().await;
+            let server = self.session.read().await;
             let Some(position) = lsp_pos_to_doc_pos(&server, &document_id, position) else {
                 return Ok(None);
             };
@@ -381,9 +381,9 @@ impl LanguageServer for HopLanguageServer {
                 return Ok(None);
             };
 
-            let program = self.program.read().await;
+            let session = self.session.read().await;
 
-            match program.format_hop_document(&document_id) {
+            match session.format_hop_document(&document_id) {
                 Ok(formatted) => Ok(Some(vec![ls_types::TextEdit {
                     range: ls_types::Range {
                         start: ls_types::Position {

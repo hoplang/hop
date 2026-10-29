@@ -118,8 +118,8 @@ mod tests {
     use crate::hop::parsing::parse;
     use crate::ir::runtime::flat_evaluator;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
-    use crate::program::Program;
     use crate::root_contained_file_path::RootContainedFilePath;
+    use crate::session::Session;
     use crate::symbols::type_name::TypeName;
     use indoc::indoc;
     use std::collections::HashMap;
@@ -147,24 +147,24 @@ mod tests {
 
     fn render(source: &str) -> String {
         let document_id = RootContainedFilePath::new("test.hop").unwrap();
-        let mut program = Program::new();
-        program.update_hop_document(
+        let mut session = Session::new();
+        session.update_hop_document(
             &document_id,
             Document::new(document_id.clone(), source.to_string()),
         );
 
-        let diagnostics = program.diagnostics();
+        let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
 
-        let typed_modules = program.typed_modules().clone();
+        let typed_modules = session.typed_modules().clone();
         let page_name = TypeName::parse("Test").unwrap();
-        let (module, pages) = orchestrate_flat(
+        let (flat, pages) = orchestrate_flat(
             &typed_modules,
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        flat_evaluator::evaluate_page(&module, &pages, &page_name, HashMap::new(), None)
+        flat_evaluator::evaluate_page(&flat, &pages, &page_name, HashMap::new(), None)
             .expect("evaluator failed")
     }
 

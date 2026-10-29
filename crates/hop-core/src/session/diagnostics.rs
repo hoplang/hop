@@ -1,9 +1,9 @@
-use super::Program;
+use super::Session;
 use crate::diagnostic::Diagnostic;
 use crate::root_contained_file_path::RootContainedFilePath;
 use std::collections::BTreeSet;
 
-impl Program {
+impl Session {
     /// Every diagnostic across all hop and CSS documents, sorted by
     /// document id and position.
     ///
@@ -21,7 +21,7 @@ impl Program {
     }
 
     /// Every diagnostic for a single hop or CSS document, sorted by
-    /// position. Returns an empty list for a document the program does not
+    /// position. Returns an empty list for a document the session does not
     /// know about.
     ///
     /// Type errors are not reported for a document that has parse errors,
@@ -68,7 +68,7 @@ impl Program {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::program_from_archive;
+    use super::super::test_support::session_from_archive;
     use crate::diagnostic_severity::DiagnosticSeverity;
     use crate::document_annotator::DocumentAnnotator;
     use crate::root_contained_file_path::RootContainedFilePath;
@@ -77,10 +77,10 @@ mod tests {
     use txtar::Archive;
 
     fn check(input: &str, module: &str, expected: Expect) {
-        let program = program_from_archive(&Archive::from(input));
+        let session = session_from_archive(&Archive::from(input));
 
         let diagnostics =
-            program.document_diagnostics(&RootContainedFilePath::new(module).unwrap());
+            session.document_diagnostics(&RootContainedFilePath::new(module).unwrap());
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn should_not_warn_on_used_import() {
-        let program = program_from_archive(&Archive::from(indoc! {r#"
+        let session = session_from_archive(&Archive::from(indoc! {r#"
             -- components.hop --
             pub fn HelloWorld() -> Html {
               <h1>Hello World</h1>
@@ -136,7 +136,7 @@ mod tests {
             }
         "#}));
 
-        let diagnostics = program.diagnostics();
+        let diagnostics = session.diagnostics();
         let warnings: Vec<_> = diagnostics
             .into_iter()
             .filter(|d| d.severity() == DiagnosticSeverity::Warning)

@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use crate::hop::typing::Pattern;
-use crate::ir::flat_module::{
+use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
@@ -15,8 +15,8 @@ use crate::ir::value_id::ValueId;
 /// block or result reads computes nothing anyone sees, and goes away with
 /// the blocks nested in it. A loop variable or binding of a pattern that
 /// nothing reads any more goes away too, and becomes `_`.
-pub fn eliminate_dead_bindings(module: FlatModule) -> FlatModule {
-    let functions = module
+pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
+    let functions = program
         .functions
         .into_iter()
         .map(|function| match function {
@@ -34,9 +34,9 @@ pub fn eliminate_dead_bindings(module: FlatModule) -> FlatModule {
             }
         })
         .collect();
-    FlatModule {
+    FlatProgram {
         functions,
-        value_ids: module.value_ids,
+        value_ids: program.value_ids,
     }
 }
 
@@ -153,9 +153,9 @@ mod tests {
 
     use super::*;
     use crate::hop::typing::{Ty, TypeRegistryBuilder};
-    use crate::ir::flat_module::FlatModule;
-    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
-    use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
+    use crate::ir::flat_program::FlatProgram;
+    use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
+    use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
@@ -163,17 +163,17 @@ mod tests {
     use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
-    fn fuzz_random_modules_evaluate_identically_after_elimination() {
+    fn fuzz_random_programs_evaluate_identically_after_elimination() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_module(u);
+            let (program, registry) = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&module, &mut rng, &registry);
+            let entrypoint_args = random_entrypoint_args(&program, &mut rng, &registry);
 
-            let before_module = module.clone();
+            let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args
                 .iter()
                 .map(|(function, args)| {
-                    match evaluate_entrypoint(&module, function, args.clone())
+                    match evaluate_entrypoint(&program, function, args.clone())
                         .map(Value::into_markup)
                     {
                         Ok(output) => Some(output),
@@ -188,35 +188,35 @@ mod tests {
                 })
                 .collect();
 
-            let module = eliminate_dead_bindings(module);
+            let program = eliminate_dead_bindings(program);
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit a limit has no output to preserve.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_entrypoint(&module, function, args.clone())
+                let after = evaluate_entrypoint(&program, function, args.clone())
                     .unwrap()
                     .into_markup();
                 assert_eq!(
                     before, &after,
-                    "entrypoint {function}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    "entrypoint {function}\n-- before --\n{before_program}\n-- after --\n{program}"
                 );
             }
             Ok(())
         });
     }
 
-    fn check(module: FlatModule, expected: Expect) {
-        let before = module.to_string();
-        let after = eliminate_dead_bindings(module).to_string();
+    fn check(program: FlatProgram, expected: Expect) {
+        let before = program.to_string();
+        let after = eliminate_dead_bindings(program).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
     }
 
     #[test]
     fn should_drop_a_value_nothing_reads() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     let _unused = t.str("value");
                     t.text("Hello")
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn should_drop_a_dead_match_with_its_arms() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("f", [], Ty::Int, |t| t.call("f", []))
                 .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                     let _unused = t.match_(t.param("flag"), |m| {
@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn should_unbind_an_unused_loop_variable() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, _| t.text("."))
                 })
@@ -319,7 +319,7 @@ mod tests {
     #[test]
     fn should_unbind_an_unused_option_binding() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [("name", Ty::option(Ty::String))], Ty::Html, |t| {
                     t.match_(t.param("name"), |m| {
                         m.arm(Pat::some(Pat::bind("n")), |t, _| t.text("some"));
@@ -373,7 +373,7 @@ mod tests {
             )
             .build();
         check(
-            FlatModuleBuilder::with_registry(types)
+            FlatProgramBuilder::with_registry(types)
                 .function("width", [("shape", Ty::named("Shape"))], Ty::Int, |t| {
                     t.match_(t.param("shape"), |m| {
                         m.arm(Pat::variant("Dot", []), |t, _| t.int(0));

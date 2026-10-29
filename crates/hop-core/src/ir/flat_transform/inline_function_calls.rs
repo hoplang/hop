@@ -1,9 +1,9 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
-use crate::ir::flat_module::{
+use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
@@ -20,11 +20,11 @@ use crate::ir::value_id::{ValueId, ValueIdCounter};
 /// is bound by reading the argument's name in its place. The body is copied
 /// with fresh names, its bindings join the block the call sits in, and
 /// every read of the call's name becomes a read of the body's result.
-pub fn inline_function_calls(module: FlatModule) -> FlatModule {
-    let FlatModule {
+pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
+    let FlatProgram {
         functions,
         mut value_ids,
-    } = module;
+    } = program;
 
     let mut graph: DependencyGraph<FunctionId> = DependencyGraph::new();
     for function in &functions {
@@ -48,7 +48,7 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
         .cloned()
         .collect();
 
-    // Declaration order is part of the module's identity, so keep it.
+    // Declaration order is part of the program's identity, so keep it.
     let order: Vec<FunctionId> = functions.iter().map(|f| f.function().id).collect();
     let mut decls: HashMap<FunctionId, FlatFunctionDeclaration> = functions
         .into_iter()
@@ -56,7 +56,7 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
         .collect();
 
     // The name each inlined call's result is read through. One map serves
-    // every body, since names are unique in the module.
+    // every body, since names are unique in the program.
     let mut renames = HashMap::new();
 
     // sorted_sccs puts dependencies before dependents, which for a call graph
@@ -92,7 +92,7 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
 
     // Every call to a function outside a cycle was replaced by its body, so
     // nothing calls such a function any more. An entrypoint function is called
-    // from outside the module, so it stays.
+    // from outside the program, so it stays.
     let functions = order
         .into_iter()
         .map(|id| decls.remove(&id).expect("each function is declared once"))
@@ -105,7 +105,7 @@ pub fn inline_function_calls(module: FlatModule) -> FlatModule {
         })
         .collect();
 
-    FlatModule {
+    FlatProgram {
         functions,
         value_ids,
     }
@@ -306,8 +306,8 @@ mod tests {
 
     use super::*;
     use crate::hop::typing::Ty;
-    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
-    use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
+    use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
+    use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
@@ -315,17 +315,17 @@ mod tests {
     use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
-    fn fuzz_random_modules_evaluate_identically_after_inlining() {
+    fn fuzz_random_programs_evaluate_identically_after_inlining() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_module(u);
+            let (program, registry) = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&module, &mut rng, &registry);
+            let entrypoint_args = random_entrypoint_args(&program, &mut rng, &registry);
 
-            let before_module = module.clone();
+            let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args
                 .iter()
                 .map(|(function, args)| {
-                    match evaluate_entrypoint(&module, function, args.clone())
+                    match evaluate_entrypoint(&program, function, args.clone())
                         .map(Value::into_markup)
                     {
                         Ok(output) => Some(output),
@@ -340,35 +340,35 @@ mod tests {
                 })
                 .collect();
 
-            let module = inline_function_calls(module);
+            let program = inline_function_calls(program);
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit a limit has no output to preserve.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_entrypoint(&module, function, args.clone())
+                let after = evaluate_entrypoint(&program, function, args.clone())
                     .unwrap()
                     .into_markup();
                 assert_eq!(
                     before, &after,
-                    "entrypoint {function}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    "entrypoint {function}\n-- before --\n{before_program}\n-- after --\n{program}"
                 );
             }
             Ok(())
         });
     }
 
-    fn check(module: FlatModule, expected: Expect) {
-        let before = module.to_string();
-        let after = inline_function_calls(module).to_string();
+    fn check(program: FlatProgram, expected: Expect) {
+        let before = program.to_string();
+        let after = inline_function_calls(program).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
     }
 
     #[test]
     fn should_inline_a_call_and_read_the_argument_where_the_parameter_was_read() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("double", [("x", Ty::Int)], Ty::Int, |t| {
                     t.add(t.param("x"), t.param("x"))
                 })
@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn should_inline_callees_before_their_callers() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("inner", [("x", Ty::Int)], Ty::Int, |t| {
                     t.add(t.param("x"), t.int(1))
                 })
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn should_give_each_copy_of_a_loop_fresh_names() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("list", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, item| {
                         t.element("li", [], t.escape(item))
@@ -508,7 +508,7 @@ mod tests {
     #[test]
     fn should_leave_a_self_recursive_function_alone() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("count", [("n", Ty::Int)], Ty::Html, |t| {
                     t.match_(t.lt(t.param("n"), t.int(1)), |m| {
                         m.arm(Pat::True, |t, _| t.text("."));
@@ -574,7 +574,7 @@ mod tests {
     #[test]
     fn should_leave_mutually_recursive_functions_alone() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .declare("ping", [("n", Ty::Int)], Ty::Html)
                 .declare("pong", [("n", Ty::Int)], Ty::Html)
                 .define("ping", |t, _| {

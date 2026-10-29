@@ -8,9 +8,9 @@ use crate::hop::typing::{
     TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration, TypedParameter, TypedPattern,
     TypedRecordUpdateField,
 };
-use crate::ir::flat_module::{
+use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binder::IrBinder;
@@ -34,7 +34,7 @@ use super::ir_parameter::IrParameter;
 ///
 /// Flat has no pages. A page compiles to an entrypoint function for its head, if
 /// it has one, and one for its body, and the pages that point at them are
-/// returned beside the module.
+/// returned beside the program.
 ///
 /// Each expression that computes a value becomes one binding with a fresh
 /// name, in evaluation order. A let binds nothing, its variable is the name
@@ -58,11 +58,11 @@ pub fn typed_to_flat(
     pages: Vec<TypedPageDeclaration>,
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
-) -> (FlatModule, Vec<IrPage>) {
+) -> (FlatProgram, Vec<IrPage>) {
     let mut value_ids = ValueIdCounter::new();
     let mut function_ids = FunctionIdCounter::new();
 
-    // Each declaration with its position, since the module keeps the
+    // Each declaration with its position, since the program keeps the
     // functions in declaration order.
     let source: HashMap<(RootContainedFilePath, FunctionName), (usize, &TypedFunctionDeclaration)> =
         source_functions
@@ -100,7 +100,7 @@ pub fn typed_to_flat(
         .collect();
 
     (
-        FlatModule {
+        FlatProgram {
             functions,
             value_ids,
         },
@@ -895,28 +895,28 @@ mod tests {
     use super::*;
     use crate::document::Document;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
-    use crate::program::Program;
+    use crate::session::Session;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    /// Compile a module written in source, without optimization.
+    /// Compile a program written in source, without optimization.
     fn check(source: &str, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();
-        let mut program = Program::new();
-        program.update_hop_document(
+        let mut session = Session::new();
+        session.update_hop_document(
             &document_id,
             Document::new(document_id.clone(), source.to_string()),
         );
-        let diagnostics = program.diagnostics();
+        let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (module, pages) = orchestrate_flat(
-            program.typed_modules(),
+        let (flat, pages) = orchestrate_flat(
+            session.typed_modules(),
             OrchestrateOptions {
                 ..Default::default()
             },
         );
         let pages: String = pages.iter().map(|page| format!("{page}\n")).collect();
-        expected.assert_eq(&format!("{module}{pages}"));
+        expected.assert_eq(&format!("{flat}{pages}"));
     }
 
     #[test]

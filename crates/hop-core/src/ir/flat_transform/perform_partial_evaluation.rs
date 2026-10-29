@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use crate::document::CheapString;
 use crate::hop::typing::{Constructor, DataType, Pattern};
-use crate::ir::flat_module::{
+use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
@@ -34,11 +34,11 @@ use crate::symbols::field_name::FieldName;
 ///
 /// One pass in binding order sees every operand's op before the op that
 /// reads it, so nothing is left for a second pass.
-pub fn perform_partial_evaluation(module: FlatModule) -> FlatModule {
-    let FlatModule {
+pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
+    let FlatProgram {
         functions,
         mut value_ids,
-    } = module;
+    } = program;
     let functions = functions
         .into_iter()
         .map(|function| {
@@ -64,7 +64,7 @@ pub fn perform_partial_evaluation(module: FlatModule) -> FlatModule {
             }
         })
         .collect();
-    FlatModule {
+    FlatProgram {
         functions,
         value_ids,
     }
@@ -562,46 +562,46 @@ mod tests {
     use super::*;
     use crate::document::Document;
     use crate::hop::typing::{Ty, TypeRegistryBuilder};
-    use crate::ir::flat_module::FlatModule;
-    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
-    use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
+    use crate::ir::flat_program::FlatProgram;
+    use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
+    use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
-    use crate::program::Program;
     use crate::root_contained_file_path::RootContainedFilePath;
+    use crate::session::Session;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
-    fn fuzz_random_modules_evaluate_identically_after_partial_evaluation() {
+    fn fuzz_random_programs_evaluate_identically_after_partial_evaluation() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_module(u);
+            let (program, registry) = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&module, &mut rng, &registry);
+            let entrypoint_args = random_entrypoint_args(&program, &mut rng, &registry);
 
-            let before_module = module.clone();
+            let before_program = program.clone();
             let before: Vec<Result<String, EvalError>> = entrypoint_args
                 .iter()
                 .map(|(function, args)| {
-                    evaluate_entrypoint(&module, function, args.clone()).map(Value::into_markup)
+                    evaluate_entrypoint(&program, function, args.clone()).map(Value::into_markup)
                 })
                 .collect();
 
-            let module = perform_partial_evaluation(module);
+            let program = perform_partial_evaluation(program);
 
             // The pass drops no computation but a selected arm's siblings,
             // which never ran, so the output and whether the call depth
             // limit is hit both stay the same.
             for ((function, args), before) in entrypoint_args.iter().zip(before) {
                 let after =
-                    evaluate_entrypoint(&module, function, args.clone()).map(Value::into_markup);
+                    evaluate_entrypoint(&program, function, args.clone()).map(Value::into_markup);
                 match (before, after) {
                     (Ok(before), Ok(after)) => assert_eq!(
                         before, after,
-                        "entrypoint {function}\n-- before --\n{before_module}\n-- after --\n{module}"
+                        "entrypoint {function}\n-- before --\n{before_program}\n-- after --\n{program}"
                     ),
                     (
                         Err(EvalError::CallDepthLimit { .. }),
@@ -615,11 +615,11 @@ mod tests {
                         Err(EvalError::StringLengthLimit { .. }),
                         Err(EvalError::StringLengthLimit { .. }),
                     ) => {}
-                    // The pass evaluates ops ahead of time, so the module may
+                    // The pass evaluates ops ahead of time, so the program may
                     // stay under the op count limit after it.
                     (Err(EvalError::OpCountLimit { .. }), _) => {}
                     (before, after) => panic!(
-                        "entrypoint {function}: before {before:?}, after {after:?}\n-- before --\n{before_module}\n-- after --\n{module}"
+                        "entrypoint {function}: before {before:?}, after {after:?}\n-- before --\n{before_program}\n-- after --\n{program}"
                     ),
                 }
             }
@@ -627,23 +627,23 @@ mod tests {
         });
     }
 
-    fn check(module: FlatModule, expected: Expect) {
-        let before = module.to_string();
-        let after = perform_partial_evaluation(module).to_string();
+    fn check(program: FlatProgram, expected: Expect) {
+        let before = program.to_string();
+        let after = perform_partial_evaluation(program).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
     }
 
     /// Like `check`, on the Flat IR the source compiles to.
     fn check_source(source: &str, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();
-        let mut program = Program::new();
-        program.update_hop_document(
+        let mut session = Session::new();
+        session.update_hop_document(
             &document_id,
             Document::new(document_id.clone(), source.to_string()),
         );
-        let diagnostics = program.diagnostics();
+        let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (flat, _) = orchestrate_flat(program.typed_modules(), OrchestrateOptions::default());
+        let (flat, _) = orchestrate_flat(session.typed_modules(), OrchestrateOptions::default());
         check(flat, expected);
     }
 
@@ -772,7 +772,7 @@ mod tests {
     #[test]
     fn should_fold_arithmetic_with_wrapping() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("wrap", [], Ty::Int, |t| t.add(t.int(i32::MAX), t.int(1)))
                 .build(),
             expect![[r#"
@@ -798,7 +798,7 @@ mod tests {
     #[test]
     fn should_select_the_arm_of_a_match_on_a_negated_constant() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.match_(t.not(t.bool(true)), |m| {
                         m.arm(Pat::True, |t, _| t.text("yes"));
@@ -838,7 +838,7 @@ mod tests {
     #[test]
     fn should_keep_a_match_on_a_dynamic_subject() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                     t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.text("yes"));
@@ -886,7 +886,7 @@ mod tests {
             .record("Point", [("x", Ty::Int), ("y", Ty::Int)])
             .build();
         check(
-            FlatModuleBuilder::with_registry(types)
+            FlatProgramBuilder::with_registry(types)
                 .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.field_access(
                         t.record(Ty::named("Point"), [("x", t.param("n")), ("y", t.int(2))]),
@@ -920,7 +920,7 @@ mod tests {
     #[test]
     fn should_read_an_element_of_a_tuple_constructor() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("second", [], Ty::String, |t| {
                     t.tuple_index(t.tuple([t.int(1), t.str("two")]), 1)
                 })
@@ -949,7 +949,7 @@ mod tests {
     #[test]
     fn should_flatten_a_concat_and_merge_its_adjacent_constants() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [("dyn", Ty::String)], Ty::Html, |t| {
                     t.escape(t.string_concat([
                         t.string_concat(vec![t.param("dyn"), t.str("a")]),
@@ -987,7 +987,7 @@ mod tests {
     #[test]
     fn should_drop_empty_strings_and_read_the_one_part_left() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [("dyn", Ty::String)], Ty::Html, |t| {
                     t.escape(t.string_concat([t.str(""), t.param("dyn"), t.str("")]))
                 })
@@ -1016,7 +1016,7 @@ mod tests {
     #[test]
     fn should_fold_a_concat_of_constants_to_one_constant() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.escape(t.string_concat([t.str("Hello, "), t.str("World")]))
                 })
@@ -1046,7 +1046,7 @@ mod tests {
     #[test]
     fn should_flatten_a_nested_html_concat() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.html_concat([
                         t.text("a"),
@@ -1091,7 +1091,7 @@ mod tests {
             )
             .build();
         check(
-            FlatModuleBuilder::with_registry(types)
+            FlatProgramBuilder::with_registry(types)
                 .function("area", [("n", Ty::Int)], Ty::Int, |t| {
                     t.match_(
                         t.enum_variant_with_fields(
@@ -1139,7 +1139,7 @@ mod tests {
     #[test]
     fn should_select_the_some_arm_and_bind_its_value() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.match_(t.some(t.str("x")), |m| {
                         m.arm(Pat::some(Pat::bind("v")), |t, arm| {
@@ -1181,7 +1181,7 @@ mod tests {
     #[test]
     fn should_saturate_a_float_to_int_conversion() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("big", [], Ty::Int, |t| t.float_to_int(t.float(1e10)))
                 .build(),
             expect![[r#"
@@ -1205,7 +1205,7 @@ mod tests {
     #[test]
     fn should_select_an_arm_through_a_folded_equality() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.match_(t.eq(t.str("a"), t.str("a")), |m| {
                         m.arm(Pat::True, |t, _| t.text("same"));

@@ -17,13 +17,13 @@ pub struct IrPage {
 }
 
 impl IrPage {
-    /// A page for each entrypoint function of a test module, rendered by that
+    /// A page for each entrypoint function of a test program, rendered by that
     /// function alone and named after it.
     #[cfg(test)]
-    pub fn for_entrypoints(module: &crate::ir::flat_module::FlatModule) -> Vec<IrPage> {
-        use crate::ir::flat_module::FlatFunctionDeclaration;
+    pub fn for_entrypoints(program: &crate::ir::flat_program::FlatProgram) -> Vec<IrPage> {
+        use crate::ir::flat_program::FlatFunctionDeclaration;
 
-        module
+        program
             .functions
             .iter()
             .filter(|decl| match decl {

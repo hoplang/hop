@@ -1,4 +1,4 @@
-use super::Program;
+use super::Session;
 use super::evaluate_page_error::EvaluatePageError;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::diagnostic_severity::DiagnosticSeverity;
@@ -16,7 +16,7 @@ use rand::rngs::Xoshiro256PlusPlus;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-impl Program {
+impl Session {
     /// Evaluate a page given a document and page name.
     fn evaluate_page_with_values(
         &self,
@@ -42,21 +42,21 @@ impl Program {
 
         // The page filter compiles only the requested page and what it
         // reaches.
-        let (flat_module, pages) = orchestrate_flat(
+        let (flat_program, pages) = orchestrate_flat(
             self.typed_modules(),
             OrchestrateOptions {
                 page_filter: Some((document_id.clone(), page_name.clone())),
                 asset_path_rewriter,
             },
         );
-        let flat_module = if skip_optimization {
-            flat_module
+        let flat_program = if skip_optimization {
+            flat_program
         } else {
-            optimize_flat(flat_module)
+            optimize_flat(flat_program)
         };
         let shell = DocumentShell::new(generated_tailwind_css.map(TailwindInjection::Inline), None);
         let rendered = ir::runtime::flat_evaluator::evaluate_page(
-            &flat_module,
+            &flat_program,
             &pages,
             page_name,
             args,
@@ -147,7 +147,7 @@ impl Program {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::program_from_archive;
+    use super::super::test_support::session_from_archive;
     use super::*;
     use expect_test::expect;
     use indoc::indoc;
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn should_render_the_document_around_the_head_and_the_body() {
-        let program = program_from_archive(&Archive::from(indoc! {r#"
+        let session = session_from_archive(&Archive::from(indoc! {r#"
             -- main.hop --
             page Main() {
               fn head() -> Html {
@@ -169,7 +169,7 @@ mod tests {
 
         let main_module = RootContainedFilePath::new("main.hop").unwrap();
         let main = TypeName::parse("Main").unwrap();
-        let result = program
+        let result = session
             .evaluate_page_with_values(
                 &main_module,
                 &main,
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_ir_page_with_parameters() {
-        let program = program_from_archive(&Archive::from(indoc! {r#"
+        let session = session_from_archive(&Archive::from(indoc! {r#"
             -- main.hop --
             page HelloWorld(name: String) {
               fn body() -> Html {
@@ -209,7 +209,7 @@ mod tests {
 
         let main_module = RootContainedFilePath::new("main.hop").unwrap();
         let hello_world = TypeName::parse("HelloWorld").unwrap();
-        let result = program
+        let result = session
             .evaluate_page_with_values(&main_module, &hello_world, args, None, false, None)
             .expect("Should evaluate successfully");
 
@@ -217,7 +217,7 @@ mod tests {
 
         // Test evaluating another-comp page without parameters
         let another_comp = TypeName::parse("AnotherComp").unwrap();
-        let result = program
+        let result = session
             .evaluate_page_with_values(
                 &main_module,
                 &another_comp,
@@ -232,7 +232,7 @@ mod tests {
 
         // Test error when page doesn't exist
         let non_existent = TypeName::parse("NonExistent").unwrap();
-        let result = program.evaluate_page_with_values(
+        let result = session.evaluate_page_with_values(
             &main_module,
             &non_existent,
             HashMap::new(),

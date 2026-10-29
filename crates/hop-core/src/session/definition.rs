@@ -1,7 +1,7 @@
-use super::Program;
+use super::Session;
 use crate::document::{DocumentPosition, DocumentRange};
 
-impl Program {
+impl Session {
     pub fn definition_location(&self, position: &DocumentPosition) -> Option<DocumentRange> {
         self.definition_links
             .get(position.document_id())?
@@ -13,7 +13,7 @@ impl Program {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{extract_markers_from_archive, program_from_archive};
+    use super::super::test_support::{extract_markers_from_archive, session_from_archive};
     use crate::diagnostic::Diagnostic;
     use crate::diagnostic_severity::DiagnosticSeverity;
     use crate::document_annotator::DocumentAnnotator;
@@ -31,16 +31,16 @@ mod tests {
             );
         }
 
-        let program = program_from_archive(&archive);
+        let session = session_from_archive(&archive);
 
-        let diagnostics = program.diagnostics();
+        let diagnostics = session.diagnostics();
         assert!(
             diagnostics.is_empty(),
             "Expected no diagnostics, got: {:?}",
             diagnostics
         );
 
-        let range = program
+        let range = session
             .definition_location(&markers[0])
             .expect("Expected definition location to be defined");
 

@@ -1,11 +1,11 @@
-use super::Program;
+use super::Session;
 use super::find_markup::find_markup_at_position;
 use crate::document::{DocumentPosition, DocumentRange};
 use crate::hop::parsing::ParsedMarkup;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 
-impl Program {
+impl Session {
     pub fn rename_locations(&self, position: &DocumentPosition) -> Option<Vec<DocumentRange>> {
         let document_id = position.document_id();
         let module = self.parsed_modules.get(document_id)?;
@@ -193,7 +193,7 @@ impl Program {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{extract_markers_from_archive, program_from_archive};
+    use super::super::test_support::{extract_markers_from_archive, session_from_archive};
     use crate::diagnostic::Diagnostic;
     use crate::diagnostic_severity::DiagnosticSeverity;
     use crate::document_annotator::DocumentAnnotator;
@@ -210,7 +210,7 @@ mod tests {
             );
         }
 
-        let locs = program_from_archive(&archive)
+        let locs = session_from_archive(&archive)
             .rename_locations(&markers[0])
             .expect("Expected locations to be defined");
 
@@ -235,7 +235,7 @@ mod tests {
             );
         }
 
-        let (range, name) = program_from_archive(&archive)
+        let (range, name) = session_from_archive(&archive)
             .renameable_symbol(&markers[0])
             .expect("Expected symbol to be defined");
 

@@ -3,9 +3,9 @@ use std::fmt;
 use crate::hop::typing::{
     Constructor, DataType, Pattern, RecordField, ResolvedType, Type, TypeRegistry, compile_arms,
 };
-use crate::ir::flat_module::{
+use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBlock, FlatHtmlOp,
-    FlatModule,
+    FlatProgram,
 };
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
@@ -20,13 +20,13 @@ use crate::symbols::field_name::FieldName;
 /// A name is read only after it is bound. Every value of a match subject's
 /// type matches some arm, and each arm matches some value that no arm
 /// before it matches.
-pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
+pub fn assert_well_typed(program: &FlatProgram, registry: &TypeRegistry) {
     let mut checker = Checker {
         registry,
-        functions: &module.functions,
-        types: vec![None; module.value_ids.count()],
+        functions: &program.functions,
+        types: vec![None; program.value_ids.count()],
     };
-    for function in &module.functions {
+    for function in &program.functions {
         match function {
             FlatFunctionDeclaration::Data(data) => {
                 for param in &data.parameters {
@@ -44,7 +44,7 @@ pub fn assert_well_typed(module: &FlatModule, registry: &TypeRegistry) {
     }
 }
 
-/// The types are borrowed from the binders in the module and indexed by
+/// The types are borrowed from the binders in the program and indexed by
 /// the name's number, so checking neither hashes nor clones a type.
 struct Checker<'a> {
     registry: &'a TypeRegistry,
@@ -459,12 +459,12 @@ impl<'a> Checker<'a> {
 #[cfg(test)]
 mod tests {
     use crate::hop::typing::Ty;
-    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
+    use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
 
     #[test]
     #[should_panic]
     fn should_reject_an_op_with_ill_typed_operands() {
-        FlatModuleBuilder::new()
+        FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| {
                 let sum = t.add(t.int(1), t.str("one"));
                 t.escape(t.int_to_string(sum))
@@ -475,7 +475,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn should_reject_a_block_of_the_wrong_type() {
-        FlatModuleBuilder::new()
+        FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| t.int(1))
             .build();
     }
@@ -483,7 +483,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn should_reject_a_call_with_the_wrong_arguments() {
-        FlatModuleBuilder::new()
+        FlatProgramBuilder::new()
             .function("show", [("n", Ty::Int)], Ty::Html, |t| {
                 t.escape(t.int_to_string(t.param("n")))
             })
@@ -494,7 +494,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn should_reject_a_match_where_no_arm_matches_some_value() {
-        FlatModuleBuilder::new()
+        FlatProgramBuilder::new()
             .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                 t.match_(t.param("flag"), |m| {
                     m.arm(Pat::True, |t, _| t.text("yes"));
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn should_reject_a_match_with_a_shadowed_arm() {
-        FlatModuleBuilder::new()
+        FlatProgramBuilder::new()
             .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                 t.match_(t.param("flag"), |m| {
                     m.arm(Pat::Wildcard, |t, _| t.text("any"));

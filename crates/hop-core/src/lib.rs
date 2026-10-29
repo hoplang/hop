@@ -20,11 +20,11 @@ mod html;
 mod ir;
 mod itertools;
 mod orchestrator;
-mod program;
 mod project_root;
 mod root_contained_file_path;
 mod root_relative_file_path;
 mod root_relative_path;
+mod session;
 mod symbols;
 
 // Public API
@@ -35,8 +35,8 @@ pub use diagnostic::Diagnostic;
 pub use diagnostic_severity::DiagnosticSeverity;
 pub use document::{Document, DocumentPosition, DocumentRange, PositionEncoding};
 pub use document_annotator::DocumentAnnotator;
-pub use program::{EvaluatePageError, FormatError, Program};
 pub use project_root::{ProjectRoot, ProjectRootError};
 pub use root_contained_file_path::RootContainedFilePath;
 pub use root_relative_file_path::RootRelativeFilePath;
 pub use root_relative_path::{RootRelativePath, RootRelativePathError};
+pub use session::{EvaluatePageError, FormatError, Session};

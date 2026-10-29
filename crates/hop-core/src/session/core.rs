@@ -19,7 +19,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 #[derive(Debug, Default)]
-pub struct Program {
+pub struct Session {
     pub(super) dependency_graph: DependencyGraph<RootContainedFilePath>,
     pub(super) documents: HashMap<RootContainedFilePath, Document>,
     pub(super) css_documents: HashMap<RootContainedFilePath, Document>,
@@ -35,12 +35,12 @@ pub struct Program {
     pub(super) typed_modules: HashMap<RootContainedFilePath, TypedModule>,
 }
 
-impl Program {
+impl Session {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Update or add a hop document to the program.
+    /// Update or add a hop document to the session.
     ///
     /// This parses the document, updates the dependency graph, and re-typechecks
     /// the module along with any modules that depend on it (directly or transitively).
@@ -95,7 +95,7 @@ impl Program {
         grouped_modules.into_iter().flatten().collect()
     }
 
-    /// Remove a hop document from the program.
+    /// Remove a hop document from the session.
     ///
     /// This cleans up all state associated with the document and re-typechecks
     /// any modules that depended on it (since their imports are now broken).
@@ -138,14 +138,14 @@ impl Program {
         }
     }
 
-    /// Remove a CSS document from the program.
+    /// Remove a CSS document from the session.
     pub fn remove_css_document(&mut self, document_id: &RootContainedFilePath) {
         self.css_documents.remove(document_id);
         self.css_errors.remove(document_id);
         self.asset_references.remove(document_id);
     }
 
-    /// Update or add a CSS document to the program.
+    /// Update or add a CSS document to the session.
     pub fn update_css_document(&mut self, document_id: &RootContainedFilePath, document: Document) {
         let css_errors = self.css_errors.entry(document_id.clone()).or_default();
         css_errors.clear();
@@ -245,14 +245,14 @@ impl Program {
         } else {
             optimize_flat(flat)
         };
-        let module = flat_to_writer(flat, &self.type_registry, &pages, Some(&shell));
+        let writer = flat_to_writer(flat, &self.type_registry, &pages, Some(&shell));
 
         match target {
             TargetLanguage::Typescript => {
-                ir::TsTranspiler::new().transpile_module(&module, &self.type_registry)
+                ir::TsTranspiler::new().transpile_program(&writer, &self.type_registry)
             }
             TargetLanguage::Rust => {
-                ir::RustTranspiler::new().transpile_module(&module, &self.type_registry)
+                ir::RustTranspiler::new().transpile_program(&writer, &self.type_registry)
             }
         }
     }
@@ -282,17 +282,17 @@ impl Program {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::program_from_archive;
+    use super::super::test_support::session_from_archive;
     use super::*;
     use crate::document_annotator::DocumentAnnotator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use txtar::Archive;
 
-    fn check_diagnostics(program: &Program, expected: Expect) {
+    fn check_diagnostics(session: &Session, expected: Expect) {
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate(program.diagnostics())
+            .annotate(session.diagnostics())
             .render();
 
         expected.assert_eq(&output);
@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn should_report_import_cycle_errors() {
-        let mut program = program_from_archive(&Archive::from(indoc! {r#"
+        let mut session = session_from_archive(&Archive::from(indoc! {r#"
             -- a.hop --
             import b::BComp
             pub fn AComp() -> Html {
@@ -320,7 +320,7 @@ mod tests {
             }
         "#}));
         check_diagnostics(
-            &program,
+            &session,
             expect![[r#"
                 Import cycle: a.hop imports from b which creates a dependency cycle: a.hop → b.hop → a.hop
                   --> a.hop (line 1, col 8)
@@ -334,7 +334,7 @@ mod tests {
             "#]],
         );
         // Resolve cycle
-        program.update_hop_document(
+        session.update_hop_document(
             &RootContainedFilePath::new("a.hop").unwrap(),
             Document::new(
                 RootContainedFilePath::new("a.hop").unwrap(),
@@ -347,12 +347,12 @@ mod tests {
             ),
         );
         // Type errors should now be empty
-        check_diagnostics(&program, expect![""]);
+        check_diagnostics(&session, expect![""]);
     }
 
     #[test]
     fn should_report_import_cycle_errors_for_large_cycles() {
-        let mut program = program_from_archive(&Archive::from(indoc! {r#"
+        let mut session = session_from_archive(&Archive::from(indoc! {r#"
             -- a.hop --
             import b::BComp
             pub fn AComp() -> Html {
@@ -378,7 +378,7 @@ mod tests {
             }
         "#}));
         check_diagnostics(
-            &program,
+            &session,
             expect![[r#"
                 Import cycle: a.hop imports from b which creates a dependency cycle: a.hop → b.hop → c.hop → d.hop → a.hop
                   --> a.hop (line 1, col 8)
@@ -402,7 +402,7 @@ mod tests {
             "#]],
         );
         // Resolve cycle
-        program.update_hop_document(
+        session.update_hop_document(
             &RootContainedFilePath::new("c.hop").unwrap(),
             Document::new(
                 RootContainedFilePath::new("c.hop").unwrap(),
@@ -415,9 +415,9 @@ mod tests {
             ),
         );
         // Type errors should now be empty
-        check_diagnostics(&program, expect![""]);
+        check_diagnostics(&session, expect![""]);
         // Introduce new cycle a → b → a
-        program.update_hop_document(
+        session.update_hop_document(
             &RootContainedFilePath::new("b.hop").unwrap(),
             Document::new(
                 RootContainedFilePath::new("b.hop").unwrap(),
@@ -431,7 +431,7 @@ mod tests {
             ),
         );
         check_diagnostics(
-            &program,
+            &session,
             expect![[r#"
                 Import cycle: a.hop imports from b which creates a dependency cycle: a.hop → b.hop → a.hop
                   --> a.hop (line 1, col 8)
@@ -445,7 +445,7 @@ mod tests {
             "#]],
         );
         // Resolve cycle
-        program.update_hop_document(
+        session.update_hop_document(
             &RootContainedFilePath::new("b.hop").unwrap(),
             Document::new(
                 RootContainedFilePath::new("b.hop").unwrap(),
@@ -458,12 +458,12 @@ mod tests {
             ),
         );
         // Type errors should now be empty
-        check_diagnostics(&program, expect![""]);
+        check_diagnostics(&session, expect![""]);
     }
 
     #[test]
     fn should_report_type_error_when_imported_module_is_removed() {
-        let mut program = program_from_archive(&Archive::from(indoc! {r#"
+        let mut session = session_from_archive(&Archive::from(indoc! {r#"
             -- components.hop --
             pub fn HelloWorld() -> Html {
               <h1>Hello World</h1>
@@ -478,14 +478,14 @@ mod tests {
         "#}));
 
         // No type errors initially
-        check_diagnostics(&program, expect![""]);
+        check_diagnostics(&session, expect![""]);
 
         // Remove the components module
-        program.remove_hop_document(&RootContainedFilePath::new("components.hop").unwrap());
+        session.remove_hop_document(&RootContainedFilePath::new("components.hop").unwrap());
 
         // Now main should have a type error about the missing import
         check_diagnostics(
-            &program,
+            &session,
             expect![[r#"
                 Module components was not found
                   --> main.hop (line 1, col 8)
@@ -500,7 +500,7 @@ mod tests {
         );
 
         // Add the module back
-        program.update_hop_document(
+        session.update_hop_document(
             &RootContainedFilePath::new("components.hop").unwrap(),
             Document::new(
                 RootContainedFilePath::new("components.hop").unwrap(),
@@ -515,7 +515,7 @@ mod tests {
 
         // Type errors should now be resolved
         check_diagnostics(
-            &program,
+            &session,
             expect![[r#"
                 HelloWorld from module components is not public
                   --> main.hop (line 1, col 20)

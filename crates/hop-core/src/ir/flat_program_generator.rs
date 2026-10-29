@@ -1,8 +1,10 @@
 use crate::hop::typing::{
     DataType, RecordField, ResolvedType, Ty, Type, TypeRegistry, TypeRegistryBuilder,
 };
-use crate::ir::flat_module::{FlatFunctionDeclaration, FlatModule};
-use crate::ir::flat_module_builder::{DeclaredFunction, FlatBlockBuilder, FlatModuleBuilder, Pat};
+use crate::ir::flat_program::{FlatFunctionDeclaration, FlatProgram};
+use crate::ir::flat_program_builder::{
+    DeclaredFunction, FlatBlockBuilder, FlatProgramBuilder, Pat,
+};
 use crate::ir::ir_function::IrFunction;
 use crate::ir::runtime::random::random_value;
 use crate::ir::runtime::value::Value;
@@ -119,7 +121,7 @@ impl Scope {
 /// Which named types may be referenced at a type position.
 #[derive(Clone, Copy)]
 enum NamedTypes {
-    /// Every name the module declares, including declarations that are
+    /// Every name the program declares, including declarations that are
     /// not complete yet.
     Any,
     /// Only names whose declarations are already complete.
@@ -162,19 +164,19 @@ struct FlatGenerator<'a, 'b> {
     records: Vec<DataType>,
 }
 
-/// Generate a random well-typed Flat module.
-pub fn random_module(u: &mut Unstructured<'_>) -> (FlatModule, TypeRegistry) {
-    random_module_inner(u, false)
+/// Generate a random well-typed Flat program.
+pub fn random_program(u: &mut Unstructured<'_>) -> (FlatProgram, TypeRegistry) {
+    random_program_inner(u, false)
 }
 
-pub fn random_module_with_test_view(u: &mut Unstructured<'_>) -> (FlatModule, TypeRegistry) {
-    random_module_inner(u, true)
+pub fn random_program_with_test_view(u: &mut Unstructured<'_>) -> (FlatProgram, TypeRegistry) {
+    random_program_inner(u, true)
 }
 
-fn random_module_inner(
+fn random_program_inner(
     u: &mut Unstructured<'_>,
     single_test_entrypoint: bool,
-) -> (FlatModule, TypeRegistry) {
+) -> (FlatProgram, TypeRegistry) {
     let mut g = FlatGenerator {
         u,
         declared_names: Vec::new(),
@@ -241,7 +243,7 @@ fn random_module_inner(
         .iter()
         .map(|name| Ty::named(name).into())
         .collect();
-    let mut builder = FlatModuleBuilder::with_registry(types.build());
+    let mut builder = FlatProgramBuilder::with_registry(types.build());
 
     // Declare every function before defining any, so that a body can call a
     // function declared after it.
@@ -311,11 +313,11 @@ fn random_module_inner(
 }
 
 pub fn random_entrypoint_args(
-    module: &FlatModule,
+    program: &FlatProgram,
     rng: &mut impl Rng,
     registry: &TypeRegistry,
 ) -> Vec<(IrFunction, HashMap<AttributeName, Value>)> {
-    module
+    program
         .functions
         .iter()
         .filter(|decl| match decl {
@@ -370,7 +372,7 @@ impl FlatGenerator<'_, '_> {
         let registry = b.registry();
         self.records.iter().flat_map(move |record| {
             let Some(ResolvedType::Record { fields, .. }) = registry.resolve(record) else {
-                unreachable!("a record of the module resolves to its declaration")
+                unreachable!("a record of the program resolves to its declaration")
             };
             fields
                 .iter()
@@ -1215,7 +1217,7 @@ impl FlatGenerator<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::flat_module::{
+    use crate::ir::flat_program::{
         FlatDataBinding, FlatDataBlock, FlatDataOp, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp,
     };
     use crate::ir::runtime::EvalError;
@@ -1227,8 +1229,8 @@ mod tests {
     fn check(seed: u64, len: usize, expected: Expect) {
         let mut rng = SmallRng::seed_from_u64(seed);
         let bytes: Vec<u8> = (0..len).map(|_| rng.random()).collect();
-        let (module, registry) = random_module(&mut Unstructured::new(&bytes));
-        expected.assert_eq(&format!("{registry}\n{module}"));
+        let (program, registry) = random_program(&mut Unstructured::new(&bytes));
+        expected.assert_eq(&format!("{registry}\n{program}"));
     }
 
     #[derive(Clone, Copy)]
@@ -1474,14 +1476,14 @@ mod tests {
         for _ in 0..SAMPLES {
             let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
             let mut u = Unstructured::new(&bytes);
-            let (module, registry) = random_module(&mut u);
+            let (program, registry) = random_program(&mut u);
             let used = INPUT_LEN - u.len();
             consumed += used;
             most_consumed = most_consumed.max(used);
             exhausted += u.is_empty() as usize;
-            for (function, args) in random_entrypoint_args(&module, &mut rng, &registry) {
+            for (function, args) in random_entrypoint_args(&program, &mut rng, &registry) {
                 entrypoints += 1;
-                let result = evaluate_entrypoint(&module, &function, args);
+                let result = evaluate_entrypoint(&program, &function, args);
                 call_depth_limit +=
                     matches!(result, Err(EvalError::CallDepthLimit { .. })) as usize;
                 array_len_limit +=
@@ -1493,18 +1495,18 @@ mod tests {
             }
             let mut live = HashSet::new();
             let mut dynamic = HashSet::new();
-            let bodies: Vec<Block<'_>> = module.functions.iter().map(Block::of).collect();
-            for (function, body) in module.functions.iter().zip(&bodies) {
+            let bodies: Vec<Block<'_>> = program.functions.iter().map(Block::of).collect();
+            for (function, body) in program.functions.iter().zip(&bodies) {
                 mark_live(*body, &mut live);
                 dynamic.extend(function.parameters().iter().map(|param| param.binder.var));
                 mark_dynamic(*body, &mut dynamic);
                 match_stats.count_block(*body);
             }
-            let mut module_counts = BTreeMap::new();
+            let mut program_counts = BTreeMap::new();
             for body in &bodies {
-                count_ops(*body, &live, &dynamic, &mut module_counts);
+                count_ops(*body, &live, &dynamic, &mut program_counts);
             }
-            for (kind, [generated, live, dynamic]) in module_counts {
+            for (kind, [generated, live, dynamic]) in program_counts {
                 let column: &mut [usize; 4] = counts.entry(kind).or_default();
                 column[0] += generated;
                 column[1] += 1;
@@ -1530,8 +1532,8 @@ mod tests {
         let fewest_arms = arm_counts.iter().min().unwrap();
         let most_arms = arm_counts.iter().max().unwrap();
         let mut report = format!(
-            "{} of {INPUT_LEN} input bytes consumed per module on average, at most {most_consumed}\n\
-             {exhausted} of {SAMPLES} modules exhaust the input\n\
+            "{} of {INPUT_LEN} input bytes consumed per program on average, at most {most_consumed}\n\
+             {exhausted} of {SAMPLES} programs exhaust the input\n\
              {call_depth_limit} of {entrypoints} entrypoints hit the call depth limit\n\
              {array_len_limit} of {entrypoints} entrypoints hit the array length limit\n\
              {string_len_limit} of {entrypoints} entrypoints hit the string length limit\n\
@@ -1540,27 +1542,27 @@ mod tests {
              {shared_html} of {html_bindings} Html bindings have more than one reference\n\
              {:.1} arms per match on average, at least {fewest_arms} and at most {most_arms}\n\
              {binding_arms} of {arms} match arms bind names\n\n\
-             {:<20}{:>10}{:>8}{:>8}{:>8}\n",
+             {:<20}{:>12}{:>8}{:>8}{:>8}\n",
             consumed / SAMPLES,
             arms as f64 / arm_counts.len() as f64,
             "op",
-            "ops/module",
-            "% mods",
+            "ops/program",
+            "% progs",
             "% live",
             "% dyn"
         );
-        for (kind, [generated, modules, live, dynamic]) in counts {
-            let per_module = generated as f64 / SAMPLES as f64;
-            let modules = 100.0 * modules as f64 / SAMPLES as f64;
+        for (kind, [generated, programs, live, dynamic]) in counts {
+            let per_program = generated as f64 / SAMPLES as f64;
+            let programs = 100.0 * programs as f64 / SAMPLES as f64;
             let live = 100.0 * live as f64 / generated as f64;
             let dynamic = 100.0 * dynamic as f64 / generated as f64;
             report.push_str(&format!(
-                "{kind:<20}{per_module:>10.1}{modules:>8.1}{live:>8.1}{dynamic:>8.1}\n"
+                "{kind:<20}{per_program:>12.1}{programs:>8.1}{live:>8.1}{dynamic:>8.1}\n"
             ));
         }
         expect![[r#"
-            8386 of 65536 input bytes consumed per module on average, at most 65536
-            3 of 100 modules exhaust the input
+            8386 of 65536 input bytes consumed per program on average, at most 65536
+            3 of 100 programs exhaust the input
             3 of 197 entrypoints hit the call depth limit
             0 of 197 entrypoints hit the array length limit
             0 of 197 entrypoints hit the string length limit
@@ -1570,50 +1572,50 @@ mod tests {
             2.4 arms per match on average, at least 2 and at most 13
             11503 of 29486 match arms bind names
 
-            op                  ops/module  % mods  % live   % dyn
-            Array                    218.8    88.0    96.5    15.8
-            ArrayFromRange             6.0    69.0    98.7     0.0
-            ArrayIsEmpty               2.2    37.0    98.1    37.0
-            ArrayLength               22.1    73.0    98.6    45.6
-            BoolLiteral               62.7    86.0    95.6     0.0
-            BoolNegation               2.4    34.0    99.6    54.1
-            Call                      33.8    47.0    99.8    93.9
-            Enum                     116.2    64.0    95.4    19.8
-            Equals                     2.2    35.0    98.2    70.1
-            FieldAccess                8.3    36.0    98.8    90.0
-            FloatLiteral              62.7    88.0    96.4     0.0
-            FloatToInt                22.3    72.0    98.4    54.2
-            HtmlConcat                72.8    86.0    99.9    55.9
-            HtmlElement               40.2    71.0    99.9    80.1
-            HtmlEscape                39.7    80.0    99.9    57.6
-            HtmlFor                   12.0    76.0    99.7    69.3
-            HtmlText                   1.4    54.0   100.0     0.0
-            IntLiteral                73.3    89.0    97.4     0.0
-            IntToFloat                22.4    61.0    98.1    51.6
-            IntToString               35.8    76.0    99.8    49.6
-            LessThan                   2.0    39.0    99.0    60.1
-            LessThanOrEqual            2.5    41.0    98.4    61.4
-            Match                    123.9    91.0    97.3    80.8
-            NumericAdd                45.3    69.0    98.0    65.3
-            NumericMultiply           43.8    71.0    98.1    66.7
-            NumericNegation           45.2    71.0    98.1    53.7
-            NumericSubtract           44.3    70.0    97.9    66.3
-            OptionIsNone               2.0    43.0    99.0    56.9
-            OptionIsSome               2.3    39.0    99.6    60.5
-            OptionNone               157.6    87.0    96.5     0.0
-            OptionSome                68.0    85.0    95.9    27.8
-            Record                   102.7    66.0    97.3    29.0
-            StringConcat              35.9    65.0    99.7    52.2
-            StringIsEmpty              2.2    41.0    99.1    52.4
-            StringLiteral             65.5    87.0    97.0     0.0
-            Tuple                    906.8    91.0    96.7    50.1
-            TupleIndex               545.6    89.0    96.7    71.3
+            op                   ops/program % progs  % live   % dyn
+            Array                      218.8    88.0    96.5    15.8
+            ArrayFromRange               6.0    69.0    98.7     0.0
+            ArrayIsEmpty                 2.2    37.0    98.1    37.0
+            ArrayLength                 22.1    73.0    98.6    45.6
+            BoolLiteral                 62.7    86.0    95.6     0.0
+            BoolNegation                 2.4    34.0    99.6    54.1
+            Call                        33.8    47.0    99.8    93.9
+            Enum                       116.2    64.0    95.4    19.8
+            Equals                       2.2    35.0    98.2    70.1
+            FieldAccess                  8.3    36.0    98.8    90.0
+            FloatLiteral                62.7    88.0    96.4     0.0
+            FloatToInt                  22.3    72.0    98.4    54.2
+            HtmlConcat                  72.8    86.0    99.9    55.9
+            HtmlElement                 40.2    71.0    99.9    80.1
+            HtmlEscape                  39.7    80.0    99.9    57.6
+            HtmlFor                     12.0    76.0    99.7    69.3
+            HtmlText                     1.4    54.0   100.0     0.0
+            IntLiteral                  73.3    89.0    97.4     0.0
+            IntToFloat                  22.4    61.0    98.1    51.6
+            IntToString                 35.8    76.0    99.8    49.6
+            LessThan                     2.0    39.0    99.0    60.1
+            LessThanOrEqual              2.5    41.0    98.4    61.4
+            Match                      123.9    91.0    97.3    80.8
+            NumericAdd                  45.3    69.0    98.0    65.3
+            NumericMultiply             43.8    71.0    98.1    66.7
+            NumericNegation             45.2    71.0    98.1    53.7
+            NumericSubtract             44.3    70.0    97.9    66.3
+            OptionIsNone                 2.0    43.0    99.0    56.9
+            OptionIsSome                 2.3    39.0    99.6    60.5
+            OptionNone                 157.6    87.0    96.5     0.0
+            OptionSome                  68.0    85.0    95.9    27.8
+            Record                     102.7    66.0    97.3    29.0
+            StringConcat                35.9    65.0    99.7    52.2
+            StringIsEmpty                2.2    41.0    99.1    52.4
+            StringLiteral               65.5    87.0    97.0     0.0
+            Tuple                      906.8    91.0    96.7    50.1
+            TupleIndex                 545.6    89.0    96.7    71.3
         "#]]
         .assert_eq(&report);
     }
 
     #[test]
-    fn should_generate_a_minimal_module_from_no_input() {
+    fn should_generate_a_minimal_program_from_no_input() {
         check(
             0,
             0,
@@ -1628,7 +1630,7 @@ mod tests {
     }
 
     #[test]
-    fn should_generate_a_module_from_seed_16() {
+    fn should_generate_a_program_from_seed_16() {
         check(
             16,
             128,
@@ -1698,7 +1700,7 @@ mod tests {
     }
 
     #[test]
-    fn should_generate_a_module_from_seed_24() {
+    fn should_generate_a_program_from_seed_24() {
         check(
             24,
             128,

@@ -2,7 +2,7 @@ use crate::project::Project;
 use anyhow::Result;
 use hop_core::{
     AssetPathRewriter, AssetReference, Config, Diagnostic, DiagnosticSeverity, DocumentAnnotator,
-    Program, RootRelativeFilePath,
+    RootRelativeFilePath, Session,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
@@ -45,24 +45,24 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
             .ok_or_else(|| missing_config_value("compile.output_path"))?,
     );
 
-    // Load program
-    let mut program = Program::new();
+    // Load session
+    let mut session = Session::new();
     for document_id in project.documents()? {
         let document = project.load_document(&document_id)?;
         if document_id.extension() == Some("css") {
-            program.update_css_document(&document_id, document);
+            session.update_css_document(&document_id, document);
         } else {
-            program.update_hop_document(&document_id, document);
+            session.update_hop_document(&document_id, document);
         }
     }
 
     // Print compile errors
     {
-        let mut diagnostics = program.diagnostics();
+        let mut diagnostics = session.diagnostics();
 
         // An asset referenced via `asset!()` (in hop) or `--asset()` (in CSS)
         // that does not exist on disk.
-        for refs in program.asset_references().values() {
+        for refs in session.asset_references().values() {
             diagnostics.extend(
                 refs.iter()
                     .filter(|asset_ref| !project.root().resolve(asset_ref.path()).is_file())
@@ -87,7 +87,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     }
 
     // Collect all referenced assets and compute their hashed output names.
-    let asset_paths: BTreeSet<RootRelativeFilePath> = program
+    let asset_paths: BTreeSet<RootRelativeFilePath> = session
         .asset_references()
         .values()
         .flatten()
@@ -116,7 +116,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     //
     // TODO: Make compile_css_document bundle CSS
     if let Some(css_input) = config.css_input_path() {
-        let compiled_css = program
+        let compiled_css = session
             .compile_css_document(css_input, asset_path_rewriter.clone())
             .ok_or_else(|| {
                 anyhow::anyhow!(
@@ -125,7 +125,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
                 )
             })?;
         let tailwind_runner = TailwindRunner::new();
-        let sources = program.sources();
+        let sources = session.sources();
         css_output = tailwind_runner.compile_once(&compiled_css, &sources)?;
     }
     // Hash the rewritten CSS output and compute a href that mirrors how other
@@ -155,7 +155,7 @@ pub fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResu
     };
 
     // Compile to IR and inject link to the final CSS file (and script to the JS bundle).
-    let generated_code = program.transpile(
+    let generated_code = session.transpile(
         target,
         &css_link_href,
         js_bundle.as_ref().map(|(_, _, src)| src.as_str()),

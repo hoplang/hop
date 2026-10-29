@@ -1,4 +1,4 @@
-use super::Program;
+use super::Session;
 use crate::document::{Document, DocumentPosition};
 use crate::extract_position::extract_position;
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -24,12 +24,12 @@ pub(super) fn extract_markers_from_archive(archive: &Archive) -> (Archive, Vec<D
     (builder.build(), markers)
 }
 
-pub(super) fn program_from_archive(archive: &Archive) -> Program {
-    let mut program = Program::new();
+pub(super) fn session_from_archive(archive: &Archive) -> Session {
+    let mut session = Session::new();
     for file in archive.iter() {
         let document_id = RootContainedFilePath::new(&file.name).unwrap();
         let document = Document::new(document_id.clone(), file.content.clone());
-        program.update_hop_document(&document_id, document);
+        session.update_hop_document(&document_id, document);
     }
-    program
+    session
 }

@@ -10,9 +10,9 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::value_id::ValueId;
-use crate::ir::writer_module::{
-    WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterModule,
-    WriterPageDeclaration, WriterStmt,
+use crate::ir::writer_program::{
+    WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration,
+    WriterPageDeclaration, WriterProgram, WriterStmt,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -20,7 +20,7 @@ use crate::symbols::type_name::TypeName;
 /// Names every variable in the generated code after the name that binds it
 /// in the IR rather than the source name.
 ///
-/// Names are unique across the module, so no hop identifier can shadow
+/// Names are unique across the program, so no hop identifier can shadow
 /// another, and no name can collide with a TypeScript reserved word or with
 /// the `output` buffer.
 fn name_ident(name: ValueId) -> String {
@@ -49,7 +49,7 @@ pub struct TsTranspiler {
     needs_float_to_int: bool,
     /// Tracks whether Html type is used during transpilation
     needs_html: bool,
-    /// Registry of the module currently being transpiled
+    /// Registry of the program currently being transpiled
     registry: TypeRegistry,
     /// The type of every name bound so far. A match binds its subject to
     /// a fresh constant of the subject's declared type, so a nested match
@@ -381,7 +381,7 @@ impl Transpiler for TsTranspiler {
             .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
     }
 
-    fn transpile_module(&mut self, module: &WriterModule, registry: &TypeRegistry) -> String {
+    fn transpile_program(&mut self, program: &WriterProgram, registry: &TypeRegistry) -> String {
         self.needs_option = false;
         self.needs_escape_html = false;
         self.needs_float_to_int = false;
@@ -391,7 +391,7 @@ impl Transpiler for TsTranspiler {
         self.subjects = 0;
 
         let arena = &Arena::new();
-        let pages = &module.pages;
+        let pages = &program.pages;
         let mut result = arena.nil();
 
         for (enum_name, variants) in registry.enums() {
@@ -578,7 +578,7 @@ impl Transpiler for TsTranspiler {
             }
         }
 
-        for function in &module.functions {
+        for function in &program.functions {
             result = result
                 .append(self.transpile_function_def(arena, function))
                 .append(arena.hardline())
@@ -1527,28 +1527,28 @@ mod tests {
     use crate::document::Document;
     use crate::ir::flat_to_writer;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
-    use crate::program::Program;
     use crate::root_contained_file_path::RootContainedFilePath;
+    use crate::session::Session;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check(source: &str, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();
-        let mut program = Program::new();
-        program.update_hop_document(
+        let mut session = Session::new();
+        session.update_hop_document(
             &document_id,
             Document::new(document_id.clone(), source.to_string()),
         );
-        let diagnostics = program.diagnostics();
+        let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let (flat, pages) = orchestrate_flat(
-            program.typed_modules(),
+            session.typed_modules(),
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        let module = flat_to_writer(flat, program.type_registry(), &pages, None);
-        let output = TsTranspiler::new().transpile_module(&module, program.type_registry());
+        let writer = flat_to_writer(flat, session.type_registry(), &pages, None);
+        let output = TsTranspiler::new().transpile_program(&writer, session.type_registry());
         expected.assert_eq(&output);
     }
 

@@ -14,9 +14,9 @@ use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 use super::ir_parameter::IrParameter;
 
-/// A Flat module.
+/// A Flat program.
 #[derive(Debug, Clone)]
-pub struct FlatModule {
+pub struct FlatProgram {
     pub functions: Vec<FlatFunctionDeclaration>,
     pub value_ids: ValueIdCounter,
 }
@@ -34,8 +34,8 @@ pub enum FlatFunctionDeclaration {
 #[derive(Debug, Clone)]
 pub struct FlatDataFunction {
     pub function: IrFunction,
-    /// Whether the function is called from outside the module, so it is kept
-    /// even when nothing in the module calls it.
+    /// Whether the function is called from outside the program, so it is kept
+    /// even when nothing in the program calls it.
     pub entrypoint: bool,
     pub parameters: Vec<IrParameter<DataType>>,
     pub return_type: DataType,
@@ -46,8 +46,8 @@ pub struct FlatDataFunction {
 #[derive(Debug, Clone)]
 pub struct FlatHtmlFunction {
     pub function: IrFunction,
-    /// Whether the function is called from outside the module, so it is kept
-    /// even when nothing in the module calls it.
+    /// Whether the function is called from outside the program, so it is kept
+    /// even when nothing in the program calls it.
     pub entrypoint: bool,
     pub parameters: Vec<IrParameter<Type>>,
     pub body: FlatHtmlBlock,
@@ -340,7 +340,7 @@ impl fmt::Display for FlatFunctionDeclaration {
     }
 }
 
-impl fmt::Display for FlatModule {
+impl fmt::Display for FlatProgram {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for function in &self.functions {
             write!(f, "{function}")?;

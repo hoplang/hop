@@ -1,12 +1,12 @@
-use crate::ir::flat_module::FlatModule;
+use crate::ir::flat_program::FlatProgram;
 use crate::ir::flat_transform;
 
-/// Optimize the module: inline every call that can be, then in every body
+/// Optimize the program: inline every call that can be, then in every body
 /// evaluate what is constant and drop the bindings nothing reads.
-pub fn optimize_flat(module: FlatModule) -> FlatModule {
-    let module = flat_transform::inline_function_calls(module);
-    let module = flat_transform::perform_partial_evaluation(module);
-    flat_transform::eliminate_dead_bindings(module)
+pub fn optimize_flat(program: FlatProgram) -> FlatProgram {
+    let program = flat_transform::inline_function_calls(program);
+    let program = flat_transform::perform_partial_evaluation(program);
+    flat_transform::eliminate_dead_bindings(program)
 }
 
 #[cfg(test)]
@@ -14,8 +14,8 @@ mod tests {
     use super::*;
     use crate::hop::typing::Ty;
     use crate::ir::flat_lint;
-    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
-    use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
+    use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
+    use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
@@ -23,17 +23,17 @@ mod tests {
     use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
-    fn fuzz_random_modules_evaluate_identically_after_optimization() {
+    fn fuzz_random_programs_evaluate_identically_after_optimization() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_module(u);
+            let (program, registry) = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&module, &mut rng, &registry);
+            let entrypoint_args = random_entrypoint_args(&program, &mut rng, &registry);
 
-            let before_module = module.clone();
+            let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args
                 .iter()
                 .map(|(function, args)| {
-                    match evaluate_entrypoint(&module, function, args.clone())
+                    match evaluate_entrypoint(&program, function, args.clone())
                         .map(Value::into_markup)
                     {
                         Ok(output) => Some(output),
@@ -48,36 +48,36 @@ mod tests {
                 })
                 .collect();
 
-            let module = optimize_flat(module);
-            flat_lint::assert_well_typed(&module, &registry);
+            let program = optimize_flat(program);
+            flat_lint::assert_well_typed(&program, &registry);
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit a limit has no output to preserve.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_entrypoint(&module, function, args.clone())
+                let after = evaluate_entrypoint(&program, function, args.clone())
                     .unwrap()
                     .into_markup();
                 assert_eq!(
                     before, &after,
-                    "entrypoint {function}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    "entrypoint {function}\n-- before --\n{before_program}\n-- after --\n{program}"
                 );
             }
             Ok(())
         });
     }
 
-    fn check(module: FlatModule, expected: Expect) {
-        let before = module.to_string();
-        let after = optimize_flat(module).to_string();
+    fn check(program: FlatProgram, expected: Expect) {
+        let before = program.to_string();
+        let after = optimize_flat(program).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
     }
 
     #[test]
     fn should_leave_only_the_computations_an_entrypoint_renders() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Items", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     let _unused = t.str("value");
                     t.element(
@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn should_select_an_arm_and_drop_what_the_match_read() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     let flag = t.bool(true);
                     t.html_concat([t.match_(flag, |m| {
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn should_inline_a_call_and_fold_what_its_argument_makes_constant() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("double", [("x", Ty::Int)], Ty::Int, |t| {
                     t.add(t.param("x"), t.param("x"))
                 })

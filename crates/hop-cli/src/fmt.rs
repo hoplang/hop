@@ -1,6 +1,6 @@
 use crate::project::Project;
 use anyhow::Result;
-use hop_core::{DocumentAnnotator, FormatError, Program};
+use hop_core::{DocumentAnnotator, FormatError, Session};
 
 #[derive(Debug)]
 pub struct FmtResult {
@@ -24,10 +24,10 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
         }
     };
 
-    let mut program = Program::new();
+    let mut session = Session::new();
 
     for document_id in &document_ids {
-        program.update_hop_document(document_id, project.load_document(document_id)?);
+        session.update_hop_document(document_id, project.load_document(document_id)?);
     }
 
     // Format every module before writing any, so that a parse error in one
@@ -35,7 +35,7 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
     let mut formatted = Vec::new();
     let mut unparsable = Vec::new();
     for document_id in &document_ids {
-        match program.format_hop_document(document_id) {
+        match session.format_hop_document(document_id) {
             Ok(source) => formatted.push((document_id, source)),
             Err(FormatError::HasParseErrors(_)) => unparsable.push(document_id),
             Err(err) => return Err(err.into()),
@@ -50,7 +50,7 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
         annotator.annotate(
             unparsable
                 .iter()
-                .flat_map(|document_id| program.document_diagnostics(document_id)),
+                .flat_map(|document_id| session.document_diagnostics(document_id)),
         );
         anyhow::bail!("Formatting failed:\n{}", annotator.render());
     }

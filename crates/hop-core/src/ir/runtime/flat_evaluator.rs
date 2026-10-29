@@ -4,9 +4,9 @@ use std::rc::Rc;
 use rpds::HashTrieMap;
 
 use crate::ir::document_shell::DocumentShell;
-use crate::ir::flat_module::{
+use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBlock, FlatHtmlOp,
-    FlatModule,
+    FlatProgram,
 };
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
@@ -42,7 +42,7 @@ const STRING_LENGTH_LIMIT_ERROR: EvalError = EvalError::StringLengthLimit {
 /// the arguments named by the page's parameters. With a shell, the page
 /// renders as a whole document, the shell around its head and its body.
 pub fn evaluate_page(
-    module: &FlatModule,
+    program: &FlatProgram,
     pages: &[IrPage],
     page_name: &TypeName,
     args: HashMap<AttributeName, Value>,
@@ -56,10 +56,10 @@ pub fn evaluate_page(
         })?;
 
     let head = match &page.head {
-        Some(head) => evaluate_entrypoint(module, head, args.clone())?.unwrap_html(),
+        Some(head) => evaluate_entrypoint(program, head, args.clone())?.unwrap_html(),
         None => Html::empty(),
     };
-    let body = evaluate_entrypoint(module, &page.body, args)?.unwrap_html();
+    let body = evaluate_entrypoint(program, &page.body, args)?.unwrap_html();
 
     let mut html = String::new();
     match shell {
@@ -78,14 +78,14 @@ pub fn evaluate_page(
     Ok(html)
 }
 
-/// Evaluate a function called from outside the module, on the arguments
+/// Evaluate a function called from outside the program, on the arguments
 /// named by its parameters.
 pub fn evaluate_entrypoint(
-    module: &FlatModule,
+    program: &FlatProgram,
     function: &IrFunction,
     mut args: HashMap<AttributeName, Value>,
 ) -> Result<Value, EvalError> {
-    let decl = module
+    let decl = program
         .functions
         .iter()
         .find(|decl| decl.function().id == function.id)
@@ -100,7 +100,7 @@ pub fn evaluate_entrypoint(
             })?;
         values.push(value);
     }
-    evaluate_function(&module.functions, function, values, 0, &mut 0)
+    evaluate_function(&program.functions, function, values, 0, &mut 0)
 }
 
 /// Evaluate a function on its arguments, one for each parameter in the
@@ -430,20 +430,20 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
 mod tests {
     use super::*;
     use crate::hop::typing::{Ty, TypeRegistry, TypeRegistryBuilder};
-    use crate::ir::flat_module::FlatModule;
-    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
-    use crate::ir::flat_module_generator::{random_entrypoint_args, random_module};
+    use crate::ir::flat_program::FlatProgram;
+    use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
+    use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::runtime::value_builder::ValueBuilder;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
-    fn fuzz_random_modules_evaluate_without_panicking() {
+    fn fuzz_random_programs_evaluate_without_panicking() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_module(u);
+            let (program, registry) = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            for (function, args) in random_entrypoint_args(&module, &mut rng, &registry) {
-                match evaluate_entrypoint(&module, &function, args) {
+            for (function, args) in random_entrypoint_args(&program, &mut rng, &registry) {
+                match evaluate_entrypoint(&program, &function, args) {
                     Ok(_)
                     | Err(
                         EvalError::CallDepthLimit { .. }
@@ -459,26 +459,26 @@ mod tests {
     }
 
     fn check(
-        (module, types): (FlatModule, TypeRegistry),
+        (program, types): (FlatProgram, TypeRegistry),
         args: impl FnOnce(&ValueBuilder<'_>) -> Vec<(&'static str, Value)>,
         expected: Expect,
     ) {
-        let before = module.to_string();
+        let before = program.to_string();
         let args: HashMap<AttributeName, Value> = args(&ValueBuilder::new(&types))
             .into_iter()
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
-        let entrypoint = module
+        let entrypoint = program
             .functions
             .iter()
             .find(|decl| match decl {
                 FlatFunctionDeclaration::Data(decl) => decl.entrypoint,
                 FlatFunctionDeclaration::Html(decl) => decl.entrypoint,
             })
-            .expect("the module has an entrypoint function")
+            .expect("the program has an entrypoint function")
             .function()
             .clone();
-        let after = evaluate_entrypoint(&module, &entrypoint, args)
+        let after = evaluate_entrypoint(&program, &entrypoint, args)
             .expect("Evaluation should succeed")
             .into_markup();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}\n"));
@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn should_bind_loop_names_afresh_on_each_iteration() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Items", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.element(
                         "ul",
@@ -520,7 +520,7 @@ mod tests {
     #[test]
     fn should_skip_the_right_operand_of_a_decided_and() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("diverge", [], Ty::Bool, |t| t.call("diverge", []))
                 .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                     let and = t.match_(t.param("flag"), |m| {
@@ -580,7 +580,7 @@ mod tests {
             )
             .build();
         check(
-            FlatModuleBuilder::with_registry(types)
+            FlatProgramBuilder::with_registry(types)
                 .entrypoint("Test", [("shape", Ty::named("Shape"))], Ty::Html, |t| {
                     t.escape(t.match_(t.param("shape"), |m| {
                         m.arm(Pat::variant("Dot", []), |t, _| t.str("dot"));
@@ -626,7 +626,7 @@ mod tests {
             .record("Holder", [("nothing", Ty::tuple([]))])
             .build();
         check(
-            FlatModuleBuilder::with_registry(types)
+            FlatProgramBuilder::with_registry(types)
                 .entrypoint("Test", [], Ty::Html, |t| {
                     let held = t.record(Ty::named("Holder"), [("nothing", t.tuple(vec![]))]);
                     t.escape(
@@ -657,7 +657,7 @@ mod tests {
     #[test]
     fn should_read_an_element_back_out_of_a_tuple() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     let pair = t.tuple([t.int(1), t.str("two")]);
                     t.escape(t.tuple_index(pair, 1))
@@ -684,7 +684,7 @@ mod tests {
     #[test]
     fn should_read_an_element_back_out_of_a_one_tuple() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     let only = t.tuple([t.str("alone")]);
                     t.escape(t.tuple_index(only, 0))
@@ -710,7 +710,7 @@ mod tests {
     #[test]
     fn should_index_a_nested_tuple() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     let inner = t.tuple([t.str("deep"), t.int(2)]);
                     let outer = t.tuple([t.int(1), inner]);
@@ -741,7 +741,7 @@ mod tests {
     #[test]
     fn should_wrap_int_addition_at_i32_boundary() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     let sum = t.add(t.int(2147483647), t.int(1));
                     t.escape(t.int_to_string(sum))
@@ -768,7 +768,7 @@ mod tests {
     #[test]
     fn should_evaluate_an_element() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.element("div", [], t.text("Hello World"))
                 })
@@ -791,7 +791,7 @@ mod tests {
     #[test]
     fn should_escape_attribute_values_and_settle_boolean_attributes() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint(
                     "Test",
                     [("cls", Ty::String), ("flag", Ty::Bool)],
@@ -828,7 +828,7 @@ mod tests {
     #[test]
     fn should_escape_html_in_expressions() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [("content", Ty::String)], Ty::Html, |t| {
                     t.escape(t.param("content"))
                 })
@@ -850,7 +850,7 @@ mod tests {
     #[test]
     fn should_render_if_body_when_condition_is_true() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [("show", Ty::Bool)], Ty::Html, |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| t.element("div", [], t.text("Visible")));
@@ -885,7 +885,7 @@ mod tests {
     #[test]
     fn should_skip_if_body_when_condition_is_false() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [("show", Ty::Bool)], Ty::Html, |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| t.element("div", [], t.text("Hidden")));
@@ -920,7 +920,7 @@ mod tests {
     #[test]
     fn should_iterate_over_array_in_for_loop() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, item| {
                         t.html_concat([t.element("li", vec![], t.escape(item)), t.text("\n")])
@@ -958,7 +958,7 @@ mod tests {
     #[test]
     fn should_evaluate_a_recursive_function() {
         check(
-            FlatModuleBuilder::new()
+            FlatProgramBuilder::new()
                 .function("Sum", [("n", Ty::Int)], Ty::Int, |t| {
                     t.match_(t.lte(t.param("n"), t.int(0)), |m| {
                         m.arm(Pat::True, |t, _| t.int(0));
@@ -1008,7 +1008,7 @@ mod tests {
 
     #[test]
     fn should_error_when_a_function_never_stops_calling_itself() {
-        let module = FlatModuleBuilder::new()
+        let program = FlatProgramBuilder::new()
             .function("Loop", [("n", Ty::Int)], Ty::Int, |t| {
                 t.call("Loop", [t.add(t.param("n"), t.int(1))])
             })
@@ -1016,7 +1016,7 @@ mod tests {
                 t.escape(t.int_to_string(t.call("Loop", [t.int(0)])))
             })
             .build();
-        let result = evaluate_entrypoint(&module, module.functions[1].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Function 'Loop@f0' exceeded the call depth limit of 12"
@@ -1037,7 +1037,7 @@ mod tests {
         // Each call holds eight of the tree it was called with, so the tree at
         // the call depth limit has 8^11 leaves, too many to hold unless the
         // copies are shared.
-        let module = FlatModuleBuilder::with_registry(types)
+        let program = FlatProgramBuilder::with_registry(types)
             .function("Grow", [("tree", Ty::named("Tree"))], Ty::Int, |t| {
                 let tree = t.param("tree");
                 let children = t.array([tree; 8]);
@@ -1050,7 +1050,7 @@ mod tests {
                 t.escape(t.int_to_string(t.call("Grow", [leaf])))
             })
             .build();
-        let result = evaluate_entrypoint(&module, module.functions[1].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Function 'Grow@f0' exceeded the call depth limit of 12"
@@ -1059,13 +1059,13 @@ mod tests {
 
     #[test]
     fn should_error_when_a_range_is_too_long() {
-        let module = FlatModuleBuilder::new()
+        let program = FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| {
                 let all = t.array_from_range(t.int(i32::MIN), t.int(i32::MAX));
                 t.escape(t.int_to_string(t.array_length(all)))
             })
             .build();
-        let result = evaluate_entrypoint(&module, module.functions[0].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An array exceeded the array length limit of 10000000"
@@ -1074,7 +1074,7 @@ mod tests {
 
     #[test]
     fn should_error_when_a_string_is_too_long() {
-        let module = FlatModuleBuilder::new()
+        let program = FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| {
                 let mut string = t.str("x");
                 for _ in 0..24 {
@@ -1083,7 +1083,7 @@ mod tests {
                 t.escape(string)
             })
             .build();
-        let result = evaluate_entrypoint(&module, module.functions[0].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "A string exceeded the string length limit of 10000000 bytes"
@@ -1092,7 +1092,7 @@ mod tests {
 
     #[test]
     fn should_error_when_html_is_too_large() {
-        let module = FlatModuleBuilder::new()
+        let program = FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| {
                 let mut html = t.text("x");
                 for _ in 0..24 {
@@ -1101,7 +1101,7 @@ mod tests {
                 html
             })
             .build();
-        let result = evaluate_entrypoint(&module, module.functions[0].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An Html value exceeded the Html size limit of 10000000"
@@ -1110,7 +1110,7 @@ mod tests {
 
     #[test]
     fn should_error_when_a_function_calls_itself_in_each_element_of_a_loop() {
-        let module = FlatModuleBuilder::new()
+        let program = FlatProgramBuilder::new()
             .function("Tree", [("n", Ty::Int)], Ty::Html, |t| {
                 let n = t.param("n");
                 let deeper = t.lt(n, t.int(10));
@@ -1124,7 +1124,7 @@ mod tests {
             })
             .entrypoint("Test", [], Ty::Html, |t| t.call("Tree", [t.int(0)]))
             .build();
-        let result = evaluate_entrypoint(&module, module.functions[1].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An evaluation exceeded the op count limit of 5000"
@@ -1133,12 +1133,12 @@ mod tests {
 
     #[test]
     fn should_error_when_required_param_not_provided() {
-        let module = FlatModuleBuilder::new()
+        let program = FlatProgramBuilder::new()
             .entrypoint("Test", [("name", Ty::String)], Ty::Html, |t| {
                 t.escape(t.param("name"))
             })
             .build();
-        let result = evaluate_entrypoint(&module, module.functions[0].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));

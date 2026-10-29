@@ -7,9 +7,9 @@ use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_switch::IrSwitch;
 use crate::ir::value_id::ValueId;
-use crate::ir::writer_module::{
-    WriterBinding, WriterBlock, WriterFunctionDeclaration, WriterModule, WriterOp,
-    WriterPageDeclaration, WriterStmt,
+use crate::ir::writer_program::{
+    WriterBinding, WriterBlock, WriterFunctionDeclaration, WriterOp, WriterPageDeclaration,
+    WriterProgram, WriterStmt,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -24,8 +24,8 @@ use super::Doc;
 /// the type of the let that holds it, and is passed along where the value
 /// alone does not determine it.
 pub trait Transpiler {
-    fn transpile_module(&mut self, module: &WriterModule, registry: &TypeRegistry) -> String;
-    /// The registry of the module currently being transpiled. Used to
+    fn transpile_program(&mut self, program: &WriterProgram, registry: &TypeRegistry) -> String;
+    /// The registry of the program currently being transpiled. Used to
     /// resolve named types during type transpilation.
     fn registry(&self) -> &TypeRegistry;
     /// The type of a name in scope, as the parameter, binder or let that

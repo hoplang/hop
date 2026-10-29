@@ -6,9 +6,9 @@ use crate::hop::typing::{
 };
 use crate::html::write_escaped_html;
 use crate::ir::document_shell::DocumentShell;
-use crate::ir::flat_module::{
+use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBinding,
-    FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
+    FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binder::IrBinder;
@@ -20,13 +20,13 @@ use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
-use crate::ir::writer_module::{
-    WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterModule,
-    WriterOp, WriterPageDeclaration, WriterStmt,
+use crate::ir::writer_program::{
+    WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterOp,
+    WriterPageDeclaration, WriterProgram, WriterStmt,
 };
 use crate::symbols::type_name::TypeName;
 
-/// Lower a Flat module to the Writer.
+/// Lower a Flat program to the Writer.
 ///
 /// Values stay lets, in their order. Html is written where it is read, as a
 /// part of a concat, the children of an element, the result of a block or
@@ -48,30 +48,30 @@ use crate::symbols::type_name::TypeName;
 /// Writer switch on the part of the subject it tests, a record or tuple the
 /// tree takes apart becomes field accesses and tuple indexes, and a leaf
 /// becomes the arm it selects, reading the parts its pattern binds. A record
-/// or tuple the module constructs is taken apart by reading the operands of
+/// or tuple the program constructs is taken apart by reading the operands of
 /// its constructor, which is not bound at all when only matches read it and
 /// none of their arms binds it as a whole.
 ///
 /// An arm that several leaves select is lowered once for each of them.
-/// Every copy after the first binds fresh names, so that the module binds
+/// Every copy after the first binds fresh names, so that the program binds
 /// every name once.
 ///
-/// The Flat IR has no pages, so the pages come beside the module, each
+/// The Flat IR has no pages, so the pages come beside the program, each
 /// pointing at the entrypoint functions that render it. Those functions are
 /// only ever called by the page, so they are not lowered as functions but
 /// written into the page. With a shell, a page writes a whole document, the
 /// shell around its head and its body. Without one, a page writes its head
 /// and its body alone.
 pub fn flat_to_writer(
-    module: FlatModule,
+    program: FlatProgram,
     registry: &TypeRegistry,
     pages: &[IrPage],
     shell: Option<&DocumentShell>,
-) -> WriterModule {
-    let FlatModule {
+) -> WriterProgram {
+    let FlatProgram {
         functions,
         value_ids,
-    } = module;
+    } = program;
     let mut lowerer = Lowerer {
         registry,
         value_ids,
@@ -146,7 +146,7 @@ pub fn flat_to_writer(
             lowerer.lower_page(page.name.clone(), head, body, shell)
         })
         .collect();
-    WriterModule {
+    WriterProgram {
         pages,
         functions: functions
             .into_iter()
@@ -191,10 +191,10 @@ enum Reader {
 struct Lowerer<'a> {
     registry: &'a TypeRegistry,
     value_ids: ValueIdCounter,
-    /// Every value binding of the module, by name and by the fresh name of
+    /// Every value binding of the program, by name and by the fresh name of
     /// each copy of it. Names are unique, so one map serves every block.
     bindings: HashMap<ValueId, &'a FlatDataBinding>,
-    /// Every Html binding of the module, by name, to write it where it is
+    /// Every Html binding of the program, by name, to write it where it is
     /// read.
     html: HashMap<ValueId, &'a FlatHtmlBinding>,
     /// The Html parameters of every function. Html is never part of another
@@ -579,7 +579,7 @@ impl<'a> Lowerer<'a> {
 
     /// Bind the fields of a record that a switch of the tree takes apart
     /// and that are in `used`, with the lets that read them appended to
-    /// `lets`. A record the module constructs is taken apart through the
+    /// `lets`. A record the program constructs is taken apart through the
     /// operands of its constructor.
     fn take_apart_record(
         &mut self,
@@ -624,7 +624,7 @@ impl<'a> Lowerer<'a> {
 
     /// Bind the elements of a tuple that a switch of the tree takes apart
     /// and that are in `used`, with the lets that read them appended to
-    /// `lets`. A tuple the module constructs is taken apart through the
+    /// `lets`. A tuple the program constructs is taken apart through the
     /// operands of its constructor.
     fn take_apart_tuple(
         &mut self,
@@ -1117,40 +1117,40 @@ mod tests {
     use super::*;
     use crate::document::Document;
     use crate::hop::typing::Ty;
-    use crate::ir::flat_module_builder::{FlatModuleBuilder, Pat};
-    use crate::ir::flat_module_generator::random_module;
+    use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
+    use crate::ir::flat_program_generator::random_program;
     use crate::ir::ir_parameter::IrParameter;
     use crate::ir::optimize_flat;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
-    use crate::program::Program;
     use crate::root_contained_file_path::RootContainedFilePath;
+    use crate::session::Session;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    /// Prints the optimized module as Flat and as the Writer IR that Flat
+    /// Prints the optimized program as Flat and as the Writer IR that Flat
     /// lowers to.
     fn check(source: &str, shell: Option<&DocumentShell>, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();
-        let mut program = Program::new();
-        program.update_hop_document(
+        let mut session = Session::new();
+        session.update_hop_document(
             &document_id,
             Document::new(document_id.clone(), source.to_string()),
         );
-        let diagnostics = program.diagnostics();
+        let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let (flat, pages) =
-            orchestrate_flat(program.typed_modules(), OrchestrateOptions::default());
+            orchestrate_flat(session.typed_modules(), OrchestrateOptions::default());
         let flat = optimize_flat(flat);
         let before = flat.to_string();
-        let writer = flat_to_writer(flat, program.type_registry(), &pages, shell).to_string();
+        let writer = flat_to_writer(flat, session.type_registry(), &pages, shell).to_string();
         expected.assert_eq(&format!("-- flat --\n{before}\n-- writer --\n{writer}"));
     }
 
-    /// Prints the optimized module as Flat and as the Writer IR that Flat
+    /// Prints the optimized program as Flat and as the Writer IR that Flat
     /// lowers to, with a page for each entrypoint.
-    fn check_module((module, registry): (FlatModule, TypeRegistry), expected: Expect) {
-        let pages = IrPage::for_entrypoints(&module);
-        let flat = optimize_flat(module);
+    fn check_program((program, registry): (FlatProgram, TypeRegistry), expected: Expect) {
+        let pages = IrPage::for_entrypoints(&program);
+        let flat = optimize_flat(program);
         let before = flat.to_string();
         let writer = flat_to_writer(flat, &registry, &pages, None).to_string();
         expected.assert_eq(&format!("-- flat --\n{before}\n-- writer --\n{writer}"));
@@ -1446,13 +1446,13 @@ mod tests {
     }
 
     /// Each entrypoint is lowered as a page. The lowering also finds no
-    /// Html held in a value, whether the module is optimized or not.
+    /// Html held in a value, whether the program is optimized or not.
     #[test]
-    fn fuzz_random_modules_lower_to_writer_binding_every_name_once() {
+    fn fuzz_random_programs_lower_to_writer_binding_every_name_once() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_module(u);
-            let pages = IrPage::for_entrypoints(&module);
-            for flat in [module.clone(), optimize_flat(module)] {
+            let (program, registry) = random_program(u);
+            let pages = IrPage::for_entrypoints(&program);
+            for flat in [program.clone(), optimize_flat(program)] {
                 let writer = flat_to_writer(flat, &registry, &pages, None);
                 assert_eq!(name_bound_twice(&writer), None, "bound twice in\n{writer}");
             }
@@ -1460,14 +1460,14 @@ mod tests {
         });
     }
 
-    /// A name the module binds more than once, if there is one.
-    fn name_bound_twice(module: &WriterModule) -> Option<ValueId> {
+    /// A name the program binds more than once, if there is one.
+    fn name_bound_twice(program: &WriterProgram) -> Option<ValueId> {
         let mut names = BoundNames::default();
-        for page in &module.pages {
+        for page in &program.pages {
             names.parameters(&page.parameters);
             names.stmts(&page.body);
         }
-        for function in &module.functions {
+        for function in &program.functions {
             names.parameters(&function.parameters);
             match &function.body {
                 WriterFunctionBody::Writes(stmts) => names.stmts(stmts),
@@ -1926,8 +1926,8 @@ mod tests {
 
     #[test]
     fn buffers_html_read_in_two_arms() {
-        check_module(
-            FlatModuleBuilder::new()
+        check_program(
+            FlatProgramBuilder::new()
                 .entrypoint(
                     "Greeting",
                     [("name", Ty::option(Ty::String)), ("formal", Ty::Bool)],
@@ -2006,8 +2006,8 @@ mod tests {
 
     #[test]
     fn keeps_a_value_outside_the_loop_that_writes_it_and_drops_html_nothing_reads() {
-        check_module(
-            FlatModuleBuilder::new()
+        check_program(
+            FlatProgramBuilder::new()
                 .entrypoint(
                     "Items",
                     [("items", Ty::array(Ty::String)), ("n", Ty::Int)],
@@ -2059,8 +2059,8 @@ mod tests {
 
     #[test]
     fn buffers_html_read_twice_or_from_a_loop_it_is_bound_outside_of() {
-        check_module(
-            FlatModuleBuilder::new()
+        check_program(
+            FlatProgramBuilder::new()
                 .entrypoint(
                     "Marks",
                     [("items", Ty::array(Ty::String)), ("name", Ty::String)],
@@ -2116,8 +2116,8 @@ mod tests {
 
     #[test]
     fn writes_the_children_of_inlined_calls_in_place() {
-        check_module(
-            FlatModuleBuilder::new()
+        check_program(
+            FlatProgramBuilder::new()
                 .function("Badge", [("label", Ty::String)], Ty::Html, |t| {
                     t.element("span", [], t.escape(t.param("label")))
                 })

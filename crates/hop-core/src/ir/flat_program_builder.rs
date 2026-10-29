@@ -5,9 +5,9 @@ use crate::hop::typing::{
 };
 use crate::html::HtmlElementKind;
 use crate::ir::flat_lint;
-use crate::ir::flat_module::{
+use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatModule,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binder::IrBinder;
@@ -24,7 +24,7 @@ use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use std::cell::{Ref, RefCell};
 
-pub struct FlatModuleBuilder {
+pub struct FlatProgramBuilder {
     registry: TypeRegistry,
     function_ids: FunctionIdCounter,
     value_ids: RefCell<ValueIdCounter>,
@@ -33,19 +33,19 @@ pub struct FlatModuleBuilder {
     functions: Vec<DeclaredFunction>,
 }
 
-impl Default for FlatModuleBuilder {
+impl Default for FlatProgramBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl FlatModuleBuilder {
+impl FlatProgramBuilder {
     pub fn new() -> Self {
         Self::with_registry(TypeRegistry::default())
     }
 
     pub fn with_registry(registry: TypeRegistry) -> Self {
-        FlatModuleBuilder {
+        FlatProgramBuilder {
             registry,
             function_ids: FunctionIdCounter::new(),
             value_ids: RefCell::new(ValueIdCounter::new()),
@@ -146,11 +146,11 @@ impl FlatModuleBuilder {
         name
     }
 
-    pub fn build(self) -> FlatModule {
+    pub fn build(self) -> FlatProgram {
         self.build_with_registry().0
     }
 
-    pub fn build_with_registry(self) -> (FlatModule, TypeRegistry) {
+    pub fn build_with_registry(self) -> (FlatProgram, TypeRegistry) {
         let registry = self.registry;
         let functions = self
             .functions
@@ -179,12 +179,12 @@ impl FlatModuleBuilder {
                 }),
             })
             .collect();
-        let module = FlatModule {
+        let program = FlatProgram {
             functions,
             value_ids: self.value_ids.into_inner(),
         };
-        flat_lint::assert_well_typed(&module, &registry);
-        (module, registry)
+        flat_lint::assert_well_typed(&program, &registry);
+        (program, registry)
     }
 }
 
@@ -227,7 +227,7 @@ impl BuiltBlock {
 }
 
 pub struct FlatBlockBuilder<'a> {
-    module: &'a FlatModuleBuilder,
+    program: &'a FlatProgramBuilder,
     function: &'a DeclaredFunction,
     bindings: RefCell<Vec<FlatDataBinding>>,
     html: RefCell<Vec<FlatHtmlBinding>>,
@@ -235,12 +235,12 @@ pub struct FlatBlockBuilder<'a> {
 
 impl<'a> FlatBlockBuilder<'a> {
     fn build(
-        module: &'a FlatModuleBuilder,
+        program: &'a FlatProgramBuilder,
         function: &'a DeclaredFunction,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> BuiltBlock {
         let builder = FlatBlockBuilder {
-            module,
+            program,
             function,
             bindings: RefCell::new(Vec::new()),
             html: RefCell::new(Vec::new()),
@@ -255,21 +255,21 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     fn block(&self, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> BuiltBlock {
-        Self::build(self.module, self.function, body_fn)
+        Self::build(self.program, self.function, body_fn)
     }
 
     fn typ(&self, name: ValueId) -> Type {
-        self.module.value_types.borrow()[name.index()].clone()
+        self.program.value_types.borrow()[name.index()].clone()
     }
 
-    /// The type of every name the module has bound so far, indexed by the
+    /// The type of every name the program has bound so far, indexed by the
     /// name's number. The borrow must end before another name is bound.
     pub fn value_types(&self) -> Ref<'a, [Type]> {
-        Ref::map(self.module.value_types.borrow(), Vec::as_slice)
+        Ref::map(self.program.value_types.borrow(), Vec::as_slice)
     }
 
     fn push(&self, typ: Type, op: FlatDataOp) -> ValueId {
-        let name = self.module.binder(typ.clone());
+        let name = self.program.binder(typ.clone());
         let Type::Data(typ) = typ else {
             panic!("an op of a value produces data");
         };
@@ -281,7 +281,7 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     fn push_html(&self, op: FlatHtmlOp) -> ValueId {
-        let name = self.module.binder(Type::HTML);
+        let name = self.program.binder(Type::HTML);
         self.html.borrow_mut().push(FlatHtmlBinding {
             binder: IrBinder {
                 var: name,
@@ -293,11 +293,11 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn registry(&self) -> &'a TypeRegistry {
-        &self.module.registry
+        &self.program.registry
     }
 
     pub fn functions(&self) -> &'a [DeclaredFunction] {
-        &self.module.functions
+        &self.program.functions
     }
 
     pub fn str(&self, s: &str) -> ValueId {
@@ -542,14 +542,14 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         let resolved = typ
             .as_data()
-            .and_then(|data| self.module.registry.resolve(data));
+            .and_then(|data| self.program.registry.resolve(data));
         match (pat, resolved) {
             (Pat::Wildcard, _) => Pattern::Wildcard,
             (Pat::Bind(name), _) => {
                 let Type::Data(data) = typ else {
                     panic!("a pattern binds data, not {typ}");
                 };
-                let var = self.module.binder(typ.clone());
+                let var = self.program.binder(typ.clone());
                 bindings.bindings.push((name, var));
                 Pattern::Binding(IrBinder {
                     var,
@@ -741,7 +741,7 @@ impl<'a> FlatBlockBuilder<'a> {
             panic!();
         };
         let typ = *element_type;
-        let var = self.module.binder(Type::Data(typ.clone()));
+        let var = self.program.binder(Type::Data(typ.clone()));
         let body = self.block(|t| body_fn(t, var)).into_html();
         self.push_html(FlatHtmlOp::For(IrFor {
             var: Some(IrBinder { var, typ }),
@@ -764,7 +764,7 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn call(&self, name: &str, args: impl IntoIterator<Item = ValueId>) -> ValueId {
         let callee = self
-            .module
+            .program
             .functions
             .iter()
             .find(|callee| callee.function.name.as_str() == name)

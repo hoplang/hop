@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::hop::typing::Pattern;
-use crate::ir::flat_module::{
+use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataOp, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp,
 };
 use crate::ir::ir_binder::IrBinder;
