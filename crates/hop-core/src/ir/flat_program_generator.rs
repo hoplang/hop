@@ -4,7 +4,9 @@ use crate::ir::flat_program_builder::{
     DeclaredFunction, FlatBlockBuilder, FlatProgramBuilder, Pat,
 };
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{
+    IrDataType, IrHtmlSignature, IrHtmlType, IrType, IrValueSignature, IrValueType,
+};
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
 use crate::ir::runtime::random::random_value;
@@ -105,6 +107,15 @@ impl Scope {
     fn push(&mut self, value: ValueId) -> ValueId {
         self.names.push(value);
         value
+    }
+
+    // The body of a lambda cannot read Html bound outside it.
+    fn without_html(&self, types: &[IrType]) -> Scope {
+        Scope {
+            names: (self.names.iter().copied())
+                .filter(|name| types[name.index()] != IrType::HTML)
+                .collect(),
+        }
     }
 
     fn names_where<'a>(
@@ -256,15 +267,19 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
         } else {
             g.random_type_where(2, NamedTypes::Any, false)
         };
-        let params: Vec<(String, Ty)> = (0..g.count(0..=8))
+        let params: Vec<(String, IrType)> = (0..g.count(0..=8))
             .map(|i| {
-                (
-                    format!("p{i}"),
-                    g.random_type_where(2, NamedTypes::Any, html),
-                )
+                let typ = if g.index(4) == 0 {
+                    g.random_closure_type(html, 1)
+                } else {
+                    let ty = g.random_type_where(2, NamedTypes::Any, html);
+                    g.ir_type(ty)
+                };
+                (format!("p{i}"), typ)
             })
             .collect();
-        builder = builder.declare(
+        let return_type = g.ir_type(return_type);
+        builder = builder.declare_with_types(
             name,
             params.iter().map(|(n, t)| (n.as_str(), t.clone())),
             return_type,
@@ -290,10 +305,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
             for parameter in &declared.parameters {
                 scope.push(parameter.binder.var);
             }
-            match &declared.return_type {
-                IrType::Html(_) => g.html_block(b, &mut scope, MAX_BLOCK_DEPTH),
-                IrType::Data(target) => g.data_block(b, &mut scope, target, MAX_BLOCK_DEPTH),
-            }
+            g.block_of_type(b, &mut scope, &declared.return_type, MAX_BLOCK_DEPTH)
         });
     }
     for (name, params) in &entrypoints {
@@ -316,7 +328,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
 pub fn random_entrypoint_args(
     program: &FlatProgram,
     rng: &mut impl Rng,
-) -> Vec<(IrFunction, HashMap<AttributeName, Value>)> {
+) -> Vec<(IrFunction, HashMap<AttributeName, Value<'static>>)> {
     program
         .functions
         .iter()
@@ -361,7 +373,7 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn data_type(&self, ty: Ty) -> IrDataType {
-        let IrType::Data(typ) = self.ir_type(ty) else {
+        let IrType::Value(IrValueType::Data(typ)) = self.ir_type(ty) else {
             panic!("a value has a data type");
         };
         typ
@@ -418,10 +430,50 @@ impl FlatGenerator<'_, '_> {
         let count = scope.names_where(&types, fits).count();
         let index = self.index(count);
         let name = scope.names_where(&types, fits).nth(index).unwrap();
-        let IrType::Data(typ) = &types[name.index()] else {
+        let IrType::Value(IrValueType::Data(typ)) = &types[name.index()] else {
             unreachable!()
         };
         Some((name, typ.clone()))
+    }
+
+    fn random_closure_type(&mut self, html: bool, depth: usize) -> IrType {
+        if html && self.coin() {
+            IrType::Html(IrHtmlType::Function(self.random_html_signature(depth)))
+        } else {
+            IrType::Value(IrValueType::Function(
+                self.random_value_signature(depth, None),
+            ))
+        }
+    }
+
+    fn random_value_signature(
+        &mut self,
+        depth: usize,
+        result: Option<IrDataType>,
+    ) -> IrValueSignature {
+        let parameters = (0..self.count(0..=2))
+            .map(|_| {
+                if depth > 0 && self.index(4) == 0 {
+                    IrValueType::Function(self.random_value_signature(depth - 1, None))
+                } else {
+                    IrValueType::Data(self.random_data_type(1))
+                }
+            })
+            .collect();
+        let result = result.unwrap_or_else(|| self.random_data_type(1));
+        IrValueSignature { parameters, result }
+    }
+
+    fn random_html_signature(&mut self, depth: usize) -> IrHtmlSignature {
+        let parameters = (0..self.count(0..=2))
+            .map(|_| match self.index(if depth > 0 { 4 } else { 2 }) {
+                0 => IrType::Value(IrValueType::Data(self.random_data_type(1))),
+                1 => IrType::HTML,
+                2 => self.random_closure_type(false, depth - 1),
+                _ => self.random_closure_type(true, depth - 1),
+            })
+            .collect();
+        IrHtmlSignature { parameters }
     }
 
     fn random_type(&mut self, depth: usize) -> Ty {
@@ -506,10 +558,7 @@ impl FlatGenerator<'_, '_> {
         if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
             let ty = self.random_type(1);
             let typ = self.ir_type(ty);
-            match &typ {
-                IrType::Html(_) => self.html_op(b, scope, depth, MAX_EXPRESSION_DEPTH),
-                IrType::Data(target) => self.data_op(b, scope, target, depth, MAX_EXPRESSION_DEPTH),
-            };
+            self.op_of_type(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
         }
         self.html_op(b, scope, depth, MAX_EXPRESSION_DEPTH)
     }
@@ -526,6 +575,132 @@ impl FlatGenerator<'_, '_> {
             self.data_op(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
         }
         self.data_op(b, scope, target, depth, MAX_EXPRESSION_DEPTH)
+    }
+
+    fn block_of_type(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        typ: &IrType,
+        depth: usize,
+    ) -> ValueId {
+        match typ {
+            IrType::Value(IrValueType::Data(target)) => self.data_block(b, scope, target, depth),
+            IrType::Html(IrHtmlType::Html) => self.html_block(b, scope, depth),
+            IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_)) => {
+                self.closure_op(b, scope, typ, depth, MAX_EXPRESSION_DEPTH)
+            }
+        }
+    }
+
+    fn op_of_type(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        typ: &IrType,
+        depth: usize,
+        nesting: usize,
+    ) -> ValueId {
+        match typ {
+            IrType::Value(IrValueType::Data(target)) => {
+                self.data_op(b, scope, target, depth, nesting)
+            }
+            IrType::Html(IrHtmlType::Html) => self.html_op(b, scope, depth, nesting),
+            IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_)) => {
+                self.closure_op(b, scope, typ, depth, nesting)
+            }
+        }
+    }
+
+    // The body of a lambda goes on with the expression, a level further
+    // from its leaves, rather than start a block afresh, so that lambdas in
+    // lambdas stop at the leaves.
+    fn closure_op(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        typ: &IrType,
+        depth: usize,
+        nesting: usize,
+    ) -> ValueId {
+        if let Some(name) = self.name_in_scope(b, scope, typ) {
+            return name;
+        }
+        if depth > 0 && nesting > 0 && self.index(4) == 0 {
+            let closure = self.match_(b, scope, typ, depth, nesting);
+            return scope.push(closure);
+        }
+        let parameters: Vec<IrType> = match typ {
+            IrType::Value(IrValueType::Function(signature)) => {
+                (signature.parameters.iter().cloned())
+                    .map(IrType::Value)
+                    .collect()
+            }
+            IrType::Html(IrHtmlType::Function(signature)) => signature.parameters.clone(),
+            IrType::Value(IrValueType::Data(_)) | IrType::Html(IrHtmlType::Html) => {
+                unreachable!("closure_op makes closures")
+            }
+        };
+        let mut inner = scope.without_html(&b.value_types());
+        let depth = depth.saturating_sub(1);
+        let nesting = nesting.saturating_sub(1);
+        let lambda = b.lambda(parameters, |b, params| {
+            for param in params {
+                inner.push(*param);
+            }
+            match typ {
+                IrType::Value(IrValueType::Function(signature)) => {
+                    self.data_op(b, &mut inner, &signature.result, depth, nesting)
+                }
+                _ => self.html_op(b, &mut inner, depth, nesting),
+            }
+        });
+        scope.push(lambda)
+    }
+
+    fn apply(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        result: &IrType,
+        depth: usize,
+        nesting: usize,
+    ) -> ValueId {
+        let fits = |typ: &IrType| match (typ, result) {
+            (
+                IrType::Value(IrValueType::Function(signature)),
+                IrType::Value(IrValueType::Data(result)),
+            ) => signature.result == *result,
+            (IrType::Html(IrHtmlType::Function(_)), IrType::Html(IrHtmlType::Html)) => true,
+            _ => false,
+        };
+        let fitting: Vec<ValueId> = scope.names_where(&b.value_types(), fits).collect();
+        let closure = if !fitting.is_empty() && self.coin() {
+            fitting[self.index(fitting.len())]
+        } else {
+            let typ = match result {
+                IrType::Value(IrValueType::Data(result)) => IrType::Value(IrValueType::Function(
+                    self.random_value_signature(1, Some(result.clone())),
+                )),
+                _ => IrType::Html(IrHtmlType::Function(self.random_html_signature(1))),
+            };
+            self.closure_op(b, scope, &typ, depth, nesting - 1)
+        };
+        let parameters: Vec<IrType> = match &b.value_types()[closure.index()] {
+            IrType::Value(IrValueType::Function(signature)) => {
+                (signature.parameters.iter().cloned())
+                    .map(IrType::Value)
+                    .collect()
+            }
+            IrType::Html(IrHtmlType::Function(signature)) => signature.parameters.clone(),
+            IrType::Value(IrValueType::Data(_)) | IrType::Html(IrHtmlType::Html) => {
+                unreachable!("an application applies a closure")
+            }
+        };
+        let args: Vec<ValueId> = (parameters.iter())
+            .map(|parameter| self.op_of_type(b, scope, parameter, depth, nesting - 1))
+            .collect();
+        b.apply(closure, args)
     }
 
     fn name_in_scope(
@@ -573,7 +748,9 @@ impl FlatGenerator<'_, '_> {
         typ: &IrDataType,
         depth: usize,
     ) -> ValueId {
-        if let Some(name) = self.name_in_scope(b, scope, &IrType::Data(typ.clone())) {
+        if let Some(name) =
+            self.name_in_scope(b, scope, &IrType::Value(IrValueType::Data(typ.clone())))
+        {
             return name;
         }
         let literal = match typ {
@@ -598,7 +775,7 @@ impl FlatGenerator<'_, '_> {
                     .map(|_| self.data_leaf(b, scope, inner, depth.saturating_sub(1)))
                     .collect();
                 if elements.is_empty() {
-                    b.empty_array(IrType::Data((**inner).clone()))
+                    b.empty_array(IrType::Value(IrValueType::Data((**inner).clone())))
                 } else {
                     b.array(elements)
                 }
@@ -608,7 +785,7 @@ impl FlatGenerator<'_, '_> {
                     let value = self.data_leaf(b, scope, inner, depth.saturating_sub(1));
                     b.some(value)
                 } else {
-                    b.none(IrType::Data((**inner).clone()))
+                    b.none(IrType::Value(IrValueType::Data((**inner).clone())))
                 }
             }
             IrDataType::Record(name) => {
@@ -621,7 +798,7 @@ impl FlatGenerator<'_, '_> {
                         self.data_leaf(b, scope, &field.typ, depth.saturating_sub(1)),
                     ));
                 }
-                b.record(IrType::Data(typ.clone()), values)
+                b.record(IrType::Value(IrValueType::Data(typ.clone())), values)
             }
             IrDataType::Enum(name) => {
                 let variants = &b.types().enumeration(name).unwrap().variants;
@@ -634,7 +811,11 @@ impl FlatGenerator<'_, '_> {
                         self.data_leaf(b, scope, &field.typ, depth.saturating_sub(1)),
                     ));
                 }
-                b.enum_variant_with_fields(IrType::Data(typ.clone()), variant.name.as_str(), values)
+                b.enum_variant_with_fields(
+                    IrType::Value(IrValueType::Data(typ.clone())),
+                    variant.name.as_str(),
+                    values,
+                )
             }
             IrDataType::Tuple(elements) => {
                 let values: Vec<_> = elements
@@ -823,13 +1004,14 @@ impl FlatGenerator<'_, '_> {
             Match,
             ForArray,
             ForRange,
+            Apply,
         }
         let mut productions = vec![P::Escape, P::Element, P::Concat];
         if Self::callees(b, &IrType::HTML).next().is_some() {
             productions.push(P::Call);
         }
         if depth > 0 {
-            productions.extend([P::Match, P::ForArray, P::ForRange]);
+            productions.extend([P::Match, P::ForArray, P::ForRange, P::Apply]);
         }
         let value = match self.u.choose(&productions).unwrap() {
             P::Escape => {
@@ -868,6 +1050,7 @@ impl FlatGenerator<'_, '_> {
             }
             P::Call => self.call(b, scope, &IrType::HTML, depth, nesting),
             P::Match => self.match_(b, scope, &IrType::HTML, depth, nesting),
+            P::Apply => self.apply(b, scope, &IrType::HTML, depth, nesting),
             P::ForArray => {
                 let var = self.var_in_scope(b, scope, |ty| matches!(ty, IrDataType::Array(_)));
                 let array = match var {
@@ -934,8 +1117,9 @@ impl FlatGenerator<'_, '_> {
             Sub,
             Mul,
             Call,
+            Apply,
         }
-        let typ = IrType::Data(target.clone());
+        let typ = IrType::Value(IrValueType::Data(target.clone()));
         let mut productions: Vec<P> = Vec::new();
         if self.record_fields_of_type(b, target).next().is_some() {
             productions.push(P::FieldAccess);
@@ -976,7 +1160,7 @@ impl FlatGenerator<'_, '_> {
             productions.push(P::Call);
         }
         if depth > 0 {
-            productions.push(P::Match);
+            productions.extend([P::Match, P::Apply]);
         }
         let value = match self.u.choose(&productions).unwrap() {
             P::FieldAccess => {
@@ -1167,6 +1351,7 @@ impl FlatGenerator<'_, '_> {
                 b.mul(left, right)
             }
             P::Call => self.call(b, scope, &typ, depth, nesting),
+            P::Apply => self.apply(b, scope, &typ, depth, nesting),
         };
         scope.push(value)
     }
@@ -1184,10 +1369,7 @@ impl FlatGenerator<'_, '_> {
         let args: Vec<_> = callee
             .parameters
             .iter()
-            .map(|parameter| match &parameter.binder.typ {
-                IrType::Html(_) => self.html_op(b, scope, depth, nesting - 1),
-                IrType::Data(target) => self.data_op(b, scope, target, depth, nesting - 1),
-            })
+            .map(|parameter| self.op_of_type(b, scope, &parameter.binder.typ, depth, nesting - 1))
             .collect();
         b.call(callee.function.name.as_str(), args)
     }
@@ -1223,10 +1405,7 @@ impl FlatGenerator<'_, '_> {
                     for name in binds {
                         scope.push(bindings.binding(&name));
                     }
-                    match target {
-                        IrType::Html(_) => self.html_block(b, &mut scope, depth),
-                        IrType::Data(target) => self.data_block(b, &mut scope, target, depth),
-                    }
+                    self.block_of_type(b, &mut scope, target, depth)
                 });
             }
         })
@@ -1358,8 +1537,35 @@ mod tests {
                     let var = for_.var.iter().map(|binder| binder.var).collect();
                     vec![(var, Block::Html(&for_.body))]
                 }
+                Binding::Data(FlatDataBinding {
+                    op: FlatDataOp::Lambda(lambda),
+                    ..
+                }) => {
+                    let params = lambda.parameters.iter().map(|param| param.var).collect();
+                    vec![(params, Block::Data(&lambda.body))]
+                }
+                Binding::Html(FlatHtmlBinding {
+                    op: FlatHtmlOp::Lambda(lambda),
+                    ..
+                }) => {
+                    let params = lambda.parameters.iter().map(|param| param.var).collect();
+                    vec![(params, Block::Html(&lambda.body))]
+                }
                 _ => Vec::new(),
             }
+        }
+
+        fn is_lambda(self) -> bool {
+            matches!(
+                self,
+                Binding::Data(FlatDataBinding {
+                    op: FlatDataOp::Lambda(_),
+                    ..
+                }) | Binding::Html(FlatHtmlBinding {
+                    op: FlatHtmlOp::Lambda(_),
+                    ..
+                })
+            )
         }
     }
 
@@ -1384,7 +1590,8 @@ mod tests {
             binding.for_each_operand(&mut |operand| {
                 depends |= dynamic.contains(&operand);
             });
-            let operands = depends;
+            // The parameters of a lambda take what each application passes.
+            let operands = depends || binding.is_lambda();
             for (bound, body) in binding.nested() {
                 if operands {
                     dynamic.extend(bound);
@@ -1580,55 +1787,59 @@ mod tests {
             ));
         }
         expect![[r#"
-            8386 of 65536 input bytes consumed per program on average, at most 65536
+            12570 of 65536 input bytes consumed per program on average, at most 65536
             3 of 100 programs exhaust the input
-            3 of 197 entrypoints hit the call depth limit
-            0 of 197 entrypoints hit the array length limit
-            0 of 197 entrypoints hit the string length limit
-            0 of 197 entrypoints hit the Html size limit
-            3 of 197 entrypoints hit the op count limit
-            3283 of 20192 Html bindings have more than one reference
-            2.4 arms per match on average, at least 2 and at most 13
-            11503 of 29486 match arms bind names
+            8 of 210 entrypoints hit the call depth limit
+            0 of 210 entrypoints hit the array length limit
+            0 of 210 entrypoints hit the string length limit
+            0 of 210 entrypoints hit the Html size limit
+            3 of 210 entrypoints hit the op count limit
+            922 of 10368 Html bindings have more than one reference
+            2.6 arms per match on average, at least 2 and at most 27
+            17986 of 45880 match arms bind names
 
             op                   ops/program % progs  % live   % dyn
-            Array                      218.8    88.0    96.5    15.8
-            ArrayFromRange               6.0    69.0    98.7     0.0
-            ArrayIsEmpty                 2.2    37.0    98.1    37.0
-            ArrayLength                 22.1    73.0    98.6    45.6
-            BoolLiteral                 62.7    86.0    95.6     0.0
-            BoolNegation                 2.4    34.0    99.6    54.1
-            Call                        33.8    47.0    99.8    93.9
-            Enum                       116.2    64.0    95.4    19.8
-            Equals                       2.2    35.0    98.2    70.1
-            FieldAccess                  8.3    36.0    98.8    90.0
-            FloatLiteral                62.7    88.0    96.4     0.0
-            FloatToInt                  22.3    72.0    98.4    54.2
-            HtmlConcat                  72.8    86.0    99.9    55.9
-            HtmlElement                 40.2    71.0    99.9    80.1
-            HtmlEscape                  39.7    80.0    99.9    57.6
-            HtmlFor                     12.0    76.0    99.7    69.3
-            HtmlText                     1.4    54.0   100.0     0.0
-            IntLiteral                  73.3    89.0    97.4     0.0
-            IntToFloat                  22.4    61.0    98.1    51.6
-            IntToString                 35.8    76.0    99.8    49.6
-            LessThan                     2.0    39.0    99.0    60.1
-            LessThanOrEqual              2.5    41.0    98.4    61.4
-            Match                      123.9    91.0    97.3    80.8
-            NumericAdd                  45.3    69.0    98.0    65.3
-            NumericMultiply             43.8    71.0    98.1    66.7
-            NumericNegation             45.2    71.0    98.1    53.7
-            NumericSubtract             44.3    70.0    97.9    66.3
-            OptionIsNone                 2.0    43.0    99.0    56.9
-            OptionIsSome                 2.3    39.0    99.6    60.5
-            OptionNone                 157.6    87.0    96.5     0.0
-            OptionSome                  68.0    85.0    95.9    27.8
-            Record                     102.7    66.0    97.3    29.0
-            StringConcat                35.9    65.0    99.7    52.2
-            StringIsEmpty                2.2    41.0    99.1    52.4
-            StringLiteral               65.5    87.0    97.0     0.0
-            Tuple                      906.8    91.0    96.7    50.1
-            TupleIndex                 545.6    89.0    96.7    71.3
+            Apply                      114.2    91.0    95.9    82.0
+            Array                      346.9    92.0    94.4    16.2
+            ArrayFromRange               5.8    82.0    98.4     0.0
+            ArrayIsEmpty                 1.9    57.0    97.4    55.7
+            ArrayLength                 17.5    86.0    97.6    59.6
+            BoolLiteral                127.1    91.0    94.1     0.0
+            BoolNegation                 2.2    57.0    95.9    53.2
+            Call                         8.6    55.0    98.7    86.2
+            Enum                       252.3    70.0    94.5    19.1
+            Equals                       1.7    56.0    96.5    71.7
+            FieldAccess                  6.0    41.0    95.6    76.1
+            FloatLiteral               136.8    92.0    94.9     0.0
+            FloatToInt                  17.1    83.0    96.7    50.4
+            HtmlApply                    3.7    72.0    99.5    84.2
+            HtmlConcat                  33.4    92.0   100.0    50.3
+            HtmlElement                 18.7    86.0    99.9    74.8
+            HtmlEscape                  15.6    82.0    99.7    57.6
+            HtmlFor                      7.3    85.0    99.9    78.7
+            HtmlLambda                  10.2    73.0    99.8    62.3
+            HtmlText                     2.5    63.0    99.6     0.0
+            IntLiteral                 126.8    94.0    94.6     0.0
+            IntToFloat                  17.6    82.0    94.8    54.7
+            IntToString                 20.4    85.0    98.8    51.8
+            Lambda                     228.0    91.0    95.5    62.5
+            LessThan                     1.6    59.0    98.7    75.5
+            LessThanOrEqual              1.9    60.0    97.4    74.2
+            Match                      175.3    92.0    96.0    88.2
+            NumericAdd                  35.6    85.0    96.2    70.2
+            NumericMultiply             35.5    84.0    95.8    70.9
+            NumericNegation             35.3    86.0    95.7    54.7
+            NumericSubtract             35.2    87.0    95.2    70.3
+            OptionIsNone                 2.2    62.0    96.8    51.9
+            OptionIsSome                 2.0    60.0    98.0    58.8
+            OptionNone                 234.8    93.0    94.1     0.0
+            OptionSome                 127.2    92.0    94.3    28.5
+            Record                     165.4    65.0    94.0    27.6
+            StringConcat                20.9    83.0    99.3    55.2
+            StringIsEmpty                1.9    61.0    93.6    57.2
+            StringLiteral              105.3    92.0    95.4     0.0
+            Tuple                     1368.2    92.0    95.0    50.4
+            TupleIndex                 861.2    92.0    94.9    71.6
         "#]]
         .assert_eq(&report);
     }
@@ -1675,44 +1886,16 @@ mod tests {
                   f1: (Option[E1], Float),
                 }
 
-                fn C0@f0(p0@v0: Option[()], p1@v1: ((Bool, E1),), p2@v2: E0, p3@v3: Html, p4@v4: Bool, p5@v5: Array[R1]) -> Html {
-                  let v9: Int = -2
-                  let v10: Int = 1
-                  let v11: Array[Int] = v9..=v10
-                  let v21: Html = for v12: Int in v11 {
-                    let v20: Html = for v13: R1 in v5 {
-                      let v19: Html = match v0 {
-                        Some(()) => {
-                          let v14: Html = text("back\\slash")
-                          v14
-                        }
-                        None => {
-                          let v17: String = match v0 {
-                            Some(()) => {
-                              let v15: String = ""
-                              v15
-                            }
-                            None => {
-                              let v16: String = ""
-                              v16
-                            }
-                          }
-                          let v18: Html = escape(v17)
-                          v18
-                        }
-                      }
-                      v19
-                    }
-                    v20
-                  }
-                  v21
+                fn C0@f0(p0@v0: (Option[Bool], (R0, String, Bool)) -> (E1,), p1@v1: ((Array[E0]) -> (R1,), (Int) -> Html) -> Html, p2@v2: E1, p3@v3: Float, p4@v4: R1, p5@v5: E0) -> Html {
+                  let v9: Html = concat()
+                  v9
                 }
-                fn C1@f1(p0@v6: Html, p1@v7: (E0, Array[E0], (R1,)), p2@v8: Array[Option[R0]]) -> Html {
-                  v6
+                fn C1@f1(p0@v6: String, p1@v7: Html, p2@v8: ((Float, E1, R1), Array[R1]) -> Int) -> Html {
+                  v7
                 }
                 entrypoint fn V0@f2() -> Html {
-                  let v22: Html = concat()
-                  v22
+                  let v10: Html = concat()
+                  v10
                 }
             "#]],
         );
@@ -1735,68 +1918,304 @@ mod tests {
                 }
 
                 entrypoint fn V0@f0(p0@v0: Bool, p1@v1: Int) -> Html {
-                  let v2: Float = 0.2
-                  let v7: Int = match v0 {
-                    true => {
-                      v1
-                    }
-                    _ => {
-                      let v3: String = "`${x}`"
-                      let v4: Int = -56
-                      let v5: (String, Int) = (v3, v4)
-                      let v6: Int = v5.1
-                      v6
-                    }
-                  }
-                  let v8: Float = v7.to_float()
-                  let v14: Float = match v0 {
+                  let v140: (Array[E0], Option[E0]) = match v0 {
                     false => {
-                      let v9: Float = 0.5
-                      let v10: Float = v9 * v2
-                      let v11: Float = v10 + v9
-                      v11
+                      let v16: ((Array[E0], Option[E0]),) = match v0 {
+                        true => {
+                          let v2: Array[E0] = []
+                          let v3: Float = 1.5
+                          let v4: E0 = W0 {f0: v3}
+                          let v5: Option[E0] = Some(v4)
+                          let v6: (Array[E0], Option[E0]) = (v2, v5)
+                          let v7: ((Array[E0], Option[E0]),) = (v6,)
+                          v7
+                        }
+                        false => {
+                          let v8: Float = 0.1
+                          let v9: E0 = W0 {f0: v8}
+                          let v10: Array[E0] = [v9, v9, v9]
+                          let v11: Bool = false
+                          let v12: E0 = W1 {f0: v11}
+                          let v13: Option[E0] = Some(v12)
+                          let v14: (Array[E0], Option[E0]) = (v10, v13)
+                          let v15: ((Array[E0], Option[E0]),) = (v14,)
+                          v15
+                        }
+                      }
+                      let v17: (Array[E0], Option[E0]) = v16.0
+                      v17
                     }
-                    true => {
-                      let v12: Float = 1.5
-                      let v13: Float = -v12
-                      v13
+                    v18: Bool => {
+                      let v138: () -> (Array[E0], Option[E0]) = fn() {
+                        let v136: () -> (Array[E0], Option[E0]) = match v0 {
+                          false => {
+                            let v87: () -> (Array[E0], Option[E0]) = match v18 {
+                              false => {
+                                let v35: ((Int,)) -> E1 = fn(v19: (Int,)) {
+                                  let v28: Option[Option[E1]] = match v0 {
+                                    true => {
+                                      let v20: Option[Option[E1]] = None
+                                      let v21: Option[Option[Float]] = None
+                                      let v22: E1 = W0 {f0: v21, f1: v1}
+                                      let v23: Option[String] = None
+                                      let v24: (Option[Option[E1]], E1, Option[String]) = (v20, v22, v23)
+                                      let v25: Option[Option[E1]] = v24.0
+                                      v25
+                                    }
+                                    v26: Bool => {
+                                      let v27: Option[Option[E1]] = None
+                                      v27
+                                    }
+                                  }
+                                  let v34: E1 = match v28 {
+                                    None => {
+                                      let v29: Option[Option[Float]] = None
+                                      let v30: E1 = W0 {f0: v29, f1: v1}
+                                      v30
+                                    }
+                                    v31: Option[Option[E1]] => {
+                                      let v32: Option[Option[Float]] = None
+                                      let v33: E1 = W0 {f0: v32, f1: v1}
+                                      v33
+                                    }
+                                  }
+                                  v34
+                                }
+                                let v36: (Int,) = (v1,)
+                                let v37: E1 = v35(v36)
+                                let v63: () -> (Array[E0], Option[E0]) = match v37 {
+                                  E1::W0 {f0@v38: Option[Option[Float]], f1@v39: Int} => {
+                                    let v40: (Bool,) = (v0,)
+                                    let v50: () -> (Array[E0], Option[E0]) = match v40 {
+                                      (true,) => {
+                                        let v44: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v41: Array[E0] = []
+                                          let v42: Option[E0] = None
+                                          let v43: (Array[E0], Option[E0]) = (v41, v42)
+                                          v43
+                                        }
+                                        v44
+                                      }
+                                      (v45: Bool,) => {
+                                        let v49: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v46: Array[E0] = []
+                                          let v47: Option[E0] = None
+                                          let v48: (Array[E0], Option[E0]) = (v46, v47)
+                                          v48
+                                        }
+                                        v49
+                                      }
+                                    }
+                                    v50
+                                  }
+                                  v51: E1 => {
+                                    let v52: (Bool,) = (v0,)
+                                    let v62: () -> (Array[E0], Option[E0]) = match v52 {
+                                      (true,) => {
+                                        let v56: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v53: Array[E0] = []
+                                          let v54: Option[E0] = None
+                                          let v55: (Array[E0], Option[E0]) = (v53, v54)
+                                          v55
+                                        }
+                                        v56
+                                      }
+                                      (v57: Bool,) => {
+                                        let v61: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v58: Array[E0] = []
+                                          let v59: Option[E0] = None
+                                          let v60: (Array[E0], Option[E0]) = (v58, v59)
+                                          v60
+                                        }
+                                        v61
+                                      }
+                                    }
+                                    v62
+                                  }
+                                }
+                                v63
+                              }
+                              true => {
+                                let v64: (Bool,) = (v0,)
+                                let v86: () -> (Array[E0], Option[E0]) = match v64 {
+                                  (true,) => {
+                                    let v74: () -> (Array[E0], Option[E0]) = match v64 {
+                                      (true,) => {
+                                        let v68: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v65: Array[E0] = []
+                                          let v66: Option[E0] = None
+                                          let v67: (Array[E0], Option[E0]) = (v65, v66)
+                                          v67
+                                        }
+                                        v68
+                                      }
+                                      (v69: Bool,) => {
+                                        let v73: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v70: Array[E0] = []
+                                          let v71: Option[E0] = None
+                                          let v72: (Array[E0], Option[E0]) = (v70, v71)
+                                          v72
+                                        }
+                                        v73
+                                      }
+                                    }
+                                    v74
+                                  }
+                                  (v75: Bool,) => {
+                                    let v85: () -> (Array[E0], Option[E0]) = match v64 {
+                                      (true,) => {
+                                        let v79: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v76: Array[E0] = []
+                                          let v77: Option[E0] = None
+                                          let v78: (Array[E0], Option[E0]) = (v76, v77)
+                                          v78
+                                        }
+                                        v79
+                                      }
+                                      (v80: Bool,) => {
+                                        let v84: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v81: Array[E0] = []
+                                          let v82: Option[E0] = None
+                                          let v83: (Array[E0], Option[E0]) = (v81, v82)
+                                          v83
+                                        }
+                                        v84
+                                      }
+                                    }
+                                    v85
+                                  }
+                                }
+                                v86
+                              }
+                            }
+                            v87
+                          }
+                          v88: Bool => {
+                            let v89: (Bool,) = (v0,)
+                            let v135: () -> (Array[E0], Option[E0]) = match v89 {
+                              (true,) => {
+                                let v111: () -> (Array[E0], Option[E0]) = match v89 {
+                                  (true,) => {
+                                    let v99: () -> (Array[E0], Option[E0]) = match v89 {
+                                      (true,) => {
+                                        let v93: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v90: Array[E0] = []
+                                          let v91: Option[E0] = None
+                                          let v92: (Array[E0], Option[E0]) = (v90, v91)
+                                          v92
+                                        }
+                                        v93
+                                      }
+                                      (v94: Bool,) => {
+                                        let v98: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v95: Array[E0] = []
+                                          let v96: Option[E0] = None
+                                          let v97: (Array[E0], Option[E0]) = (v95, v96)
+                                          v97
+                                        }
+                                        v98
+                                      }
+                                    }
+                                    v99
+                                  }
+                                  (v100: Bool,) => {
+                                    let v110: () -> (Array[E0], Option[E0]) = match v89 {
+                                      (true,) => {
+                                        let v104: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v101: Array[E0] = []
+                                          let v102: Option[E0] = None
+                                          let v103: (Array[E0], Option[E0]) = (v101, v102)
+                                          v103
+                                        }
+                                        v104
+                                      }
+                                      (v105: Bool,) => {
+                                        let v109: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v106: Array[E0] = []
+                                          let v107: Option[E0] = None
+                                          let v108: (Array[E0], Option[E0]) = (v106, v107)
+                                          v108
+                                        }
+                                        v109
+                                      }
+                                    }
+                                    v110
+                                  }
+                                }
+                                v111
+                              }
+                              (v112: Bool,) => {
+                                let v134: () -> (Array[E0], Option[E0]) = match v89 {
+                                  (true,) => {
+                                    let v122: () -> (Array[E0], Option[E0]) = match v89 {
+                                      (true,) => {
+                                        let v116: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v113: Array[E0] = []
+                                          let v114: Option[E0] = None
+                                          let v115: (Array[E0], Option[E0]) = (v113, v114)
+                                          v115
+                                        }
+                                        v116
+                                      }
+                                      (v117: Bool,) => {
+                                        let v121: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v118: Array[E0] = []
+                                          let v119: Option[E0] = None
+                                          let v120: (Array[E0], Option[E0]) = (v118, v119)
+                                          v120
+                                        }
+                                        v121
+                                      }
+                                    }
+                                    v122
+                                  }
+                                  (v123: Bool,) => {
+                                    let v133: () -> (Array[E0], Option[E0]) = match v89 {
+                                      (true,) => {
+                                        let v127: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v124: Array[E0] = []
+                                          let v125: Option[E0] = None
+                                          let v126: (Array[E0], Option[E0]) = (v124, v125)
+                                          v126
+                                        }
+                                        v127
+                                      }
+                                      (v128: Bool,) => {
+                                        let v132: () -> (Array[E0], Option[E0]) = fn() {
+                                          let v129: Array[E0] = []
+                                          let v130: Option[E0] = None
+                                          let v131: (Array[E0], Option[E0]) = (v129, v130)
+                                          v131
+                                        }
+                                        v132
+                                      }
+                                    }
+                                    v133
+                                  }
+                                }
+                                v134
+                              }
+                            }
+                            v135
+                          }
+                        }
+                        let v137: (Array[E0], Option[E0]) = v136()
+                        v137
+                      }
+                      let v139: (Array[E0], Option[E0]) = v138()
+                      v139
                     }
                   }
-                  let v15: Float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005
-                  let v16: Float = v8 + v15
-                  let v17: Float = v14 - v16
-                  let v18: Float = -v17
-                  let v19: Float = v15 + v8
-                  let v20: Float = -v19
-                  let v21: Float = v14 + v20
-                  let v22: Float = v18 * v21
-                  let v23: Float = v8 - v22
-                  let v24: Float = v2 - v23
-                  let v25: Int = v24.to_int()
-                  let v31: (Array[E0],) = match v0 {
-                    true => {
-                      let v26: E0 = W0 {f0: v2}
-                      let v27: Array[E0] = [v26]
-                      let v28: (Array[E0],) = (v27,)
-                      v28
-                    }
-                    _ => {
-                      let v29: Array[E0] = []
-                      let v30: (Array[E0],) = (v29,)
-                      v30
-                    }
+                  let v141: Array[E0] = v140.0
+                  let v144: Html = for v142: E0 in v141 {
+                    let v143: Html = concat()
+                    v143
                   }
-                  let v32: Array[E0] = v31.0
-                  let v33: Int = v32.len()
-                  let v34: Int = v33 + v1
-                  let v35: Int = v25 * v34
-                  let v36: String = v35.to_string()
-                  let v37: Html = escape(v36)
-                  v37
+                  v144
                 }
                 entrypoint fn V1@f1() -> Html {
-                  let v38: Html = concat()
-                  v38
+                  let v145: Html = concat()
+                  v145
                 }
             "#]],
         );

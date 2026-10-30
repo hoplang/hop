@@ -12,8 +12,8 @@ pub enum EvalError {
         function: IrFunction,
         param: AttributeName,
     },
-    #[error("Function '{function}' exceeded the call depth limit of {limit}")]
-    CallDepthLimit { function: IrFunction, limit: usize },
+    #[error("Program exceeded the call depth limit of {limit}")]
+    CallDepthLimit { limit: usize },
     #[error("An array exceeded the array length limit of {limit}")]
     ArrayLengthLimit { limit: usize },
     #[error("A string exceeded the string length limit of {limit} bytes")]

@@ -19,7 +19,7 @@ use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType};
+use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
 use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -272,7 +272,7 @@ impl<'a> Compiler<'a> {
                     .into_iter()
                     .map(|param| {
                         param
-                            .into_data()
+                            .into_value()
                             .expect("a function that returns a value takes values only")
                     })
                     .collect(),
@@ -369,7 +369,7 @@ impl<'a> Compiler<'a> {
         let Type::Data(typ) = typ else {
             unreachable!("an op of a value produces data");
         };
-        let typ = lower_data_type(self.registry, &typ);
+        let typ = IrValueType::Data(lower_data_type(self.registry, &typ));
         let name = self.value_id_counter.next();
         self.bindings.push(FlatDataBinding {
             binder: IrBinder { var: name, typ },
@@ -385,7 +385,7 @@ impl<'a> Compiler<'a> {
         self.html.push(FlatHtmlBinding {
             binder: IrBinder {
                 var: name,
-                typ: IrHtmlType,
+                typ: IrHtmlType::Html,
             },
             op,
         });
@@ -940,8 +940,8 @@ fn lower_type_declarations(registry: &TypeRegistry) -> IrTypeDeclarations {
 
 fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
     match typ {
-        Type::Data(data) => IrType::Data(lower_data_type(registry, data)),
-        Type::Html(_) => IrType::Html(IrHtmlType),
+        Type::Data(data) => IrType::Value(IrValueType::Data(lower_data_type(registry, data))),
+        Type::Html(_) => IrType::Html(IrHtmlType::Html),
     }
 }
 

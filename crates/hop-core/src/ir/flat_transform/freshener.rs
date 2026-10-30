@@ -6,6 +6,7 @@ use crate::ir::flat_program::{
 };
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_for::IrFor;
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
@@ -70,6 +71,19 @@ impl<'a> Freshener<'a> {
         }
     }
 
+    fn freshen_lambda<T: Clone, B>(
+        &mut self,
+        lambda: &IrLambda<T, B>,
+        freshen_block: impl Fn(&mut Self, &B) -> B,
+    ) -> IrLambda<T, B> {
+        IrLambda {
+            parameters: (lambda.parameters.iter())
+                .map(|binder| self.fresh_binder(binder))
+                .collect(),
+            body: freshen_block(self, &lambda.body),
+        }
+    }
+
     pub fn freshen_data_block(&mut self, block: &FlatDataBlock) -> FlatDataBlock {
         let bindings = block
             .bindings
@@ -105,6 +119,9 @@ impl<'a> Freshener<'a> {
             FlatDataOp::Match(match_) => {
                 FlatDataOp::Match(self.freshen_match(match_, Self::freshen_data_block))
             }
+            FlatDataOp::Lambda(lambda) => {
+                FlatDataOp::Lambda(self.freshen_lambda(lambda, Self::freshen_data_block))
+            }
             op => {
                 let mut op = op.clone();
                 op.for_each_operand_mut(&mut |operand| *operand = self.name(*operand));
@@ -130,6 +147,9 @@ impl<'a> Freshener<'a> {
                     array,
                     body: self.freshen_html_block(body),
                 })
+            }
+            FlatHtmlOp::Lambda(lambda) => {
+                FlatHtmlOp::Lambda(self.freshen_lambda(lambda, Self::freshen_html_block))
             }
             op => {
                 let mut op = op.clone();

@@ -8,8 +8,11 @@ use crate::dependency_graph::DependencyGraph;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{
+    IrDataType, IrHtmlSignature, IrHtmlType, IrType, IrValueSignature, IrValueType,
+};
 use crate::ir::ir_type_declarations::{IrEnum, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
@@ -151,7 +154,9 @@ impl RustTranspiler {
             )
             | WriterOp::Call(..)
             | WriterOp::HtmlLiteral(_)
-            | WriterOp::Match(_) => NaturalForm::Temporary,
+            | WriterOp::Match(_)
+            | WriterOp::Lambda(_)
+            | WriterOp::Apply(..) => NaturalForm::Temporary,
         }
     }
 
@@ -194,8 +199,8 @@ impl RustTranspiler {
             return self.name_place(arena, name);
         }
         let method = match typ {
-            IrType::Data(IrDataType::Array(_)) => ".to_vec()",
-            IrType::Data(IrDataType::String) => ".to_string()",
+            IrType::Value(IrValueType::Data(IrDataType::Array(_))) => ".to_vec()",
+            IrType::Value(IrValueType::Data(IrDataType::String)) => ".to_string()",
             _ => ".clone()",
         };
         let receiver = match self.name_binding(name) {
@@ -314,7 +319,7 @@ impl RustTranspiler {
         owner: &str,
         value: ValueId,
     ) -> Doc<'a> {
-        if let IrType::Data(value_type) = self.name_type(value)
+        if let IrType::Value(IrValueType::Data(value_type)) = self.name_type(value)
             && self.field_type_is_boxed(value_type, owner)
         {
             arena
@@ -362,8 +367,13 @@ impl RustTranspiler {
             } else {
                 Binding::Borrowed
             };
-            self.names
-                .insert(binder.var, (binding, IrType::Data(binder.typ.clone())));
+            self.names.insert(
+                binder.var,
+                (
+                    binding,
+                    IrType::Value(IrValueType::Data(binder.typ.clone())),
+                ),
+            );
         }
         if bindings.is_empty() {
             let has_fields = variants
@@ -422,45 +432,108 @@ impl RustTranspiler {
     /// Whether `t` is one of hop's scalar types.
     fn is_scalar(t: &IrType) -> bool {
         match t {
-            IrType::Data(IrDataType::Bool | IrDataType::Int | IrDataType::Float) => true,
-            IrType::Data(
+            IrType::Value(IrValueType::Data(
+                IrDataType::Bool | IrDataType::Int | IrDataType::Float,
+            )) => true,
+            IrType::Value(IrValueType::Data(
                 IrDataType::String
                 | IrDataType::Array(_)
                 | IrDataType::Tuple(_)
                 | IrDataType::Record(_)
                 | IrDataType::Enum(_)
                 | IrDataType::Option(_),
-            )
-            | IrType::Html(_) => false,
+            ))
+            | IrType::Html(IrHtmlType::Html)
+            | IrType::Value(IrValueType::Function(_))
+            | IrType::Html(IrHtmlType::Function(_)) => false,
         }
     }
 
     /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
-    fn transpile_param_type<'a>(&mut self, arena: &'a Arena<'a>, t: &'a IrType) -> Doc<'a> {
+    fn transpile_param_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrType) -> Doc<'a> {
         match t {
-            IrType::Data(IrDataType::Bool) => arena.text("bool"),
-            IrType::Data(IrDataType::String) => arena.text("&str"),
-            IrType::Data(IrDataType::Float) => arena.text("f64"),
-            IrType::Data(IrDataType::Int) => arena.text("i32"),
-            IrType::Html(_) => {
+            IrType::Value(IrValueType::Data(IrDataType::Bool)) => arena.text("bool"),
+            IrType::Value(IrValueType::Data(IrDataType::String)) => arena.text("&str"),
+            IrType::Value(IrValueType::Data(IrDataType::Float)) => arena.text("f64"),
+            IrType::Value(IrValueType::Data(IrDataType::Int)) => arena.text("i32"),
+            IrType::Html(IrHtmlType::Html) => {
                 self.needs_html = true;
                 arena.text("&Html")
             }
-            IrType::Data(IrDataType::Array(elem)) => arena
+            IrType::Value(IrValueType::Data(IrDataType::Array(elem))) => arena
                 .text("&[")
                 .append(self.transpile_data_type(arena, elem))
                 .append(arena.text("]")),
-            IrType::Data(IrDataType::Option(inner)) => arena
+            IrType::Value(IrValueType::Data(IrDataType::Option(inner))) => arena
                 .text("&Option<")
                 .append(self.transpile_data_type(arena, inner))
                 .append(arena.text(">")),
-            IrType::Data(IrDataType::Tuple(_)) => {
+            IrType::Value(IrValueType::Data(IrDataType::Tuple(_))) => {
                 arena.text("&").append(self.transpile_type(arena, t))
             }
-            IrType::Data(IrDataType::Record(name) | IrDataType::Enum(name)) => {
-                arena.text("&").append(arena.text(name.as_str()))
+            IrType::Value(IrValueType::Data(IrDataType::Record(name) | IrDataType::Enum(name))) => {
+                arena
+                    .text("&")
+                    .append(arena.text(name.as_str().to_string()))
+            }
+            IrType::Value(IrValueType::Function(signature)) => {
+                let parameters: Vec<IrType> = (signature.parameters.iter().cloned())
+                    .map(IrType::Value)
+                    .collect();
+                let result = self.transpile_data_type(arena, &signature.result);
+                self.transpile_fn_type(arena, None, &parameters, Some(result))
+            }
+            IrType::Html(IrHtmlType::Function(signature)) => {
+                let output = arena.text("&mut String");
+                self.transpile_fn_type(arena, Some(output), &signature.parameters, None)
             }
         }
+    }
+
+    // A closure is passed as a reference to a trait object, with its
+    // parameters of the types a function's parameters have, and an Html
+    // closure takes the buffer it writes to first, as an Html function does.
+    fn transpile_fn_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        output: Option<Doc<'a>>,
+        parameters: &[IrType],
+        result: Option<Doc<'a>>,
+    ) -> Doc<'a> {
+        let mut param_docs: Vec<Doc<'a>> = output.into_iter().collect();
+        for param in parameters {
+            param_docs.push(self.transpile_param_type(arena, param));
+        }
+        let doc = arena
+            .text("&dyn Fn(")
+            .append(arena.intersperse(param_docs, arena.text(", ")))
+            .append(arena.text(")"));
+        match result {
+            Some(result) => doc.append(arena.text(" -> ")).append(result),
+            None => doc,
+        }
+    }
+
+    // The parameters of a lambda, recorded as those of a function are.
+    fn transpile_lambda_params<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        parameters: &'a [IrBinder<IrType>],
+    ) -> Vec<Doc<'a>> {
+        (parameters.iter())
+            .map(|param| {
+                let binding = if Self::is_scalar(&param.typ) {
+                    Binding::Owned
+                } else {
+                    Binding::Borrowed
+                };
+                self.names.insert(param.var, (binding, param.typ.clone()));
+                arena
+                    .text(name_ident(param.var))
+                    .append(arena.text(": "))
+                    .append(self.transpile_param_type(arena, &param.typ))
+            })
+            .collect()
     }
 
     /// The parameters of a function, recorded as owned scalars and borrowed
@@ -537,6 +610,27 @@ impl RustTranspiler {
                 .append(arena.hardline())
                 .append(arena.text("}"))
         }
+    }
+
+    // An empty block is `{}`, which leaves no line of only indentation.
+    fn transpile_braced_statements<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        statements: &'a [WriterStmt],
+    ) -> Doc<'a> {
+        if statements.is_empty() {
+            return arena.text("{}");
+        }
+        arena
+            .text("{")
+            .append(
+                arena
+                    .hardline()
+                    .append(self.transpile_statements(arena, statements))
+                    .nest(4),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}"))
     }
 
     /// A value block as the body of a match arm: the result alone when the
@@ -959,7 +1053,10 @@ impl Transpiler for RustTranspiler {
         if let Some(binder) = var {
             self.names.insert(
                 binder.var,
-                (Binding::Borrowed, IrType::Data(binder.typ.clone())),
+                (
+                    Binding::Borrowed,
+                    IrType::Value(IrValueType::Data(binder.typ.clone())),
+                ),
             );
         }
         doc.append(
@@ -985,6 +1082,16 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         let_: &'a WriterBinding,
     ) -> Doc<'a> {
+        if let WriterOp::Lambda(lambda) = &let_.op {
+            self.names
+                .insert(let_.name, (Binding::Owned, let_.typ.clone()));
+            return arena
+                .text("let ")
+                .append(arena.text(name_ident(let_.name)))
+                .append(arena.text(" = "))
+                .append(self.transpile_lambda(arena, lambda, &let_.typ))
+                .append(arena.text(";"));
+        }
         let natural = self.natural_form(&let_.op);
         let scalar = Self::is_scalar(&let_.typ);
         let binding = match natural {
@@ -1030,28 +1137,14 @@ impl Transpiler for RustTranspiler {
                 let if_doc = arena
                     .text("if ")
                     .append(self.name_place(arena, *subject))
-                    .append(arena.text(" {"))
-                    .append(
-                        arena
-                            .hardline()
-                            .append(self.transpile_statements(arena, true_body))
-                            .nest(4),
-                    )
-                    .append(arena.hardline())
-                    .append(arena.text("}"));
+                    .append(arena.text(" "))
+                    .append(self.transpile_braced_statements(arena, true_body));
                 if false_body.is_empty() {
                     if_doc
                 } else {
                     if_doc
-                        .append(arena.text(" else {"))
-                        .append(
-                            arena
-                                .hardline()
-                                .append(self.transpile_statements(arena, false_body))
-                                .nest(4),
-                        )
-                        .append(arena.hardline())
-                        .append(arena.text("}"))
+                        .append(arena.text(" else "))
+                        .append(self.transpile_braced_statements(arena, false_body))
                 }
             }
             IrSwitch::Option {
@@ -1067,7 +1160,10 @@ impl Transpiler for RustTranspiler {
                 if let Some(binder) = some_arm_binding {
                     self.names.insert(
                         binder.var,
-                        (Binding::Borrowed, IrType::Data(binder.typ.clone())),
+                        (
+                            Binding::Borrowed,
+                            IrType::Value(IrValueType::Data(binder.typ.clone())),
+                        ),
                     );
                 }
 
@@ -1243,6 +1339,103 @@ impl Transpiler for RustTranspiler {
 
     fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
         arena.text(name.to_string())
+    }
+
+    fn transpile_value_function_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        signature: &IrValueSignature,
+    ) -> Doc<'a> {
+        self.transpile_param_type(
+            arena,
+            &IrType::Value(IrValueType::Function(signature.clone())),
+        )
+    }
+
+    fn transpile_html_function_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        signature: &IrHtmlSignature,
+    ) -> Doc<'a> {
+        self.transpile_param_type(
+            arena,
+            &IrType::Html(IrHtmlType::Function(signature.clone())),
+        )
+    }
+
+    // The parameter types are written out, which makes the closure take
+    // references of any lifetime, as `&dyn Fn` asks. It captures by
+    // reference, which its let outlives, since a closure is never returned
+    // or held.
+    fn transpile_lambda<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        lambda: &'a IrLambda<IrType, WriterFunctionBody>,
+        typ: &'a IrType,
+    ) -> Doc<'a> {
+        let mut params = Vec::new();
+        if matches!(lambda.body, WriterFunctionBody::Writes(_)) {
+            params.push(arena.text("output: &mut String"));
+        }
+        params.extend(self.transpile_lambda_params(arena, &lambda.parameters));
+        let head = arena
+            .text("|")
+            .append(arena.intersperse(params, arena.text(", ")))
+            .append(arena.text("|"));
+        let (head, body) = match (&lambda.body, typ) {
+            (WriterFunctionBody::Writes(statements), _) => {
+                let body = self.transpile_braced_statements(arena, statements);
+                return head.append(arena.text(" ")).append(body);
+            }
+            (
+                WriterFunctionBody::Returns(block),
+                IrType::Value(IrValueType::Function(signature)),
+            ) => {
+                let result = self.transpile_data_type(arena, &signature.result);
+                (
+                    head.append(arena.text(" -> ")).append(result),
+                    self.transpile_value_block(arena, block),
+                )
+            }
+            (WriterFunctionBody::Returns(_), _) => {
+                unreachable!("a lambda that returns has the type of a closure of a value")
+            }
+        };
+        head.append(arena.text(" {"))
+            .append(arena.hardline().append(body).nest(4))
+            .append(arena.hardline())
+            .append(arena.text("}"))
+    }
+
+    fn transpile_apply<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        closure: ValueId,
+        args: &'a [ValueId],
+    ) -> Doc<'a> {
+        let args = self.transpile_arguments(arena, args);
+        arena
+            .text(name_ident(closure))
+            .append(arena.text("("))
+            .append(arena.intersperse(args, arena.text(", ")))
+            .append(arena.text(")"))
+    }
+
+    // The buffer is reborrowed, since a call through `Fn` takes its
+    // arguments as a tuple, where a `&mut` is not reborrowed by itself.
+    fn transpile_write_apply_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        closure: ValueId,
+        args: &'a [ValueId],
+    ) -> Doc<'a> {
+        let mut all_args: Vec<Doc<'a>> = vec![arena.text("&mut *output")];
+        all_args.extend(self.transpile_arguments(arena, args));
+        arena
+            .text(name_ident(closure))
+            .append(arena.text("("))
+            .append(arena.intersperse(all_args, arena.text(", ")))
+            .append(arena.text(");"))
     }
 
     fn transpile_field_access<'a>(
@@ -1724,7 +1917,10 @@ impl Transpiler for RustTranspiler {
                 if let Some(binder) = some_arm_binding {
                     self.names.insert(
                         binder.var,
-                        (Binding::Borrowed, IrType::Data(binder.typ.clone())),
+                        (
+                            Binding::Borrowed,
+                            IrType::Value(IrValueType::Data(binder.typ.clone())),
+                        ),
                     );
                 }
                 let subject_doc = self.name_ref(arena, *subject);
@@ -1832,12 +2028,282 @@ impl Transpiler for RustTranspiler {
 mod tests {
     use super::*;
     use crate::document::Document;
+    use crate::hop::typing::Ty;
+    use crate::ir::flat_program::FlatProgram;
+    use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_to_writer;
+    use crate::ir::ir_page::IrPage;
+    use crate::ir::ir_type::IrType;
+    use crate::ir::optimize_flat;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::root_contained_file_path::RootContainedFilePath;
     use crate::session::Session;
     use expect_test::{Expect, expect};
     use indoc::indoc;
+
+    // Builder programs reach closures that hop source cannot write yet.
+    fn check_program(program: FlatProgram, expected: Expect) {
+        let pages = IrPage::for_entrypoints(&program);
+        let writer = flat_to_writer(optimize_flat(program), &pages, None);
+        let output = RustTranspiler::new().transpile_program(&writer);
+        expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn closure_that_a_recursive_function_writes_for_each_number() {
+        // The function is recursive, so the inliner keeps the closure.
+        check_program(
+            FlatProgramBuilder::new()
+                .function_with_types(
+                    "Countdown",
+                    [
+                        ("n", IrType::INT),
+                        ("row", IrType::html_function([IrType::INT])),
+                    ],
+                    IrType::HTML,
+                    |t| {
+                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                            m.arm(Pat::True, |t, _| t.html_concat([]));
+                            m.arm(Pat::False, |t, _| {
+                                let row = t.apply(t.param("row"), [t.param("n")]);
+                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.call("Countdown", [rest, t.param("row")]);
+                                t.html_concat([row, rest])
+                            });
+                        })
+                    },
+                )
+                .entrypoint("Test", [("prefix", Ty::String)], Ty::Html, |t| {
+                    let prefix = t.param("prefix");
+                    let row = t.lambda([IrType::INT], |t, params| {
+                        let text = t.string_concat([prefix, t.int_to_string(params[0])]);
+                        t.element("li", [], t.escape(text))
+                    });
+                    t.element("ul", [], t.call("Countdown", [t.int(3), row]))
+                })
+                .build(),
+            expect![[r#"
+            // Code generated by the hop compiler. DO NOT EDIT.
+            #![cfg_attr(rustfmt, rustfmt_skip)]
+            #![allow(unused_parens, dead_code, clippy::all)]
+
+            pub trait View {
+                fn render(self) -> String;
+                fn write(self, output: &mut String);
+            }
+
+            fn write_escaped_html(s: &str, output: &mut String) {
+                for c in s.chars() {
+                    match c {
+                        '&' => output.push_str("&amp;"),
+                        '<' => output.push_str("&lt;"),
+                        '>' => output.push_str("&gt;"),
+                        '"' => output.push_str("&quot;"),
+                        _ => output.push(c),
+                    }
+                }
+            }
+
+            pub struct Test {
+                pub prefix: String,
+            }
+
+            fn render_countdown_0(output: &mut String, v_0: i32, v_1: &dyn Fn(&mut String, i32)) {
+                let v_2: i32 = 0_i32;
+                let v_3: bool = v_0 <= v_2;
+                if v_3 {} else {
+                    let v_6: i32 = 1_i32;
+                    let v_7: i32 = v_0.wrapping_sub(v_6);
+                    v_1(&mut *output, v_0);
+                    render_countdown_0(output, v_7, v_1);
+                }
+            }
+
+            impl View for Test {
+                fn render(self) -> String {
+                    let mut output: String = String::new();
+                    self.write(&mut output);
+                    output
+                }
+
+                fn write(self, output: &mut String) {
+                    let Test { prefix: v_11 } = self;
+                    let v_18: i32 = 3_i32;
+                    let v_17 = |output: &mut String, v_12: i32| {
+                        let v_13: String = v_12.to_string();
+                        output.push_str("<li>");
+                        write_escaped_html(&v_11, output);
+                        write_escaped_html(&v_13, output);
+                        output.push_str("</li>");
+                    };
+                    output.push_str("<ul>");
+                    render_countdown_0(output, v_18, &v_17);
+                    output.push_str("</ul>");
+                }
+            }
+        "#]],
+        );
+    }
+
+    #[test]
+    fn closure_that_a_match_on_a_parameter_selects() {
+        check_program(
+            FlatProgramBuilder::new()
+                .entrypoint(
+                    "Test",
+                    [("double", Ty::Bool), ("n", Ty::Int)],
+                    Ty::Html,
+                    |t| {
+                        let scale = t.match_(t.param("double"), |m| {
+                            m.arm(Pat::True, |t, _| {
+                                let two = t.int(2);
+                                t.lambda([IrType::INT], |t, params| t.mul(params[0], two))
+                            });
+                            m.arm(Pat::False, |t, _| {
+                                t.lambda([IrType::INT], |_, params| params[0])
+                            });
+                        });
+                        let scaled = t.apply(scale, [t.param("n")]);
+                        t.escape(t.int_to_string(scaled))
+                    },
+                )
+                .build(),
+            expect![[r#"
+            // Code generated by the hop compiler. DO NOT EDIT.
+            #![cfg_attr(rustfmt, rustfmt_skip)]
+            #![allow(unused_parens, dead_code, clippy::all)]
+
+            pub trait View {
+                fn render(self) -> String;
+                fn write(self, output: &mut String);
+            }
+
+            fn write_escaped_html(s: &str, output: &mut String) {
+                for c in s.chars() {
+                    match c {
+                        '&' => output.push_str("&amp;"),
+                        '<' => output.push_str("&lt;"),
+                        '>' => output.push_str("&gt;"),
+                        '"' => output.push_str("&quot;"),
+                        _ => output.push(c),
+                    }
+                }
+            }
+
+            pub struct Test {
+                pub double: bool,
+                pub n: i32,
+            }
+
+            impl View for Test {
+                fn render(self) -> String {
+                    let mut output: String = String::new();
+                    self.write(&mut output);
+                    output
+                }
+
+                fn write(self, output: &mut String) {
+                    let Test { double: v_0, n: v_1 } = self;
+                    let v_8 = |v_12: i32| -> i32 {
+                        let v_16: i32 = match v_0 {
+                            true => {
+                                let v_2: i32 = 2_i32;
+                                let v_5 = |v_3: i32| -> i32 {
+                                    let v_4: i32 = v_3.wrapping_mul(v_2);
+                                    v_4
+                                };
+                                let v_13: i32 = v_5(v_12);
+                                v_13
+                            },
+                            false => {
+                                let v_7 = |v_6: i32| -> i32 {
+                                    v_6
+                                };
+                                let v_14: i32 = v_7(v_12);
+                                v_14
+                            },
+                        };
+                        v_16
+                    };
+                    let v_9: i32 = v_8(v_1);
+                    let v_10: String = v_9.to_string();
+                    write_escaped_html(&v_10, output);
+                }
+            }
+        "#]],
+        );
+    }
+
+    #[test]
+    fn closure_that_takes_html() {
+        check_program(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("bold", Ty::Bool)], Ty::Html, |t| {
+                    let wrap = t.match_(t.param("bold"), |m| {
+                        m.arm(Pat::True, |t, _| {
+                            t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]))
+                        });
+                        m.arm(Pat::False, |t, _| {
+                            t.lambda([IrType::HTML], |_, params| params[0])
+                        });
+                    });
+                    let item = t.element("i", [], t.text("x"));
+                    t.apply(wrap, [item])
+                })
+                .build(),
+            expect![[r#"
+            // Code generated by the hop compiler. DO NOT EDIT.
+            #![cfg_attr(rustfmt, rustfmt_skip)]
+            #![allow(unused_parens, dead_code, clippy::all)]
+
+            pub trait View {
+                fn render(self) -> String;
+                fn write(self, output: &mut String);
+            }
+
+            #[derive(Clone, Debug)]
+            pub struct Html(String);
+
+            pub struct Test {
+                pub bold: bool,
+            }
+
+            impl View for Test {
+                fn render(self) -> String {
+                    let mut output: String = String::new();
+                    self.write(&mut output);
+                    output
+                }
+
+                fn write(self, output: &mut String) {
+                    let Test { bold: v_0 } = self;
+                    let v_6 = |output: &mut String, v_10: &Html| {
+                        if v_0 {
+                            let v_3 = |output: &mut String, v_1: &Html| {
+                                output.push_str("<b>");
+                                output.push_str(&v_1.0);
+                                output.push_str("</b>");
+                            };
+                            v_3(&mut *output, v_10);
+                        } else {
+                            let v_5 = |output: &mut String, v_4: &Html| {
+                                output.push_str(&v_4.0);
+                            };
+                            v_5(&mut *output, v_10);
+                        }
+                    };
+                    let v_14: Html = {
+                        let mut buf: String = String::new();
+                        let mut output: &mut String = &mut buf;
+                        output.push_str("<i>x</i>");
+                        Html(buf)
+                    };
+                    v_6(&mut *output, &v_14);
+                }
+            }
+        "#]],
+        );
+    }
 
     fn check(source: &str, expected: Expect) {
         let document_id = RootContainedFilePath::new("main.hop").unwrap();

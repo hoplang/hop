@@ -6,11 +6,13 @@ use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
     FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
+use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_type::IrDataType;
+use crate::ir::ir_type::{IrDataType, IrType, IrValueType};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
@@ -28,6 +30,9 @@ use crate::symbols::field_name::FieldName;
 ///   empty constants and merges adjacent constants. An html concat takes
 ///   the parts of a nested concat as its own. A concat of one part is that
 ///   part.
+/// - An application of a lambda bound earlier in the body runs a copy of
+///   the lambda's body in place of the application, with fresh names, and
+///   what reads a parameter reads the argument.
 ///
 /// A binding that turns out to be another name is dropped, and what read
 /// it reads that name. The bindings nothing reads any more are left for
@@ -49,6 +54,8 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
                 values: HashMap::new(),
                 concats: HashMap::new(),
                 renames: HashMap::new(),
+                data_lambdas: HashMap::new(),
+                html_lambdas: HashMap::new(),
             };
             match function {
                 FlatFunctionDeclaration::Data(function) => {
@@ -73,6 +80,13 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
     }
 }
 
+fn arguments<T, B>(lambda: &IrLambda<T, B>, args: &[ValueId]) -> HashMap<ValueId, ValueId> {
+    (lambda.parameters.iter())
+        .map(|param| param.var)
+        .zip(args.iter().copied())
+        .collect()
+}
+
 /// What a binding of a value folded to.
 enum Folded {
     /// An op, bound to the name as before.
@@ -93,6 +107,10 @@ struct Evaluator<'a> {
     /// folded to one, and the names the patterns of selected arms bind, each
     /// with the constructor operand it stands for.
     renames: HashMap<ValueId, ValueId>,
+    // The lambdas kept so far, evaluated, for the applications that read
+    // them to copy.
+    data_lambdas: HashMap<ValueId, IrLambda<IrValueType, FlatDataBlock>>,
+    html_lambdas: HashMap<ValueId, IrLambda<IrType, FlatHtmlBlock>>,
 }
 
 impl Evaluator<'_> {
@@ -282,6 +300,36 @@ impl Evaluator<'_> {
                     });
                 }
             },
+            FlatDataOp::Lambda(IrLambda { parameters, body }) => {
+                let lambda = IrLambda {
+                    parameters,
+                    body: self.data_block(body),
+                };
+                self.data_lambdas.insert(name, lambda.clone());
+                out.push(FlatDataBinding {
+                    binder,
+                    op: FlatDataOp::Lambda(lambda),
+                });
+            }
+            FlatDataOp::Apply(closure, args) => {
+                // The copy runs in place of the application, its bindings
+                // joining the block the application sits in, as the
+                // selected arm of a match does.
+                if let Some(lambda) = self.data_lambdas.get(&closure) {
+                    let body = Freshener::new(&mut *self.value_ids, arguments(lambda, &args))
+                        .freshen_data_block(&lambda.body);
+                    for binding in body.bindings {
+                        self.data_binding(binding, out);
+                    }
+                    let result = self.resolve(body.result);
+                    self.renames.insert(name, result);
+                    return;
+                }
+                out.push(FlatDataBinding {
+                    binder,
+                    op: FlatDataOp::Apply(closure, args),
+                });
+            }
             op @ FlatDataOp::Call(..) => out.push(FlatDataBinding { binder, op }),
         }
     }
@@ -318,6 +366,30 @@ impl Evaluator<'_> {
                 array,
                 body: self.html_block(body),
             }),
+            FlatHtmlOp::Lambda(IrLambda { parameters, body }) => {
+                let lambda = IrLambda {
+                    parameters,
+                    body: self.html_block(body),
+                };
+                self.html_lambdas.insert(name, lambda.clone());
+                FlatHtmlOp::Lambda(lambda)
+            }
+            FlatHtmlOp::Apply(closure, args) => {
+                if let Some(lambda) = self.html_lambdas.get(&closure) {
+                    let body = Freshener::new(&mut *self.value_ids, arguments(lambda, &args))
+                        .freshen_html_block(&lambda.body);
+                    for binding in body.bindings {
+                        self.data_binding(binding, bindings);
+                    }
+                    for binding in body.html {
+                        self.html_binding(binding, bindings, html);
+                    }
+                    let result = self.resolve(body.result);
+                    self.renames.insert(name, result);
+                    return;
+                }
+                FlatHtmlOp::Apply(closure, args)
+            }
             FlatHtmlOp::Concat(parts) => {
                 let mut flattened = Vec::with_capacity(parts.len());
                 for part in parts {
@@ -404,7 +476,7 @@ impl Evaluator<'_> {
                             out.push(FlatDataBinding {
                                 binder: IrBinder {
                                     var: name,
-                                    typ: IrDataType::String,
+                                    typ: IrValueType::Data(IrDataType::String),
                                 },
                                 op: FlatDataOp::Data(op),
                             });
@@ -597,8 +669,7 @@ mod tests {
             let program = perform_partial_evaluation(program);
 
             // The pass drops no computation but a selected arm's siblings,
-            // which never ran, so the output and whether the call depth
-            // limit is hit both stay the same.
+            // which never ran, so the output stays the same.
             for ((function, args), before) in entrypoint_args.iter().zip(before) {
                 let after =
                     evaluate_entrypoint(&program, function, args.clone()).map(Value::into_markup);
@@ -608,10 +679,6 @@ mod tests {
                         "entrypoint {function}\n-- before --\n{before_program}\n-- after --\n{program}"
                     ),
                     (
-                        Err(EvalError::CallDepthLimit { .. }),
-                        Err(EvalError::CallDepthLimit { .. }),
-                    )
-                    | (
                         Err(EvalError::HtmlSizeLimit { .. }),
                         Err(EvalError::HtmlSizeLimit { .. }),
                     )
@@ -622,6 +689,10 @@ mod tests {
                     // The pass evaluates ops ahead of time, so the program may
                     // stay under the op count limit after it.
                     (Err(EvalError::OpCountLimit { .. }), _) => {}
+                    // The pass runs the body of a lambda in place of its
+                    // application, which opens no frame, so the program may
+                    // stay under the call depth limit after it.
+                    (Err(EvalError::CallDepthLimit { .. }), _) => {}
                     (before, after) => panic!(
                         "entrypoint {function}: before {before:?}, after {after:?}\n-- before --\n{before_program}\n-- after --\n{program}"
                     ),
@@ -653,6 +724,61 @@ mod tests {
             OrchestrateOptions::default(),
         );
         check(flat, expected);
+    }
+
+    #[test]
+    fn should_run_a_copy_of_a_lambda_in_place_of_each_application() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
+                    let ten = t.int(10);
+                    let add = t.lambda([IrType::INT], |t, params| t.add(params[0], ten));
+                    let known = t.apply(add, [t.int(1)]);
+                    let unknown = t.apply(add, [t.param("n")]);
+                    t.html_concat([
+                        t.escape(t.int_to_string(known)),
+                        t.escape(t.int_to_string(unknown)),
+                    ])
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0(n@v0: Int) -> Html {
+                  let v1: Int = 10
+                  let v4: (Int) -> Int = fn(v2: Int) {
+                    let v3: Int = v2 + v1
+                    v3
+                  }
+                  let v5: Int = 1
+                  let v6: Int = v4(v5)
+                  let v7: Int = v4(v0)
+                  let v8: String = v6.to_string()
+                  let v10: String = v7.to_string()
+                  let v9: Html = escape(v8)
+                  let v11: Html = escape(v10)
+                  let v12: Html = concat(v9, v11)
+                  v12
+                }
+
+                -- after --
+                entrypoint fn Test@f0(n@v0: Int) -> Html {
+                  let v1: Int = 10
+                  let v4: (Int) -> Int = fn(v2: Int) {
+                    let v3: Int = v2 + v1
+                    v3
+                  }
+                  let v5: Int = 1
+                  let v13: Int = 11
+                  let v14: Int = v0 + v1
+                  let v8: String = "11"
+                  let v10: String = v14.to_string()
+                  let v9: Html = escape(v8)
+                  let v11: Html = escape(v10)
+                  let v12: Html = concat(v9, v11)
+                  v12
+                }
+            "#]],
+        );
     }
 
     #[test]

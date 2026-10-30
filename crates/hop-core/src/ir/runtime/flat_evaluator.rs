@@ -17,13 +17,14 @@ use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::html_node::{Html, HtmlAttribute, HtmlNode};
-use crate::ir::runtime::value::{MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value};
+use crate::ir::runtime::value::{Closure, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value};
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 
-/// The most function frames that may be active at once. A call that would
-/// open one more fails with a call depth limit error.
+/// The most frames that may be active at once, one for each call of a
+/// function and each application of a closure. A call or an application
+/// that would open one more fails with a call depth limit error.
 pub const MAX_CALL_DEPTH: usize = 12;
 
 /// The most ops one evaluation of a function from outside may evaluate,
@@ -41,11 +42,11 @@ const STRING_LENGTH_LIMIT_ERROR: EvalError = EvalError::StringLengthLimit {
 /// Evaluate a page from the entrypoint functions it points at, each called with
 /// the arguments named by the page's parameters. With a shell, the page
 /// renders as a whole document, the shell around its head and its body.
-pub fn evaluate_page(
-    program: &FlatProgram,
+pub fn evaluate_page<'a>(
+    program: &'a FlatProgram,
     pages: &[IrPage],
     page_name: &TypeName,
-    args: HashMap<AttributeName, Value>,
+    args: HashMap<AttributeName, Value<'a>>,
     shell: Option<&DocumentShell>,
 ) -> Result<String, EvalError> {
     let page = pages
@@ -80,11 +81,11 @@ pub fn evaluate_page(
 
 /// Evaluate a function called from outside the program, on the arguments
 /// named by its parameters.
-pub fn evaluate_entrypoint(
-    program: &FlatProgram,
+pub fn evaluate_entrypoint<'a>(
+    program: &'a FlatProgram,
     function: &IrFunction,
-    mut args: HashMap<AttributeName, Value>,
-) -> Result<Value, EvalError> {
+    mut args: HashMap<AttributeName, Value<'a>>,
+) -> Result<Value<'a>, EvalError> {
     let decl = program
         .functions
         .iter()
@@ -104,18 +105,17 @@ pub fn evaluate_entrypoint(
 }
 
 /// Evaluate a function on its arguments, one for each parameter in the
-/// order they are declared, with `depth` function frames already active. A
-/// call from outside any function has depth zero.
-fn evaluate_function(
-    functions: &[FlatFunctionDeclaration],
+/// order they are declared, with `depth` frames already active. A call from
+/// outside any function has depth zero.
+fn evaluate_function<'a>(
+    functions: &'a [FlatFunctionDeclaration],
     function: &IrFunction,
-    args: Vec<Value>,
+    args: Vec<Value<'a>>,
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value, EvalError> {
+) -> Result<Value<'a>, EvalError> {
     if depth >= MAX_CALL_DEPTH {
         return Err(EvalError::CallDepthLimit {
-            function: function.clone(),
             limit: MAX_CALL_DEPTH,
         });
     }
@@ -150,13 +150,13 @@ fn evaluate_function(
 /// Evaluate the bindings in order and produce the result. The block extends
 /// a copy of `env` and leaves `env` as it is, so its bindings are out of
 /// scope again when it returns.
-fn evaluate_data_block(
-    block: &FlatDataBlock,
-    env: &HashTrieMap<ValueId, Value>,
-    functions: &[FlatFunctionDeclaration],
+fn evaluate_data_block<'a>(
+    block: &'a FlatDataBlock,
+    env: &HashTrieMap<ValueId, Value<'a>>,
+    functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value, EvalError> {
+) -> Result<Value<'a>, EvalError> {
     let mut env = env.clone();
     evaluate_data_bindings(&block.bindings, &mut env, functions, depth, op_count)?;
     Ok(env[&block.result].clone())
@@ -164,13 +164,13 @@ fn evaluate_data_block(
 
 /// Evaluate the values and then the Html in order and produce the result,
 /// leaving `env` as it is like `evaluate_data_block`.
-fn evaluate_html_block(
-    block: &FlatHtmlBlock,
-    env: &HashTrieMap<ValueId, Value>,
-    functions: &[FlatFunctionDeclaration],
+fn evaluate_html_block<'a>(
+    block: &'a FlatHtmlBlock,
+    env: &HashTrieMap<ValueId, Value<'a>>,
+    functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value, EvalError> {
+) -> Result<Value<'a>, EvalError> {
     let mut env = env.clone();
     evaluate_data_bindings(&block.bindings, &mut env, functions, depth, op_count)?;
     for binding in &block.html {
@@ -180,10 +180,10 @@ fn evaluate_html_block(
     Ok(env[&block.result].clone())
 }
 
-fn evaluate_data_bindings(
-    bindings: &[FlatDataBinding],
-    env: &mut HashTrieMap<ValueId, Value>,
-    functions: &[FlatFunctionDeclaration],
+fn evaluate_data_bindings<'a>(
+    bindings: &'a [FlatDataBinding],
+    env: &mut HashTrieMap<ValueId, Value<'a>>,
+    functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
 ) -> Result<(), EvalError> {
@@ -203,30 +203,71 @@ fn evaluate_data_bindings(
                 let (body, env) = enter_arm(match_, env);
                 evaluate_data_block(body, &env, functions, depth, op_count)?
             }
+            FlatDataOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
+                lambda: Lambda::Data(lambda),
+                env: env.clone(),
+            })),
+            FlatDataOp::Apply(closure, args) => {
+                evaluate_apply(*closure, args, env, functions, depth, op_count)?
+            }
         };
         env.insert_mut(binding.binder.var, value);
     }
     Ok(())
 }
 
-fn evaluate_call(
+fn evaluate_call<'a>(
     function: &IrFunction,
     args: &[ValueId],
-    env: &HashTrieMap<ValueId, Value>,
-    functions: &[FlatFunctionDeclaration],
+    env: &HashTrieMap<ValueId, Value<'a>>,
+    functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value, EvalError> {
+) -> Result<Value<'a>, EvalError> {
     let values = args.iter().map(|arg| env[arg].clone()).collect();
     evaluate_function(functions, function, values, depth, op_count)
+}
+
+// The body of the closure's lambda runs in the scope where the lambda was
+// evaluated, with its parameters bound to the arguments, in a frame of its
+// own as a call's body does.
+fn evaluate_apply<'a>(
+    closure: ValueId,
+    args: &[ValueId],
+    env: &HashTrieMap<ValueId, Value<'a>>,
+    functions: &'a [FlatFunctionDeclaration],
+    depth: usize,
+    op_count: &mut usize,
+) -> Result<Value<'a>, EvalError> {
+    if depth >= MAX_CALL_DEPTH {
+        return Err(EvalError::CallDepthLimit {
+            limit: MAX_CALL_DEPTH,
+        });
+    }
+    let closure = env[&closure].as_closure();
+    let mut body_env = closure.env.clone();
+    match closure.lambda {
+        Lambda::Data(lambda) => {
+            for (param, arg) in lambda.parameters.iter().zip(args) {
+                body_env.insert_mut(param.var, env[arg].clone());
+            }
+            evaluate_data_block(&lambda.body, &body_env, functions, depth + 1, op_count)
+        }
+        Lambda::Html(lambda) => {
+            for (param, arg) in lambda.parameters.iter().zip(args) {
+                body_env.insert_mut(param.var, env[arg].clone());
+            }
+            evaluate_html_block(&lambda.body, &body_env, functions, depth + 1, op_count)
+        }
+    }
 }
 
 /// The body of the first arm the subject matches, with `env` extended by
 /// the names its pattern binds.
 fn enter_arm<'a, B>(
     match_: &'a IrMatch<B>,
-    env: &HashTrieMap<ValueId, Value>,
-) -> (&'a B, HashTrieMap<ValueId, Value>) {
+    env: &HashTrieMap<ValueId, Value<'a>>,
+) -> (&'a B, HashTrieMap<ValueId, Value<'a>>) {
     let subject = &env[&match_.subject];
     let (arm, bound) = match_
         .arms
@@ -245,13 +286,13 @@ fn enter_arm<'a, B>(
     (&arm.body, env)
 }
 
-fn evaluate_html_op(
-    op: &FlatHtmlOp,
-    env: &HashTrieMap<ValueId, Value>,
-    functions: &[FlatFunctionDeclaration],
+fn evaluate_html_op<'a>(
+    op: &'a FlatHtmlOp,
+    env: &HashTrieMap<ValueId, Value<'a>>,
+    functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value, EvalError> {
+) -> Result<Value<'a>, EvalError> {
     *op_count += 1;
     if *op_count > MAX_OP_COUNT {
         return Err(EvalError::OpCountLimit {
@@ -327,10 +368,22 @@ fn evaluate_html_op(
             }
             Value::Html(Html::new(HtmlNode::Concat(parts))?)
         }
+
+        FlatHtmlOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
+            lambda: Lambda::Html(lambda),
+            env: env.clone(),
+        })),
+
+        FlatHtmlOp::Apply(closure, args) => {
+            evaluate_apply(*closure, args, env, functions, depth, op_count)?
+        }
     })
 }
 
-fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<Value, EvalError> {
+fn evaluate_data_op<'a>(
+    op: &IrDataOp,
+    env: &HashTrieMap<ValueId, Value<'a>>,
+) -> Result<Value<'a>, EvalError> {
     Ok(match op {
         IrDataOp::StringLiteral(value) => Value::String(value.as_str().into()),
         IrDataOp::IntLiteral(value) => Value::Int(*value),
@@ -433,6 +486,7 @@ mod tests {
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::ir_type::{IrDataType, IrType};
     use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::value_builder::ValueBuilder;
     use expect_test::{Expect, expect};
@@ -461,11 +515,11 @@ mod tests {
 
     fn check(
         program: FlatProgram,
-        args: impl FnOnce(&ValueBuilder<'_>) -> Vec<(&'static str, Value)>,
+        args: impl FnOnce(&ValueBuilder<'_>) -> Vec<(&'static str, Value<'static>)>,
         expected: Expect,
     ) {
         let before = program.to_string();
-        let args: HashMap<AttributeName, Value> = args(&ValueBuilder::new(&program.types))
+        let args: HashMap<AttributeName, Value<'_>> = args(&ValueBuilder::new(&program.types))
             .into_iter()
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
@@ -1008,6 +1062,174 @@ mod tests {
     }
 
     #[test]
+    fn should_apply_a_closure_to_its_arguments_and_the_names_it_captures() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("base", Ty::Int)], Ty::Html, |t| {
+                    let base = t.param("base");
+                    let add = t.lambda([IrType::INT], |t, params| t.add(params[0], base));
+                    let one = t.apply(add, [t.int(1)]);
+                    let two = t.apply(add, [t.int(2)]);
+                    t.html_concat([
+                        t.escape(t.int_to_string(one)),
+                        t.escape(t.int_to_string(two)),
+                    ])
+                })
+                .build(),
+            |v| vec![("base", v.int(10))],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0(base@v0: Int) -> Html {
+                  let v3: (Int) -> Int = fn(v1: Int) {
+                    let v2: Int = v1 + v0
+                    v2
+                  }
+                  let v4: Int = 1
+                  let v5: Int = v3(v4)
+                  let v6: Int = 2
+                  let v7: Int = v3(v6)
+                  let v8: String = v5.to_string()
+                  let v10: String = v7.to_string()
+                  let v9: Html = escape(v8)
+                  let v11: Html = escape(v10)
+                  let v12: Html = concat(v9, v11)
+                  v12
+                }
+
+                -- after --
+                1112
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_render_a_closure_a_function_takes_once_per_application() {
+        check(
+            FlatProgramBuilder::new()
+                .function_with_types(
+                    "Rows",
+                    [
+                        ("items", IrType::array(IrDataType::String)),
+                        ("row", IrType::html_function([IrType::STRING])),
+                    ],
+                    IrType::HTML,
+                    |t| {
+                        let rows =
+                            t.html_for(t.param("items"), |t, item| t.apply(t.param("row"), [item]));
+                        t.element("ul", [], rows)
+                    },
+                )
+                .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
+                    let prefix = t.str("- ");
+                    let row = t.lambda([IrType::STRING], |t, params| {
+                        let text = t.html_concat([t.escape(prefix), t.escape(params[0])]);
+                        t.element("li", [], text)
+                    });
+                    t.call("Rows", [t.param("items"), row])
+                })
+                .build(),
+            |v| vec![("items", v.array(vec![v.str("a"), v.str("b")]))],
+            expect![[r#"
+                -- before --
+                fn Rows@f0(items@v0: Array[String], row@v1: (String) -> Html) -> Html {
+                  let v4: Html = for v2: String in v0 {
+                    let v3: Html = v1(v2)
+                    v3
+                  }
+                  let v5: Html = element("ul", {}, v4)
+                  v5
+                }
+                entrypoint fn Test@f1(items@v6: Array[String]) -> Html {
+                  let v7: String = "- "
+                  let v13: (String) -> Html = fn(v8: String) {
+                    let v9: Html = escape(v7)
+                    let v10: Html = escape(v8)
+                    let v11: Html = concat(v9, v10)
+                    let v12: Html = element("li", {}, v11)
+                    v12
+                  }
+                  let v14: Html = Rows@f0(v6, v13)
+                  v14
+                }
+
+                -- after --
+                <ul><li>- a</li><li>- b</li></ul>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_apply_the_closure_a_match_selects() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("bold", Ty::Bool)], Ty::Html, |t| {
+                    let show = t.match_(t.param("bold"), |m| {
+                        m.arm(Pat::True, |t, _| {
+                            t.lambda([IrType::STRING], |t, params| {
+                                t.element("b", [], t.escape(params[0]))
+                            })
+                        });
+                        m.arm(Pat::False, |t, _| {
+                            t.lambda([IrType::STRING], |t, params| t.escape(params[0]))
+                        });
+                    });
+                    t.apply(show, [t.str("x")])
+                })
+                .build(),
+            |v| vec![("bold", v.bool(true))],
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0(bold@v0: Bool) -> Html {
+                  let v9: String = "x"
+                  let v8: (String) -> Html = match v0 {
+                    true => {
+                      let v4: (String) -> Html = fn(v1: String) {
+                        let v2: Html = escape(v1)
+                        let v3: Html = element("b", {}, v2)
+                        v3
+                      }
+                      v4
+                    }
+                    false => {
+                      let v7: (String) -> Html = fn(v5: String) {
+                        let v6: Html = escape(v5)
+                        v6
+                      }
+                      v7
+                    }
+                  }
+                  let v10: Html = v8(v9)
+                  v10
+                }
+
+                -- after --
+                <b>x</b>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_count_an_application_towards_the_call_depth() {
+        let program = FlatProgramBuilder::new()
+            .entrypoint("Test", [], Ty::Html, |t| {
+                // Applying the last closure applies every closure before it,
+                // twelve applications deep in the frame of Test.
+                let mut closure = t.lambda([], |t, _| t.int(0));
+                for _ in 1..12 {
+                    let inner = closure;
+                    closure = t.lambda([], |t, _| t.add(t.apply(inner, []), t.int(1)));
+                }
+                t.escape(t.int_to_string(t.apply(closure, [])))
+            })
+            .build();
+        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Program exceeded the call depth limit of 12"
+        );
+    }
+
+    #[test]
     fn should_error_when_a_function_never_stops_calling_itself() {
         let program = FlatProgramBuilder::new()
             .function("Loop", [("n", Ty::Int)], Ty::Int, |t| {
@@ -1020,7 +1242,7 @@ mod tests {
         let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
-            "Function 'Loop@f0' exceeded the call depth limit of 12"
+            "Program exceeded the call depth limit of 12"
         );
     }
 
@@ -1057,7 +1279,7 @@ mod tests {
         let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
-            "Function 'Grow@f0' exceeded the call depth limit of 12"
+            "Program exceeded the call depth limit of 12"
         );
     }
 

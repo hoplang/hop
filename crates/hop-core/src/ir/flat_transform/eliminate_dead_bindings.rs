@@ -6,6 +6,7 @@ use crate::ir::flat_program::{
     FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::ir_for::IrFor;
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::ValueId;
 
@@ -45,7 +46,8 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
 /// and making what it reads live in turn. `live` holds the names read by
 /// what comes after, and is shared with nested blocks, since names are
 /// unique. A loop variable or binding of a pattern stays when the block it
-/// scopes over, walked first, reads it.
+/// scopes over, walked first, reads it. A parameter of a lambda stays, since
+/// an application passes it all the same.
 fn eliminate_data(block: FlatDataBlock, live: &mut HashSet<ValueId>) -> FlatDataBlock {
     live.insert(block.result);
     FlatDataBlock {
@@ -80,6 +82,10 @@ fn eliminate_data_bindings(
             FlatDataOp::Match(match_) => {
                 FlatDataOp::Match(eliminate_match(match_, live, eliminate_data))
             }
+            FlatDataOp::Lambda(IrLambda { parameters, body }) => FlatDataOp::Lambda(IrLambda {
+                parameters,
+                body: eliminate_data(body, live),
+            }),
             op => op,
         };
         op.for_each_operand(&mut |operand| {
@@ -110,6 +116,10 @@ fn eliminate_html_bindings(
                 let var = var.filter(|binder| live.contains(&binder.var));
                 FlatHtmlOp::For(IrFor { var, array, body })
             }
+            FlatHtmlOp::Lambda(IrLambda { parameters, body }) => FlatHtmlOp::Lambda(IrLambda {
+                parameters,
+                body: eliminate_html(body, live),
+            }),
             op => op,
         };
         op.for_each_operand(&mut |operand| {

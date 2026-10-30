@@ -3,7 +3,7 @@ use super::html_node::{Html, HtmlNode};
 use super::value::{MAX_ARRAY_LENGTH, Value};
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::html::HtmlElementKind;
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations, IrVariant};
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
@@ -14,7 +14,7 @@ use std::rc::Rc;
 const MAX_DEPTH: usize = 8;
 
 /// Generate a random string matching the given regex pattern.
-fn random_string_from_pattern(rng: &mut impl Rng, pattern: &str) -> Value {
+fn random_string_from_pattern(rng: &mut impl Rng, pattern: &str) -> Value<'static> {
     match rand_regex::Regex::compile(pattern, 100) {
         Ok(regex) => Value::String(rng.sample::<String, _>(&regex).into()),
         // Fall back to word list if the regex is invalid (should be caught by type checker)
@@ -22,7 +22,7 @@ fn random_string_from_pattern(rng: &mut impl Rng, pattern: &str) -> Value {
     }
 }
 
-fn random_word(rng: &mut impl Rng) -> Value {
+fn random_word(rng: &mut impl Rng) -> Value<'static> {
     const WORDS: &[&str] = &["foo", "bar", "baz"];
     Value::String(WORDS[rng.random_range(0..WORDS.len())].into())
 }
@@ -94,16 +94,19 @@ fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrV
 /// re-entering a type already being expanded.
 ///
 /// Panics if the type has no finite values at all, e.g. a record whose
-/// fields require the record itself.
+/// fields require the record itself, or if it is the type of a closure,
+/// which no entrypoint takes.
 pub fn random_value(
     rng: &mut impl Rng,
     ty: &IrType,
     examples: Option<&ExamplesAnnotation>,
     types: &IrTypeDeclarations,
-) -> Value {
+) -> Value<'static> {
     match ty {
-        IrType::Data(data) => random_value_at_depth(rng, data, examples, types, 0, &mut Vec::new()),
-        IrType::Html(_) => Value::Html(
+        IrType::Value(IrValueType::Data(data)) => {
+            random_value_at_depth(rng, data, examples, types, 0, &mut Vec::new())
+        }
+        IrType::Html(IrHtmlType::Html) => Value::Html(
             Html::new(HtmlNode::Element {
                 element: HtmlElementKind::Span,
                 attributes: Vec::new(),
@@ -111,6 +114,9 @@ pub fn random_value(
             })
             .unwrap(),
         ),
+        IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_)) => {
+            panic!("an entrypoint takes no closure")
+        }
     }
 }
 
@@ -121,7 +127,7 @@ fn random_value_at_depth(
     types: &IrTypeDeclarations,
     depth: usize,
     visiting: &mut Vec<TypeName>,
-) -> Value {
+) -> Value<'static> {
     if depth == MAX_DEPTH && !can_construct(ty, types, &mut Vec::new()) {
         panic!("cannot generate a value for infinitely recursive type {ty}");
     }
@@ -144,7 +150,7 @@ fn generate(
     types: &IrTypeDeclarations,
     depth: usize,
     visiting: &mut Vec<TypeName>,
-) -> Value {
+) -> Value<'static> {
     match ty {
         IrDataType::String => match examples.and_then(|e| e.pattern.as_ref()) {
             Some(p) => {

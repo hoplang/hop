@@ -6,9 +6,10 @@ use super::Doc;
 use super::transpiler::Transpiler;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{IrDataType, IrHtmlSignature, IrType, IrValueSignature, IrValueType};
 use crate::ir::ir_type_declarations::{IrEnum, IrRecord};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
@@ -189,12 +190,38 @@ impl TsTranspiler {
             .append(arena.text(")"))
     }
 
+    // TypeScript names the parameters of a function type, so each is named
+    // after its position.
+    fn transpile_function_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        parameters: &[IrType],
+        result: Doc<'a>,
+    ) -> Doc<'a> {
+        let param_docs: Vec<_> = (parameters.iter().enumerate())
+            .map(|(index, typ)| {
+                arena
+                    .text(format!("a{index}: "))
+                    .append(self.transpile_type(arena, typ))
+            })
+            .collect();
+        arena
+            .text("(")
+            .append(arena.intersperse(param_docs, arena.text(", ")))
+            .append(arena.text(") => "))
+            .append(result)
+    }
+
     /// A statement block, indented, between the braces the caller writes.
     fn transpile_block<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         statements: &'a [WriterStmt],
     ) -> Doc<'a> {
+        // An empty block would leave a line of only indentation.
+        if statements.is_empty() {
+            return arena.nil();
+        }
         arena
             .nil()
             .append(arena.hardline())
@@ -224,8 +251,10 @@ impl TsTranspiler {
             .map(|arm| {
                 let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
                 for (_, binder) in &arm.bindings {
-                    self.name_types
-                        .insert(binder.var, IrType::Data(binder.typ.clone()));
+                    self.name_types.insert(
+                        binder.var,
+                        IrType::Value(IrValueType::Data(binder.typ.clone())),
+                    );
                 }
                 let bindings_doc = if arm.bindings.is_empty() {
                     arena.nil()
@@ -299,8 +328,10 @@ impl TsTranspiler {
         };
         let binding_doc = match some_arm_binding {
             Some(binder) => {
-                self.name_types
-                    .insert(binder.var, IrType::Data(binder.typ.clone()));
+                self.name_types.insert(
+                    binder.var,
+                    IrType::Value(IrValueType::Data(binder.typ.clone())),
+                );
                 arena
                     .text("const ")
                     .append(arena.text(name_ident(binder.var)))
@@ -833,8 +864,10 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         let var_name = match var {
             Some(binder) => {
-                self.name_types
-                    .insert(binder.var, IrType::Data(binder.typ.clone()));
+                self.name_types.insert(
+                    binder.var,
+                    IrType::Value(IrValueType::Data(binder.typ.clone())),
+                );
                 name_ident(binder.var)
             }
             None => "_".to_string(),
@@ -1462,6 +1495,99 @@ impl Transpiler for TsTranspiler {
         arena.text("Html")
     }
 
+    fn transpile_value_function_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        signature: &IrValueSignature,
+    ) -> Doc<'a> {
+        let parameters: Vec<IrType> = (signature.parameters.iter().cloned())
+            .map(IrType::Value)
+            .collect();
+        let result = self.transpile_data_type(arena, &signature.result);
+        self.transpile_function_type(arena, &parameters, result)
+    }
+
+    // A closure that renders Html returns its markup, as an Html function
+    // does.
+    fn transpile_html_function_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        signature: &IrHtmlSignature,
+    ) -> Doc<'a> {
+        self.transpile_function_type(arena, &signature.parameters, arena.text("string"))
+    }
+
+    fn transpile_lambda<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        lambda: &'a IrLambda<IrType, WriterFunctionBody>,
+        typ: &'a IrType,
+    ) -> Doc<'a> {
+        let param_docs: Vec<_> = (lambda.parameters.iter())
+            .map(|param| {
+                self.name_types.insert(param.var, param.typ.clone());
+                arena
+                    .text(name_ident(param.var))
+                    .append(arena.text(": "))
+                    .append(self.transpile_type(arena, &param.typ))
+            })
+            .collect();
+        let head = arena
+            .text("(")
+            .append(arena.intersperse(param_docs, arena.text(", ")))
+            .append(arena.text("): "));
+        let (result, body) = match (&lambda.body, typ) {
+            (WriterFunctionBody::Writes(statements), _) => (
+                arena.text("string"),
+                arena
+                    .text("let output: string = \"\";")
+                    .append(arena.hardline())
+                    .append(self.transpile_statements(arena, statements))
+                    .append(arena.hardline())
+                    .append(arena.text("return output;")),
+            ),
+            (
+                WriterFunctionBody::Returns(block),
+                IrType::Value(IrValueType::Function(signature)),
+            ) => (
+                self.transpile_data_type(arena, &signature.result),
+                self.transpile_value_block(arena, block),
+            ),
+            (WriterFunctionBody::Returns(_), _) => {
+                unreachable!("a lambda that returns has the type of a closure of a value")
+            }
+        };
+        head.append(result)
+            .append(arena.text(" => {"))
+            .append(arena.hardline().append(body).nest(4))
+            .append(arena.hardline())
+            .append(arena.text("}"))
+    }
+
+    fn transpile_apply<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        closure: ValueId,
+        args: &'a [ValueId],
+    ) -> Doc<'a> {
+        let base = arena.text(name_ident(closure)).append(arena.text("("));
+        self.transpile_arguments(arena, base, args)
+    }
+
+    fn transpile_write_apply_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        closure: ValueId,
+        args: &'a [ValueId],
+    ) -> Doc<'a> {
+        let base = arena
+            .text("output += ")
+            .append(arena.text(name_ident(closure)))
+            .append(arena.text("("));
+        self.transpile_arguments(arena, base, args)
+            .append(arena.text(";"))
+    }
+
     fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
         arena.text("number")
     }
@@ -1526,7 +1652,13 @@ impl Transpiler for TsTranspiler {
 mod tests {
     use super::*;
     use crate::document::Document;
+    use crate::hop::typing::Ty;
+    use crate::ir::flat_program::FlatProgram;
+    use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_to_writer;
+    use crate::ir::ir_page::IrPage;
+    use crate::ir::ir_type::IrType;
+    use crate::ir::optimize_flat;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::root_contained_file_path::RootContainedFilePath;
     use crate::session::Session;
@@ -1552,6 +1684,220 @@ mod tests {
         let writer = flat_to_writer(flat, &pages, None);
         let output = TsTranspiler::new().transpile_program(&writer);
         expected.assert_eq(&output);
+    }
+
+    // Builder programs reach closures that hop source cannot write yet.
+    fn check_program(program: FlatProgram, expected: Expect) {
+        let pages = IrPage::for_entrypoints(&program);
+        let writer = flat_to_writer(optimize_flat(program), &pages, None);
+        let output = TsTranspiler::new().transpile_program(&writer);
+        expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn closure_that_a_recursive_function_writes_for_each_number() {
+        // The function is recursive, so the inliner keeps the closure.
+        check_program(
+            FlatProgramBuilder::new()
+                .function_with_types(
+                    "Countdown",
+                    [
+                        ("n", IrType::INT),
+                        ("row", IrType::html_function([IrType::INT])),
+                    ],
+                    IrType::HTML,
+                    |t| {
+                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                            m.arm(Pat::True, |t, _| t.html_concat([]));
+                            m.arm(Pat::False, |t, _| {
+                                let row = t.apply(t.param("row"), [t.param("n")]);
+                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.call("Countdown", [rest, t.param("row")]);
+                                t.html_concat([row, rest])
+                            });
+                        })
+                    },
+                )
+                .entrypoint("Test", [("prefix", Ty::String)], Ty::Html, |t| {
+                    let prefix = t.param("prefix");
+                    let row = t.lambda([IrType::INT], |t, params| {
+                        let text = t.string_concat([prefix, t.int_to_string(params[0])]);
+                        t.element("li", [], t.escape(text))
+                    });
+                    t.element("ul", [], t.call("Countdown", [t.int(3), row]))
+                })
+                .build(),
+            expect![[r#"
+            // Code generated by the hop compiler. DO NOT EDIT.
+
+            function escapeHtml(str: string): string {
+                return str
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }
+
+            function renderCountdown_0(v_0: number, v_1: (a0: number) => string): string {
+                let output: string = "";
+                const v_2: number = 0;
+                const v_3: boolean = v_0 <= v_2;
+                if (v_3) {} else {
+                    const v_6: number = 1;
+                    const v_7: number = (v_0 - v_6) | 0;
+                    output += v_1(v_0);
+                    output += renderCountdown_0(v_7, v_1);
+                }
+                return output;
+            }
+
+            export function Test({prefix: v_11}: {prefix: string}): string {
+                let output: string = "";
+                const v_18: number = 3;
+                const v_17: (a0: number) => string = (v_12: number): string => {
+                    let output: string = "";
+                    const v_13: string = v_12.toString();
+                    output += "<li>";
+                    output += escapeHtml(v_11);
+                    output += escapeHtml(v_13);
+                    output += "</li>";
+                    return output;
+                };
+                output += "<ul>";
+                output += renderCountdown_0(v_18, v_17);
+                output += "</ul>";
+                return output;
+            }
+        "#]],
+        );
+    }
+
+    #[test]
+    fn closure_that_a_match_on_a_parameter_selects() {
+        check_program(
+            FlatProgramBuilder::new()
+                .entrypoint(
+                    "Test",
+                    [("double", Ty::Bool), ("n", Ty::Int)],
+                    Ty::Html,
+                    |t| {
+                        let scale = t.match_(t.param("double"), |m| {
+                            m.arm(Pat::True, |t, _| {
+                                let two = t.int(2);
+                                t.lambda([IrType::INT], |t, params| t.mul(params[0], two))
+                            });
+                            m.arm(Pat::False, |t, _| {
+                                t.lambda([IrType::INT], |_, params| params[0])
+                            });
+                        });
+                        let scaled = t.apply(scale, [t.param("n")]);
+                        t.escape(t.int_to_string(scaled))
+                    },
+                )
+                .build(),
+            expect![[r#"
+            // Code generated by the hop compiler. DO NOT EDIT.
+
+            function escapeHtml(str: string): string {
+                return str
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }
+
+            export function Test({
+                double: v_0,
+                n: v_1
+            }: {
+                double: boolean,
+                n: number
+            }): string {
+                let output: string = "";
+                const v_8: (a0: number) => number = (v_12: number): number => {
+                    const v_16: number = (() => {
+                        if (v_0) {
+                            const v_2: number = 2;
+                            const v_5: (a0: number) => number = (v_3: number): number => {
+                                const v_4: number = globalThis.Math.imul(v_3, v_2);
+                                return v_4;
+                            };
+                            const v_13: number = v_5(v_12);
+                            return v_13;
+                        } else {
+                            const v_7: (a0: number) => number = (v_6: number): number => {
+                                return v_6;
+                            };
+                            const v_14: number = v_7(v_12);
+                            return v_14;
+                        }
+                    })();
+                    return v_16;
+                };
+                const v_9: number = v_8(v_1);
+                const v_10: string = v_9.toString();
+                output += escapeHtml(v_10);
+                return output;
+            }
+        "#]],
+        );
+    }
+
+    #[test]
+    fn closure_that_takes_html() {
+        check_program(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("bold", Ty::Bool)], Ty::Html, |t| {
+                    let wrap = t.match_(t.param("bold"), |m| {
+                        m.arm(Pat::True, |t, _| {
+                            t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]))
+                        });
+                        m.arm(Pat::False, |t, _| {
+                            t.lambda([IrType::HTML], |_, params| params[0])
+                        });
+                    });
+                    let item = t.element("i", [], t.text("x"));
+                    t.apply(wrap, [item])
+                })
+                .build(),
+            expect![[r#"
+            // Code generated by the hop compiler. DO NOT EDIT.
+
+            type Html = string & { readonly __brand: unique symbol };
+
+            export function Test({bold: v_0}: {bold: boolean}): string {
+                let output: string = "";
+                const v_6: (a0: Html) => string = (v_10: Html): string => {
+                    let output: string = "";
+                    if (v_0) {
+                        const v_3: (a0: Html) => string = (v_1: Html): string => {
+                            let output: string = "";
+                            output += "<b>";
+                            output += v_1;
+                            output += "</b>";
+                            return output;
+                        };
+                        output += v_3(v_10);
+                    } else {
+                        const v_5: (a0: Html) => string = (v_4: Html): string => {
+                            let output: string = "";
+                            output += v_4;
+                            return output;
+                        };
+                        output += v_5(v_10);
+                    }
+                    return output;
+                };
+                const v_14: Html = (() => {
+                    let output: string = "";
+                    output += "<i>x</i>";
+                    return output as Html;
+                })();
+                output += v_6(v_14);
+                return output;
+            }
+        "#]],
+        );
     }
 
     #[test]

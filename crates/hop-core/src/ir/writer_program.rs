@@ -5,6 +5,7 @@ use pretty::BoxDoc;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::IrSwitch;
 use crate::ir::ir_type::IrType;
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
@@ -84,6 +85,9 @@ pub enum WriterStmt {
     /// Invoke an Html function, which writes to the same buffer. The
     /// arguments follow the function's parameters, one for each.
     WriteFunction(IrFunction, Vec<ValueId>),
+    // Applies a closure that renders Html, which writes to the same buffer
+    // as an Html function does.
+    WriteApply(ValueId, Vec<ValueId>),
     /// Run the body once per element of the array, in order.
     HtmlFor(IrFor<Vec<WriterStmt>>),
     /// Run the arm that matches. Matching is exhaustive.
@@ -98,6 +102,10 @@ pub enum WriterOp {
     HtmlLiteral(Vec<WriterStmt>),
     /// A match over a value that is not Html. Each arm produces the value.
     Match(IrSwitch<WriterBlock>),
+    // A closure whose body is that of a function that writes or returns,
+    // as it renders Html or computes a value.
+    Lambda(IrLambda<IrType, WriterFunctionBody>),
+    Apply(ValueId, Vec<ValueId>),
 }
 
 /// Each statement on a line of its own. The statements start with a line
@@ -146,6 +154,9 @@ impl WriterStmt {
                     .join(", ");
                 BoxDoc::text(format!("write_function {function}({args})"))
             }
+            WriterStmt::WriteApply(closure, args) => {
+                BoxDoc::text(format!("write_apply {closure}({})", args_to_string(args)))
+            }
             WriterStmt::HtmlFor(for_) => for_.to_doc(|body| stmts_to_doc(body)),
             WriterStmt::Match(match_) => match_.to_doc(|body| stmts_to_doc(body)),
         }
@@ -170,6 +181,27 @@ impl WriterOp {
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}")),
             WriterOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
+            WriterOp::Lambda(lambda) => lambda.to_doc(WriterFunctionBody::to_doc),
+            WriterOp::Apply(closure, args) => {
+                BoxDoc::text(format!("{closure}({})", args_to_string(args)))
+            }
+        }
+    }
+}
+
+fn args_to_string(args: &[ValueId]) -> String {
+    args.iter()
+        .map(|arg| arg.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+impl WriterFunctionBody {
+    // Starts with a line break, which the caller nests.
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            WriterFunctionBody::Writes(statements) => stmts_to_doc(statements),
+            WriterFunctionBody::Returns(block) => BoxDoc::line().append(block.to_doc()),
         }
     }
 }
@@ -182,15 +214,11 @@ impl WriterFunctionDeclaration {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ");
-        let body = match &self.body {
-            WriterFunctionBody::Writes(statements) => stmts_to_doc(statements),
-            WriterFunctionBody::Returns(block) => BoxDoc::line().append(block.to_doc()),
-        };
         BoxDoc::text(format!(
             "fn {}({parameters}) -> {} {{",
             self.function, self.return_type
         ))
-        .append(body.nest(2))
+        .append(self.body.to_doc().nest(2))
         .append(BoxDoc::line())
         .append(BoxDoc::text("}"))
     }

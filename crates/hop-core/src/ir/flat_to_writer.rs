@@ -9,16 +9,18 @@ use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBinding,
     FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
+use crate::ir::flat_transform;
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::ir::writer_program::{
@@ -44,6 +46,17 @@ use crate::symbols::type_name::TypeName;
 /// Html is never part of another type and a function that returns a value
 /// has no Html parameter, so no value reads Html. Panics if one does all the
 /// same.
+///
+/// A match whose arms produce closures becomes one lambda first, by
+/// `expand_closure_matches`, so that every closure is a lambda or a
+/// parameter. Such a closure outlives everything that reads it, so a
+/// backend can have every closure borrow the names it captures. A closure
+/// that an arm builds and the match hands out would outlive the arm, and
+/// the names the arm binds with it, which in the Rust backend takes a
+/// boxed closure that owns copies of what it captures. A lambda becomes a
+/// let at the start of its block, with the body a function that writes or
+/// returns would have. Its Html parameters are buffers, as those of a
+/// function are.
 ///
 /// A match compiles to a decision tree. A switch of the tree becomes a
 /// Writer switch on the part of the subject it tests, a record or tuple the
@@ -72,7 +85,7 @@ pub fn flat_to_writer(
         types,
         functions,
         value_ids,
-    } = program;
+    } = flat_transform::expand_closure_matches(program);
     let mut lowerer = Lowerer {
         types: &types,
         value_ids,
@@ -89,32 +102,12 @@ pub fn flat_to_writer(
         bound: HashSet::new(),
     };
     for function in &functions {
-        if let FlatFunctionDeclaration::Html(function) = function {
-            for param in &function.parameters {
-                if param.binder.typ == IrType::HTML {
-                    lowerer.html_parameters.insert(param.binder.var);
-                }
-            }
+        for param in &function.parameters() {
+            lowerer.analyze_parameter(&param.binder);
         }
-    }
-    for function in &functions {
         match function {
-            FlatFunctionDeclaration::Data(function) => {
-                for param in &function.parameters {
-                    lowerer
-                        .binder_types
-                        .insert(param.binder.var, param.binder.typ.clone());
-                }
-                lowerer.analyze_data_block(&function.body);
-            }
-            FlatFunctionDeclaration::Html(function) => {
-                for param in &function.parameters {
-                    if let IrType::Data(typ) = &param.binder.typ {
-                        lowerer.binder_types.insert(param.binder.var, typ.clone());
-                    }
-                }
-                lowerer.analyze_html_block(&function.body);
-            }
+            FlatFunctionDeclaration::Data(function) => lowerer.analyze_data_block(&function.body),
+            FlatFunctionDeclaration::Html(function) => lowerer.analyze_html_block(&function.body),
         }
     }
     let page_functions: HashSet<FunctionId> = pages
@@ -247,7 +240,32 @@ impl<'a> Lowerer<'a> {
 
     /// Whether the name is Html.
     fn is_html(&self, name: ValueId) -> bool {
-        self.html_parameters.contains(&name) || self.html.contains_key(&name)
+        self.html_parameters.contains(&name)
+            || (self.html.get(&name)).is_some_and(|binding| binding.binder.typ == IrHtmlType::Html)
+    }
+
+    // An Html parameter is a buffer, and the type of a parameter of data is
+    // what a match on it needs.
+    fn analyze_parameter(&mut self, binder: &IrBinder<IrType>) {
+        match &binder.typ {
+            IrType::Value(IrValueType::Data(typ)) => {
+                self.binder_types.insert(binder.var, typ.clone());
+            }
+            IrType::Html(IrHtmlType::Html) => {
+                self.html_parameters.insert(binder.var);
+            }
+            IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_)) => {}
+        }
+    }
+
+    fn read_args(&mut self, args: &[ValueId]) {
+        for arg in args {
+            if self.is_html(*arg) {
+                self.read_html(*arg);
+            } else {
+                self.read(*arg, Reader::Value);
+            }
+        }
     }
 
     /// Record that a match reads its subject, as a whole or taken apart.
@@ -295,6 +313,19 @@ impl<'a> Lowerer<'a> {
                         self.analyze_pattern(&arm.pattern);
                         self.analyze_data_block(&arm.body);
                     }
+                }
+                FlatDataOp::Lambda(lambda) => {
+                    for param in &lambda.parameters {
+                        self.analyze_parameter(&IrBinder {
+                            var: param.var,
+                            typ: IrType::Value(param.typ.clone()),
+                        });
+                    }
+                    self.analyze_data_block(&lambda.body);
+                }
+                FlatDataOp::Apply(closure, args) => {
+                    self.read(*closure, Reader::Value);
+                    self.read_args(args);
                 }
             }
         }
@@ -355,14 +386,16 @@ impl<'a> Lowerer<'a> {
                     self.analyze_html_block(body);
                     self.loops -= 1;
                 }
-                FlatHtmlOp::Call(_, args) => {
-                    for arg in args {
-                        if self.is_html(*arg) {
-                            self.read_html(*arg);
-                        } else {
-                            self.read(*arg, Reader::Value);
-                        }
+                FlatHtmlOp::Call(_, args) => self.read_args(args),
+                FlatHtmlOp::Lambda(lambda) => {
+                    for param in &lambda.parameters {
+                        self.analyze_parameter(param);
                     }
+                    self.analyze_html_block(&lambda.body);
+                }
+                FlatHtmlOp::Apply(closure, args) => {
+                    self.read(*closure, Reader::Value);
+                    self.read_args(args);
                 }
             }
         }
@@ -488,7 +521,7 @@ impl<'a> Lowerer<'a> {
                 WriterFunctionDeclaration {
                     function: function.function.clone(),
                     parameters: decl.parameters(),
-                    return_type: IrType::Data(function.return_type.clone()),
+                    return_type: IrType::Value(IrValueType::Data(function.return_type.clone())),
                     body: WriterFunctionBody::Returns(WriterBlock {
                         bindings,
                         result: self.name(function.body.result),
@@ -520,13 +553,45 @@ impl<'a> Lowerer<'a> {
                     op.for_each_operand_mut(&mut |name| *name = self.name(*name));
                     WriterOp::Data(op)
                 }
+                FlatDataOp::Lambda(lambda) => {
+                    let parameters = self.bind_parameters(&lambda.parameters);
+                    let mut bindings = Vec::new();
+                    self.lower_bindings(&lambda.body.bindings, &mut bindings);
+                    let body = WriterFunctionBody::Returns(WriterBlock {
+                        bindings,
+                        result: self.name(lambda.body.result),
+                    });
+                    WriterOp::Lambda(IrLambda {
+                        parameters: (parameters.into_iter())
+                            .map(|param| IrBinder {
+                                var: param.var,
+                                typ: IrType::Value(param.typ),
+                            })
+                            .collect(),
+                        body,
+                    })
+                }
+                FlatDataOp::Apply(closure, args) => WriterOp::Apply(
+                    self.name(*closure),
+                    args.iter().map(|arg| self.name(*arg)).collect(),
+                ),
             };
             out.push(WriterBinding {
                 name: self.bind(binding.binder.var),
-                typ: IrType::Data(binding.binder.typ.clone()),
+                typ: IrType::Value(binding.binder.typ.clone()),
                 op,
             });
         }
+    }
+
+    // The parameters of a lambda, binding fresh names in a copy.
+    fn bind_parameters<T: Clone>(&mut self, parameters: &[IrBinder<T>]) -> Vec<IrBinder<T>> {
+        (parameters.iter())
+            .map(|param| IrBinder {
+                var: self.bind(param.var),
+                typ: param.typ.clone(),
+            })
+            .collect()
     }
 
     /// The names a call passes. The Html for an Html parameter renders into
@@ -570,7 +635,12 @@ impl<'a> Lowerer<'a> {
     ) {
         let patterns: Vec<_> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
         let subject_type = match self.bindings.get(&match_.subject) {
-            Some(binding) => binding.binder.typ.clone(),
+            Some(binding) => {
+                let IrValueType::Data(typ) = &binding.binder.typ else {
+                    unreachable!("a match subject is data");
+                };
+                typ.clone()
+            }
             None => self.binder_types[&match_.subject].clone(),
         };
         let decision = compile_decision_tree(self.types, &patterns, subject_type);
@@ -615,7 +685,7 @@ impl<'a> Lowerer<'a> {
                     let name = self.value_ids.next();
                     lets.push(WriterBinding {
                         name,
-                        typ: IrType::Data(field.var.typ.clone()),
+                        typ: IrType::Value(IrValueType::Data(field.var.typ.clone())),
                         op: WriterOp::Data(IrDataOp::FieldAccess(record, field.field_name.clone())),
                     });
                     name
@@ -654,7 +724,7 @@ impl<'a> Lowerer<'a> {
                     let name = self.value_ids.next();
                     lets.push(WriterBinding {
                         name,
-                        typ: IrType::Data(element.typ.clone()),
+                        typ: IrType::Value(IrValueType::Data(element.typ.clone())),
                         op: WriterOp::Data(IrDataOp::TupleIndex(tuple, index)),
                     });
                     name
@@ -669,7 +739,7 @@ impl<'a> Lowerer<'a> {
     fn lower_data_match(
         &mut self,
         match_: &'a IrMatch<FlatDataBlock>,
-        typ: &IrDataType,
+        typ: &IrValueType,
         lets: &mut Vec<WriterBinding>,
     ) -> ValueId {
         let (decision, used, mut parts) = self.compile_match(match_);
@@ -685,7 +755,7 @@ impl<'a> Lowerer<'a> {
         &mut self,
         decision: &Decision<IrBinder<IrDataType>, IrDataType>,
         arms: &'a [IrMatchArm<FlatDataBlock>],
-        typ: &IrDataType,
+        typ: &IrValueType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         lets: &mut Vec<WriterBinding>,
@@ -829,7 +899,7 @@ impl<'a> Lowerer<'a> {
         let name = self.value_ids.next();
         lets.push(WriterBinding {
             name,
-            typ: IrType::Data(typ.clone()),
+            typ: IrType::Value(typ.clone()),
             op: WriterOp::Match(switch),
         });
         name
@@ -856,12 +926,30 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    /// Write a block: the lets of its values, then the buffers of its
-    /// buffered Html, then its result.
+    /// Write a block: the lets of its values, then those of its closures,
+    /// then the buffers of its buffered Html, then its result. A closure
+    /// reads no Html bound outside it, while buffered Html can apply a
+    /// closure, so the closures come first.
     fn write_block(&mut self, block: &'a FlatHtmlBlock, out: &mut Vec<WriterStmt>) {
         let mut lets = Vec::new();
         self.lower_bindings(&block.bindings, &mut lets);
         out.extend(lets.into_iter().map(WriterStmt::Let));
+        for binding in &block.html {
+            let FlatHtmlOp::Lambda(lambda) = &binding.op else {
+                continue;
+            };
+            let parameters = self.bind_parameters(&lambda.parameters);
+            let mut statements = Vec::new();
+            self.write_block(&lambda.body, &mut statements);
+            out.push(WriterStmt::Let(WriterBinding {
+                name: self.bind(binding.binder.var),
+                typ: IrType::Html(binding.binder.typ.clone()),
+                op: WriterOp::Lambda(IrLambda {
+                    parameters,
+                    body: WriterFunctionBody::Writes(statements),
+                }),
+            }));
+        }
         for binding in &block.html {
             if self.buffered.contains(&binding.binder.var) {
                 let mut body = Vec::new();
@@ -954,6 +1042,15 @@ impl<'a> Lowerer<'a> {
                 out.extend(lets.into_iter().map(WriterStmt::Let));
                 out.push(WriterStmt::WriteFunction(function.clone(), args));
             }
+
+            FlatHtmlOp::Apply(closure, args) => {
+                let mut lets = Vec::new();
+                let args = self.lower_args(args, &mut lets);
+                out.extend(lets.into_iter().map(WriterStmt::Let));
+                out.push(WriterStmt::WriteApply(self.name(*closure), args));
+            }
+
+            FlatHtmlOp::Lambda(_) => unreachable!("a closure is bound, not written"),
         }
     }
 
@@ -1123,6 +1220,7 @@ mod tests {
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::random_program;
     use crate::ir::ir_parameter::IrParameter;
+    use crate::ir::ir_type::IrType;
     use crate::ir::optimize_flat;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::root_contained_file_path::RootContainedFilePath;
@@ -1160,6 +1258,254 @@ mod tests {
         let before = flat.to_string();
         let writer = flat_to_writer(flat, &pages, None).to_string();
         expected.assert_eq(&format!("-- flat --\n{before}\n-- writer --\n{writer}"));
+    }
+
+    #[test]
+    fn binds_a_closure_a_recursive_function_takes_and_writes_each_application() {
+        check_program(
+            FlatProgramBuilder::new()
+                .function_with_types(
+                    "Countdown",
+                    [
+                        ("n", IrType::INT),
+                        ("row", IrType::html_function([IrType::INT])),
+                    ],
+                    IrType::HTML,
+                    |t| {
+                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                            m.arm(Pat::True, |t, _| t.html_concat([]));
+                            m.arm(Pat::False, |t, _| {
+                                let row = t.apply(t.param("row"), [t.param("n")]);
+                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.call("Countdown", [rest, t.param("row")]);
+                                t.html_concat([row, rest])
+                            });
+                        })
+                    },
+                )
+                .entrypoint("Test", [("prefix", Ty::String)], Ty::Html, |t| {
+                    let prefix = t.param("prefix");
+                    let row = t.lambda([IrType::INT], |t, params| {
+                        let text = t.string_concat([prefix, t.int_to_string(params[0])]);
+                        t.element("li", [], t.escape(text))
+                    });
+                    t.element("ul", [], t.call("Countdown", [t.int(3), row]))
+                })
+                .build(),
+            expect![[r#"
+                -- flat --
+                fn Countdown@f0(n@v0: Int, row@v1: (Int) -> Html) -> Html {
+                  let v2: Int = 0
+                  let v3: Bool = v0 <= v2
+                  let v10: Html = match v3 {
+                    true => {
+                      let v4: Html = concat()
+                      v4
+                    }
+                    false => {
+                      let v6: Int = 1
+                      let v7: Int = v0 - v6
+                      let v5: Html = v1(v0)
+                      let v8: Html = Countdown@f0(v7, v1)
+                      let v9: Html = concat(v5, v8)
+                      v9
+                    }
+                  }
+                  v10
+                }
+                entrypoint fn Test@f1(prefix@v11: String) -> Html {
+                  let v18: Int = 3
+                  let v17: (Int) -> Html = fn(v12: Int) {
+                    let v13: String = v12.to_string()
+                    let v14: String = concat(v11, v13)
+                    let v15: Html = escape(v14)
+                    let v16: Html = element("li", {}, v15)
+                    v16
+                  }
+                  let v19: Html = Countdown@f0(v18, v17)
+                  let v20: Html = element("ul", {}, v19)
+                  v20
+                }
+
+                -- writer --
+                fn Countdown@f0(n@v0: Int, row@v1: (Int) -> Html) -> Html {
+                  let v2: Int = 0
+                  let v3: Bool = v0 <= v2
+                  match v3 {
+                    true => {
+                    }
+                    false => {
+                      let v6: Int = 1
+                      let v7: Int = v0 - v6
+                      write_apply v1(v0)
+                      write_function Countdown@f0(v7, v1)
+                    }
+                  }
+                }
+                page Test(prefix@v11: String) {
+                  let v18: Int = 3
+                  let v17: (Int) -> Html = fn(v12: Int) {
+                    let v13: String = v12.to_string()
+                    write("<li>")
+                    write_string(v11)
+                    write_string(v13)
+                    write("</li>")
+                  }
+                  write("<ul>")
+                  write_function Countdown@f0(v18, v17)
+                  write("</ul>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn applies_a_closure_a_match_on_a_parameter_selects() {
+        check_program(
+            FlatProgramBuilder::new()
+                .entrypoint(
+                    "Test",
+                    [("double", Ty::Bool), ("n", Ty::Int)],
+                    Ty::Html,
+                    |t| {
+                        let scale = t.match_(t.param("double"), |m| {
+                            m.arm(Pat::True, |t, _| {
+                                let two = t.int(2);
+                                t.lambda([IrType::INT], |t, params| t.mul(params[0], two))
+                            });
+                            m.arm(Pat::False, |t, _| {
+                                t.lambda([IrType::INT], |_, params| params[0])
+                            });
+                        });
+                        let scaled = t.apply(scale, [t.param("n")]);
+                        t.escape(t.int_to_string(scaled))
+                    },
+                )
+                .build(),
+            expect![[r#"
+                -- flat --
+                entrypoint fn Test@f0(double@v0: Bool, n@v1: Int) -> Html {
+                  let v8: (Int) -> Int = match v0 {
+                    true => {
+                      let v2: Int = 2
+                      let v5: (Int) -> Int = fn(v3: Int) {
+                        let v4: Int = v3 * v2
+                        v4
+                      }
+                      v5
+                    }
+                    false => {
+                      let v7: (Int) -> Int = fn(v6: Int) {
+                        v6
+                      }
+                      v7
+                    }
+                  }
+                  let v9: Int = v8(v1)
+                  let v10: String = v9.to_string()
+                  let v11: Html = escape(v10)
+                  v11
+                }
+
+                -- writer --
+                page Test(double@v0: Bool, n@v1: Int) {
+                  let v8: (Int) -> Int = fn(v12: Int) {
+                    let v16: Int = match v0 {
+                      true => {
+                        let v2: Int = 2
+                        let v5: (Int) -> Int = fn(v3: Int) {
+                          let v4: Int = v3 * v2
+                          v4
+                        }
+                        let v13: Int = v5(v12)
+                        v13
+                      }
+                      false => {
+                        let v7: (Int) -> Int = fn(v6: Int) {
+                          v6
+                        }
+                        let v14: Int = v7(v12)
+                        v14
+                      }
+                    }
+                    v16
+                  }
+                  let v9: Int = v8(v1)
+                  let v10: String = v9.to_string()
+                  write_string(v10)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn renders_the_html_a_closure_takes_into_a_buffer() {
+        check_program(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("bold", Ty::Bool)], Ty::Html, |t| {
+                    let wrap = t.match_(t.param("bold"), |m| {
+                        m.arm(Pat::True, |t, _| {
+                            t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]))
+                        });
+                        m.arm(Pat::False, |t, _| {
+                            t.lambda([IrType::HTML], |_, params| params[0])
+                        });
+                    });
+                    let item = t.element("i", [], t.text("x"));
+                    t.apply(wrap, [item])
+                })
+                .build(),
+            expect![[r#"
+                -- flat --
+                entrypoint fn Test@f0(bold@v0: Bool) -> Html {
+                  let v6: (Html) -> Html = match v0 {
+                    true => {
+                      let v3: (Html) -> Html = fn(v1: Html) {
+                        let v2: Html = element("b", {}, v1)
+                        v2
+                      }
+                      v3
+                    }
+                    false => {
+                      let v5: (Html) -> Html = fn(v4: Html) {
+                        v4
+                      }
+                      v5
+                    }
+                  }
+                  let v7: Html = text("x")
+                  let v8: Html = element("i", {}, v7)
+                  let v9: Html = v6(v8)
+                  v9
+                }
+
+                -- writer --
+                page Test(bold@v0: Bool) {
+                  let v6: (Html) -> Html = fn(v10: Html) {
+                    match v0 {
+                      true => {
+                        let v3: (Html) -> Html = fn(v1: Html) {
+                          write("<b>")
+                          write_html(v1)
+                          write("</b>")
+                        }
+                        write_apply v3(v10)
+                      }
+                      false => {
+                        let v5: (Html) -> Html = fn(v4: Html) {
+                          write_html(v4)
+                        }
+                        write_apply v5(v10)
+                      }
+                    }
+                  }
+                  let v14: Html = html {
+                    write("<i>x</i>")
+                  }
+                  write_apply v6(v14)
+                }
+            "#]],
+        );
     }
 
     #[test]
@@ -1514,7 +1860,8 @@ mod tests {
                     WriterStmt::Write(_)
                     | WriterStmt::WriteString(_)
                     | WriterStmt::WriteHtml(_)
-                    | WriterStmt::WriteFunction(..) => {}
+                    | WriterStmt::WriteFunction(..)
+                    | WriterStmt::WriteApply(..) => {}
                     WriterStmt::HtmlFor(IrFor { var, body, .. }) => {
                         if let Some(var) = var {
                             self.binder(var);
@@ -1537,9 +1884,18 @@ mod tests {
         fn let_(&mut self, let_: &WriterBinding) {
             self.bind(let_.name);
             match &let_.op {
-                WriterOp::Data(_) | WriterOp::Call(..) => {}
+                WriterOp::Data(_) | WriterOp::Call(..) | WriterOp::Apply(..) => {}
                 WriterOp::HtmlLiteral(stmts) => self.stmts(stmts),
                 WriterOp::Match(switch) => self.switch(switch, Self::value_block),
+                WriterOp::Lambda(lambda) => {
+                    for param in &lambda.parameters {
+                        self.bind(param.var);
+                    }
+                    match &lambda.body {
+                        WriterFunctionBody::Writes(stmts) => self.stmts(stmts),
+                        WriterFunctionBody::Returns(block) => self.value_block(block),
+                    }
+                }
             }
         }
 

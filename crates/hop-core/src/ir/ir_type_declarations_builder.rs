@@ -1,5 +1,5 @@
 use crate::hop::typing::Ty;
-use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType};
+use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
 use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -130,8 +130,8 @@ impl IrTypeDeclarations {
             .map(|enumeration| enumeration.name.as_str().to_string())
             .collect();
         match ty {
-            Ty::Html => IrType::Html(IrHtmlType),
-            ty => IrType::Data(data_type(ty, &records, &enums)),
+            Ty::Html => IrType::Html(IrHtmlType::Html),
+            ty => IrType::Value(IrValueType::Data(data_type(ty, &records, &enums))),
         }
     }
 }

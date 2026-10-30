@@ -9,6 +9,7 @@ mod ir_data_op;
 mod ir_for;
 mod ir_function;
 mod ir_html_element;
+mod ir_lambda;
 mod ir_match;
 pub mod ir_page;
 pub mod ir_parameter;

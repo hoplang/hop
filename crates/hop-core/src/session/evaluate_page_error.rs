@@ -18,8 +18,8 @@ pub enum EvaluatePageError {
     #[error("Missing required parameter '{param}' for page '{page}'")]
     MissingParameter { page: String, param: String },
 
-    #[error("Function '{function}' exceeded the call depth limit of {limit}")]
-    CallDepthLimit { function: String, limit: usize },
+    #[error("Program exceeded the call depth limit of {limit}")]
+    CallDepthLimit { limit: usize },
 
     #[error("An array exceeded the array length limit of {limit}")]
     ArrayLengthLimit { limit: usize },

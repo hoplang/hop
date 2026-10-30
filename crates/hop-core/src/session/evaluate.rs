@@ -25,7 +25,7 @@ impl Session {
         &self,
         document_id: &RootContainedFilePath,
         page_name: &TypeName,
-        args: HashMap<AttributeName, ir::runtime::value::Value>,
+        args: HashMap<AttributeName, ir::runtime::value::Value<'static>>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
@@ -44,7 +44,10 @@ impl Session {
         &self,
         document_id: &RootContainedFilePath,
         page_name: &TypeName,
-        args: impl FnOnce(&FlatProgram, &[IrPage]) -> HashMap<AttributeName, ir::runtime::value::Value>,
+        args: impl FnOnce(
+            &FlatProgram,
+            &[IrPage],
+        ) -> HashMap<AttributeName, ir::runtime::value::Value<'static>>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
@@ -96,10 +99,7 @@ impl Session {
                 page: page_name.to_string(),
                 param: param.to_string(),
             },
-            EvalError::CallDepthLimit { function, limit } => EvaluatePageError::CallDepthLimit {
-                function: function.name.as_str().to_string(),
-                limit,
-            },
+            EvalError::CallDepthLimit { limit } => EvaluatePageError::CallDepthLimit { limit },
             EvalError::ArrayLengthLimit { limit } => EvaluatePageError::ArrayLengthLimit { limit },
             EvalError::StringLengthLimit { limit } => {
                 EvaluatePageError::StringLengthLimit { limit }

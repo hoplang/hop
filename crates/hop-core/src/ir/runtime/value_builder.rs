@@ -13,39 +13,39 @@ impl<'a> ValueBuilder<'a> {
         ValueBuilder { types }
     }
 
-    pub fn str(&self, s: &str) -> Value {
+    pub fn str(&self, s: &str) -> Value<'static> {
         Value::String(s.into())
     }
 
-    pub fn int(&self, n: i32) -> Value {
+    pub fn int(&self, n: i32) -> Value<'static> {
         Value::Int(n)
     }
 
-    pub fn bool(&self, b: bool) -> Value {
+    pub fn bool(&self, b: bool) -> Value<'static> {
         Value::Bool(b)
     }
 
     #[allow(dead_code)]
-    pub fn float(&self, f: f64) -> Value {
+    pub fn float(&self, f: f64) -> Value<'static> {
         Value::Float(f)
     }
 
-    pub fn array(&self, elements: Vec<Value>) -> Value {
+    pub fn array(&self, elements: Vec<Value<'static>>) -> Value<'static> {
         Value::Array(Rc::new(BoundedVec::new(elements).unwrap()))
     }
 
     #[allow(dead_code)]
-    pub fn some(&self, inner: Value) -> Value {
+    pub fn some(&self, inner: Value<'static>) -> Value<'static> {
         Value::Option(Some(Rc::new(inner)))
     }
 
     #[allow(dead_code)]
-    pub fn none(&self) -> Value {
+    pub fn none(&self) -> Value<'static> {
         Value::Option(None)
     }
 
     #[allow(dead_code)]
-    pub fn record(&self, record_name: &str, fields: Vec<(&str, Value)>) -> Value {
+    pub fn record(&self, record_name: &str, fields: Vec<(&str, Value<'static>)>) -> Value<'static> {
         let declared = self
             .types
             .records
@@ -63,7 +63,7 @@ impl<'a> ValueBuilder<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> Value {
+    pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> Value<'static> {
         self.enum_variant_with_fields(enum_name, variant_name, vec![])
     }
 
@@ -71,8 +71,8 @@ impl<'a> ValueBuilder<'a> {
         &self,
         enum_name: &str,
         variant_name: &str,
-        field_values: Vec<(&str, Value)>,
-    ) -> Value {
+        field_values: Vec<(&str, Value<'static>)>,
+    ) -> Value<'static> {
         let variants = self
             .types
             .enums
@@ -104,9 +104,9 @@ impl<'a> ValueBuilder<'a> {
 
 fn checked_fields(
     declared: &[&str],
-    fields: Vec<(&str, Value)>,
+    fields: Vec<(&str, Value<'static>)>,
     owner: &str,
-) -> Rc<[(FieldName, Value)]> {
+) -> Rc<[(FieldName, Value<'static>)]> {
     for (field_name, _) in &fields {
         assert!(
             declared.contains(field_name),

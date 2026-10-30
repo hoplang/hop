@@ -8,8 +8,9 @@ use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::IrHtmlElement;
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrMatch;
-use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType};
+use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
@@ -39,7 +40,7 @@ pub struct FlatDataFunction {
     /// Whether the function is called from outside the program, so it is kept
     /// even when nothing in the program calls it.
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter<IrDataType>>,
+    pub parameters: Vec<IrParameter<IrValueType>>,
     pub return_type: IrDataType,
     pub body: FlatDataBlock,
 }
@@ -60,6 +61,14 @@ impl FlatFunctionDeclaration {
         match self {
             FlatFunctionDeclaration::Data(function) => &function.function,
             FlatFunctionDeclaration::Html(function) => &function.function,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn entrypoint(&self) -> bool {
+        match self {
+            FlatFunctionDeclaration::Data(function) => function.entrypoint,
+            FlatFunctionDeclaration::Html(function) => function.entrypoint,
         }
     }
 
@@ -95,7 +104,7 @@ pub struct FlatHtmlBlock {
 
 #[derive(Debug, Clone)]
 pub struct FlatDataBinding {
-    pub binder: IrBinder<IrDataType>,
+    pub binder: IrBinder<IrValueType>,
     pub op: FlatDataOp,
 }
 
@@ -117,6 +126,9 @@ pub enum FlatDataOp {
     ///
     /// Matching is exhaustive, a value must match at least one arm.
     Match(IrMatch<FlatDataBlock>),
+    Lambda(IrLambda<IrValueType, FlatDataBlock>),
+    // The arguments follow the closure's parameters, one for each.
+    Apply(ValueId, Vec<ValueId>),
 }
 
 #[derive(Debug, Clone)]
@@ -138,11 +150,14 @@ pub enum FlatHtmlOp {
     /// A foldMap over the array, concatenating the body's Html once per
     /// element in order.
     For(IrFor<FlatHtmlBlock>),
+    Lambda(IrLambda<IrType, FlatHtmlBlock>),
+    // The arguments follow the closure's parameters, one for each.
+    Apply(ValueId, Vec<ValueId>),
 }
 
 impl FlatDataOp {
     /// Apply `f` to each name this op reads directly. The names read inside
-    /// the blocks of a Match are not visited, only the subject.
+    /// the blocks of a Match or a Lambda are not visited, only the subject.
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
             FlatDataOp::Data(op) => op.for_each_operand(f),
@@ -152,6 +167,13 @@ impl FlatDataOp {
                 }
             }
             FlatDataOp::Match(match_) => f(match_.subject),
+            FlatDataOp::Lambda(_) => {}
+            FlatDataOp::Apply(closure, args) => {
+                f(*closure);
+                for arg in args {
+                    f(*arg);
+                }
+            }
         }
     }
 
@@ -166,14 +188,21 @@ impl FlatDataOp {
                 }
             }
             FlatDataOp::Match(match_) => f(&mut match_.subject),
+            FlatDataOp::Lambda(_) => {}
+            FlatDataOp::Apply(closure, args) => {
+                f(closure);
+                for arg in args {
+                    f(arg);
+                }
+            }
         }
     }
 }
 
 impl FlatHtmlOp {
     /// Apply `f` to each name this op reads directly. The names read inside
-    /// the blocks of a Match or a loop are not visited, only the subject or
-    /// the array.
+    /// the blocks of a Match, a loop or a Lambda are not visited, only the
+    /// subject or the array.
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
             FlatHtmlOp::Text(_) => {}
@@ -194,6 +223,13 @@ impl FlatHtmlOp {
             }
             FlatHtmlOp::Match(match_) => f(match_.subject),
             FlatHtmlOp::For(for_) => f(for_.array),
+            FlatHtmlOp::Lambda(_) => {}
+            FlatHtmlOp::Apply(closure, args) => {
+                f(*closure);
+                for arg in args {
+                    f(*arg);
+                }
+            }
         }
     }
 
@@ -219,6 +255,13 @@ impl FlatHtmlOp {
             }
             FlatHtmlOp::Match(match_) => f(&mut match_.subject),
             FlatHtmlOp::For(for_) => f(&mut for_.array),
+            FlatHtmlOp::Lambda(_) => {}
+            FlatHtmlOp::Apply(closure, args) => {
+                f(closure);
+                for arg in args {
+                    f(arg);
+                }
+            }
         }
     }
 }
@@ -262,12 +305,18 @@ impl FlatHtmlBinding {
 
 /// A call as the function and its arguments in parentheses.
 fn call_to_doc<'a>(function: &IrFunction, args: &[ValueId]) -> BoxDoc<'a> {
-    let args = args
-        .iter()
+    BoxDoc::text(format!("{function}({})", args_to_string(args)))
+}
+
+fn apply_to_doc<'a>(closure: ValueId, args: &[ValueId]) -> BoxDoc<'a> {
+    BoxDoc::text(format!("{closure}({})", args_to_string(args)))
+}
+
+fn args_to_string(args: &[ValueId]) -> String {
+    args.iter()
         .map(|arg| arg.to_string())
         .collect::<Vec<_>>()
-        .join(", ");
-    BoxDoc::text(format!("{function}({args})"))
+        .join(", ")
 }
 
 impl FlatDataOp {
@@ -276,6 +325,10 @@ impl FlatDataOp {
             FlatDataOp::Data(op) => op.to_doc(),
             FlatDataOp::Call(function, args) => call_to_doc(function, args),
             FlatDataOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
+            FlatDataOp::Lambda(lambda) => {
+                lambda.to_doc(|body| BoxDoc::line().append(body.to_doc()))
+            }
+            FlatDataOp::Apply(closure, args) => apply_to_doc(*closure, args),
         }
     }
 }
@@ -301,6 +354,10 @@ impl FlatHtmlOp {
             FlatHtmlOp::Call(function, args) => call_to_doc(function, args),
             FlatHtmlOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
             FlatHtmlOp::For(for_) => for_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
+            FlatHtmlOp::Lambda(lambda) => {
+                lambda.to_doc(|body| BoxDoc::line().append(body.to_doc()))
+            }
+            FlatHtmlOp::Apply(closure, args) => apply_to_doc(*closure, args),
         }
     }
 }

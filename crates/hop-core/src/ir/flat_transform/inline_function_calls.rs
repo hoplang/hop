@@ -9,6 +9,7 @@ use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
@@ -136,6 +137,9 @@ fn collect_html_callees(block: &FlatHtmlBlock, out: &mut BTreeSet<FunctionId>) {
             FlatHtmlOp::For(IrFor { body, .. }) => {
                 collect_html_callees(body, out);
             }
+            FlatHtmlOp::Lambda(lambda) => {
+                collect_html_callees(&lambda.body, out);
+            }
             _ => {}
         }
     }
@@ -151,7 +155,10 @@ fn collect_data_binding_callees(binding: &FlatDataBinding, out: &mut BTreeSet<Fu
                 collect_data_callees(&arm.body, out);
             }
         }
-        FlatDataOp::Data(_) => {}
+        FlatDataOp::Lambda(lambda) => {
+            collect_data_callees(&lambda.body, out);
+        }
+        FlatDataOp::Data(_) | FlatDataOp::Apply(..) => {}
     }
 }
 
@@ -262,6 +269,10 @@ impl<'a> Inliner<'a> {
                 None => FlatDataOp::Call(function, args),
             },
             FlatDataOp::Match(match_) => FlatDataOp::Match(self.match_(match_, Self::data_block)),
+            FlatDataOp::Lambda(IrLambda { parameters, body }) => FlatDataOp::Lambda(IrLambda {
+                parameters,
+                body: self.data_block(body),
+            }),
             op => op,
         };
         out.push(FlatDataBinding { binder, op });
@@ -297,6 +308,10 @@ impl<'a> Inliner<'a> {
                 array,
                 body: self.html_block(body),
             }),
+            FlatHtmlOp::Lambda(IrLambda { parameters, body }) => FlatHtmlOp::Lambda(IrLambda {
+                parameters,
+                body: self.html_block(body),
+            }),
             op => op,
         };
         html.push(FlatHtmlBinding { binder, op });
@@ -310,6 +325,7 @@ mod tests {
     use crate::hop::typing::Ty;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::ir_type::IrType;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
@@ -365,6 +381,72 @@ mod tests {
         let before = program.to_string();
         let after = inline_function_calls(program).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
+    }
+
+    #[test]
+    fn should_inline_a_call_that_passes_a_closure_and_copy_the_lambdas_of_the_callee() {
+        let int_to_int = || IrType::value_function([IrType::INT], IrType::INT);
+        check(
+            FlatProgramBuilder::new()
+                .function_with_types(
+                    "Twice",
+                    [("f", int_to_int()), ("x", IrType::INT)],
+                    IrType::INT,
+                    |t| {
+                        let f = t.param("f");
+                        let again = t.lambda([IrType::INT], |t, params| t.apply(f, [params[0]]));
+                        t.apply(again, [t.apply(f, [t.param("x")])])
+                    },
+                )
+                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
+                    let n = t.param("n");
+                    let add = t.lambda([IrType::INT], |t, params| t.add(params[0], n));
+                    let twice = t.call("Twice", [add, t.int(1)]);
+                    t.escape(t.int_to_string(twice))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                fn Twice@f0(f@v0: (Int) -> Int, x@v1: Int) -> Int {
+                  let v4: (Int) -> Int = fn(v2: Int) {
+                    let v3: Int = v0(v2)
+                    v3
+                  }
+                  let v5: Int = v0(v1)
+                  let v6: Int = v4(v5)
+                  v6
+                }
+                entrypoint fn Test@f1(n@v7: Int) -> Html {
+                  let v10: (Int) -> Int = fn(v8: Int) {
+                    let v9: Int = v8 + v7
+                    v9
+                  }
+                  let v11: Int = 1
+                  let v12: Int = Twice@f0(v10, v11)
+                  let v13: String = v12.to_string()
+                  let v14: Html = escape(v13)
+                  v14
+                }
+
+                -- after --
+                entrypoint fn Test@f1(n@v7: Int) -> Html {
+                  let v10: (Int) -> Int = fn(v8: Int) {
+                    let v9: Int = v8 + v7
+                    v9
+                  }
+                  let v11: Int = 1
+                  let v17: (Int) -> Int = fn(v15: Int) {
+                    let v16: Int = v10(v15)
+                    v16
+                  }
+                  let v18: Int = v10(v11)
+                  let v19: Int = v17(v18)
+                  let v13: String = v19.to_string()
+                  let v14: Html = escape(v13)
+                  v14
+                }
+            "#]],
+        );
     }
 
     #[test]

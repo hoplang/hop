@@ -16,6 +16,7 @@ mod tests {
     use crate::ir::flat_lint;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::ir_type::{IrDataType, IrType};
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
@@ -72,6 +73,64 @@ mod tests {
         let before = program.to_string();
         let after = optimize_flat(program).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
+    }
+
+    #[test]
+    fn should_render_the_body_of_a_closure_a_called_function_applies_in_place() {
+        check(
+            FlatProgramBuilder::new()
+                .function_with_types(
+                    "Rows",
+                    [
+                        ("items", IrType::array(IrDataType::String)),
+                        ("row", IrType::html_function([IrType::STRING])),
+                    ],
+                    IrType::HTML,
+                    |t| {
+                        let rows =
+                            t.html_for(t.param("items"), |t, item| t.apply(t.param("row"), [item]));
+                        t.element("ul", [], rows)
+                    },
+                )
+                .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
+                    let row = t.lambda([IrType::STRING], |t, params| {
+                        t.element("li", [], t.escape(params[0]))
+                    });
+                    t.call("Rows", [t.param("items"), row])
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                fn Rows@f0(items@v0: Array[String], row@v1: (String) -> Html) -> Html {
+                  let v4: Html = for v2: String in v0 {
+                    let v3: Html = v1(v2)
+                    v3
+                  }
+                  let v5: Html = element("ul", {}, v4)
+                  v5
+                }
+                entrypoint fn Test@f1(items@v6: Array[String]) -> Html {
+                  let v10: (String) -> Html = fn(v7: String) {
+                    let v8: Html = escape(v7)
+                    let v9: Html = element("li", {}, v8)
+                    v9
+                  }
+                  let v11: Html = Rows@f0(v6, v10)
+                  v11
+                }
+
+                -- after --
+                entrypoint fn Test@f1(items@v6: Array[String]) -> Html {
+                  let v14: Html = for v12: String in v6 {
+                    let v16: Html = escape(v12)
+                    let v17: Html = element("li", {}, v16)
+                    v17
+                  }
+                  let v15: Html = element("ul", {}, v14)
+                  v15
+                }
+            "#]],
+        );
     }
 
     #[test]

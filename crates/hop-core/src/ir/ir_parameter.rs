@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::ir::ir_binder::IrBinder;
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{IrType, IrValueType};
 use crate::symbols::attribute_name::AttributeName;
 
 /// A parameter of a function or of a Writer page. The name is what a call
@@ -23,8 +23,8 @@ impl<T> IrParameter<T> {
 impl IrParameter<IrType> {
     /// The parameter as one of a function that returns a value, or None if
     /// it takes Html.
-    pub fn into_data(self) -> Option<IrParameter<IrDataType>> {
-        let IrType::Data(typ) = self.binder.typ else {
+    pub fn into_value(self) -> Option<IrParameter<IrValueType>> {
+        let IrType::Value(typ) = self.binder.typ else {
             return None;
         };
         Some(IrParameter {
@@ -37,14 +37,14 @@ impl IrParameter<IrType> {
     }
 }
 
-impl IrParameter<IrDataType> {
+impl IrParameter<IrValueType> {
     /// The parameter as one of a function that may take Html.
     pub fn widen(&self) -> IrParameter<IrType> {
         IrParameter {
             name: self.name.clone(),
             binder: IrBinder {
                 var: self.binder.var,
-                typ: IrType::Data(self.binder.typ.clone()),
+                typ: IrType::Value(self.binder.typ.clone()),
             },
         }
     }

@@ -5,14 +5,37 @@ use pretty::BoxDoc;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::symbols::type_name::TypeName;
 
+// A value computes no Html, and Html renders markup.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrType {
-    Data(IrDataType),
+    Value(IrValueType),
     Html(IrHtmlType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IrHtmlType;
+pub enum IrValueType {
+    Data(IrDataType),
+    Function(IrValueSignature),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IrHtmlType {
+    Html,
+    Function(IrHtmlSignature),
+}
+
+// A signature is that of a function or a closure alike.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IrValueSignature {
+    pub parameters: Vec<IrValueType>,
+    pub result: IrDataType,
+}
+
+// The result is Html.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IrHtmlSignature {
+    pub parameters: Vec<IrType>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrDataType {
@@ -29,27 +52,51 @@ pub enum IrDataType {
 
 #[cfg(test)]
 impl IrType {
-    pub const STRING: IrType = IrType::Data(IrDataType::String);
-    pub const BOOL: IrType = IrType::Data(IrDataType::Bool);
-    pub const INT: IrType = IrType::Data(IrDataType::Int);
-    pub const FLOAT: IrType = IrType::Data(IrDataType::Float);
+    pub const STRING: IrType = IrType::Value(IrValueType::Data(IrDataType::String));
+    pub const BOOL: IrType = IrType::Value(IrValueType::Data(IrDataType::Bool));
+    pub const INT: IrType = IrType::Value(IrValueType::Data(IrDataType::Int));
+    pub const FLOAT: IrType = IrType::Value(IrValueType::Data(IrDataType::Float));
 
     pub fn array(element: IrDataType) -> IrType {
-        IrType::Data(IrDataType::Array(Box::new(element)))
+        IrType::Value(IrValueType::Data(IrDataType::Array(Box::new(element))))
     }
 
     pub fn option(element: IrDataType) -> IrType {
-        IrType::Data(IrDataType::Option(Box::new(element)))
+        IrType::Value(IrValueType::Data(IrDataType::Option(Box::new(element))))
+    }
+
+    // Panics unless the parameters are values and the result is data.
+    pub fn value_function(parameters: impl IntoIterator<Item = IrType>, result: IrType) -> IrType {
+        let parameters = parameters
+            .into_iter()
+            .map(|parameter| match parameter {
+                IrType::Value(value) => value,
+                IrType::Html(_) => panic!("a closure that computes a value takes {parameter}"),
+            })
+            .collect();
+        let IrType::Value(IrValueType::Data(result)) = result else {
+            panic!("a closure that computes a value returns {result}");
+        };
+        IrType::Value(IrValueType::Function(IrValueSignature {
+            parameters,
+            result,
+        }))
+    }
+
+    pub fn html_function(parameters: impl IntoIterator<Item = IrType>) -> IrType {
+        IrType::Html(IrHtmlType::Function(IrHtmlSignature {
+            parameters: parameters.into_iter().collect(),
+        }))
     }
 }
 
 impl IrType {
-    pub const HTML: IrType = IrType::Html(IrHtmlType);
+    pub const HTML: IrType = IrType::Html(IrHtmlType::Html);
 
     pub fn as_data(&self) -> Option<&IrDataType> {
         match self {
-            IrType::Data(data) => Some(data),
-            IrType::Html(_) => None,
+            IrType::Value(IrValueType::Data(data)) => Some(data),
+            IrType::Value(IrValueType::Function(_)) | IrType::Html(_) => None,
         }
     }
 
@@ -140,15 +187,54 @@ impl IrDataType {
 impl fmt::Display for IrType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            IrType::Data(data) => data.fmt(f),
+            IrType::Value(value) => value.fmt(f),
             IrType::Html(html) => html.fmt(f),
+        }
+    }
+}
+
+impl fmt::Display for IrValueType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IrValueType::Data(data) => data.fmt(f),
+            IrValueType::Function(signature) => signature.fmt(f),
         }
     }
 }
 
 impl fmt::Display for IrHtmlType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Html")
+        match self {
+            IrHtmlType::Html => write!(f, "Html"),
+            IrHtmlType::Function(signature) => signature.fmt(f),
+        }
+    }
+}
+
+fn signature_fmt(
+    f: &mut fmt::Formatter<'_>,
+    parameters: &[impl fmt::Display],
+    result: &impl fmt::Display,
+) -> fmt::Result {
+    write!(f, "(")?;
+    for (i, parameter) in parameters.iter().enumerate() {
+        if i > 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "{parameter}")?;
+    }
+    write!(f, ") -> {result}")
+}
+
+impl fmt::Display for IrValueSignature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        signature_fmt(f, &self.parameters, &self.result)
+    }
+}
+
+impl fmt::Display for IrHtmlSignature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        signature_fmt(f, &self.parameters, &IrHtmlType::Html)
     }
 }
 
