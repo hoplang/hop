@@ -588,7 +588,7 @@ impl FlatGenerator<'_, '_> {
             IrType::Value(IrValueType::Data(target)) => self.data_block(b, scope, target, depth),
             IrType::Html(IrHtmlType::Html) => self.html_block(b, scope, depth),
             IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_)) => {
-                self.closure_op(b, scope, typ, depth, MAX_EXPRESSION_DEPTH)
+                unreachable!("a block produces no closure")
             }
         }
     }
@@ -625,10 +625,6 @@ impl FlatGenerator<'_, '_> {
     ) -> ValueId {
         if let Some(name) = self.name_in_scope(b, scope, typ) {
             return name;
-        }
-        if depth > 0 && nesting > 0 && self.index(4) == 0 {
-            let closure = self.match_(b, scope, typ, depth, nesting);
-            return scope.push(closure);
         }
         let parameters: Vec<IrType> = match typ {
             IrType::Value(IrValueType::Function(signature)) => {
@@ -1787,59 +1783,59 @@ mod tests {
             ));
         }
         expect![[r#"
-            12570 of 65536 input bytes consumed per program on average, at most 65536
-            3 of 100 programs exhaust the input
-            8 of 210 entrypoints hit the call depth limit
+            7422 of 65536 input bytes consumed per program on average, at most 56829
+            0 of 100 programs exhaust the input
+            11 of 210 entrypoints hit the call depth limit
             0 of 210 entrypoints hit the array length limit
             0 of 210 entrypoints hit the string length limit
             0 of 210 entrypoints hit the Html size limit
-            3 of 210 entrypoints hit the op count limit
-            922 of 10368 Html bindings have more than one reference
-            2.6 arms per match on average, at least 2 and at most 27
-            17986 of 45880 match arms bind names
+            1 of 210 entrypoints hit the op count limit
+            964 of 9578 Html bindings have more than one reference
+            2.5 arms per match on average, at least 2 and at most 27
+            8854 of 23136 match arms bind names
 
             op                   ops/program % progs  % live   % dyn
-            Apply                      114.2    91.0    95.9    82.0
-            Array                      346.9    92.0    94.4    16.2
-            ArrayFromRange               5.8    82.0    98.4     0.0
-            ArrayIsEmpty                 1.9    57.0    97.4    55.7
-            ArrayLength                 17.5    86.0    97.6    59.6
-            BoolLiteral                127.1    91.0    94.1     0.0
-            BoolNegation                 2.2    57.0    95.9    53.2
-            Call                         8.6    55.0    98.7    86.2
-            Enum                       252.3    70.0    94.5    19.1
-            Equals                       1.7    56.0    96.5    71.7
-            FieldAccess                  6.0    41.0    95.6    76.1
-            FloatLiteral               136.8    92.0    94.9     0.0
-            FloatToInt                  17.1    83.0    96.7    50.4
-            HtmlApply                    3.7    72.0    99.5    84.2
-            HtmlConcat                  33.4    92.0   100.0    50.3
-            HtmlElement                 18.7    86.0    99.9    74.8
-            HtmlEscape                  15.6    82.0    99.7    57.6
-            HtmlFor                      7.3    85.0    99.9    78.7
-            HtmlLambda                  10.2    73.0    99.8    62.3
-            HtmlText                     2.5    63.0    99.6     0.0
-            IntLiteral                 126.8    94.0    94.6     0.0
-            IntToFloat                  17.6    82.0    94.8    54.7
-            IntToString                 20.4    85.0    98.8    51.8
-            Lambda                     228.0    91.0    95.5    62.5
-            LessThan                     1.6    59.0    98.7    75.5
-            LessThanOrEqual              1.9    60.0    97.4    74.2
-            Match                      175.3    92.0    96.0    88.2
-            NumericAdd                  35.6    85.0    96.2    70.2
-            NumericMultiply             35.5    84.0    95.8    70.9
-            NumericNegation             35.3    86.0    95.7    54.7
-            NumericSubtract             35.2    87.0    95.2    70.3
-            OptionIsNone                 2.2    62.0    96.8    51.9
-            OptionIsSome                 2.0    60.0    98.0    58.8
-            OptionNone                 234.8    93.0    94.1     0.0
-            OptionSome                 127.2    92.0    94.3    28.5
-            Record                     165.4    65.0    94.0    27.6
-            StringConcat                20.9    83.0    99.3    55.2
-            StringIsEmpty                1.9    61.0    93.6    57.2
-            StringLiteral              105.3    92.0    95.4     0.0
-            Tuple                     1368.2    92.0    95.0    50.4
-            TupleIndex                 861.2    92.0    94.9    71.6
+            Apply                       88.1    91.0    96.0    75.9
+            Array                      199.2    88.0    94.7    16.4
+            ArrayFromRange               5.2    77.0    97.7     0.0
+            ArrayIsEmpty                 1.3    41.0    97.0    41.7
+            ArrayLength                 13.2    80.0    97.6    50.3
+            BoolLiteral                 68.5    87.0    95.6     0.0
+            BoolNegation                 1.2    43.0    96.7    50.4
+            Call                         8.4    51.0    99.5    82.4
+            Enum                       126.0    67.0    95.1    20.3
+            Equals                       1.2    42.0    98.4    67.7
+            FieldAccess                  4.1    40.0    97.3    59.3
+            FloatLiteral                76.9    88.0    95.1     0.0
+            FloatToInt                  12.2    76.0    96.8    48.7
+            HtmlApply                    4.3    73.0    99.1    79.0
+            HtmlConcat                  31.1    86.0    99.3    51.6
+            HtmlElement                 17.3    78.0    99.2    71.8
+            HtmlEscape                  15.9    84.0    98.9    49.6
+            HtmlFor                      8.0    78.0    98.6    71.9
+            HtmlLambda                   5.8    74.0    99.7    60.0
+            HtmlText                     2.0    56.0    98.5     0.0
+            IntLiteral                  71.2    92.0    95.3     0.0
+            IntToFloat                  13.6    72.0    96.7    48.5
+            IntToString                 17.7    82.0    98.1    45.0
+            Lambda                     107.7    91.0    96.0    60.7
+            LessThan                     1.3    47.0    94.5    65.6
+            LessThanOrEqual              1.4    47.0    98.6    63.6
+            Match                       93.2    86.0    96.3    86.7
+            NumericAdd                  26.9    78.0    97.3    68.7
+            NumericMultiply             25.4    75.0    96.7    67.9
+            NumericNegation             26.3    77.0    97.3    54.7
+            NumericSubtract             26.8    81.0    97.2    66.4
+            OptionIsNone                 1.3    43.0    96.2    40.0
+            OptionIsSome                 1.2    44.0    99.2    43.2
+            OptionNone                 123.6    93.0    94.5     0.0
+            OptionSome                  69.0    87.0    94.4    27.1
+            Record                      94.5    61.0    94.9    27.2
+            StringConcat                18.0    76.0    98.3    48.0
+            StringIsEmpty                1.3    43.0    96.2    49.2
+            StringLiteral               62.9    93.0    94.8     0.0
+            Tuple                      746.1    90.0    95.2    48.1
+            TupleIndex                 466.2    90.0    94.9    69.3
         "#]]
         .assert_eq(&report);
     }
@@ -1918,7 +1914,7 @@ mod tests {
                 }
 
                 entrypoint fn V0@f0(p0@v0: Bool, p1@v1: Int) -> Html {
-                  let v140: (Array[E0], Option[E0]) = match v0 {
+                  let v28: (Array[E0], Option[E0]) = match v0 {
                     false => {
                       let v16: ((Array[E0], Option[E0]),) = match v0 {
                         true => {
@@ -1946,276 +1942,53 @@ mod tests {
                       v17
                     }
                     v18: Bool => {
-                      let v138: () -> (Array[E0], Option[E0]) = fn() {
-                        let v136: () -> (Array[E0], Option[E0]) = match v0 {
-                          false => {
-                            let v87: () -> (Array[E0], Option[E0]) = match v18 {
-                              false => {
-                                let v35: ((Int,)) -> E1 = fn(v19: (Int,)) {
-                                  let v28: Option[Option[E1]] = match v0 {
-                                    true => {
-                                      let v20: Option[Option[E1]] = None
-                                      let v21: Option[Option[Float]] = None
-                                      let v22: E1 = W0 {f0: v21, f1: v1}
-                                      let v23: Option[String] = None
-                                      let v24: (Option[Option[E1]], E1, Option[String]) = (v20, v22, v23)
-                                      let v25: Option[Option[E1]] = v24.0
-                                      v25
-                                    }
-                                    v26: Bool => {
-                                      let v27: Option[Option[E1]] = None
-                                      v27
-                                    }
-                                  }
-                                  let v34: E1 = match v28 {
-                                    None => {
-                                      let v29: Option[Option[Float]] = None
-                                      let v30: E1 = W0 {f0: v29, f1: v1}
-                                      v30
-                                    }
-                                    v31: Option[Option[E1]] => {
-                                      let v32: Option[Option[Float]] = None
-                                      let v33: E1 = W0 {f0: v32, f1: v1}
-                                      v33
-                                    }
-                                  }
-                                  v34
-                                }
-                                let v36: (Int,) = (v1,)
-                                let v37: E1 = v35(v36)
-                                let v63: () -> (Array[E0], Option[E0]) = match v37 {
-                                  E1::W0 {f0@v38: Option[Option[Float]], f1@v39: Int} => {
-                                    let v40: (Bool,) = (v0,)
-                                    let v50: () -> (Array[E0], Option[E0]) = match v40 {
-                                      (true,) => {
-                                        let v44: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v41: Array[E0] = []
-                                          let v42: Option[E0] = None
-                                          let v43: (Array[E0], Option[E0]) = (v41, v42)
-                                          v43
-                                        }
-                                        v44
-                                      }
-                                      (v45: Bool,) => {
-                                        let v49: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v46: Array[E0] = []
-                                          let v47: Option[E0] = None
-                                          let v48: (Array[E0], Option[E0]) = (v46, v47)
-                                          v48
-                                        }
-                                        v49
-                                      }
-                                    }
-                                    v50
-                                  }
-                                  v51: E1 => {
-                                    let v52: (Bool,) = (v0,)
-                                    let v62: () -> (Array[E0], Option[E0]) = match v52 {
-                                      (true,) => {
-                                        let v56: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v53: Array[E0] = []
-                                          let v54: Option[E0] = None
-                                          let v55: (Array[E0], Option[E0]) = (v53, v54)
-                                          v55
-                                        }
-                                        v56
-                                      }
-                                      (v57: Bool,) => {
-                                        let v61: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v58: Array[E0] = []
-                                          let v59: Option[E0] = None
-                                          let v60: (Array[E0], Option[E0]) = (v58, v59)
-                                          v60
-                                        }
-                                        v61
-                                      }
-                                    }
-                                    v62
-                                  }
-                                }
-                                v63
-                              }
-                              true => {
-                                let v64: (Bool,) = (v0,)
-                                let v86: () -> (Array[E0], Option[E0]) = match v64 {
-                                  (true,) => {
-                                    let v74: () -> (Array[E0], Option[E0]) = match v64 {
-                                      (true,) => {
-                                        let v68: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v65: Array[E0] = []
-                                          let v66: Option[E0] = None
-                                          let v67: (Array[E0], Option[E0]) = (v65, v66)
-                                          v67
-                                        }
-                                        v68
-                                      }
-                                      (v69: Bool,) => {
-                                        let v73: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v70: Array[E0] = []
-                                          let v71: Option[E0] = None
-                                          let v72: (Array[E0], Option[E0]) = (v70, v71)
-                                          v72
-                                        }
-                                        v73
-                                      }
-                                    }
-                                    v74
-                                  }
-                                  (v75: Bool,) => {
-                                    let v85: () -> (Array[E0], Option[E0]) = match v64 {
-                                      (true,) => {
-                                        let v79: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v76: Array[E0] = []
-                                          let v77: Option[E0] = None
-                                          let v78: (Array[E0], Option[E0]) = (v76, v77)
-                                          v78
-                                        }
-                                        v79
-                                      }
-                                      (v80: Bool,) => {
-                                        let v84: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v81: Array[E0] = []
-                                          let v82: Option[E0] = None
-                                          let v83: (Array[E0], Option[E0]) = (v81, v82)
-                                          v83
-                                        }
-                                        v84
-                                      }
-                                    }
-                                    v85
-                                  }
-                                }
-                                v86
-                              }
-                            }
-                            v87
-                          }
-                          v88: Bool => {
-                            let v89: (Bool,) = (v0,)
-                            let v135: () -> (Array[E0], Option[E0]) = match v89 {
-                              (true,) => {
-                                let v111: () -> (Array[E0], Option[E0]) = match v89 {
-                                  (true,) => {
-                                    let v99: () -> (Array[E0], Option[E0]) = match v89 {
-                                      (true,) => {
-                                        let v93: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v90: Array[E0] = []
-                                          let v91: Option[E0] = None
-                                          let v92: (Array[E0], Option[E0]) = (v90, v91)
-                                          v92
-                                        }
-                                        v93
-                                      }
-                                      (v94: Bool,) => {
-                                        let v98: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v95: Array[E0] = []
-                                          let v96: Option[E0] = None
-                                          let v97: (Array[E0], Option[E0]) = (v95, v96)
-                                          v97
-                                        }
-                                        v98
-                                      }
-                                    }
-                                    v99
-                                  }
-                                  (v100: Bool,) => {
-                                    let v110: () -> (Array[E0], Option[E0]) = match v89 {
-                                      (true,) => {
-                                        let v104: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v101: Array[E0] = []
-                                          let v102: Option[E0] = None
-                                          let v103: (Array[E0], Option[E0]) = (v101, v102)
-                                          v103
-                                        }
-                                        v104
-                                      }
-                                      (v105: Bool,) => {
-                                        let v109: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v106: Array[E0] = []
-                                          let v107: Option[E0] = None
-                                          let v108: (Array[E0], Option[E0]) = (v106, v107)
-                                          v108
-                                        }
-                                        v109
-                                      }
-                                    }
-                                    v110
-                                  }
-                                }
-                                v111
-                              }
-                              (v112: Bool,) => {
-                                let v134: () -> (Array[E0], Option[E0]) = match v89 {
-                                  (true,) => {
-                                    let v122: () -> (Array[E0], Option[E0]) = match v89 {
-                                      (true,) => {
-                                        let v116: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v113: Array[E0] = []
-                                          let v114: Option[E0] = None
-                                          let v115: (Array[E0], Option[E0]) = (v113, v114)
-                                          v115
-                                        }
-                                        v116
-                                      }
-                                      (v117: Bool,) => {
-                                        let v121: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v118: Array[E0] = []
-                                          let v119: Option[E0] = None
-                                          let v120: (Array[E0], Option[E0]) = (v118, v119)
-                                          v120
-                                        }
-                                        v121
-                                      }
-                                    }
-                                    v122
-                                  }
-                                  (v123: Bool,) => {
-                                    let v133: () -> (Array[E0], Option[E0]) = match v89 {
-                                      (true,) => {
-                                        let v127: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v124: Array[E0] = []
-                                          let v125: Option[E0] = None
-                                          let v126: (Array[E0], Option[E0]) = (v124, v125)
-                                          v126
-                                        }
-                                        v127
-                                      }
-                                      (v128: Bool,) => {
-                                        let v132: () -> (Array[E0], Option[E0]) = fn() {
-                                          let v129: Array[E0] = []
-                                          let v130: Option[E0] = None
-                                          let v131: (Array[E0], Option[E0]) = (v129, v130)
-                                          v131
-                                        }
-                                        v132
-                                      }
-                                    }
-                                    v133
-                                  }
-                                }
-                                v134
-                              }
-                            }
-                            v135
-                          }
-                        }
-                        let v137: (Array[E0], Option[E0]) = v136()
-                        v137
+                      let v26: () -> (Array[E0], Option[E0]) = fn() {
+                        let v19: Array[E0] = []
+                        let v20: Option[E0] = None
+                        let v21: (Array[E0], Option[E0]) = (v19, v20)
+                        let v22: () = ()
+                        let v23: E1 = W1
+                        let v24: ((Array[E0], Option[E0]), (), E1) = (v21, v22, v23)
+                        let v25: (Array[E0], Option[E0]) = v24.0
+                        v25
                       }
-                      let v139: (Array[E0], Option[E0]) = v138()
-                      v139
+                      let v27: (Array[E0], Option[E0]) = v26()
+                      v27
                     }
                   }
-                  let v141: Array[E0] = v140.0
-                  let v144: Html = for v142: E0 in v141 {
-                    let v143: Html = concat()
-                    v143
+                  let v29: Array[E0] = v28.0
+                  let v43: Html = for v30: E0 in v29 {
+                    let v39: Int = match v30 {
+                      E0::W0 {f0@v31: Float} => {
+                        let v32: Int = v29.len()
+                        v32
+                      }
+                      _ => {
+                        let v37: Int = match v0 {
+                          true => {
+                            let v33: Int = -2147483648
+                            let v34: Int = v33 + v1
+                            let v35: Int = v1 * v34
+                            v35
+                          }
+                          v36: Bool => {
+                            v1
+                          }
+                        }
+                        let v38: Int = v37 - v1
+                        v38
+                      }
+                    }
+                    let v40: String = v39.to_string()
+                    let v41: Html = concat()
+                    let v42: Html = element("span", {id: v40}, v41)
+                    v42
                   }
-                  v144
+                  v43
                 }
                 entrypoint fn V1@f1() -> Html {
-                  let v145: Html = concat()
-                  v145
+                  let v44: Html = concat()
+                  v44
                 }
             "#]],
         );

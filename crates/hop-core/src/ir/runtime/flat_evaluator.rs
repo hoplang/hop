@@ -1159,56 +1159,6 @@ mod tests {
     }
 
     #[test]
-    fn should_apply_the_closure_a_match_selects() {
-        check(
-            FlatProgramBuilder::new()
-                .entrypoint("Test", [("bold", Ty::Bool)], Ty::Html, |t| {
-                    let show = t.match_(t.param("bold"), |m| {
-                        m.arm(Pat::True, |t, _| {
-                            t.lambda([IrType::STRING], |t, params| {
-                                t.element("b", [], t.escape(params[0]))
-                            })
-                        });
-                        m.arm(Pat::False, |t, _| {
-                            t.lambda([IrType::STRING], |t, params| t.escape(params[0]))
-                        });
-                    });
-                    t.apply(show, [t.str("x")])
-                })
-                .build(),
-            |v| vec![("bold", v.bool(true))],
-            expect![[r#"
-                -- before --
-                entrypoint fn Test@f0(bold@v0: Bool) -> Html {
-                  let v9: String = "x"
-                  let v8: (String) -> Html = match v0 {
-                    true => {
-                      let v4: (String) -> Html = fn(v1: String) {
-                        let v2: Html = escape(v1)
-                        let v3: Html = element("b", {}, v2)
-                        v3
-                      }
-                      v4
-                    }
-                    false => {
-                      let v7: (String) -> Html = fn(v5: String) {
-                        let v6: Html = escape(v5)
-                        v6
-                      }
-                      v7
-                    }
-                  }
-                  let v10: Html = v8(v9)
-                  v10
-                }
-
-                -- after --
-                <b>x</b>
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_count_an_application_towards_the_call_depth() {
         let program = FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| {

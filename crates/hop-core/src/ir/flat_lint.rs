@@ -21,8 +21,8 @@ use crate::symbols::field_name::FieldName;
 /// of its operands and every block produces the type its context expects.
 /// A name is read only after it is bound. Every value of a match subject's
 /// type matches some arm, and each arm matches some value that no arm
-/// before it matches. The body of a closure reads no Html bound outside
-/// it, and no entrypoint takes a closure.
+/// before it matches. No match produces a closure, the body of a closure
+/// reads no Html bound outside it, and no entrypoint takes a closure.
 pub fn assert_well_typed(program: &FlatProgram) {
     let mut checker = Checker {
         declarations: &program.types,
@@ -271,6 +271,10 @@ impl<'a> Checker<'a> {
                 FlatFunctionDeclaration::Html(_) => false,
             },
             FlatDataOp::Match(match_) => {
+                assert!(
+                    matches!(declared, BoundType::Data(_)),
+                    "{function} has a match that produces the closure {declared}"
+                );
                 let subject = self.typ(match_.subject);
                 for arm in &match_.arms {
                     self.pattern(&arm.pattern, subject);
@@ -327,6 +331,10 @@ impl<'a> Checker<'a> {
                 FlatFunctionDeclaration::Data(_) => false,
             },
             FlatHtmlOp::Match(match_) => {
+                assert!(
+                    html,
+                    "{function} has a match that produces the closure {declared}"
+                );
                 let subject = self.typ(match_.subject);
                 for arm in &match_.arms {
                     self.pattern(&arm.pattern, subject);
@@ -635,6 +643,25 @@ mod tests {
                 let outer = t.text("x");
                 let closure = t.lambda([], |_, _| outer);
                 t.apply(closure, [])
+            })
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Test@f0 has a match that produces the closure (Int) -> Int")]
+    fn should_reject_a_match_that_produces_a_closure() {
+        FlatProgramBuilder::new()
+            .entrypoint("Test", [("double", Ty::Bool)], Ty::Html, |t| {
+                let scale = t.match_(t.param("double"), |m| {
+                    m.arm(Pat::True, |t, _| {
+                        t.lambda([IrType::INT], |t, params| t.add(params[0], params[0]))
+                    });
+                    m.arm(Pat::False, |t, _| {
+                        t.lambda([IrType::INT], |_, params| params[0])
+                    });
+                });
+                let scaled = t.apply(scale, [t.int(1)]);
+                t.escape(t.int_to_string(scaled))
             })
             .build();
     }

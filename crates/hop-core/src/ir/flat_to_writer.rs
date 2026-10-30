@@ -9,7 +9,6 @@ use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBinding,
     FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
 };
-use crate::ir::flat_transform;
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
@@ -47,15 +46,11 @@ use crate::symbols::type_name::TypeName;
 /// has no Html parameter, so no value reads Html. Panics if one does all the
 /// same.
 ///
-/// A match whose arms produce closures becomes one lambda first, by
-/// `expand_closure_matches`, so that every closure is a lambda or a
-/// parameter. Such a closure outlives everything that reads it, so a
-/// backend can have every closure borrow the names it captures. A closure
-/// that an arm builds and the match hands out would outlive the arm, and
-/// the names the arm binds with it, which in the Rust backend takes a
-/// boxed closure that owns copies of what it captures. A lambda becomes a
-/// let at the start of its block, with the body a function that writes or
-/// returns would have. Its Html parameters are buffers, as those of a
+/// Every closure is a lambda or a parameter, since no match, call or
+/// application produces one. Such a closure outlives everything that reads
+/// it, so a backend can have every closure borrow the names it captures. A
+/// lambda becomes a let at the start of its block, with the body a function
+/// that writes or returns would have. Its Html parameters are buffers, as those of a
 /// function are.
 ///
 /// A match compiles to a decision tree. A switch of the tree becomes a
@@ -85,7 +80,7 @@ pub fn flat_to_writer(
         types,
         functions,
         value_ids,
-    } = flat_transform::expand_closure_matches(program);
+    } = program;
     let mut lowerer = Lowerer {
         types: &types,
         value_ids,
@@ -1360,79 +1355,119 @@ mod tests {
     }
 
     #[test]
-    fn applies_a_closure_a_match_on_a_parameter_selects() {
+    fn applies_a_closure_that_matches_on_a_name_it_captures() {
         check_program(
             FlatProgramBuilder::new()
-                .entrypoint(
-                    "Test",
-                    [("double", Ty::Bool), ("n", Ty::Int)],
-                    Ty::Html,
+                .function_with_types(
+                    "Sum",
+                    [
+                        ("n", IrType::INT),
+                        ("scale", IrType::value_function([IrType::INT], IrType::INT)),
+                    ],
+                    IrType::INT,
                     |t| {
-                        let scale = t.match_(t.param("double"), |m| {
-                            m.arm(Pat::True, |t, _| {
-                                let two = t.int(2);
-                                t.lambda([IrType::INT], |t, params| t.mul(params[0], two))
-                            });
+                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                            m.arm(Pat::True, |t, _| t.int(0));
                             m.arm(Pat::False, |t, _| {
-                                t.lambda([IrType::INT], |_, params| params[0])
+                                let scaled = t.apply(t.param("scale"), [t.param("n")]);
+                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.call("Sum", [rest, t.param("scale")]);
+                                t.add(scaled, rest)
                             });
-                        });
-                        let scaled = t.apply(scale, [t.param("n")]);
-                        t.escape(t.int_to_string(scaled))
+                        })
                     },
                 )
+                .entrypoint("Test", [("double", Ty::Bool)], Ty::Html, |t| {
+                    let scale = t.lambda([IrType::INT], |t, params| {
+                        t.match_(t.param("double"), |m| {
+                            m.arm(Pat::True, |t, _| t.mul(params[0], t.int(2)));
+                            m.arm(Pat::False, |_, _| params[0]);
+                        })
+                    });
+                    let sum = t.call("Sum", [t.int(3), scale]);
+                    t.escape(t.int_to_string(sum))
+                })
                 .build(),
             expect![[r#"
                 -- flat --
-                entrypoint fn Test@f0(double@v0: Bool, n@v1: Int) -> Html {
-                  let v8: (Int) -> Int = match v0 {
+                fn Sum@f0(n@v0: Int, scale@v1: (Int) -> Int) -> Int {
+                  let v2: Int = 0
+                  let v3: Bool = v0 <= v2
+                  let v10: Int = match v3 {
                     true => {
-                      let v2: Int = 2
-                      let v5: (Int) -> Int = fn(v3: Int) {
-                        let v4: Int = v3 * v2
-                        v4
-                      }
-                      v5
+                      let v4: Int = 0
+                      v4
                     }
                     false => {
-                      let v7: (Int) -> Int = fn(v6: Int) {
-                        v6
-                      }
-                      v7
+                      let v5: Int = v1(v0)
+                      let v6: Int = 1
+                      let v7: Int = v0 - v6
+                      let v8: Int = Sum@f0(v7, v1)
+                      let v9: Int = v5 + v8
+                      v9
                     }
                   }
-                  let v9: Int = v8(v1)
-                  let v10: String = v9.to_string()
-                  let v11: Html = escape(v10)
-                  v11
+                  v10
+                }
+                entrypoint fn Test@f1(double@v11: Bool) -> Html {
+                  let v16: (Int) -> Int = fn(v12: Int) {
+                    let v15: Int = match v11 {
+                      true => {
+                        let v13: Int = 2
+                        let v14: Int = v12 * v13
+                        v14
+                      }
+                      false => {
+                        v12
+                      }
+                    }
+                    v15
+                  }
+                  let v17: Int = 3
+                  let v18: Int = Sum@f0(v17, v16)
+                  let v19: String = v18.to_string()
+                  let v20: Html = escape(v19)
+                  v20
                 }
 
                 -- writer --
-                page Test(double@v0: Bool, n@v1: Int) {
-                  let v8: (Int) -> Int = fn(v12: Int) {
-                    let v16: Int = match v0 {
+                fn Sum@f0(n@v0: Int, scale@v1: (Int) -> Int) -> Int {
+                  let v2: Int = 0
+                  let v3: Bool = v0 <= v2
+                  let v22: Int = match v3 {
+                    true => {
+                      let v4: Int = 0
+                      v4
+                    }
+                    false => {
+                      let v5: Int = v1(v0)
+                      let v6: Int = 1
+                      let v7: Int = v0 - v6
+                      let v8: Int = Sum@f0(v7, v1)
+                      let v9: Int = v5 + v8
+                      v9
+                    }
+                  }
+                  v22
+                }
+                page Test(double@v11: Bool) {
+                  let v16: (Int) -> Int = fn(v12: Int) {
+                    let v21: Int = match v11 {
                       true => {
-                        let v2: Int = 2
-                        let v5: (Int) -> Int = fn(v3: Int) {
-                          let v4: Int = v3 * v2
-                          v4
-                        }
-                        let v13: Int = v5(v12)
-                        v13
-                      }
-                      false => {
-                        let v7: (Int) -> Int = fn(v6: Int) {
-                          v6
-                        }
-                        let v14: Int = v7(v12)
+                        let v13: Int = 2
+                        let v14: Int = v12 * v13
                         v14
                       }
+                      false => {
+                        v12
+                      }
                     }
-                    v16
+                    v21
                   }
-                  let v9: Int = v8(v1)
-                  let v10: String = v9.to_string()
-                  write_string(v10)
+                  let v17: Int = 3
+                  let v18: Int = Sum@f0(v17, v16)
+                  let v19: String = v18.to_string()
+                  write_string(v19)
                 }
             "#]],
         );
@@ -1442,67 +1477,85 @@ mod tests {
     fn renders_the_html_a_closure_takes_into_a_buffer() {
         check_program(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("bold", Ty::Bool)], Ty::Html, |t| {
-                    let wrap = t.match_(t.param("bold"), |m| {
-                        m.arm(Pat::True, |t, _| {
-                            t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]))
-                        });
-                        m.arm(Pat::False, |t, _| {
-                            t.lambda([IrType::HTML], |_, params| params[0])
-                        });
-                    });
-                    let item = t.element("i", [], t.text("x"));
-                    t.apply(wrap, [item])
+                .function_with_types(
+                    "Wrap",
+                    [
+                        ("n", IrType::INT),
+                        ("wrap", IrType::html_function([IrType::HTML])),
+                    ],
+                    IrType::HTML,
+                    |t| {
+                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                            m.arm(Pat::True, |t, _| t.text("x"));
+                            m.arm(Pat::False, |t, _| {
+                                let rest = t.sub(t.param("n"), t.int(1));
+                                let inner = t.call("Wrap", [rest, t.param("wrap")]);
+                                t.apply(t.param("wrap"), [inner])
+                            });
+                        })
+                    },
+                )
+                .entrypoint("Test", [], Ty::Html, |t| {
+                    let wrap = t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]));
+                    t.call("Wrap", [t.int(2), wrap])
                 })
                 .build(),
             expect![[r#"
                 -- flat --
-                entrypoint fn Test@f0(bold@v0: Bool) -> Html {
-                  let v6: (Html) -> Html = match v0 {
+                fn Wrap@f0(n@v0: Int, wrap@v1: (Html) -> Html) -> Html {
+                  let v2: Int = 0
+                  let v3: Bool = v0 <= v2
+                  let v9: Html = match v3 {
                     true => {
-                      let v3: (Html) -> Html = fn(v1: Html) {
-                        let v2: Html = element("b", {}, v1)
-                        v2
-                      }
-                      v3
+                      let v4: Html = text("x")
+                      v4
                     }
                     false => {
-                      let v5: (Html) -> Html = fn(v4: Html) {
-                        v4
-                      }
-                      v5
+                      let v5: Int = 1
+                      let v6: Int = v0 - v5
+                      let v7: Html = Wrap@f0(v6, v1)
+                      let v8: Html = v1(v7)
+                      v8
                     }
                   }
-                  let v7: Html = text("x")
-                  let v8: Html = element("i", {}, v7)
-                  let v9: Html = v6(v8)
                   v9
+                }
+                entrypoint fn Test@f1() -> Html {
+                  let v13: Int = 2
+                  let v12: (Html) -> Html = fn(v10: Html) {
+                    let v11: Html = element("b", {}, v10)
+                    v11
+                  }
+                  let v14: Html = Wrap@f0(v13, v12)
+                  v14
                 }
 
                 -- writer --
-                page Test(bold@v0: Bool) {
-                  let v6: (Html) -> Html = fn(v10: Html) {
-                    match v0 {
-                      true => {
-                        let v3: (Html) -> Html = fn(v1: Html) {
-                          write("<b>")
-                          write_html(v1)
-                          write("</b>")
-                        }
-                        write_apply v3(v10)
+                fn Wrap@f0(n@v0: Int, wrap@v1: (Html) -> Html) -> Html {
+                  let v2: Int = 0
+                  let v3: Bool = v0 <= v2
+                  match v3 {
+                    true => {
+                      write("x")
+                    }
+                    false => {
+                      let v5: Int = 1
+                      let v6: Int = v0 - v5
+                      let v15: Html = html {
+                        write_function Wrap@f0(v6, v1)
                       }
-                      false => {
-                        let v5: (Html) -> Html = fn(v4: Html) {
-                          write_html(v4)
-                        }
-                        write_apply v5(v10)
-                      }
+                      write_apply v1(v15)
                     }
                   }
-                  let v14: Html = html {
-                    write("<i>x</i>")
+                }
+                page Test() {
+                  let v13: Int = 2
+                  let v12: (Html) -> Html = fn(v10: Html) {
+                    write("<b>")
+                    write_html(v10)
+                    write("</b>")
                   }
-                  write_apply v6(v14)
+                  write_function Wrap@f0(v13, v12)
                 }
             "#]],
         );
